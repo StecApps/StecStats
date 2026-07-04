@@ -3,3 +3,4 @@
 - [Testing camera/media features](testing-camera-media.md) — Playwright test sandbox has no real camera; expect getUserMedia to fail there, design a graceful error path and verify via DB/API instead of relying on camera E2E.
 - [Live streaming via custom WebRTC signaling](live-streaming-webrtc.md) — in-memory `ws` signaling relay on api-server, ephemeral sessions not tied to DB, now with Metered.ca TURN relay.
 - [Metered.ca TURN credential-scoped API key](metered-turn-api-key.md) — turn/credentials endpoint needs the credential-scoped apiKey, not the account secret/project key.
+- [Canvas camera pipeline](camera-canvas-pipeline.md) — recording draws camera into an offscreen canvas for iOS digital zoom + camera switch; hardware gimbals (DJI) can't be integrated.

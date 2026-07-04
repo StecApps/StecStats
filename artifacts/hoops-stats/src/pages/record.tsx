@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, Maximize2, Minimize2 } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, Maximize2, Minimize2, SwitchCamera, ZoomIn, ZoomOut } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -144,6 +144,9 @@ export default function RecordGame() {
   const [isStartingLive, setIsStartingLive] = useState(false);
   const [videoExpanded, setVideoExpanded] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
+  const [zoom, setZoom] = useState(1);
+  const [canSwitchCamera, setCanSwitchCamera] = useState(false);
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
@@ -154,6 +157,31 @@ export default function RecordGame() {
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const liveCodeRef = useRef<string | null>(null);
+  const rawStreamRef = useRef<MediaStream | null>(null);
+  const sourceVideoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const zoomRef = useRef(1);
+  const usesCanvasRef = useRef(false);
+  const MAX_ZOOM = 5;
+
+  const stopMediaPipeline = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    const src = sourceVideoRef.current;
+    const srcStream = src?.srcObject as MediaStream | null;
+    srcStream?.getTracks().forEach(t => t.stop());
+    if (src) src.srcObject = null;
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    rawStreamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    rawStreamRef.current = null;
+    sourceVideoRef.current = null;
+    canvasRef.current = null;
+    usesCanvasRef.current = false;
+  };
 
   useEffect(() => {
     if (isEditing && gameToEdit) {
@@ -185,7 +213,7 @@ export default function RecordGame() {
 
   useEffect(() => {
     return () => {
-      streamRef.current?.getTracks().forEach(track => track.stop());
+      stopMediaPipeline();
       if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
       livePeersRef.current.forEach(pc => pc.close());
       liveWsRef.current?.close();
@@ -210,17 +238,116 @@ export default function RecordGame() {
     }
   }, [isRecording, videoExpanded]);
 
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const startDrawLoop = () => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const draw = () => {
+      const v = sourceVideoRef.current;
+      const c = canvasRef.current;
+      if (v && c && v.videoWidth > 0 && v.videoHeight > 0) {
+        const ctx = c.getContext("2d");
+        if (ctx) {
+          const vw = v.videoWidth;
+          const vh = v.videoHeight;
+          if (c.width !== vw || c.height !== vh) {
+            c.width = vw;
+            c.height = vh;
+          }
+          const z = Math.max(1, zoomRef.current);
+          const sw = vw / z;
+          const sh = vh / z;
+          const sx = (vw - sw) / 2;
+          const sy = (vh - sh) / 2;
+          ctx.drawImage(v, sx, sy, sw, sh, 0, 0, vw, vh);
+        }
+      }
+      rafRef.current = requestAnimationFrame(draw);
+    };
+    rafRef.current = requestAnimationFrame(draw);
+  };
+
+  const switchCamera = async () => {
+    if (!usesCanvasRef.current || !sourceVideoRef.current) return;
+    const next = facingMode === "environment" ? "user" : "environment";
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: next },
+        audio: false,
+      });
+      const src = sourceVideoRef.current;
+      const prev = src.srcObject as MediaStream | null;
+      prev?.getVideoTracks().forEach(t => t.stop());
+      src.srcObject = newStream;
+      await src.play().catch(() => {});
+      setFacingMode(next);
+      setZoom(1);
+    } catch {
+      setCameraError("Could not switch camera on this device.");
+    }
+  };
+
+  const adjustZoom = (delta: number) => {
+    setZoom(z => Math.min(MAX_ZOOM, Math.max(1, Math.round((z + delta) * 10) / 10)));
+  };
+
   const startRecording = async () => {
     setCameraError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      streamRef.current = stream;
+      const rawStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode },
+        audio: true,
+      });
+      rawStreamRef.current = rawStream;
+
+      let recordStream: MediaStream;
+      const canvasSupported = typeof HTMLCanvasElement !== "undefined" &&
+        typeof HTMLCanvasElement.prototype.captureStream === "function";
+
+      if (canvasSupported) {
+        const sourceVideo = document.createElement("video");
+        sourceVideo.muted = true;
+        sourceVideo.playsInline = true;
+        sourceVideo.autoplay = true;
+        sourceVideo.srcObject = rawStream;
+        sourceVideoRef.current = sourceVideo;
+        await sourceVideo.play().catch(() => {});
+        await new Promise<void>(resolve => {
+          if (sourceVideo.videoWidth > 0) return resolve();
+          sourceVideo.onloadedmetadata = () => resolve();
+          setTimeout(() => resolve(), 1500);
+        });
+
+        const canvas = document.createElement("canvas");
+        canvas.width = sourceVideo.videoWidth || 1280;
+        canvas.height = sourceVideo.videoHeight || 720;
+        canvasRef.current = canvas;
+        setZoom(1);
+        zoomRef.current = 1;
+        startDrawLoop();
+
+        const canvasStream = canvas.captureStream(30);
+        const output = new MediaStream();
+        canvasStream.getVideoTracks().forEach(t => output.addTrack(t));
+        rawStream.getAudioTracks().forEach(t => output.addTrack(t));
+        recordStream = output;
+        usesCanvasRef.current = true;
+        setCanSwitchCamera(true);
+      } else {
+        recordStream = rawStream;
+        usesCanvasRef.current = false;
+        setCanSwitchCamera(false);
+      }
+
+      streamRef.current = recordStream;
 
       chunksRef.current = [];
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus"
         : "video/webm";
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = new MediaRecorder(recordStream, { mimeType });
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -228,8 +355,7 @@ export default function RecordGame() {
         const blob = new Blob(chunksRef.current, { type: mimeType });
         setRecordedBlob(blob);
         setRecordedPreviewUrl(URL.createObjectURL(blob));
-        streamRef.current?.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
+        stopMediaPipeline();
       };
 
       mediaRecorderRef.current = recorder;
@@ -245,6 +371,8 @@ export default function RecordGame() {
         setRecordedPreviewUrl(null);
       }
     } catch (err) {
+      stopMediaPipeline();
+      setCanSwitchCamera(false);
       setCameraError("Could not access camera/microphone. Check permissions and try again.");
     }
   };
@@ -568,6 +696,23 @@ export default function RecordGame() {
                   </Button>
                 </div>
               </div>
+              {canSwitchCamera && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={switchCamera}>
+                    <SwitchCamera className="w-4 h-4 mr-1" />
+                    {facingMode === "environment" ? "Front camera" : "Back camera"}
+                  </Button>
+                  <div className="flex items-center gap-1 rounded-md border px-1">
+                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => adjustZoom(-0.5)} disabled={zoom <= 1}>
+                      <ZoomOut className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm font-medium tabular-nums w-10 text-center">{zoom.toFixed(1)}x</span>
+                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => adjustZoom(0.5)} disabled={zoom >= MAX_ZOOM}>
+                      <ZoomIn className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="destructive" onClick={stopRecording}>
                   <Square className="w-4 h-4 mr-2" /> Stop Recording
