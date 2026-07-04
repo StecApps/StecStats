@@ -1,0 +1,1 @@
+- [Orval params naming collision](orval-params-collision.md) — an operation combining a path param + query param can produce a TS2308 name collision between zod and type generators; avoid by not mixing them.

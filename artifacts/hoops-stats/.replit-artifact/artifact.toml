@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Basketball Stats Tracker"
+version = "1.0.0"
+id = "artifacts/hoops-stats"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20095
+
+[services.development]
+run = "pnpm --filter @workspace/hoops-stats run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/hoops-stats", "run", "build" ]
+publicDir = "artifacts/hoops-stats/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20095"
+BASE_PATH = "/"

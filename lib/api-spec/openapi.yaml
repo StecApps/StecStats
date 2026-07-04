@@ -10,6 +10,14 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: players
+    description: Player operations
+  - name: teams
+    description: Team / season operations
+  - name: games
+    description: Game operations
+  - name: import
+    description: Bulk data import
 paths:
   /healthz:
     get:
@@ -24,6 +32,299 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /players:
+    get:
+      operationId: listPlayers
+      tags: [players]
+      summary: List all players
+      responses:
+        "200":
+          description: List of players
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Player"
+    post:
+      operationId: createPlayer
+      tags: [players]
+      summary: Create a player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlayerInput"
+      responses:
+        "201":
+          description: Created player
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Player"
+
+  /players/{playerId}:
+    parameters:
+      - name: playerId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getPlayer
+      tags: [players]
+      summary: Get a player
+      responses:
+        "200":
+          description: Player
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Player"
+    patch:
+      operationId: updatePlayer
+      tags: [players]
+      summary: Update a player
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlayerUpdate"
+      responses:
+        "200":
+          description: Updated player
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Player"
+    delete:
+      operationId: deletePlayer
+      tags: [players]
+      summary: Delete a player
+      responses:
+        "204":
+          description: Deleted
+
+  /players/{playerId}/summary:
+    parameters:
+      - name: playerId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getPlayerSummary
+      tags: [players]
+      summary: Career totals and averages for a player
+      responses:
+        "200":
+          description: Player career summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerSummary"
+
+  /players/{playerId}/teams:
+    parameters:
+      - name: playerId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: listPlayerTeamGroups
+      tags: [players]
+      summary: Teams/seasons a player has games in, with per-team record and totals
+      responses:
+        "200":
+          description: List of team/season groups for the player
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlayerTeamGroup"
+
+  /teams:
+    get:
+      operationId: listTeams
+      tags: [teams]
+      summary: List all teams/seasons
+      responses:
+        "200":
+          description: List of teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Team"
+    post:
+      operationId: createTeam
+      tags: [teams]
+      summary: Create a team/season
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamInput"
+      responses:
+        "201":
+          description: Created team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+
+  /teams/{teamId}:
+    parameters:
+      - name: teamId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getTeam
+      tags: [teams]
+      summary: Get a team/season
+      responses:
+        "200":
+          description: Team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+    patch:
+      operationId: updateTeam
+      tags: [teams]
+      summary: Update a team/season
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamUpdate"
+      responses:
+        "200":
+          description: Updated team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Team"
+    delete:
+      operationId: deleteTeam
+      tags: [teams]
+      summary: Delete a team/season (and its games)
+      responses:
+        "204":
+          description: Deleted
+
+  /teams/{teamId}/games:
+    parameters:
+      - name: teamId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: listTeamGames
+      tags: [games]
+      summary: List games for a team/season (includes all players' stat lines)
+      responses:
+        "200":
+          description: List of games with player stat lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Game"
+
+  /games:
+    post:
+      operationId: createGame
+      tags: [games]
+      summary: Create a game with per-player stat lines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GameInput"
+      responses:
+        "201":
+          description: Created game
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+
+  /games/{gameId}:
+    parameters:
+      - name: gameId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getGame
+      tags: [games]
+      summary: Get a single game with all player stat lines
+      responses:
+        "200":
+          description: Game
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+    patch:
+      operationId: updateGame
+      tags: [games]
+      summary: Update a game and its per-player stat lines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GameUpdate"
+      responses:
+        "200":
+          description: Updated game
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+    delete:
+      operationId: deleteGame
+      tags: [games]
+      summary: Delete a game
+      responses:
+        "204":
+          description: Deleted
+
+  /import:
+    post:
+      operationId: importData
+      tags: [import]
+      summary: Bulk import players, teams, games and stat lines
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportInput"
+      responses:
+        "200":
+          description: Import result summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +335,268 @@ components:
       required:
         - status
 
+    Player:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    PlayerInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+
+    PlayerUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+
+    PlayerSummary:
+      type: object
+      required:
+        - playerId
+        - playerName
+        - games
+        - wins
+        - losses
+        - points
+        - rebounds
+        - assists
+        - steals
+        - turnovers
+        - blocks
+        - ftMade
+        - ftAttempted
+        - twoMade
+        - twoAttempted
+        - threeMade
+        - threeAttempted
+        - ppg
+        - rpg
+        - apg
+        - spg
+        - topg
+        - bpg
+        - fgPct
+        - threePct
+        - ftPct
+      properties:
+        playerId: { type: integer }
+        playerName: { type: string }
+        games: { type: integer }
+        wins: { type: integer }
+        losses: { type: integer }
+        points: { type: integer }
+        rebounds: { type: integer }
+        assists: { type: integer }
+        steals: { type: integer }
+        turnovers: { type: integer }
+        blocks: { type: integer }
+        ftMade: { type: integer }
+        ftAttempted: { type: integer }
+        twoMade: { type: integer }
+        twoAttempted: { type: integer }
+        threeMade: { type: integer }
+        threeAttempted: { type: integer }
+        ppg: { type: number }
+        rpg: { type: number }
+        apg: { type: number }
+        spg: { type: number }
+        topg: { type: number }
+        bpg: { type: number }
+        fgPct: { type: number }
+        threePct: { type: number }
+        ftPct: { type: number }
+
+    PlayerTeamGroup:
+      type: object
+      required: [teamId, teamName, games, wins, losses]
+      properties:
+        teamId: { type: integer }
+        teamName: { type: string }
+        games: { type: integer }
+        wins: { type: integer }
+        losses: { type: integer }
+
+    Team:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    TeamInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+
+    TeamUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+
+    PlayerGameStatLine:
+      type: object
+      required:
+        - playerId
+        - playerName
+        - ftMade
+        - ftAttempted
+        - twoMade
+        - twoAttempted
+        - threeMade
+        - threeAttempted
+        - points
+        - assists
+        - rebounds
+        - steals
+        - turnovers
+        - blocks
+      properties:
+        playerId: { type: integer }
+        playerName: { type: string }
+        ftMade: { type: integer }
+        ftAttempted: { type: integer }
+        twoMade: { type: integer }
+        twoAttempted: { type: integer }
+        threeMade: { type: integer }
+        threeAttempted: { type: integer }
+        points: { type: integer }
+        assists: { type: integer }
+        rebounds: { type: integer }
+        steals: { type: integer }
+        turnovers: { type: integer }
+        blocks: { type: integer }
+
+    PlayerGameStatInput:
+      type: object
+      required:
+        - playerId
+        - ftMade
+        - ftAttempted
+        - twoMade
+        - twoAttempted
+        - threeMade
+        - threeAttempted
+        - assists
+        - rebounds
+        - steals
+        - turnovers
+        - blocks
+      properties:
+        playerId: { type: integer }
+        ftMade: { type: integer, minimum: 0 }
+        ftAttempted: { type: integer, minimum: 0 }
+        twoMade: { type: integer, minimum: 0 }
+        twoAttempted: { type: integer, minimum: 0 }
+        threeMade: { type: integer, minimum: 0 }
+        threeAttempted: { type: integer, minimum: 0 }
+        assists: { type: integer, minimum: 0 }
+        rebounds: { type: integer, minimum: 0 }
+        steals: { type: integer, minimum: 0 }
+        turnovers: { type: integer, minimum: 0 }
+        blocks: { type: integer, minimum: 0 }
+
+    Game:
+      type: object
+      required:
+        - id
+        - teamId
+        - teamName
+        - opponent
+        - date
+        - result
+        - teamScore
+        - opponentScore
+        - createdAt
+        - stats
+      properties:
+        id: { type: integer }
+        teamId: { type: integer }
+        teamName: { type: string }
+        opponent: { type: string }
+        date: { type: string, format: date }
+        result: { type: string, enum: [W, L] }
+        teamScore: { type: integer }
+        opponentScore: { type: integer }
+        createdAt: { type: string, format: date-time }
+        stats:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerGameStatLine"
+
+    GameInput:
+      type: object
+      required: [teamId, opponent, date, result, teamScore, opponentScore, stats]
+      properties:
+        teamId: { type: integer }
+        opponent: { type: string, minLength: 1 }
+        date: { type: string, format: date }
+        result: { type: string, enum: [W, L] }
+        teamScore: { type: integer, minimum: 0 }
+        opponentScore: { type: integer, minimum: 0 }
+        stats:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerGameStatInput"
+
+    GameUpdate:
+      type: object
+      required: [teamId, opponent, date, result, teamScore, opponentScore, stats]
+      properties:
+        teamId: { type: integer }
+        opponent: { type: string, minLength: 1 }
+        date: { type: string, format: date }
+        result: { type: string, enum: [W, L] }
+        teamScore: { type: integer, minimum: 0 }
+        opponentScore: { type: integer, minimum: 0 }
+        stats:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerGameStatInput"
+
+    ImportGameRow:
+      type: object
+      required: [teamName, opponent, date, result, teamScore, opponentScore, playerName, ftMade, ftAttempted, twoMade, twoAttempted, threeMade, threeAttempted, assists, rebounds, steals, turnovers, blocks]
+      properties:
+        teamName: { type: string }
+        opponent: { type: string }
+        date: { type: string }
+        result: { type: string, enum: [W, L] }
+        teamScore: { type: integer }
+        opponentScore: { type: integer }
+        playerName: { type: string }
+        ftMade: { type: integer }
+        ftAttempted: { type: integer }
+        twoMade: { type: integer }
+        twoAttempted: { type: integer }
+        threeMade: { type: integer }
+        threeAttempted: { type: integer }
+        assists: { type: integer }
+        rebounds: { type: integer }
+        steals: { type: integer }
+        turnovers: { type: integer }
+        blocks: { type: integer }
+
+    ImportInput:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportGameRow"
+
+    ImportResult:
+      type: object
+      required: [playersCreated, teamsCreated, gamesCreated, statLinesCreated]
+      properties:
+        playersCreated: { type: integer }
+        teamsCreated: { type: integer }
+        gamesCreated: { type: integer }
+        statLinesCreated: { type: integer }
