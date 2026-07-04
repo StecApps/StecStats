@@ -23,6 +23,7 @@ export const gamesTable = pgTable("games", {
   result: gameResultEnum("result").notNull(),
   teamScore: integer("team_score").notNull(),
   opponentScore: integer("opponent_score").notNull(),
+  videoObjectPath: text("video_object_path"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

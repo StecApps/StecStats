@@ -4,6 +4,7 @@ import playersRouter from "./players";
 import teamsRouter from "./teams";
 import gamesRouter from "./games";
 import importRouter from "./import";
+import storageRouter from "./storage";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(playersRouter);
 router.use(teamsRouter);
 router.use(gamesRouter);
 router.use(importRouter);
+router.use(storageRouter);
 
 export default router;

@@ -1,1 +1,3 @@
 - [Orval params naming collision](orval-params-collision.md) — an operation combining a path param + query param can produce a TS2308 name collision between zod and type generators; avoid by not mixing them.
+- [Frontend API routing convention](api-routing-convention.md) — hoops-stats/monorepo apps call `/api/...` as root-relative paths directly, not prefixed by artifact BASE_URL.
+- [Testing camera/media features](testing-camera-media.md) — Playwright test sandbox has no real camera; expect getUserMedia to fail there, design a graceful error path and verify via DB/API instead of relying on camera E2E.

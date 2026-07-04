@@ -1,6 +1,13 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, gamesTable, playerGameStatsTable, playersTable, teamsTable } from "@workspace/db";
+import {
+  db,
+  gamesTable,
+  playerGameStatsTable,
+  playersTable,
+  teamsTable,
+  gameEventsTable,
+} from "@workspace/db";
 import {
   CreateGameBody,
   CreateGameResponse,
@@ -12,8 +19,10 @@ import {
   DeleteGameParams,
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
+const objectStorageService = new ObjectStorageService();
 
 async function serializeGame(gameId: number) {
   const game = await db.query.gamesTable.findFirst({ where: eq(gamesTable.id, gameId) });
@@ -27,6 +36,11 @@ async function serializeGame(gameId: number) {
     .innerJoin(playersTable, eq(playerGameStatsTable.playerId, playersTable.id))
     .where(eq(playerGameStatsTable.gameId, gameId));
 
+  const eventRows = await db.query.gameEventsTable.findMany({
+    where: eq(gameEventsTable.gameId, gameId),
+    orderBy: (events, { asc }) => [asc(events.videoTimestampMs)],
+  });
+
   return {
     id: game.id,
     teamId: game.teamId,
@@ -36,6 +50,7 @@ async function serializeGame(gameId: number) {
     result: game.result,
     teamScore: game.teamScore,
     opponentScore: game.opponentScore,
+    videoObjectPath: game.videoObjectPath,
     createdAt: game.createdAt,
     stats: statRows.map(({ stat, playerName }) => ({
       playerId: stat.playerId,
@@ -53,6 +68,12 @@ async function serializeGame(gameId: number) {
       turnovers: stat.turnovers,
       blocks: stat.blocks,
     })),
+    events: eventRows.map((event) => ({
+      playerId: event.playerId,
+      statField: event.statField,
+      delta: event.delta,
+      videoTimestampMs: event.videoTimestampMs,
+    })),
   };
 }
 
@@ -69,6 +90,9 @@ router.post("/games", async (req, res) => {
         result: body.result,
         teamScore: body.teamScore,
         opponentScore: body.opponentScore,
+        videoObjectPath: body.videoObjectPath
+          ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
+          : null,
       })
       .returning();
 
@@ -77,6 +101,15 @@ router.post("/games", async (req, res) => {
         body.stats.map((stat) => ({
           gameId: createdGame.id,
           ...stat,
+        })),
+      );
+    }
+
+    if (body.events.length > 0) {
+      await tx.insert(gameEventsTable).values(
+        body.events.map((event) => ({
+          gameId: createdGame.id,
+          ...event,
         })),
       );
     }
@@ -118,16 +151,29 @@ router.patch("/games/:gameId", async (req, res) => {
         result: body.result,
         teamScore: body.teamScore,
         opponentScore: body.opponentScore,
+        videoObjectPath: body.videoObjectPath
+          ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
+          : null,
       })
       .where(eq(gamesTable.id, gameId));
 
     await tx.delete(playerGameStatsTable).where(eq(playerGameStatsTable.gameId, gameId));
+    await tx.delete(gameEventsTable).where(eq(gameEventsTable.gameId, gameId));
 
     if (body.stats.length > 0) {
       await tx.insert(playerGameStatsTable).values(
         body.stats.map((stat) => ({
           gameId,
           ...stat,
+        })),
+      );
+    }
+
+    if (body.events.length > 0) {
+      await tx.insert(gameEventsTable).values(
+        body.events.map((event) => ({
+          gameId,
+          ...event,
         })),
       );
     }

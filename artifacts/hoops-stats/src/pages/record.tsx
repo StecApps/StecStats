@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   useListPlayers, 
   useListTeams,
@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -41,9 +41,56 @@ type StatCounters = {
   blocks: number;
 };
 
+type GameEventEntry = {
+  playerId: number;
+  statField: string;
+  delta: number;
+  videoTimestampMs: number;
+};
+
 const initialStats = (playerId: number): StatCounters => ({
   playerId, ftMade: 0, ftAttempted: 0, twoMade: 0, twoAttempted: 0, threeMade: 0, threeAttempted: 0, assists: 0, rebounds: 0, steals: 0, turnovers: 0, blocks: 0
 });
+
+const STAT_LABELS: Record<string, string> = {
+  ftMade: "FT Made", ftAttempted: "FT Miss", twoMade: "2PT Made", twoAttempted: "2PT Miss",
+  threeMade: "3PT Made", threeAttempted: "3PT Miss", assists: "Assist", rebounds: "Rebound",
+  steals: "Steal", turnovers: "Turnover", blocks: "Block",
+};
+
+function formatMs(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${sec.toString().padStart(2, "0")}`;
+}
+
+async function uploadVideoBlob(blob: Blob): Promise<string> {
+  const requestRes = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: `game-recording-${Date.now()}.webm`,
+      size: blob.size,
+      contentType: blob.type || "video/webm",
+    }),
+  });
+  if (!requestRes.ok) throw new Error("Failed to request upload URL");
+  const { uploadURL, objectPath } = await requestRes.json();
+
+  const putRes = await fetch(uploadURL, {
+    method: "PUT",
+    headers: { "Content-Type": blob.type || "video/webm" },
+    body: blob,
+  });
+  if (!putRes.ok) throw new Error("Failed to upload video");
+
+  return objectPath as string;
+}
+
+function videoObjectSrc(objectPath: string): string {
+  return `/api/storage/objects/${objectPath.replace(/^\/objects\//, "")}`;
+}
 
 export default function RecordGame() {
   const params = useParams();
@@ -82,6 +129,21 @@ export default function RecordGame() {
   const [newPlayerName, setNewPlayerName] = useState("");
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
 
+  const [existingVideoObjectPath, setExistingVideoObjectPath] = useState<string | null>(null);
+  const [events, setEvents] = useState<GameEventEntry[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedPreviewUrl, setRecordedPreviewUrl] = useState<string | null>(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  const livePreviewRef = useRef<HTMLVideoElement | null>(null);
+  const playbackRef = useRef<HTMLVideoElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const recordingStartRef = useRef<number>(0);
+
   useEffect(() => {
     if (isEditing && gameToEdit) {
       setTeamId(gameToEdit.teamId.toString());
@@ -105,8 +167,63 @@ export default function RecordGame() {
         };
       });
       setStats(statsObj);
+      setExistingVideoObjectPath(gameToEdit.videoObjectPath ?? null);
+      setEvents(gameToEdit.events ?? []);
     }
   }, [isEditing, gameToEdit]);
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach(track => track.stop());
+      if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
+    };
+  }, [recordedPreviewUrl]);
+
+  const startRecording = async () => {
+    setCameraError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      streamRef.current = stream;
+      if (livePreviewRef.current) {
+        livePreviewRef.current.srcObject = stream;
+        await livePreviewRef.current.play().catch(() => {});
+      }
+
+      chunksRef.current = [];
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : "video/webm";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        setRecordedBlob(blob);
+        setRecordedPreviewUrl(URL.createObjectURL(blob));
+        streamRef.current?.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      };
+
+      mediaRecorderRef.current = recorder;
+      recordingStartRef.current = Date.now();
+      recorder.start();
+      setIsRecording(true);
+      setRecordedBlob(null);
+      setEvents([]);
+      if (recordedPreviewUrl) {
+        URL.revokeObjectURL(recordedPreviewUrl);
+        setRecordedPreviewUrl(null);
+      }
+    } catch (err) {
+      setCameraError("Could not access camera/microphone. Check permissions and try again.");
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  };
 
   const handleTogglePlayer = (pid: number) => {
     if (selectedPlayerIds.includes(pid)) {
@@ -140,6 +257,11 @@ export default function RecordGame() {
       
       return { ...prev, [pid]: { ...pStats, ...updates } };
     });
+
+    if (isRecording) {
+      const videoTimestampMs = Math.max(0, Date.now() - recordingStartRef.current);
+      setEvents(prev => [...prev, { playerId: pid, statField: field, delta: increment, videoTimestampMs }]);
+    }
   };
 
   const handleSave = async () => {
@@ -148,9 +270,26 @@ export default function RecordGame() {
       return;
     }
 
+    if (isRecording) {
+      stopRecording();
+    }
+
     const isWin = teamScore > opponentScore;
     const isTie = teamScore === opponentScore;
     const result = isWin ? 'W' : 'L'; // Backend requires W or L
+
+    let videoObjectPath = existingVideoObjectPath;
+    if (recordedBlob) {
+      setIsUploadingVideo(true);
+      try {
+        videoObjectPath = await uploadVideoBlob(recordedBlob);
+      } catch (err) {
+        setIsUploadingVideo(false);
+        toast({ title: "Error uploading video", description: "The game was not saved. Try again.", variant: "destructive" });
+        return;
+      }
+      setIsUploadingVideo(false);
+    }
 
     const payload = {
       teamId: parseInt(teamId, 10),
@@ -159,7 +298,9 @@ export default function RecordGame() {
       result: result as 'W' | 'L',
       teamScore,
       opponentScore,
-      stats: Object.values(stats)
+      videoObjectPath,
+      stats: Object.values(stats),
+      events,
     };
 
     try {
@@ -268,6 +409,81 @@ export default function RecordGame() {
               <Input type="number" value={opponentScore || ''} onChange={e => setOpponentScore(parseInt(e.target.value) || 0)} className="text-center font-bold font-mono text-lg" />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-secondary/10">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-xl">
+            <Video className="w-5 h-5 text-primary" /> Game Video
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
+
+          {isRecording && (
+            <div className="space-y-3">
+              <video ref={livePreviewRef} muted playsInline className="w-full max-w-md rounded-lg bg-black aspect-video" />
+              <Button variant="destructive" onClick={stopRecording}>
+                <Square className="w-4 h-4 mr-2" /> Stop Recording
+              </Button>
+              <p className="text-sm text-muted-foreground">Recording... tap stat buttons above to tag moments in the video.</p>
+            </div>
+          )}
+
+          {!isRecording && (recordedPreviewUrl || existingVideoObjectPath) && (
+            <div className="space-y-3">
+              <video
+                ref={playbackRef}
+                src={recordedPreviewUrl || (existingVideoObjectPath ? videoObjectSrc(existingVideoObjectPath) : undefined)}
+                controls
+                playsInline
+                className="w-full max-w-md rounded-lg bg-black aspect-video"
+              />
+              {events.length > 0 && (
+                <div className="space-y-1 max-w-md">
+                  <Label>Stat Moments</Label>
+                  <div className="max-h-48 overflow-y-auto space-y-1 border rounded-lg p-2">
+                    {events.map((ev, idx) => {
+                      const player = players?.find(p => p.id === ev.playerId);
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="w-full flex items-center justify-between text-sm px-2 py-1 rounded hover:bg-muted text-left"
+                          onClick={() => {
+                            if (playbackRef.current) {
+                              playbackRef.current.currentTime = ev.videoTimestampMs / 1000;
+                              playbackRef.current.play().catch(() => {});
+                            }
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Play className="w-3 h-3 text-primary" />
+                            {player?.name ?? "Player"} — {STAT_LABELS[ev.statField] ?? ev.statField}
+                          </span>
+                          <span className="font-mono text-muted-foreground">{formatMs(ev.videoTimestampMs)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <Button variant="outline" onClick={startRecording}>
+                <Circle className="w-4 h-4 mr-2 text-red-500" /> Record New Video
+              </Button>
+            </div>
+          )}
+
+          {!isRecording && !recordedPreviewUrl && !existingVideoObjectPath && (
+            <Button variant="outline" onClick={startRecording}>
+              <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
+            </Button>
+          )}
+
+          {isUploadingVideo && (
+            <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Uploading video...</p>
+          )}
         </CardContent>
       </Card>
 

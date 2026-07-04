@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GameEvent } from './gameEvent';
 import type { GameResult } from './gameResult';
 import type { PlayerGameStatLine } from './playerGameStatLine';
 
@@ -17,6 +18,8 @@ export interface Game {
   result: GameResult;
   teamScore: number;
   opponentScore: number;
+  videoObjectPath?: string | null;
   createdAt: Date;
   stats: PlayerGameStatLine[];
+  events: GameEvent[];
 }

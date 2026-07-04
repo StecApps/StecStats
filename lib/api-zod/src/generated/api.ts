@@ -224,6 +224,10 @@ export const ListTeamGamesParams = zod.object({
   "teamId": zod.coerce.number()
 })
 
+export const listTeamGamesResponseEventsItemVideoTimestampMsMin = 0;
+
+
+
 export const ListTeamGamesResponseItem = zod.object({
   "id": zod.number(),
   "teamId": zod.number(),
@@ -233,6 +237,7 @@ export const ListTeamGamesResponseItem = zod.object({
   "result": zod.enum(['W', 'L']),
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
+  "videoObjectPath": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -249,6 +254,12 @@ export const ListTeamGamesResponseItem = zod.object({
   "steals": zod.number(),
   "turnovers": zod.number(),
   "blocks": zod.number()
+})),
+  "events": zod.array(zod.object({
+  "playerId": zod.number(),
+  "statField": zod.string(),
+  "delta": zod.number(),
+  "videoTimestampMs": zod.number().min(listTeamGamesResponseEventsItemVideoTimestampMsMin)
 }))
 })
 export const ListTeamGamesResponse = zod.array(ListTeamGamesResponseItem)
@@ -284,6 +295,8 @@ export const createGameBodyStatsItemTurnoversMin = 0;
 
 export const createGameBodyStatsItemBlocksMin = 0;
 
+export const createGameBodyEventsItemVideoTimestampMsMin = 0;
+
 
 
 export const CreateGameBody = zod.object({
@@ -293,6 +306,7 @@ export const CreateGameBody = zod.object({
   "result": zod.enum(['W', 'L']),
   "teamScore": zod.number().min(createGameBodyTeamScoreMin),
   "opponentScore": zod.number().min(createGameBodyOpponentScoreMin),
+  "videoObjectPath": zod.string().nullish(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
   "ftMade": zod.number().min(createGameBodyStatsItemFtMadeMin),
@@ -306,8 +320,18 @@ export const CreateGameBody = zod.object({
   "steals": zod.number().min(createGameBodyStatsItemStealsMin),
   "turnovers": zod.number().min(createGameBodyStatsItemTurnoversMin),
   "blocks": zod.number().min(createGameBodyStatsItemBlocksMin)
+})),
+  "events": zod.array(zod.object({
+  "playerId": zod.number(),
+  "statField": zod.string(),
+  "delta": zod.number(),
+  "videoTimestampMs": zod.number().min(createGameBodyEventsItemVideoTimestampMsMin)
 }))
 })
+
+export const createGameResponseEventsItemVideoTimestampMsMin = 0;
+
+
 
 export const CreateGameResponse = zod.object({
   "id": zod.number(),
@@ -318,6 +342,7 @@ export const CreateGameResponse = zod.object({
   "result": zod.enum(['W', 'L']),
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
+  "videoObjectPath": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -334,6 +359,12 @@ export const CreateGameResponse = zod.object({
   "steals": zod.number(),
   "turnovers": zod.number(),
   "blocks": zod.number()
+})),
+  "events": zod.array(zod.object({
+  "playerId": zod.number(),
+  "statField": zod.string(),
+  "delta": zod.number(),
+  "videoTimestampMs": zod.number().min(createGameResponseEventsItemVideoTimestampMsMin)
 }))
 })
 
@@ -345,6 +376,10 @@ export const GetGameParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
+export const getGameResponseEventsItemVideoTimestampMsMin = 0;
+
+
+
 export const GetGameResponse = zod.object({
   "id": zod.number(),
   "teamId": zod.number(),
@@ -354,6 +389,7 @@ export const GetGameResponse = zod.object({
   "result": zod.enum(['W', 'L']),
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
+  "videoObjectPath": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -370,6 +406,12 @@ export const GetGameResponse = zod.object({
   "steals": zod.number(),
   "turnovers": zod.number(),
   "blocks": zod.number()
+})),
+  "events": zod.array(zod.object({
+  "playerId": zod.number(),
+  "statField": zod.string(),
+  "delta": zod.number(),
+  "videoTimestampMs": zod.number().min(getGameResponseEventsItemVideoTimestampMsMin)
 }))
 })
 
@@ -408,6 +450,8 @@ export const updateGameBodyStatsItemTurnoversMin = 0;
 
 export const updateGameBodyStatsItemBlocksMin = 0;
 
+export const updateGameBodyEventsItemVideoTimestampMsMin = 0;
+
 
 
 export const UpdateGameBody = zod.object({
@@ -417,6 +461,7 @@ export const UpdateGameBody = zod.object({
   "result": zod.enum(['W', 'L']),
   "teamScore": zod.number().min(updateGameBodyTeamScoreMin),
   "opponentScore": zod.number().min(updateGameBodyOpponentScoreMin),
+  "videoObjectPath": zod.string().nullish(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
   "ftMade": zod.number().min(updateGameBodyStatsItemFtMadeMin),
@@ -430,8 +475,18 @@ export const UpdateGameBody = zod.object({
   "steals": zod.number().min(updateGameBodyStatsItemStealsMin),
   "turnovers": zod.number().min(updateGameBodyStatsItemTurnoversMin),
   "blocks": zod.number().min(updateGameBodyStatsItemBlocksMin)
+})),
+  "events": zod.array(zod.object({
+  "playerId": zod.number(),
+  "statField": zod.string(),
+  "delta": zod.number(),
+  "videoTimestampMs": zod.number().min(updateGameBodyEventsItemVideoTimestampMsMin)
 }))
 })
+
+export const updateGameResponseEventsItemVideoTimestampMsMin = 0;
+
+
 
 export const UpdateGameResponse = zod.object({
   "id": zod.number(),
@@ -442,6 +497,7 @@ export const UpdateGameResponse = zod.object({
   "result": zod.enum(['W', 'L']),
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
+  "videoObjectPath": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -458,6 +514,12 @@ export const UpdateGameResponse = zod.object({
   "steals": zod.number(),
   "turnovers": zod.number(),
   "blocks": zod.number()
+})),
+  "events": zod.array(zod.object({
+  "playerId": zod.number(),
+  "statField": zod.string(),
+  "delta": zod.number(),
+  "videoTimestampMs": zod.number().min(updateGameResponseEventsItemVideoTimestampMsMin)
 }))
 })
 
@@ -504,5 +566,61 @@ export const ImportDataResponse = zod.object({
   "gamesCreated": zod.number(),
   "statLinesCreated": zod.number()
 })
+
+
+/**
+ * Returns a presigned GCS URL for direct upload. The client sends JSON
+ * metadata here, then uploads the file directly to the returned URL.
+ * @summary Request a presigned URL for file upload
+ */
+
+
+
+
+
+export const RequestUploadUrlBody = zod.object({
+  "name": zod.string().min(1).describe('Original file name.'),
+  "size": zod.number().min(1).describe('File size in bytes.'),
+  "contentType": zod.string().min(1).describe('MIME type of the file (e.g. `video\/webm`).')
+})
+
+
+
+
+
+
+export const RequestUploadUrlResponse = zod.object({
+  "uploadURL": zod.string().url().describe('Presigned GCS URL for PUT upload.'),
+  "objectPath": zod.string().describe('Normalized object path (e.g. `\/objects\/uploads\/uuid`). Store this in your database.'),
+  "metadata": zod.object({
+  "name": zod.string().min(1).describe('Original file name.'),
+  "size": zod.number().min(1).describe('File size in bytes.'),
+  "contentType": zod.string().min(1).describe('MIME type of the file (e.g. `video\/webm`).')
+}).optional()
+})
+
+
+/**
+ * Unconditionally public — no authentication or ACL checks.
+ * Searches PUBLIC_OBJECT_SEARCH_PATHS for the given file path.
+ * @summary Serve a public asset from PUBLIC_OBJECT_SEARCH_PATHS
+ */
+export const GetPublicObjectParams = zod.object({
+  "filePath": zod.coerce.string().describe('Relative file path within the public search paths.')
+})
+
+export const GetPublicObjectResponse = zod.unknown()
+
+
+/**
+ * Serves object entities uploaded via presigned URLs. These can optionally
+ * be protected with authentication or ACL checks based on the use case.
+ * @summary Serve an object entity from PRIVATE_OBJECT_DIR
+ */
+export const GetStorageObjectParams = zod.object({
+  "objectPath": zod.coerce.string().describe('Object path within the private object dir (e.g. `uploads\/some-uuid`).')
+})
+
+export const GetStorageObjectResponse = zod.unknown()
 
 

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GameEvent } from './gameEvent';
 import type { GameInputResult } from './gameInputResult';
 import type { PlayerGameStatInput } from './playerGameStatInput';
 
@@ -18,5 +19,7 @@ export interface GameInput {
   teamScore: number;
   /** @minimum 0 */
   opponentScore: number;
+  videoObjectPath?: string | null;
   stats: PlayerGameStatInput[];
+  events: GameEvent[];
 }

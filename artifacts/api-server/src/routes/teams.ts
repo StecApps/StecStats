@@ -1,6 +1,13 @@
 import { Router, type IRouter } from "express";
 import { eq, inArray } from "drizzle-orm";
-import { db, teamsTable, gamesTable, playerGameStatsTable, playersTable } from "@workspace/db";
+import {
+  db,
+  teamsTable,
+  gamesTable,
+  playerGameStatsTable,
+  playersTable,
+  gameEventsTable,
+} from "@workspace/db";
 import {
   ListTeamsResponse,
   CreateTeamBody,
@@ -91,6 +98,20 @@ router.get("/teams/:teamId/games", async (req, res) => {
     statsByGame.set(row.stat.gameId, list);
   }
 
+  const eventRows = gameIds.length
+    ? await db.query.gameEventsTable.findMany({
+        where: inArray(gameEventsTable.gameId, gameIds),
+        orderBy: (events, { asc }) => [asc(events.videoTimestampMs)],
+      })
+    : [];
+
+  const eventsByGame = new Map<number, typeof eventRows>();
+  for (const event of eventRows) {
+    const list = eventsByGame.get(event.gameId) ?? [];
+    list.push(event);
+    eventsByGame.set(event.gameId, list);
+  }
+
   const response = games.map((game) => ({
     id: game.id,
     teamId: game.teamId,
@@ -100,6 +121,7 @@ router.get("/teams/:teamId/games", async (req, res) => {
     result: game.result,
     teamScore: game.teamScore,
     opponentScore: game.opponentScore,
+    videoObjectPath: game.videoObjectPath,
     createdAt: game.createdAt,
     stats: (statsByGame.get(game.id) ?? []).map(({ stat, playerName }) => ({
       playerId: stat.playerId,
@@ -116,6 +138,12 @@ router.get("/teams/:teamId/games", async (req, res) => {
       steals: stat.steals,
       turnovers: stat.turnovers,
       blocks: stat.blocks,
+    })),
+    events: (eventsByGame.get(game.id) ?? []).map((event) => ({
+      playerId: event.playerId,
+      statField: event.statField,
+      delta: event.delta,
+      videoTimestampMs: event.videoTimestampMs,
     })),
   }));
 

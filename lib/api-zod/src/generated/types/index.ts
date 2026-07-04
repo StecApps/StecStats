@@ -6,7 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './errorEnvelope';
 export * from './game';
+export * from './gameEvent';
 export * from './gameInput';
 export * from './gameInputResult';
 export * from './gameResult';
@@ -27,3 +29,5 @@ export * from './playerUpdate';
 export * from './team';
 export * from './teamInput';
 export * from './teamUpdate';
+export * from './uploadUrlRequest';
+export * from './uploadUrlResponse';

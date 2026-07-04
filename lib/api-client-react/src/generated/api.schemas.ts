@@ -129,6 +129,14 @@ export const GameResult = {
   L: 'L',
 } as const;
 
+export interface GameEvent {
+  playerId: number;
+  statField: string;
+  delta: number;
+  /** @minimum 0 */
+  videoTimestampMs: number;
+}
+
 export interface Game {
   id: number;
   teamId: number;
@@ -138,8 +146,10 @@ export interface Game {
   result: GameResult;
   teamScore: number;
   opponentScore: number;
+  videoObjectPath?: string | null;
   createdAt: string;
   stats: PlayerGameStatLine[];
+  events: GameEvent[];
 }
 
 export type GameInputResult = typeof GameInputResult[keyof typeof GameInputResult];
@@ -160,7 +170,9 @@ export interface GameInput {
   teamScore: number;
   /** @minimum 0 */
   opponentScore: number;
+  videoObjectPath?: string | null;
   stats: PlayerGameStatInput[];
+  events: GameEvent[];
 }
 
 export type GameUpdateResult = typeof GameUpdateResult[keyof typeof GameUpdateResult];
@@ -181,7 +193,9 @@ export interface GameUpdate {
   teamScore: number;
   /** @minimum 0 */
   opponentScore: number;
+  videoObjectPath?: string | null;
   stats: PlayerGameStatInput[];
+  events: GameEvent[];
 }
 
 export type ImportGameRowResult = typeof ImportGameRowResult[keyof typeof ImportGameRowResult];
@@ -222,5 +236,35 @@ export interface ImportResult {
   teamsCreated: number;
   gamesCreated: number;
   statLinesCreated: number;
+}
+
+export interface UploadUrlRequest {
+  /**
+     * Original file name.
+     * @minLength 1
+     */
+  name: string;
+  /**
+     * File size in bytes.
+     * @minimum 1
+     */
+  size: number;
+  /**
+     * MIME type of the file (e.g. `video/webm`).
+     * @minLength 1
+     */
+  contentType: string;
+}
+
+export interface UploadUrlResponse {
+  /** Presigned GCS URL for PUT upload. */
+  uploadURL: string;
+  /** Normalized object path (e.g. `/objects/uploads/uuid`). Store this in your database. */
+  objectPath: string;
+  metadata?: UploadUrlRequest;
+}
+
+export interface ErrorEnvelope {
+  error: string;
 }
 
