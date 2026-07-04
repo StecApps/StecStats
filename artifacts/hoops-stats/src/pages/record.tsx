@@ -201,15 +201,20 @@ export default function RecordGame() {
     return () => clearInterval(interval);
   }, [isRecording]);
 
+  useEffect(() => {
+    if (isRecording && livePreviewRef.current && streamRef.current) {
+      if (livePreviewRef.current.srcObject !== streamRef.current) {
+        livePreviewRef.current.srcObject = streamRef.current;
+      }
+      livePreviewRef.current.play().catch(() => {});
+    }
+  }, [isRecording, videoExpanded]);
+
   const startRecording = async () => {
     setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
-      if (livePreviewRef.current) {
-        livePreviewRef.current.srcObject = stream;
-        await livePreviewRef.current.play().catch(() => {});
-      }
 
       chunksRef.current = [];
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
