@@ -128,11 +128,14 @@ export default function RecordGame() {
       const nextVal = Math.max(0, pStats[field] + increment);
       
       let updates: Partial<StatCounters> = { [field]: nextVal };
-      
-      if (increment > 0) {
-        if (field === 'twoMade') updates.twoAttempted = pStats.twoAttempted + 1;
-        if (field === 'threeMade') updates.threeAttempted = pStats.threeAttempted + 1;
-        if (field === 'ftMade') updates.ftAttempted = pStats.ftAttempted + 1;
+
+      const attemptField: keyof StatCounters | null =
+        field === 'twoMade' ? 'twoAttempted' :
+        field === 'threeMade' ? 'threeAttempted' :
+        field === 'ftMade' ? 'ftAttempted' : null;
+
+      if (attemptField) {
+        updates[attemptField] = Math.max(nextVal, pStats[attemptField] + increment);
       }
       
       return { ...prev, [pid]: { ...pStats, ...updates } };

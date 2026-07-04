@@ -224,12 +224,17 @@ function PlayerDashboard({ playerId, player }: { playerId: number, player?: {id:
           </Dialog>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-          <StatBox label="PTS" value={summary.ppg.toFixed(1)} />
-          <StatBox label="REB" value={summary.rpg.toFixed(1)} />
-          <StatBox label="AST" value={summary.apg.toFixed(1)} />
-          <StatBox label="STL" value={summary.spg.toFixed(1)} />
-          <StatBox label="BLK" value={summary.bpg.toFixed(1)} />
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-4">
+          <StatBox label="Games" value={summary.games} />
+          <StatBox label="Record" value={`${summary.wins}-${summary.losses}`} />
+          <StatBox label="PPG" value={summary.ppg.toFixed(1)} />
+          <StatBox label="RPG" value={summary.rpg.toFixed(1)} />
+          <StatBox label="APG" value={summary.apg.toFixed(1)} />
+          <StatBox label="SPG" value={summary.spg.toFixed(1)} />
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <StatBox label="TOPG" value={summary.topg.toFixed(1)} />
+          <StatBox label="BPG" value={summary.bpg.toFixed(1)} />
           <StatBox label="FG%" value={`${(summary.fgPct * 100).toFixed(1)}%`} />
           <StatBox label="3P%" value={`${(summary.threePct * 100).toFixed(1)}%`} />
           <StatBox label="FT%" value={`${(summary.ftPct * 100).toFixed(1)}%`} />
