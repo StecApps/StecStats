@@ -1,7 +1,21 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { liveStreamRegistry } from "../lib/liveStream";
+import { liveStreamRegistry, getIceServers } from "../lib/liveStream";
 
 const router: IRouter = Router();
+
+/**
+ * GET /live/ice-servers
+ *
+ * Returns the ICE server configuration (STUN + TURN) that broadcasters and
+ * viewers should use for their WebRTC peer connections. Prefers a TURN relay
+ * (via Metered.ca) so streams keep working behind restrictive NATs/firewalls
+ * where direct/STUN-only connectivity fails; falls back to STUN-only if no
+ * TURN provider is configured or reachable.
+ */
+router.get("/live/ice-servers", async (_req: Request, res: Response) => {
+  const iceServers = await getIceServers();
+  res.json({ iceServers });
+});
 
 /**
  * POST /live/start

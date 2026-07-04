@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { STUN_SERVERS, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
+import { getIceServers, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
 
 type StatCounters = {
   playerId: number;
@@ -240,8 +240,9 @@ export default function RecordGame() {
     }
   };
 
-  const createPeerConnectionForViewer = (viewerId: string) => {
-    const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
+  const createPeerConnectionForViewer = async (viewerId: string) => {
+    const iceServers = await getIceServers();
+    const pc = new RTCPeerConnection({ iceServers });
     streamRef.current?.getTracks().forEach(track => {
       if (streamRef.current) pc.addTrack(track, streamRef.current);
     });
@@ -282,7 +283,7 @@ export default function RecordGame() {
       ws.onmessage = async (event) => {
         const message = JSON.parse(event.data);
         if (message.type === "new-viewer") {
-          const pc = createPeerConnectionForViewer(message.viewerId);
+          const pc = await createPeerConnectionForViewer(message.viewerId);
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           ws.send(JSON.stringify({ type: "offer", code, targetId: message.viewerId, sdp: offer }));

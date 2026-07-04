@@ -1,6 +1,49 @@
 import type { WebSocket } from "ws";
 import { logger } from "./logger";
 
+export type IceServer = {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+};
+
+const FALLBACK_ICE_SERVERS: IceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+
+let cachedIceServers: { servers: IceServer[]; expiresAt: number } | null = null;
+
+export async function getIceServers(): Promise<IceServer[]> {
+  const apiKey = process.env.METERED_API_KEY;
+  const domain = process.env.METERED_DOMAIN;
+
+  if (!apiKey || !domain) {
+    return FALLBACK_ICE_SERVERS;
+  }
+
+  if (cachedIceServers && cachedIceServers.expiresAt > Date.now()) {
+    return cachedIceServers.servers;
+  }
+
+  try {
+    const url = `https://${domain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      logger.warn({ status: res.status }, "Failed to fetch TURN credentials from Metered.ca, falling back to STUN-only");
+      return FALLBACK_ICE_SERVERS;
+    }
+    const servers = (await res.json()) as IceServer[];
+    if (!Array.isArray(servers) || servers.length === 0) {
+      return FALLBACK_ICE_SERVERS;
+    }
+    // Metered credentials are valid for a while; cache for 30 minutes to avoid
+    // hitting rate limits, well under their expiry window.
+    cachedIceServers = { servers, expiresAt: Date.now() + 30 * 60 * 1000 };
+    return servers;
+  } catch (err) {
+    logger.warn({ err }, "Error fetching TURN credentials from Metered.ca, falling back to STUN-only");
+    return FALLBACK_ICE_SERVERS;
+  }
+}
+
 export type LiveSessionMeta = {
   opponent: string;
   teamName: string;

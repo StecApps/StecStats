@@ -10,5 +10,5 @@ Live streaming (coach broadcasts, invited viewers watch in real time via a priva
 **How to apply:**
 - Signaling runs over a `ws` WebSocket server attached via the HTTP server's `upgrade` event (not a separate port), at a path under the existing `/api` convention.
 - Sessions (broadcaster/viewer socket refs, invite code, metadata) are kept **in-memory only** on api-server — not persisted to the DB — since they're ephemeral and decoupled from any specific DB row (e.g. no need to pre-create a game before going live).
-- STUN-only (`stun:stun.l.google.com:19302`), no TURN — will fail for viewers/broadcasters behind restrictive NATs/firewalls. If that becomes a real problem, a TURN service would need to be added.
+- TURN relay added via Metered.ca: api-server exposes `GET /api/live/ice-servers` which calls Metered's `turn/credentials` REST API server-side (caching ~30min) and falls back to STUN-only if `METERED_API_KEY`/`METERED_DOMAIN` are unset or the call fails. Frontend fetches this endpoint (instead of a hardcoded ICE server constant) before creating each `RTCPeerConnection`, on both broadcaster and viewer sides.
 - If extending this (recording the live stream, persisting chat, viewer auth, etc.), keep the in-memory/ephemeral design in mind — it does not survive an api-server restart.

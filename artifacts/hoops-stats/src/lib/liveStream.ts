@@ -1,4 +1,22 @@
-export const STUN_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
+
+let cachedIceServers: RTCIceServer[] | null = null;
+
+export async function getIceServers(): Promise<RTCIceServer[]> {
+  if (cachedIceServers) return cachedIceServers;
+  try {
+    const res = await fetch("/api/live/ice-servers");
+    if (!res.ok) return FALLBACK_ICE_SERVERS;
+    const data = await res.json();
+    if (!Array.isArray(data.iceServers) || data.iceServers.length === 0) {
+      return FALLBACK_ICE_SERVERS;
+    }
+    cachedIceServers = data.iceServers as RTCIceServer[];
+    return cachedIceServers;
+  } catch {
+    return FALLBACK_ICE_SERVERS;
+  }
+}
 
 export function liveWsUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";

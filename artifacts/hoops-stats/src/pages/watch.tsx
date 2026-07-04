@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { Radio, Users, Loader2, WifiOff } from "lucide-react";
-import { STUN_SERVERS, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
+import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "ended" | "not-found";
 
@@ -53,7 +53,8 @@ export default function WatchStream() {
       }
 
       if (message.type === "offer") {
-        const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
+        const iceServers = await getIceServers();
+        const pc = new RTCPeerConnection({ iceServers });
         pcRef.current = pc;
 
         pc.ontrack = (e) => {
