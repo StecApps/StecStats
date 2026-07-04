@@ -6,11 +6,12 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import RecordGame from "@/pages/record";
 import ImportData from "@/pages/import";
+import WatchStream from "@/pages/watch";
 import Layout from "@/components/layout";
 
 const queryClient = new QueryClient();
 
-function Router() {
+function AppRoutes() {
   return (
     <Layout>
       <Switch>
@@ -21,6 +22,15 @@ function Router() {
         <Route component={NotFound} />
       </Switch>
     </Layout>
+  );
+}
+
+function Router() {
+  return (
+    <Switch>
+      <Route path="/watch/:code" component={WatchStream} />
+      <Route component={AppRoutes} />
+    </Switch>
   );
 }
 

@@ -19,12 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { STUN_SERVERS, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
 
 type StatCounters = {
   playerId: number;
@@ -137,12 +138,20 @@ export default function RecordGame() {
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
+  const [isLive, setIsLive] = useState(false);
+  const [liveCode, setLiveCode] = useState<string | null>(null);
+  const [viewerCount, setViewerCount] = useState(0);
+  const [isStartingLive, setIsStartingLive] = useState(false);
+
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordingStartRef = useRef<number>(0);
+  const liveWsRef = useRef<WebSocket | null>(null);
+  const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const liveCodeRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isEditing && gameToEdit) {
@@ -176,6 +185,9 @@ export default function RecordGame() {
     return () => {
       streamRef.current?.getTracks().forEach(track => track.stop());
       if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
+      livePeersRef.current.forEach(pc => pc.close());
+      liveWsRef.current?.close();
+      if (liveCodeRef.current) stopLiveSession(liveCodeRef.current);
     };
   }, [recordedPreviewUrl]);
 
@@ -223,6 +235,100 @@ export default function RecordGame() {
   const stopRecording = () => {
     mediaRecorderRef.current?.stop();
     setIsRecording(false);
+    if (isLive) {
+      stopGoingLive();
+    }
+  };
+
+  const createPeerConnectionForViewer = (viewerId: string) => {
+    const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
+    streamRef.current?.getTracks().forEach(track => {
+      if (streamRef.current) pc.addTrack(track, streamRef.current);
+    });
+    pc.onicecandidate = (event) => {
+      if (event.candidate && liveWsRef.current?.readyState === WebSocket.OPEN) {
+        liveWsRef.current.send(JSON.stringify({
+          type: "ice-candidate",
+          code: liveCodeRef.current,
+          targetId: viewerId,
+          candidate: event.candidate,
+        }));
+      }
+    };
+    livePeersRef.current.set(viewerId, pc);
+    return pc;
+  };
+
+  const goLive = async () => {
+    if (!streamRef.current) {
+      toast({ title: "Start recording first", description: "Live streaming shares the active camera feed.", variant: "destructive" });
+      return;
+    }
+    setIsStartingLive(true);
+    try {
+      const code = await startLiveSession(opponent || "Opponent", teams?.find(t => t.id.toString() === teamId)?.name || "Team");
+      liveCodeRef.current = code;
+      setLiveCode(code);
+
+      const ws = new WebSocket(liveWsUrl());
+      liveWsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "join-broadcaster", code }));
+        setIsLive(true);
+        setIsStartingLive(false);
+      };
+
+      ws.onmessage = async (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "new-viewer") {
+          const pc = createPeerConnectionForViewer(message.viewerId);
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          ws.send(JSON.stringify({ type: "offer", code, targetId: message.viewerId, sdp: offer }));
+          setViewerCount(livePeersRef.current.size);
+        } else if (message.type === "answer") {
+          const pc = livePeersRef.current.get(message.viewerId);
+          if (pc) await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
+        } else if (message.type === "ice-candidate") {
+          const pc = livePeersRef.current.get(message.viewerId);
+          if (pc && message.candidate) await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+        } else if (message.type === "viewer-left") {
+          const pc = livePeersRef.current.get(message.viewerId);
+          pc?.close();
+          livePeersRef.current.delete(message.viewerId);
+          setViewerCount(livePeersRef.current.size);
+        }
+      };
+
+      ws.onclose = () => {
+        setIsLive(false);
+      };
+    } catch (err) {
+      setIsStartingLive(false);
+      toast({ title: "Could not start live stream", variant: "destructive" });
+    }
+  };
+
+  const stopGoingLive = () => {
+    livePeersRef.current.forEach(pc => pc.close());
+    livePeersRef.current.clear();
+    liveWsRef.current?.close();
+    liveWsRef.current = null;
+    if (liveCodeRef.current) {
+      stopLiveSession(liveCodeRef.current);
+    }
+    liveCodeRef.current = null;
+    setIsLive(false);
+    setLiveCode(null);
+    setViewerCount(0);
+  };
+
+  const copyWatchLink = () => {
+    if (!liveCode) return;
+    navigator.clipboard.writeText(watchUrlForCode(liveCode)).then(() => {
+      toast({ title: "Link copied", description: "Share it with invited viewers." });
+    }).catch(() => {});
   };
 
   const handleTogglePlayer = (pid: number) => {
@@ -424,10 +530,38 @@ export default function RecordGame() {
           {isRecording && (
             <div className="space-y-3">
               <video ref={livePreviewRef} muted playsInline className="w-full max-w-md rounded-lg bg-black aspect-video" />
-              <Button variant="destructive" onClick={stopRecording}>
-                <Square className="w-4 h-4 mr-2" /> Stop Recording
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="destructive" onClick={stopRecording}>
+                  <Square className="w-4 h-4 mr-2" /> Stop Recording
+                </Button>
+                {!isLive && (
+                  <Button variant="outline" onClick={goLive} disabled={isStartingLive}>
+                    {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
+                    Go Live
+                  </Button>
+                )}
+                {isLive && (
+                  <Button variant="outline" onClick={stopGoingLive}>
+                    <Radio className="w-4 h-4 mr-2 text-red-500 animate-pulse" /> End Live Stream
+                  </Button>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground">Recording... tap stat buttons above to tag moments in the video.</p>
+
+              {isLive && liveCode && (
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+                  <span className="flex items-center gap-1 text-sm font-semibold text-primary">
+                    <Radio className="w-4 h-4" /> LIVE
+                  </span>
+                  <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                    <Users className="w-4 h-4" /> {viewerCount} watching
+                  </span>
+                  <span className="text-sm font-mono bg-background border rounded px-2 py-1">{liveCode}</span>
+                  <Button variant="ghost" size="sm" onClick={copyWatchLink}>
+                    <Copy className="w-4 h-4 mr-1" /> Copy invite link
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 

@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedDatabase } from "./lib/seed";
+import { attachLiveSocketServer } from "./lib/liveSocket";
 
 const rawPort = process.env["PORT"];
 
@@ -21,7 +22,7 @@ seedDatabase()
     logger.error({ err }, "Error seeding database");
   })
   .finally(() => {
-    app.listen(port, (err) => {
+    const server = app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
         process.exit(1);
@@ -29,4 +30,6 @@ seedDatabase()
 
       logger.info({ port }, "Server listening");
     });
+
+    attachLiveSocketServer(server);
   });
