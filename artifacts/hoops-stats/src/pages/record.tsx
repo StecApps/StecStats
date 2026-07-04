@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, Maximize2, Minimize2, SwitchCamera, ZoomIn, ZoomOut } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -142,7 +142,6 @@ export default function RecordGame() {
   const [liveCode, setLiveCode] = useState<string | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [isStartingLive, setIsStartingLive] = useState(false);
-  const [videoExpanded, setVideoExpanded] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [zoom, setZoom] = useState(1);
@@ -236,7 +235,7 @@ export default function RecordGame() {
       }
       livePreviewRef.current.play().catch(() => {});
     }
-  }, [isRecording, videoExpanded]);
+  }, [isRecording]);
 
   useEffect(() => {
     zoomRef.current = zoom;
@@ -365,7 +364,6 @@ export default function RecordGame() {
       setRecordedBlob(null);
       setEvents([]);
       setElapsedMs(0);
-      setVideoExpanded(false);
       if (recordedPreviewUrl) {
         URL.revokeObjectURL(recordedPreviewUrl);
         setRecordedPreviewUrl(null);
@@ -383,6 +381,15 @@ export default function RecordGame() {
     if (isLive) {
       stopGoingLive();
     }
+  };
+
+  const discardVideo = () => {
+    if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
+    setRecordedPreviewUrl(null);
+    setRecordedBlob(null);
+    setExistingVideoObjectPath(null);
+    setEvents([]);
+    toast({ title: "Video discarded", description: "Your stats are kept — the game will save without a video." });
   };
 
   const createPeerConnectionForViewer = async (viewerId: string) => {
@@ -602,6 +609,57 @@ export default function RecordGame() {
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin" /></div>;
   }
 
+  const rosterChips = (
+    <div className="flex flex-wrap gap-2">
+      {players?.map(p => {
+        const isSelected = selectedPlayerIds.includes(p.id);
+        return (
+          <Button
+            key={p.id}
+            variant={isSelected ? "default" : "outline"}
+            className={`rounded-full ${isSelected ? 'shadow-md shadow-primary/20' : ''}`}
+            onClick={() => handleTogglePlayer(p.id)}
+          >
+            {isSelected && <Check className="w-4 h-4 mr-2" />}
+            {p.name}
+          </Button>
+        );
+      })}
+    </div>
+  );
+
+  const statTrackerCards = selectedPlayerIds.map(pid => {
+    const player = players?.find(p => p.id === pid);
+    const s = stats[pid] || initialStats(pid);
+    const pts = (s.twoMade * 2) + (s.threeMade * 3) + s.ftMade;
+
+    return (
+      <Card key={pid} className="border-secondary/20 shadow-md overflow-hidden">
+        <div className="bg-secondary text-secondary-foreground px-4 py-2 flex justify-between items-center">
+          <h3 className="font-display font-bold text-xl uppercase tracking-wide">{player?.name}</h3>
+          <div className="font-display font-bold text-2xl text-primary">{pts} PTS</div>
+        </div>
+        <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 bg-card">
+          <StatCounter label="2PT" made={s.twoMade} attempt={s.twoAttempted}
+            onMake={() => updateStat(pid, 'twoMade', 1)} onMiss={() => updateStat(pid, 'twoAttempted', 1)}
+            onUndoMake={() => updateStat(pid, 'twoMade', -1)} onUndoMiss={() => updateStat(pid, 'twoAttempted', -1)} />
+          <StatCounter label="3PT" made={s.threeMade} attempt={s.threeAttempted}
+            onMake={() => updateStat(pid, 'threeMade', 1)} onMiss={() => updateStat(pid, 'threeAttempted', 1)}
+            onUndoMake={() => updateStat(pid, 'threeMade', -1)} onUndoMiss={() => updateStat(pid, 'threeAttempted', -1)} />
+          <StatCounter label="FT" made={s.ftMade} attempt={s.ftAttempted}
+            onMake={() => updateStat(pid, 'ftMade', 1)} onMiss={() => updateStat(pid, 'ftAttempted', 1)}
+            onUndoMake={() => updateStat(pid, 'ftMade', -1)} onUndoMiss={() => updateStat(pid, 'ftAttempted', -1)} />
+
+          <SingleStatCounter label="REB" value={s.rebounds} onInc={() => updateStat(pid, 'rebounds', 1)} onDec={() => updateStat(pid, 'rebounds', -1)} />
+          <SingleStatCounter label="AST" value={s.assists} onInc={() => updateStat(pid, 'assists', 1)} onDec={() => updateStat(pid, 'assists', -1)} />
+          <SingleStatCounter label="STL" value={s.steals} onInc={() => updateStat(pid, 'steals', 1)} onDec={() => updateStat(pid, 'steals', -1)} />
+          <SingleStatCounter label="BLK" value={s.blocks} onInc={() => updateStat(pid, 'blocks', 1)} onDec={() => updateStat(pid, 'blocks', -1)} />
+          <SingleStatCounter label="TO" value={s.turnovers} onInc={() => updateStat(pid, 'turnovers', 1)} onDec={() => updateStat(pid, 'turnovers', -1)} />
+        </CardContent>
+      </Card>
+    );
+  });
+
   return (
     <div className="flex flex-col space-y-6 pb-40 md:pb-24">
       <div className="flex items-center gap-4">
@@ -674,77 +732,9 @@ export default function RecordGame() {
           {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
 
           {isRecording && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <video
-                  ref={livePreviewRef}
-                  muted
-                  playsInline
-                  className={`rounded-lg bg-black aspect-video shrink-0 transition-all ${videoExpanded ? "w-full max-w-md" : "w-20"}`}
-                />
-                <div className="flex flex-col items-start gap-1 min-w-0">
-                  <span className="flex items-center gap-2 text-sm font-semibold text-red-600">
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-                    Recording {formatMs(elapsedMs)}
-                  </span>
-                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setVideoExpanded(v => !v)}>
-                    {videoExpanded ? (
-                      <><Minimize2 className="w-3 h-3 mr-1" /> Hide preview</>
-                    ) : (
-                      <><Maximize2 className="w-3 h-3 mr-1" /> Show preview</>
-                    )}
-                  </Button>
-                </div>
-              </div>
-              {canSwitchCamera && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={switchCamera}>
-                    <SwitchCamera className="w-4 h-4 mr-1" />
-                    {facingMode === "environment" ? "Front camera" : "Back camera"}
-                  </Button>
-                  <div className="flex items-center gap-1 rounded-md border px-1">
-                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => adjustZoom(-0.5)} disabled={zoom <= 1}>
-                      <ZoomOut className="w-4 h-4" />
-                    </Button>
-                    <span className="text-sm font-medium tabular-nums w-10 text-center">{zoom.toFixed(1)}x</span>
-                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => adjustZoom(0.5)} disabled={zoom >= MAX_ZOOM}>
-                      <ZoomIn className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="destructive" onClick={stopRecording}>
-                  <Square className="w-4 h-4 mr-2" /> Stop Recording
-                </Button>
-                {!isLive && (
-                  <Button variant="outline" onClick={goLive} disabled={isStartingLive}>
-                    {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
-                    Go Live
-                  </Button>
-                )}
-                {isLive && (
-                  <Button variant="outline" onClick={stopGoingLive}>
-                    <Radio className="w-4 h-4 mr-2 text-red-500 animate-pulse" /> End Live Stream
-                  </Button>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">Recording... tap stat buttons below to tag moments in the video.</p>
-
-              {isLive && liveCode && (
-                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
-                  <span className="flex items-center gap-1 text-sm font-semibold text-primary">
-                    <Radio className="w-4 h-4" /> LIVE
-                  </span>
-                  <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Users className="w-4 h-4" /> {viewerCount} watching
-                  </span>
-                  <span className="text-sm font-mono bg-background border rounded px-2 py-1">{liveCode}</span>
-                  <Button variant="ghost" size="sm" onClick={copyWatchLink}>
-                    <Copy className="w-4 h-4 mr-1" /> Copy invite link
-                  </Button>
-                </div>
-              )}
+            <div className="flex items-center gap-2 text-sm font-semibold text-red-600">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+              Recording in progress — {formatMs(elapsedMs)}
             </div>
           )}
 
@@ -786,9 +776,15 @@ export default function RecordGame() {
                   </div>
                 </div>
               )}
-              <Button variant="outline" onClick={startRecording}>
-                <Circle className="w-4 h-4 mr-2 text-red-500" /> Record New Video
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={startRecording}>
+                  <Circle className="w-4 h-4 mr-2 text-red-500" /> Record New Video
+                </Button>
+                <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={discardVideo}>
+                  <X className="w-4 h-4 mr-2" /> Discard Video
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Keep this video to save it with the game, or discard it to save your stats only.</p>
             </div>
           )}
 
@@ -819,56 +815,11 @@ export default function RecordGame() {
           </Dialog>
         </div>
         
-        <div className="flex flex-wrap gap-2">
-          {players?.map(p => {
-            const isSelected = selectedPlayerIds.includes(p.id);
-            return (
-              <Button
-                key={p.id}
-                variant={isSelected ? "default" : "outline"}
-                className={`rounded-full ${isSelected ? 'shadow-md shadow-primary/20' : ''}`}
-                onClick={() => handleTogglePlayer(p.id)}
-              >
-                {isSelected && <Check className="w-4 h-4 mr-2" />}
-                {p.name}
-              </Button>
-            );
-          })}
-        </div>
+        {rosterChips}
       </div>
 
       <div className="space-y-6">
-        {selectedPlayerIds.map(pid => {
-          const player = players?.find(p => p.id === pid);
-          const s = stats[pid] || initialStats(pid);
-          const pts = (s.twoMade * 2) + (s.threeMade * 3) + s.ftMade;
-          
-          return (
-            <Card key={pid} className="border-secondary/20 shadow-md overflow-hidden">
-              <div className="bg-secondary text-secondary-foreground px-4 py-2 flex justify-between items-center">
-                <h3 className="font-display font-bold text-xl uppercase tracking-wide">{player?.name}</h3>
-                <div className="font-display font-bold text-2xl text-primary">{pts} PTS</div>
-              </div>
-              <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 bg-card">
-                <StatCounter label="2PT" made={s.twoMade} attempt={s.twoAttempted} 
-                  onMake={() => updateStat(pid, 'twoMade', 1)} onMiss={() => updateStat(pid, 'twoAttempted', 1)} 
-                  onUndoMake={() => updateStat(pid, 'twoMade', -1)} onUndoMiss={() => updateStat(pid, 'twoAttempted', -1)} />
-                <StatCounter label="3PT" made={s.threeMade} attempt={s.threeAttempted} 
-                  onMake={() => updateStat(pid, 'threeMade', 1)} onMiss={() => updateStat(pid, 'threeAttempted', 1)}
-                  onUndoMake={() => updateStat(pid, 'threeMade', -1)} onUndoMiss={() => updateStat(pid, 'threeAttempted', -1)} />
-                <StatCounter label="FT" made={s.ftMade} attempt={s.ftAttempted} 
-                  onMake={() => updateStat(pid, 'ftMade', 1)} onMiss={() => updateStat(pid, 'ftAttempted', 1)}
-                  onUndoMake={() => updateStat(pid, 'ftMade', -1)} onUndoMiss={() => updateStat(pid, 'ftAttempted', -1)} />
-                
-                <SingleStatCounter label="REB" value={s.rebounds} onInc={() => updateStat(pid, 'rebounds', 1)} onDec={() => updateStat(pid, 'rebounds', -1)} />
-                <SingleStatCounter label="AST" value={s.assists} onInc={() => updateStat(pid, 'assists', 1)} onDec={() => updateStat(pid, 'assists', -1)} />
-                <SingleStatCounter label="STL" value={s.steals} onInc={() => updateStat(pid, 'steals', 1)} onDec={() => updateStat(pid, 'steals', -1)} />
-                <SingleStatCounter label="BLK" value={s.blocks} onInc={() => updateStat(pid, 'blocks', 1)} onDec={() => updateStat(pid, 'blocks', -1)} />
-                <SingleStatCounter label="TO" value={s.turnovers} onInc={() => updateStat(pid, 'turnovers', 1)} onDec={() => updateStat(pid, 'turnovers', -1)} />
-              </CardContent>
-            </Card>
-          );
-        })}
+        {statTrackerCards}
       </div>
 
       <div className="fixed left-0 right-0 p-4 bg-background/95 backdrop-blur-md border-t z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-0">
@@ -884,6 +835,87 @@ export default function RecordGame() {
           </Button>
         </div>
       </div>
+
+      {isRecording && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black">
+          <div className="relative flex-[3] min-h-0 bg-black">
+            <video
+              ref={livePreviewRef}
+              muted
+              playsInline
+              className="w-full h-full object-contain"
+            />
+
+            <div className="absolute top-0 left-0 right-0 flex items-start justify-between gap-2 p-3">
+              <div className="flex flex-col gap-2">
+                <span className="flex items-center gap-2 text-sm font-semibold text-white bg-black/50 rounded-full px-3 py-1 backdrop-blur-sm">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                  {formatMs(elapsedMs)}
+                </span>
+                {isLive && liveCode && (
+                  <div className="flex flex-col gap-1 rounded-lg bg-black/50 px-3 py-2 backdrop-blur-sm text-white max-w-[70vw]">
+                    <span className="flex items-center gap-2 text-xs font-semibold">
+                      <Radio className="w-3 h-3" /> LIVE
+                      <span className="flex items-center gap-1 text-white/70"><Users className="w-3 h-3" /> {viewerCount}</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono bg-white/10 rounded px-2 py-0.5">{liveCode}</span>
+                      <Button variant="ghost" size="sm" className="h-6 px-2 text-white hover:bg-white/20" onClick={copyWatchLink}>
+                        <Copy className="w-3 h-3 mr-1" /> Invite
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {canSwitchCamera && (
+                <div className="flex flex-col items-end gap-2">
+                  <Button variant="secondary" size="sm" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={switchCamera}>
+                    <SwitchCamera className="w-4 h-4 mr-1" />
+                    {facingMode === "environment" ? "Front" : "Back"}
+                  </Button>
+                  <div className="flex items-center gap-1 rounded-md bg-black/50 px-1 backdrop-blur-sm">
+                    <Button variant="ghost" size="sm" className="h-8 px-2 text-white hover:bg-white/20" onClick={() => adjustZoom(-0.5)} disabled={zoom <= 1}>
+                      <ZoomOut className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm font-medium tabular-nums w-10 text-center text-white">{zoom.toFixed(1)}x</span>
+                    <Button variant="ghost" size="sm" className="h-8 px-2 text-white hover:bg-white/20" onClick={() => adjustZoom(0.5)} disabled={zoom >= MAX_ZOOM}>
+                      <ZoomIn className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="absolute bottom-0 left-0 right-0 flex flex-wrap items-center justify-center gap-2 p-3">
+              <Button variant="destructive" onClick={stopRecording}>
+                <Square className="w-4 h-4 mr-2" /> Stop
+              </Button>
+              {!isLive && (
+                <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive}>
+                  {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
+                  Go Live
+                </Button>
+              )}
+              {isLive && (
+                <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={stopGoingLive}>
+                  <Radio className="w-4 h-4 mr-2 text-red-500 animate-pulse" /> End Live
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto bg-background p-3 space-y-4">
+            {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
+            {rosterChips}
+            {statTrackerCards.length > 0 ? (
+              <div className="space-y-4">{statTrackerCards}</div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">Select players above to start tracking stats.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
