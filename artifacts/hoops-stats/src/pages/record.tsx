@@ -13,7 +13,7 @@ import {
   getListTeamGamesQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLocation, useParams } from "wouter";
+import { useLocation, useParams, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,11 +47,14 @@ const initialStats = (playerId: number): StatCounters => ({
 
 export default function RecordGame() {
   const params = useParams();
+  const search = useSearch();
   const gameId = params.id ? parseInt(params.id, 10) : undefined;
   const isEditing = !!gameId;
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const preselectedTeamId = new URLSearchParams(search).get("teamId") || "";
 
   const { data: gameToEdit, isLoading: gameLoading } = useGetGame(gameId as number, {
     query: { enabled: isEditing, queryKey: getGetGameQueryKey(gameId as number) }
@@ -64,7 +67,7 @@ export default function RecordGame() {
   const createGame = useCreateGame();
   const updateGame = useUpdateGame();
 
-  const [teamId, setTeamId] = useState<string>("");
+  const [teamId, setTeamId] = useState<string>(preselectedTeamId);
   const [opponent, setOpponent] = useState("");
   const [date, setDate] = useState<Date>(new Date());
   const [teamScore, setTeamScore] = useState<number>(0);

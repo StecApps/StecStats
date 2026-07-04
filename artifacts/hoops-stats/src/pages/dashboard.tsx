@@ -7,19 +7,23 @@ import {
   useGetPlayerSummary,
   useListPlayerTeamGroups,
   useListTeamGames,
+  useListTeams,
   useCreateTeam,
+  useUpdateTeam,
+  useDeleteTeam,
   useDeleteGame,
   getListPlayersQueryKey,
   getGetPlayerSummaryQueryKey,
   getListPlayerTeamGroupsQueryKey,
-  getListTeamGamesQueryKey
+  getListTeamGamesQueryKey,
+  getListTeamsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -69,51 +73,52 @@ export default function Dashboard() {
           <p className="text-muted-foreground">Select a player to view career and game-by-game stats.</p>
         </div>
         
-        <Dialog open={isAddPlayerOpen} onOpenChange={setIsAddPlayerOpen}>
-          <DialogTrigger asChild>
-            <Button className="font-display text-lg uppercase tracking-wide">
-              <Plus className="w-4 h-4 mr-2" /> Add Player
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="font-display uppercase text-2xl">Add New Player</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Player Name</Label>
-                <Input 
-                  id="name" 
-                  value={newPlayerName} 
-                  onChange={(e) => setNewPlayerName(e.target.value)} 
-                  placeholder="Enter player name" 
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsAddPlayerOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreatePlayer} disabled={createPlayer.isPending || !newPlayerName.trim()}>
-                {createPlayer.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Save
+        <div className="flex gap-2">
+          <ManageTeamsDialog
+            trigger={<Button variant="outline" className="font-display text-lg uppercase tracking-wide"><ListTree className="w-4 h-4 mr-2" /> Manage Teams</Button>}
+          />
+          <Dialog open={isAddPlayerOpen} onOpenChange={setIsAddPlayerOpen}>
+            <DialogTrigger asChild>
+              <Button className="font-display text-lg uppercase tracking-wide">
+                <Plus className="w-4 h-4 mr-2" /> Add Player
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="font-display uppercase text-2xl">Add New Player</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Player Name</Label>
+                  <Input 
+                    id="name" 
+                    value={newPlayerName} 
+                    onChange={(e) => setNewPlayerName(e.target.value)} 
+                    placeholder="Enter player name" 
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAddPlayerOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreatePlayer} disabled={createPlayer.isPending || !newPlayerName.trim()}>
+                  {createPlayer.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {players && players.length > 0 ? (
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {players.map(p => (
-            <button
+            <PlayerChip
               key={p.id}
+              playerId={p.id}
+              name={p.name}
+              active={activePlayerId === p.id}
               onClick={() => setSelectedPlayerId(p.id)}
-              className={`px-4 py-2 rounded font-medium text-sm transition-colors whitespace-nowrap ${
-                activePlayerId === p.id 
-                  ? "bg-secondary text-secondary-foreground" 
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {p.name}
-            </button>
+            />
           ))}
         </div>
       ) : (
@@ -232,17 +237,25 @@ function PlayerDashboard({ playerId, player }: { playerId: number, player?: {id:
       </div>
       
       <div className="mt-8">
-        <h2 className="text-2xl font-display font-bold uppercase mb-4 text-secondary border-b-2 border-secondary/10 pb-2">Teams & Seasons</h2>
+        <div className="flex justify-between items-center mb-4 border-b-2 border-secondary/10 pb-2">
+          <h2 className="text-2xl font-display font-bold uppercase text-secondary">Teams & Seasons</h2>
+          <ManageTeamsDialog
+            trigger={<Button variant="outline" size="sm"><ListTree className="w-4 h-4 mr-2" /> Manage Teams</Button>}
+          />
+        </div>
         
         {!teams || teams.length === 0 ? (
           <Card className="border-dashed border-2 border-muted bg-transparent">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Trophy className="w-8 h-8 text-muted-foreground mb-4" />
               <h3 className="text-xl font-display font-bold uppercase mb-2">No Teams Yet</h3>
-              <p className="text-muted-foreground mb-4">Record a game for this player to see team history.</p>
-              <Button asChild>
-                <Link href="/record">Record Game</Link>
-              </Button>
+              <p className="text-muted-foreground mb-4">Create a team, then record a game to see it here.</p>
+              <div className="flex gap-2">
+                <ManageTeamsDialog trigger={<Button variant="outline">Create Team</Button>} />
+                <Button asChild>
+                  <Link href="/record">Record Game</Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
@@ -254,6 +267,30 @@ function PlayerDashboard({ playerId, player }: { playerId: number, player?: {id:
         )}
       </div>
     </div>
+  );
+}
+
+function PlayerChip({ playerId, name, active, onClick }: { playerId: number, name: string, active: boolean, onClick: () => void }) {
+  const { data: summary } = useGetPlayerSummary(playerId, {
+    query: { enabled: !!playerId, queryKey: getGetPlayerSummaryQueryKey(playerId) }
+  });
+
+  return (
+    <button
+      onClick={onClick}
+      className={`px-4 py-2 rounded font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2 ${
+        active
+          ? "bg-secondary text-secondary-foreground"
+          : "bg-muted text-muted-foreground hover:bg-muted/80"
+      }`}
+    >
+      <span>{name}</span>
+      {summary && (
+        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${active ? "bg-secondary-foreground/20" : "bg-foreground/10"}`}>
+          {summary.games}GP · {summary.ppg.toFixed(1)}PPG
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -270,12 +307,137 @@ function StatBox({ label, value }: { label: string, value: string | number }) {
   );
 }
 
+function pct(made: number, attempted: number) {
+  return attempted > 0 ? `${((made / attempted) * 100).toFixed(1)}%` : "—";
+}
+
+function TeamFormDialog({ trigger, team, onSaved }: { trigger: React.ReactNode, team?: { id: number, name: string }, onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(team?.name || "");
+  const createTeam = useCreateTeam();
+  const updateTeam = useUpdateTeam();
+  const { toast } = useToast();
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    try {
+      if (team) {
+        await updateTeam.mutateAsync({ teamId: team.id, data: { name: name.trim() } });
+        toast({ title: "Team updated" });
+      } else {
+        await createTeam.mutateAsync({ data: { name: name.trim() } });
+        toast({ title: "Team added" });
+      }
+      setOpen(false);
+      setName(team ? name : "");
+      onSaved();
+    } catch (err) {
+      toast({ title: "Error saving team", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) setName(team?.name || ""); }}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="font-display uppercase text-2xl">{team ? "Edit Team" : "Add Team / Season"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Team / Season Name</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Travel 24-25'" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleSave} disabled={!name.trim() || createTeam.isPending || updateTeam.isPending}>
+            {(createTeam.isPending || updateTeam.isPending) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />} Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ManageTeamsDialog({ trigger }: { trigger: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const { data: teams, isLoading } = useListTeams();
+  const deleteTeam = useDeleteTeam();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: getListTeamsQueryKey() });
+    queryClient.invalidateQueries({
+      predicate: (query) =>
+        typeof query.queryKey[0] === "string" &&
+        /^\/api\/players\/\d+\/teams$/.test(query.queryKey[0] as string),
+    });
+  };
+
+  const handleDelete = async (teamId: number) => {
+    if (!confirm("Delete this team? This will also delete all games recorded for it.")) return;
+    try {
+      await deleteTeam.mutateAsync({ teamId });
+      toast({ title: "Team deleted" });
+      invalidateAll();
+    } catch (err) {
+      toast({ title: "Error deleting team", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="font-display uppercase text-2xl">Manage Teams / Seasons</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <TeamFormDialog
+            trigger={<Button className="w-full"><Plus className="w-4 h-4 mr-2" /> Add Team / Season</Button>}
+            onSaved={invalidateAll}
+          />
+          <div className="max-h-80 overflow-y-auto space-y-2">
+            {isLoading ? (
+              <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin" /></div>
+            ) : !teams || teams.length === 0 ? (
+              <p className="text-muted-foreground text-sm text-center py-6">No teams yet. Add one above.</p>
+            ) : (
+              teams.map(t => (
+                <div key={t.id} className="flex items-center justify-between border rounded-md px-3 py-2">
+                  <span className="font-medium">{t.name}</span>
+                  <div className="flex gap-1">
+                    <TeamFormDialog
+                      team={{ id: t.id, name: t.name }}
+                      trigger={<Button variant="ghost" size="icon" aria-label={`Edit ${t.name}`}><Edit className="w-4 h-4" /></Button>}
+                      onSaved={invalidateAll}
+                    />
+                    <Button variant="ghost" size="icon" aria-label={`Delete ${t.name}`} onClick={() => handleDelete(t.id)}>
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: number }) {
   const { data: games, isLoading } = useListTeamGames(team.teamId, {
     query: { enabled: !!team.teamId, queryKey: getListTeamGamesQueryKey(team.teamId) }
   });
 
   const deleteGame = useDeleteGame();
+  const deleteTeam = useDeleteTeam();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -292,12 +454,28 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
     }
   };
 
+  const invalidateTeamQueries = () => {
+    queryClient.invalidateQueries({ queryKey: getListTeamsQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getListPlayerTeamGroupsQueryKey(playerId) });
+  };
+
+  const handleDeleteTeam = async () => {
+    if (!confirm(`Delete "${team.teamName}"? This also deletes all of its games and stats.`)) return;
+    try {
+      await deleteTeam.mutateAsync({ teamId: team.teamId });
+      invalidateTeamQueries();
+      toast({ title: "Team deleted" });
+    } catch (err) {
+      toast({ title: "Error deleting team", variant: "destructive" });
+    }
+  };
+
   const playerGames = games?.filter(g => g.stats.some(s => s.playerId === playerId)) || [];
 
   return (
     <AccordionItem value={team.teamId.toString()} className="border rounded-lg bg-card overflow-hidden">
-      <AccordionTrigger className="px-4 py-3 hover:bg-muted/50 data-[state=open]:bg-muted/50 transition-colors">
-        <div className="flex items-center justify-between w-full pr-4">
+      <div className="flex items-center justify-between px-4 hover:bg-muted/50 data-[state=open]:bg-muted/50 transition-colors">
+        <AccordionTrigger className="py-3 hover:no-underline flex-1">
           <div className="flex items-center gap-4">
             <h3 className="font-display font-bold text-xl uppercase">{team.teamName}</h3>
             <div className="flex gap-2 text-sm">
@@ -309,8 +487,21 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
               </span>
             </div>
           </div>
+        </AccordionTrigger>
+        <div className="flex items-center gap-1 pl-2">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={`/record?teamId=${team.teamId}`}><Plus className="w-4 h-4 mr-1" /> Game</Link>
+          </Button>
+          <TeamFormDialog
+            team={{ id: team.teamId, name: team.teamName }}
+            trigger={<Button variant="ghost" size="icon" className="h-8 w-8"><Edit className="h-4 w-4" /></Button>}
+            onSaved={invalidateTeamQueries}
+          />
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={handleDeleteTeam}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
-      </AccordionTrigger>
+      </div>
       <AccordionContent className="p-0 border-t">
         {isLoading ? (
           <div className="p-8 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
@@ -324,15 +515,18 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
                   <TableHead className="w-[120px]">Date</TableHead>
                   <TableHead>Opponent</TableHead>
                   <TableHead>Result</TableHead>
-                  <TableHead className="text-right">PTS</TableHead>
-                  <TableHead className="text-right">REB</TableHead>
-                  <TableHead className="text-right">AST</TableHead>
-                  <TableHead className="text-right">STL</TableHead>
-                  <TableHead className="text-right">BLK</TableHead>
-                  <TableHead className="text-right">TO</TableHead>
-                  <TableHead className="text-right">FG</TableHead>
-                  <TableHead className="text-right">3PT</TableHead>
                   <TableHead className="text-right">FT</TableHead>
+                  <TableHead className="text-right">FT%</TableHead>
+                  <TableHead className="text-right">2P</TableHead>
+                  <TableHead className="text-right">3P</TableHead>
+                  <TableHead className="text-right">FG%</TableHead>
+                  <TableHead className="text-right">3P%</TableHead>
+                  <TableHead className="text-right">PTS</TableHead>
+                  <TableHead className="text-right">AST</TableHead>
+                  <TableHead className="text-right">REB</TableHead>
+                  <TableHead className="text-right">STL</TableHead>
+                  <TableHead className="text-right">TO</TableHead>
+                  <TableHead className="text-right">BLK</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -340,10 +534,10 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
                 {playerGames.map(game => {
                   const stat = game.stats.find(s => s.playerId === playerId);
                   if (!stat) return null;
-                  
-                  const fgm = stat.twoMade + stat.threeMade;
-                  const fga = stat.twoAttempted + stat.threeAttempted;
-                  
+
+                  const fgMade = stat.twoMade + stat.threeMade;
+                  const fgAttempted = stat.twoAttempted + stat.threeAttempted;
+
                   return (
                     <TableRow key={game.id} className="group">
                       <TableCell className="font-mono text-xs">{new Date(game.date).toLocaleDateString()}</TableCell>
@@ -356,21 +550,30 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
                           {game.teamScore}-{game.opponentScore}
                         </span>
                       </TableCell>
-                      <TableCell className="text-right font-bold text-primary">{stat.points}</TableCell>
-                      <TableCell className="text-right">{stat.rebounds}</TableCell>
-                      <TableCell className="text-right">{stat.assists}</TableCell>
-                      <TableCell className="text-right">{stat.steals}</TableCell>
-                      <TableCell className="text-right">{stat.blocks}</TableCell>
-                      <TableCell className="text-right text-muted-foreground">{stat.turnovers}</TableCell>
                       <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                        {fgm}/{fga}
+                        {stat.ftMade}/{stat.ftAttempted}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                        {pct(stat.ftMade, stat.ftAttempted)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                        {stat.twoMade}/{stat.twoAttempted}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs text-muted-foreground">
                         {stat.threeMade}/{stat.threeAttempted}
                       </TableCell>
                       <TableCell className="text-right font-mono text-xs text-muted-foreground">
-                        {stat.ftMade}/{stat.ftAttempted}
+                        {pct(fgMade, fgAttempted)}
                       </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-muted-foreground">
+                        {pct(stat.threeMade, stat.threeAttempted)}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-primary">{stat.points}</TableCell>
+                      <TableCell className="text-right">{stat.assists}</TableCell>
+                      <TableCell className="text-right">{stat.rebounds}</TableCell>
+                      <TableCell className="text-right">{stat.steals}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{stat.turnovers}</TableCell>
+                      <TableCell className="text-right">{stat.blocks}</TableCell>
                       <TableCell className="text-right opacity-0 group-hover:opacity-100 transition-opacity">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
