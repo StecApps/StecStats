@@ -61,7 +61,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </main>
       
       {/* Mobile bottom nav */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-background z-50 pb-safe">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-background z-50" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <nav className="flex h-16 items-center justify-around px-6">
           {navItems.map((item) => {
             const isActive = location === item.href;

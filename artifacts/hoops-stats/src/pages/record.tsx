@@ -470,7 +470,7 @@ export default function RecordGame() {
   }
 
   return (
-    <div className="flex flex-col space-y-6 pb-24">
+    <div className="flex flex-col space-y-6 pb-40 md:pb-24">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/")}><ArrowLeft className="w-5 h-5" /></Button>
         <h1 className="text-4xl font-display font-bold uppercase tracking-tight text-secondary">
@@ -721,7 +721,7 @@ export default function RecordGame() {
         })}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t z-40 pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
+      <div className="fixed left-0 right-0 p-4 bg-background/95 backdrop-blur-md border-t z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-0">
         <div className="container max-w-screen-2xl mx-auto flex justify-between items-center">
           <div className="font-display font-bold text-2xl uppercase">
             <span className="text-primary">{teamScore}</span>
