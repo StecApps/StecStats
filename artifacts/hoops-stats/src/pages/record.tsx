@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, Maximize2, Minimize2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -142,6 +142,8 @@ export default function RecordGame() {
   const [liveCode, setLiveCode] = useState<string | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [isStartingLive, setIsStartingLive] = useState(false);
+  const [videoExpanded, setVideoExpanded] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
@@ -191,6 +193,14 @@ export default function RecordGame() {
     };
   }, [recordedPreviewUrl]);
 
+  useEffect(() => {
+    if (!isRecording) return;
+    const interval = setInterval(() => {
+      setElapsedMs(Date.now() - recordingStartRef.current);
+    }, 500);
+    return () => clearInterval(interval);
+  }, [isRecording]);
+
   const startRecording = async () => {
     setCameraError(null);
     try {
@@ -223,6 +233,8 @@ export default function RecordGame() {
       setIsRecording(true);
       setRecordedBlob(null);
       setEvents([]);
+      setElapsedMs(0);
+      setVideoExpanded(false);
       if (recordedPreviewUrl) {
         URL.revokeObjectURL(recordedPreviewUrl);
         setRecordedPreviewUrl(null);
@@ -530,7 +542,27 @@ export default function RecordGame() {
 
           {isRecording && (
             <div className="space-y-3">
-              <video ref={livePreviewRef} muted playsInline className="w-full max-w-md rounded-lg bg-black aspect-video" />
+              <div className="flex items-center gap-3">
+                <video
+                  ref={livePreviewRef}
+                  muted
+                  playsInline
+                  className={`rounded-lg bg-black aspect-video shrink-0 transition-all ${videoExpanded ? "w-full max-w-md" : "w-20"}`}
+                />
+                <div className="flex flex-col items-start gap-1 min-w-0">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-red-600">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+                    Recording {formatMs(elapsedMs)}
+                  </span>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setVideoExpanded(v => !v)}>
+                    {videoExpanded ? (
+                      <><Minimize2 className="w-3 h-3 mr-1" /> Hide preview</>
+                    ) : (
+                      <><Maximize2 className="w-3 h-3 mr-1" /> Show preview</>
+                    )}
+                  </Button>
+                </div>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="destructive" onClick={stopRecording}>
                   <Square className="w-4 h-4 mr-2" /> Stop Recording
@@ -547,7 +579,7 @@ export default function RecordGame() {
                   </Button>
                 )}
               </div>
-              <p className="text-sm text-muted-foreground">Recording... tap stat buttons above to tag moments in the video.</p>
+              <p className="text-sm text-muted-foreground">Recording... tap stat buttons below to tag moments in the video.</p>
 
               {isLive && liveCode && (
                 <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
