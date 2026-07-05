@@ -794,6 +794,19 @@ export default function RecordGame() {
       const videoTimestampMs = Math.max(0, Date.now() - recordingStartRef.current);
       setEvents(prev => [...prev, { playerId: pid, statField: field, delta: increment, videoTimestampMs }]);
     }
+
+    if (isLive && increment > 0 && liveWsRef.current?.readyState === WebSocket.OPEN) {
+      const playerName = players?.find(p => p.id === pid)?.name;
+      const label = STAT_LABELS[field];
+      if (playerName && label) {
+        liveWsRef.current.send(JSON.stringify({
+          type: "stat-event",
+          code: liveCodeRef.current,
+          playerName,
+          label,
+        }));
+      }
+    }
   };
 
   const handleSave = async () => {

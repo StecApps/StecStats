@@ -2,7 +2,7 @@ import type { IncomingMessage } from "http";
 import type { Duplex } from "stream";
 import { WebSocketServer, type WebSocket, type RawData } from "ws";
 import { nanoid } from "nanoid";
-import { liveStreamRegistry } from "./liveStream";
+import { liveStreamRegistry, MAX_RECENT_STAT_EVENTS } from "./liveStream";
 import { logger } from "./logger";
 
 const LIVE_WS_PATH = "/api/live/ws";
@@ -13,7 +13,8 @@ type ClientMessage =
   | { type: "offer"; code: string; targetId: string; sdp: unknown }
   | { type: "answer"; code: string; targetId: string; sdp: unknown }
   | { type: "ice-candidate"; code: string; targetId: string; candidate: unknown }
-  | { type: "scoreboard"; code: string; teamScore: number; opponentScore: number };
+  | { type: "scoreboard"; code: string; teamScore: number; opponentScore: number }
+  | { type: "stat-event"; code: string; playerName: string; label: string };
 
 function safeSend(ws: WebSocket, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -81,6 +82,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
             teamScore: session.scoreboard.teamScore,
             opponentScore: session.scoreboard.opponentScore,
           });
+          safeSend(ws, { type: "stat-events", events: session.recentEvents });
           if (session.broadcaster) {
             safeSend(session.broadcaster, { type: "new-viewer", viewerId });
           }
@@ -127,6 +129,18 @@ export function attachLiveSocketServer(upgradeEmitter: {
           session.scoreboard = { teamScore, opponentScore };
           for (const viewerWs of session.viewers.values()) {
             safeSend(viewerWs, { type: "scoreboard", teamScore, opponentScore });
+          }
+          break;
+        }
+        case "stat-event": {
+          if (role !== "broadcaster") break;
+          const playerName = String(message.playerName ?? "").slice(0, 80);
+          const label = String(message.label ?? "").slice(0, 40);
+          if (!playerName || !label) break;
+          const statEvent = { id: nanoid(8), playerName, label, timestamp: Date.now() };
+          session.recentEvents = [...session.recentEvents, statEvent].slice(-MAX_RECENT_STAT_EVENTS);
+          for (const viewerWs of session.viewers.values()) {
+            safeSend(viewerWs, { type: "stat-event", event: statEvent });
           }
           break;
         }

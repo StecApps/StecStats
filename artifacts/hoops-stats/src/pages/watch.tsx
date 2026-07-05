@@ -5,6 +5,8 @@ import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
 
+type StatEvent = { id: string; playerName: string; label: string; timestamp: number };
+
 const MAX_WATCH_RECONNECT_ATTEMPTS = 6;
 const WATCH_RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 8000, 8000];
 
@@ -15,6 +17,7 @@ export default function WatchStream() {
   const [state, setState] = useState<ConnectionState>("connecting");
   const [status, setStatus] = useState<LiveStatus | null>(null);
   const [scoreboard, setScoreboard] = useState<{ teamScore: number; opponentScore: number } | null>(null);
+  const [statEvents, setStatEvents] = useState<StatEvent[]>([]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -73,6 +76,7 @@ export default function WatchStream() {
           // reconnect than this viewer, in which case we should show
           // "waiting for broadcaster" instead of getting stuck on
           // "connecting" forever.
+          setStatEvents([]);
           getLiveStatus(code).then((s) => {
             if (cancelled) return;
             if (s) {
@@ -100,6 +104,16 @@ export default function WatchStream() {
 
         if (message.type === "scoreboard") {
           setScoreboard({ teamScore: message.teamScore, opponentScore: message.opponentScore });
+          return;
+        }
+
+        if (message.type === "stat-events") {
+          setStatEvents(Array.isArray(message.events) ? message.events : []);
+          return;
+        }
+
+        if (message.type === "stat-event") {
+          setStatEvents((prev) => [...prev, message.event].slice(-8));
           return;
         }
 
@@ -215,6 +229,20 @@ export default function WatchStream() {
           <span className="flex items-center gap-1 text-[11px] font-bold text-red-500 shrink-0 ml-1">
             <Radio className="w-3 h-3" /> LIVE
           </span>
+        </div>
+      )}
+
+      {state === "live" && statEvents.length > 0 && (
+        <div className="absolute left-2 top-16 flex flex-col gap-1.5 pointer-events-none max-w-[75%]">
+          {statEvents.slice(-4).map((ev) => (
+            <div
+              key={ev.id}
+              className="flex items-center gap-1.5 rounded-full bg-black/60 backdrop-blur-sm px-3 py-1.5 text-white text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-left-2"
+            >
+              <span className="text-primary font-bold">{ev.label}</span>
+              <span className="truncate">{ev.playerName}</span>
+            </div>
+          ))}
         </div>
       )}
 

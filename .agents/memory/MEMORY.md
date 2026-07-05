@@ -5,3 +5,4 @@
 - [Metered.ca TURN credential-scoped API key](metered-turn-api-key.md) — turn/credentials endpoint needs the credential-scoped apiKey, not the account secret/project key.
 - [Canvas camera pipeline](camera-canvas-pipeline.md) — recording draws camera into an offscreen canvas for iOS digital zoom + camera switch; hardware gimbals (DJI) can't be integrated.
 - [Live stream restart resilience](live-stream-restart-resilience.md) — persisted session codes + client auto-reconnect let a broadcast survive an api-server restart mid-game.
+- [Drizzle schema not pushed in sandbox](drizzle-schema-not-pushed.md) — a fresh/restarted env can have code referencing DB tables that were never pushed; run `drizzle-kit push` before assuming a query bug.

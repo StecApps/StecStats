@@ -56,6 +56,15 @@ export type Scoreboard = {
   opponentScore: number;
 };
 
+export type StatEvent = {
+  id: string;
+  playerName: string;
+  label: string;
+  timestamp: number;
+};
+
+export const MAX_RECENT_STAT_EVENTS = 8;
+
 export type LiveSession = {
   code: string;
   meta: LiveSessionMeta;
@@ -63,6 +72,7 @@ export type LiveSession = {
   broadcaster: WebSocket | null;
   viewers: Map<string, WebSocket>;
   scoreboard: Scoreboard;
+  recentEvents: StatEvent[];
 };
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -99,6 +109,7 @@ class LiveStreamRegistry {
       broadcaster: null,
       viewers: new Map(),
       scoreboard: { teamScore: 0, opponentScore: 0 },
+      recentEvents: [],
     };
     this.sessions.set(code, session);
     try {
@@ -153,6 +164,8 @@ class LiveStreamRegistry {
       createdAt: row.createdAt.getTime(),
       broadcaster: null,
       viewers: new Map(),
+      scoreboard: { teamScore: 0, opponentScore: 0 },
+      recentEvents: [],
     };
     this.sessions.set(upper, resumed);
     logger.info({ code: upper }, "Resumed live session from persisted state after server restart");
