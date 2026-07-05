@@ -50,3 +50,14 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
   switch back to "environment") must re-run the lens enumeration/preference logic,
   and any teardown path must clear the resulting device-id list/flag — otherwise
   the "extra lens" UI option can go stale or persist after switching to selfie mode.
+- "Fill the screen" vs "wide angle / cover more space" are in direct tension when the
+  phone is held in portrait: a phone camera sensor is landscape (16:9), so a
+  portrait container either letterboxes (object-contain) or crops the sides
+  (object-cover). You cannot have both a full-bleed portrait preview AND maximum
+  horizontal coverage. For sports recording, landscape orientation is the only way
+  to get both. The recording itself always captures the full sensor frame via the
+  canvas regardless of the preview's object-fit, so object-cover only crops the
+  *preview*, not the saved/streamed video.
+- Generic control labels like "Lens" confuse users — surface the *active* lens
+  (0.5×/1×/Tele derived from the device label) so a multi-lens button is
+  self-explanatory. iOS device labels are only readable after permission is granted.

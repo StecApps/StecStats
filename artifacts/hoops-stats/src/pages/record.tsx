@@ -162,11 +162,24 @@ export default function RecordGame() {
   const rafRef = useRef<number | null>(null);
   const zoomRef = useRef(1);
   const usesCanvasRef = useRef(false);
-  const environmentDeviceIdsRef = useRef<string[]>([]);
+  const environmentLensesRef = useRef<{ id: string; label: string }[]>([]);
   const currentDeviceIdRef = useRef<string | null>(null);
   const [canCycleLens, setCanCycleLens] = useState(false);
+  const [lensLabel, setLensLabel] = useState("");
   const MAX_ZOOM = 5;
-  const IDEAL_VIDEO_CONSTRAINTS = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
+  const IDEAL_VIDEO_CONSTRAINTS = { width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30 } };
+
+  const lensLabelFromDeviceLabel = (label: string): string => {
+    if (/ultra.?wide|0\.5/i.test(label)) return "0.5×";
+    if (/telephoto|tele/i.test(label)) return "Tele";
+    if (/wide|back|rear/i.test(label)) return "1×";
+    return "";
+  };
+
+  const syncLensLabel = (deviceId: string | null) => {
+    const lens = environmentLensesRef.current.find(l => l.id === deviceId);
+    setLensLabel(lens?.label ?? "");
+  };
 
   const stopMediaPipeline = () => {
     if (rafRef.current) {
@@ -184,9 +197,10 @@ export default function RecordGame() {
     sourceVideoRef.current = null;
     canvasRef.current = null;
     usesCanvasRef.current = false;
-    environmentDeviceIdsRef.current = [];
+    environmentLensesRef.current = [];
     currentDeviceIdRef.current = null;
     setCanCycleLens(false);
+    setLensLabel("");
   };
 
   const refreshEnvironmentLensOptions = async (currentDeviceId: string | null): Promise<string | null> => {
@@ -194,12 +208,12 @@ export default function RecordGame() {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = devices.filter(d => d.kind === "videoinput");
       const backCandidates = videoInputs.filter(d => !/front|user|face|selfie/i.test(d.label));
-      environmentDeviceIdsRef.current = backCandidates.map(d => d.deviceId);
+      environmentLensesRef.current = backCandidates.map(d => ({ id: d.deviceId, label: lensLabelFromDeviceLabel(d.label) }));
       setCanCycleLens(backCandidates.length > 1);
       const wideMatch = backCandidates.find(d => /ultra.?wide|wide.?angle|0\.5x/i.test(d.label));
       return wideMatch && wideMatch.deviceId !== currentDeviceId ? wideMatch.deviceId : null;
     } catch {
-      environmentDeviceIdsRef.current = [];
+      environmentLensesRef.current = [];
       setCanCycleLens(false);
       return null;
     }
@@ -316,9 +330,11 @@ export default function RecordGame() {
             // Wide lens open failed; keep the default back camera stream.
           }
         }
+        syncLensLabel(newDeviceId);
       } else {
-        environmentDeviceIdsRef.current = [];
+        environmentLensesRef.current = [];
         setCanCycleLens(false);
+        setLensLabel("");
       }
 
       const src = sourceVideoRef.current;
@@ -336,13 +352,13 @@ export default function RecordGame() {
 
   const cycleLens = async () => {
     if (!usesCanvasRef.current || !sourceVideoRef.current) return;
-    const ids = environmentDeviceIdsRef.current;
-    if (ids.length < 2) return;
-    const idx = ids.indexOf(currentDeviceIdRef.current || "");
-    const nextId = ids[(idx + 1 + ids.length) % ids.length];
+    const lenses = environmentLensesRef.current;
+    if (lenses.length < 2) return;
+    const idx = lenses.findIndex(l => l.id === (currentDeviceIdRef.current || ""));
+    const nextLens = lenses[(idx + 1 + lenses.length) % lenses.length];
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: nextId }, ...IDEAL_VIDEO_CONSTRAINTS },
+        video: { deviceId: { exact: nextLens.id }, ...IDEAL_VIDEO_CONSTRAINTS },
         audio: false,
       });
       const src = sourceVideoRef.current;
@@ -350,7 +366,8 @@ export default function RecordGame() {
       prev?.getVideoTracks().forEach(t => t.stop());
       src.srcObject = newStream;
       await src.play().catch(() => {});
-      currentDeviceIdRef.current = nextId;
+      currentDeviceIdRef.current = nextLens.id;
+      syncLensLabel(nextLens.id);
       setZoom(1);
     } catch {
       setCameraError("Could not switch lens on this device.");
@@ -388,9 +405,11 @@ export default function RecordGame() {
             // Wide lens open failed; keep the default back camera stream.
           }
         }
+        syncLensLabel(currentDeviceIdRef.current);
       } else {
-        environmentDeviceIdsRef.current = [];
+        environmentLensesRef.current = [];
         setCanCycleLens(false);
+        setLensLabel("");
       }
 
       rawStreamRef.current = rawStream;
@@ -443,7 +462,7 @@ export default function RecordGame() {
         : "video/webm";
       const recorder = new MediaRecorder(recordStream, {
         mimeType,
-        videoBitsPerSecond: 6_000_000,
+        videoBitsPerSecond: 10_000_000,
         audioBitsPerSecond: 128_000,
       });
       recorder.ondataavailable = (e) => {
@@ -953,7 +972,7 @@ export default function RecordGame() {
               ref={livePreviewRef}
               muted
               playsInline
-              className="w-full h-full object-contain"
+              className="w-full h-full object-cover"
             />
 
             <div className="absolute top-0 left-0 right-0 flex items-start justify-between gap-2 p-3">
@@ -987,7 +1006,7 @@ export default function RecordGame() {
                   {facingMode === "environment" && canCycleLens && (
                     <Button variant="secondary" size="sm" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={cycleLens}>
                       <Aperture className="w-4 h-4 mr-1" />
-                      Lens
+                      {lensLabel ? `Lens ${lensLabel}` : "Lens"}
                     </Button>
                   )}
                   <div className="flex items-center gap-1 rounded-md bg-black/50 px-1 backdrop-blur-sm">
