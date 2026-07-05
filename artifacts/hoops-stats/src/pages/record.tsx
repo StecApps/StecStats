@@ -868,7 +868,7 @@ export default function RecordGame() {
   const focusPts = focusStats ? (focusStats.twoMade * 2) + (focusStats.threeMade * 3) + focusStats.ftMade : 0;
 
   const liveScoreboardHud = (
-    <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-1 border-b bg-background/95 backdrop-blur-md p-3 space-y-3">
+    <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-1 border-b bg-background/95 backdrop-blur-md p-2 space-y-2">
       <div className="flex items-stretch gap-2">
         <ScoreControl label={teamName} score={teamScore} accent
           onAdd={(n: number) => setTeamScore(s => Math.max(0, s + n))} />
@@ -878,7 +878,7 @@ export default function RecordGame() {
       {selectedPlayerIds.length > 0 && focusPlayerId !== null && focusStats && (
         <div className="flex items-center gap-3">
           <Select value={focusPlayerId.toString()} onValueChange={v => setFocusPlayerId(parseInt(v, 10))}>
-            <SelectTrigger className="h-9 w-[45%] shrink-0"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-8 w-[45%] shrink-0"><SelectValue /></SelectTrigger>
             <SelectContent>
               {selectedPlayerIds.map(pid => (
                 <SelectItem key={pid} value={pid.toString()}>{players?.find(p => p.id === pid)?.name}</SelectItem>
@@ -1151,7 +1151,7 @@ export default function RecordGame() {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto bg-background p-3 space-y-4">
+          <div className="flex-[2] md:flex-1 min-h-0 overflow-y-auto bg-background p-3 space-y-4">
             {liveScoreboardHud}
             {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
             {rosterChips}
@@ -1190,16 +1190,18 @@ function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoM
 
 function ScoreControl({ label, score, onAdd, accent }: { label: string; score: number; onAdd: (n: number) => void; accent?: boolean }) {
   return (
-    <div className={`flex-1 min-w-0 rounded-lg border p-2 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
-      <div className="text-[11px] font-bold uppercase tracking-wide truncate text-muted-foreground text-center">{label}</div>
-      <div className={`text-center font-mono font-bold text-3xl leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
-      <div className="flex justify-center gap-1 mt-1">
-        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onAdd(-1)}>
+    <div className={`flex-1 min-w-0 flex items-center gap-2 rounded-lg border px-2 py-1.5 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
+      <div className="min-w-0">
+        <div className="text-[10px] font-bold uppercase tracking-wide truncate text-muted-foreground leading-none">{label}</div>
+        <div className={`font-mono font-bold text-2xl leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
+      </div>
+      <div className="flex items-center gap-0.5 ml-auto shrink-0">
+        <Button variant="ghost" size="sm" className="h-7 w-6 p-0" onClick={() => onAdd(-1)}>
           <Minus className="w-3.5 h-3.5" />
         </Button>
-        <Button variant="secondary" size="sm" className="h-7 px-2 text-xs font-bold" onClick={() => onAdd(1)}>+1</Button>
-        <Button variant="secondary" size="sm" className="h-7 px-2 text-xs font-bold" onClick={() => onAdd(2)}>+2</Button>
-        <Button variant="secondary" size="sm" className="h-7 px-2 text-xs font-bold" onClick={() => onAdd(3)}>+3</Button>
+        <Button variant="secondary" size="sm" className="h-7 w-7 p-0 text-xs font-bold" onClick={() => onAdd(1)}>+1</Button>
+        <Button variant="secondary" size="sm" className="h-7 w-7 p-0 text-xs font-bold" onClick={() => onAdd(2)}>+2</Button>
+        <Button variant="secondary" size="sm" className="h-7 w-7 p-0 text-xs font-bold" onClick={() => onAdd(3)}>+3</Button>
       </div>
     </div>
   );

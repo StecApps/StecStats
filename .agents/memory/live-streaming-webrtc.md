@@ -23,4 +23,6 @@ Live streaming (coach broadcasts, invited viewers watch in real time via a priva
 
 **Viewer page must be full-viewport, not a card:** the watch page video should be `fixed inset-0` full-bleed with `object-contain`, not wrapped in a centered `max-w-*` + `aspect-video` card — on a portrait phone that card collapses to a tiny letterboxed strip. Full-viewport fills the whole screen in landscape and the full width in portrait while keeping the entire game frame visible. Position overlays with `env(safe-area-inset-*)` for notched phones.
 
+**Record-page overlay split must reserve panel height on mobile:** the fullscreen recording overlay splits video vs the scrollable controls panel via flex ratios. A large video ratio (e.g. flex-[3] vs flex-1) is fine on tablets but on phones the sticky scoreboard HUD eats the whole small panel and hides the per-player MAKE/MISS cards. Give the panel more height on mobile (flex-[2] md:flex-1) and keep the scoreboard HUD compact (horizontal ScoreControl, not a tall stacked block).
+
 **Muting the recorder's own mic:** flip the raw stream's audio track `.enabled` (not a separate mute state on the recorder). Because the same audio track object is added to both the MediaRecorder output and each viewer `RTCPeerConnection`, toggling `.enabled` mutes recording and live audio together — which is the desired behavior.
