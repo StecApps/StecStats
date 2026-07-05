@@ -1157,8 +1157,8 @@ export default function RecordGame() {
       </div>
 
       {isRecording && (
-        <div className="fixed inset-0 z-50 flex flex-col max-md:landscape:flex-row bg-black">
-          <div ref={previewContainerRef} className="relative flex-[3] min-h-0 max-md:landscape:min-w-0 bg-black" style={{ touchAction: "none" }}>
+        <div className="fixed inset-0 z-50 flex flex-col phone-landscape:flex-row bg-black">
+          <div ref={previewContainerRef} className="relative flex-[3] phone-landscape:flex-1 min-h-0 phone-landscape:min-w-0 bg-black" style={{ touchAction: "none" }}>
             <video
               ref={livePreviewRef}
               muted
@@ -1235,7 +1235,7 @@ export default function RecordGame() {
             </div>
           </div>
 
-          <div className="flex-[2] md:flex-1 min-h-0 max-md:landscape:min-w-0 max-md:landscape:w-[42%] max-md:landscape:flex-none overflow-y-auto bg-background p-3 space-y-4">
+          <div className="flex-[2] md:flex-1 min-h-0 phone-landscape:min-w-0 phone-landscape:w-[46%] phone-landscape:flex-none overflow-y-auto bg-background p-3 space-y-4">
             {liveScoreboardHud}
             {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
 

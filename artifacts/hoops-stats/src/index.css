@@ -4,6 +4,7 @@
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant phone-landscape (@media (orientation: landscape) and (max-height: 600px) and (pointer: coarse));
 
 @theme inline {
   --color-background: hsl(var(--background));

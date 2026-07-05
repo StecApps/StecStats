@@ -5,6 +5,8 @@
 - [Metered.ca TURN credential-scoped API key](metered-turn-api-key.md) — turn/credentials endpoint needs the credential-scoped apiKey, not the account secret/project key.
 - [Arena scoreboard theme](arena-theme.md) — app is dark-mode-only via `<html class="dark">`; never leave text uncolored on `bg-secondary` (flips white-on-white).
 - [monday.com stats xlsx import](monday-stats-import.md) — Stec stat exports have stacked season sections + summary rows + two result formats (W/L text and ✅/❌); parse to /api/import (idempotent).
+- [Phone-landscape CSS targeting](phone-landscape-css.md) — target phone landscape by short viewport HEIGHT + pointer:coarse, not `max-md` width; landscape phones are wider than 768px.
+- [Dev vs prod database are separate](dev-vs-prod-db.md) — imports into dev don't reach the published site; POST payload to the production /api/import URL to backfill live data.
 - [Canvas camera pipeline](camera-canvas-pipeline.md) — recording draws camera into an offscreen canvas for iOS digital zoom + camera switch; hardware gimbals (DJI) can't be integrated.
 - [Live stream restart resilience](live-stream-restart-resilience.md) — persisted session codes + client auto-reconnect let a broadcast survive an api-server restart mid-game.
 - [Drizzle schema not pushed in sandbox](drizzle-schema-not-pushed.md) — a fresh/restarted env can have code referencing DB tables that were never pushed; run `drizzle-kit push` before assuming a query bug.
