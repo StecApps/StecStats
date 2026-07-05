@@ -166,6 +166,9 @@ export default function RecordGame() {
   const currentDeviceIdRef = useRef<string | null>(null);
   const [canCycleLens, setCanCycleLens] = useState(false);
   const [lensLabel, setLensLabel] = useState("");
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
+  const pinchStartDistRef = useRef<number | null>(null);
+  const pinchStartZoomRef = useRef(1);
   const MAX_ZOOM = 5;
   const IDEAL_VIDEO_CONSTRAINTS = { width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30 } };
 
@@ -277,6 +280,52 @@ export default function RecordGame() {
   useEffect(() => {
     zoomRef.current = zoom;
   }, [zoom]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+    const el = previewContainerRef.current;
+    if (!el) return;
+
+    const pinchDistance = (touches: TouchList) => {
+      const [a, b] = [touches[0], touches[1]];
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchStartDistRef.current = pinchDistance(e.touches);
+        pinchStartZoomRef.current = zoomRef.current;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchStartDistRef.current) {
+        e.preventDefault();
+        const dist = pinchDistance(e.touches);
+        const scale = dist / pinchStartDistRef.current;
+        const nextZoom = Math.min(MAX_ZOOM, Math.max(1, Math.round(pinchStartZoomRef.current * scale * 10) / 10));
+        setZoom(nextZoom);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        pinchStartDistRef.current = null;
+      }
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [isRecording]);
 
   const startDrawLoop = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -967,7 +1016,7 @@ export default function RecordGame() {
 
       {isRecording && (
         <div className="fixed inset-0 z-50 flex flex-col bg-black">
-          <div className="relative flex-[3] min-h-0 bg-black">
+          <div ref={previewContainerRef} className="relative flex-[3] min-h-0 bg-black" style={{ touchAction: "none" }}>
             <video
               ref={livePreviewRef}
               muted
