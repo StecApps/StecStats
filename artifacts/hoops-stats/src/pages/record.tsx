@@ -921,8 +921,8 @@ export default function RecordGame() {
 
     return (
       <Card key={pid} className="border-secondary/20 shadow-md overflow-hidden">
-        <div className="bg-secondary text-secondary-foreground px-4 py-2 flex justify-between items-center">
-          <h3 className="font-display font-bold text-xl uppercase tracking-wide">{player?.name}</h3>
+        <div className="bg-muted/60 border-b border-border/60 px-4 py-2 flex justify-between items-center">
+          <h3 className="font-display font-bold text-xl uppercase tracking-wide text-foreground">{player?.name}</h3>
           <div className="font-display font-bold text-2xl text-primary">{pts} PTS</div>
         </div>
         <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 bg-card">
@@ -983,12 +983,13 @@ export default function RecordGame() {
     <div className="flex flex-col space-y-6 pb-40 md:pb-24">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/")}><ArrowLeft className="w-5 h-5" /></Button>
-        <h1 className="text-4xl font-display font-bold uppercase tracking-tight text-secondary">
+        <h1 className="flex items-center gap-3 text-4xl font-display font-bold uppercase tracking-tight text-foreground">
+          <span className="w-1.5 h-8 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.6)]" />
           {isEditing ? "Edit Game" : "Record Game"}
         </h1>
       </div>
 
-      <Card className="border-secondary/10">
+      <Card className="border-border/60 bg-card/40">
         <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="space-y-2">
             <Label>Team / Season</Label>
@@ -1041,7 +1042,7 @@ export default function RecordGame() {
         </CardContent>
       </Card>
 
-      <Card className="border-secondary/10">
+      <Card className="border-border/60 bg-card/40">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-xl">
             <Video className="w-5 h-5 text-primary" /> Game Video
@@ -1121,7 +1122,7 @@ export default function RecordGame() {
 
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-display font-bold uppercase text-secondary">Roster</h2>
+          <h2 className="flex items-center gap-3 text-2xl font-display font-bold uppercase text-foreground"><span className="w-1.5 h-6 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.6)]" />Roster</h2>
           <Dialog open={isAddPlayerOpen} onOpenChange={setIsAddPlayerOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="h-8"><UserPlus className="w-4 h-4 mr-2"/> New Player</Button>

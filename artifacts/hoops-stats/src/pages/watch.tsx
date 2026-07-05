@@ -214,26 +214,28 @@ export default function WatchStream() {
 
       {state === "live" && scoreboard && (
         <div
-          className="absolute top-0 left-0 right-0 flex items-center justify-center gap-3 bg-gradient-to-b from-black/80 via-black/45 to-transparent px-3 pb-8 text-white pointer-events-none"
-          style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.5rem)" }}
+          className="absolute top-0 left-0 right-0 flex justify-center bg-gradient-to-b from-black/80 via-black/40 to-transparent px-3 pb-10 pointer-events-none"
+          style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
         >
-          <span className="text-xs font-bold uppercase tracking-wide truncate max-w-[30%] text-right">
-            {status?.teamName ?? "Team"}
-          </span>
-          <span className="font-mono font-bold text-xl tabular-nums shrink-0">
-            {scoreboard.teamScore}<span className="mx-1.5 opacity-60">-</span>{scoreboard.opponentScore}
-          </span>
-          <span className="text-xs font-bold uppercase tracking-wide truncate max-w-[30%] text-left">
-            {status?.opponent ?? "Opp"}
-          </span>
-          <span className="flex items-center gap-1 text-[11px] font-bold text-red-500 shrink-0 ml-1">
-            <Radio className="w-3 h-3" /> LIVE
-          </span>
+          <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-black/60 px-4 py-2 backdrop-blur-md shadow-[0_0_28px_rgba(0,0,0,0.55)]">
+            <span className="font-display font-bold uppercase tracking-wide text-white text-sm md:text-base truncate max-w-[26vw] text-right leading-none">
+              {status?.teamName ?? "Team"}
+            </span>
+            <span className="font-display font-bold text-3xl md:text-4xl tabular-nums shrink-0 text-primary leading-none drop-shadow-[0_0_10px_hsl(var(--primary)/0.6)]">
+              {scoreboard.teamScore}<span className="mx-1.5 text-white/40">-</span>{scoreboard.opponentScore}
+            </span>
+            <span className="font-display font-bold uppercase tracking-wide text-white text-sm md:text-base truncate max-w-[26vw] text-left leading-none">
+              {status?.opponent ?? "Opp"}
+            </span>
+            <span className="flex items-center gap-1 rounded-full bg-red-600/90 px-2 py-0.5 text-[10px] font-bold text-white shrink-0 ml-1">
+              <Radio className="w-3 h-3" /> LIVE
+            </span>
+          </div>
         </div>
       )}
 
       {state === "live" && statEvents.length > 0 && (
-        <div className="absolute left-2 top-16 flex flex-col gap-1.5 pointer-events-none max-w-[75%]">
+        <div className="absolute left-2 top-24 flex flex-col gap-1.5 pointer-events-none max-w-[75%]">
           {statEvents.slice(-4).map((ev) => (
             <div
               key={ev.id}
