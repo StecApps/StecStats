@@ -18,10 +18,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="mr-4 hidden md:flex">
             <Link href="/" className="mr-6 flex items-center space-x-2">
               <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-display text-2xl leading-none">
-                H
+                S
               </div>
-              <span className="hidden font-display text-2xl font-bold sm:inline-block leading-none mt-1">
-                HOOPS STATS
+              <span className="hidden sm:flex flex-col leading-none">
+                <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
+                <span className="text-[10px] font-medium uppercase tracking-widest text-primary/80 leading-none mt-0.5">Your all-in-one app</span>
               </span>
             </Link>
             <nav className="flex items-center space-x-6 text-sm font-medium">
@@ -47,10 +48,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="md:hidden flex w-full justify-between items-center">
             <Link href="/" className="flex items-center space-x-2">
               <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-display text-2xl leading-none">
-                H
+                S
               </div>
-              <span className="font-display text-2xl font-bold inline-block leading-none mt-1">
-                HOOPS STATS
+              <span className="flex flex-col leading-none">
+                <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
+                <span className="text-[9px] font-medium uppercase tracking-widest text-primary/80 leading-none mt-0.5">Your all-in-one app</span>
               </span>
             </Link>
           </div>
