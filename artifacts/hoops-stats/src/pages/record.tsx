@@ -148,6 +148,8 @@ export default function RecordGame() {
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [focusPlayerId, setFocusPlayerId] = useState<number | null>(null);
+  const [isReconnectingLive, setIsReconnectingLive] = useState(false);
+  const [liveInterrupted, setLiveInterrupted] = useState(false);
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
@@ -223,6 +225,9 @@ export default function RecordGame() {
       return null;
     }
   };
+  const liveManualStopRef = useRef(false);
+  const liveReconnectAttemptsRef = useRef(0);
+  const liveReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (isEditing && gameToEdit) {
@@ -256,6 +261,8 @@ export default function RecordGame() {
     return () => {
       stopMediaPipeline();
       if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
+      liveManualStopRef.current = true;
+      if (liveReconnectTimeoutRef.current) clearTimeout(liveReconnectTimeoutRef.current);
       livePeersRef.current.forEach(pc => pc.close());
       liveWsRef.current?.close();
       if (liveCodeRef.current) stopLiveSession(liveCodeRef.current);
@@ -615,51 +622,107 @@ export default function RecordGame() {
     return pc;
   };
 
+  const MAX_LIVE_RECONNECT_ATTEMPTS = 6;
+  const LIVE_RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 8000, 8000];
+
+  const connectBroadcasterSocket = (code: string, isReconnect: boolean) => {
+    const ws = new WebSocket(liveWsUrl());
+    liveWsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "join-broadcaster", code }));
+      setIsLive(true);
+      setIsStartingLive(false);
+      setIsReconnectingLive(false);
+      setLiveInterrupted(false);
+      if (isReconnect) {
+        liveReconnectAttemptsRef.current = 0;
+        toast({ title: "Live stream reconnected", description: "The broadcast has resumed." });
+      }
+    };
+
+    ws.onmessage = async (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === "new-viewer") {
+        const pc = await createPeerConnectionForViewer(message.viewerId);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: "offer", code, targetId: message.viewerId, sdp: offer }));
+        setViewerCount(livePeersRef.current.size);
+      } else if (message.type === "answer") {
+        const pc = livePeersRef.current.get(message.viewerId);
+        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
+      } else if (message.type === "ice-candidate") {
+        const pc = livePeersRef.current.get(message.viewerId);
+        if (pc && message.candidate) await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
+      } else if (message.type === "viewer-left") {
+        const pc = livePeersRef.current.get(message.viewerId);
+        pc?.close();
+        livePeersRef.current.delete(message.viewerId);
+        setViewerCount(livePeersRef.current.size);
+      }
+    };
+
+    ws.onclose = () => {
+      if (liveManualStopRef.current) return;
+
+      // The signaling connection dropped unexpectedly (most commonly the
+      // api-server restarting mid-game). The invite code was persisted
+      // server-side, so we keep the camera/recording running locally and
+      // try to rejoin the same session automatically instead of ending the
+      // stream. Any existing peer connections are stale once the server
+      // loses its in-memory viewer list, so they're torn down and rebuilt
+      // as viewers rejoin.
+      livePeersRef.current.forEach(pc => pc.close());
+      livePeersRef.current.clear();
+      setViewerCount(0);
+      setIsLive(false);
+
+      if (liveReconnectAttemptsRef.current >= MAX_LIVE_RECONNECT_ATTEMPTS) {
+        setIsReconnectingLive(false);
+        setLiveInterrupted(true);
+        toast({
+          title: "Live stream interrupted",
+          description: "We couldn't reconnect the broadcast. Tap \"Go Live\" to restart it.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsReconnectingLive(true);
+      const delay = LIVE_RECONNECT_DELAYS_MS[liveReconnectAttemptsRef.current] ?? 8000;
+      liveReconnectAttemptsRef.current += 1;
+      liveReconnectTimeoutRef.current = setTimeout(() => {
+        if (liveManualStopRef.current || !liveCodeRef.current) return;
+        connectBroadcasterSocket(liveCodeRef.current, true);
+      }, delay);
+    };
+  };
+
   const goLive = async () => {
     if (!streamRef.current) {
       toast({ title: "Start recording first", description: "Live streaming shares the active camera feed.", variant: "destructive" });
       return;
     }
     setIsStartingLive(true);
+    setLiveInterrupted(false);
+    liveManualStopRef.current = false;
+    liveReconnectAttemptsRef.current = 0;
+
+    // If a previous broadcast was interrupted (e.g. the api-server
+    // restarted mid-game) and gave up retrying, resume the same invite
+    // code rather than minting a new one so any viewers who kept their
+    // watch page open can reconnect without a new link.
+    if (liveInterrupted && liveCodeRef.current) {
+      connectBroadcasterSocket(liveCodeRef.current, true);
+      return;
+    }
+
     try {
       const code = await startLiveSession(opponent || "Opponent", teams?.find(t => t.id.toString() === teamId)?.name || "Team");
       liveCodeRef.current = code;
       setLiveCode(code);
-
-      const ws = new WebSocket(liveWsUrl());
-      liveWsRef.current = ws;
-
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "join-broadcaster", code }));
-        setIsLive(true);
-        setIsStartingLive(false);
-      };
-
-      ws.onmessage = async (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type === "new-viewer") {
-          const pc = await createPeerConnectionForViewer(message.viewerId);
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          ws.send(JSON.stringify({ type: "offer", code, targetId: message.viewerId, sdp: offer }));
-          setViewerCount(livePeersRef.current.size);
-        } else if (message.type === "answer") {
-          const pc = livePeersRef.current.get(message.viewerId);
-          if (pc) await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
-        } else if (message.type === "ice-candidate") {
-          const pc = livePeersRef.current.get(message.viewerId);
-          if (pc && message.candidate) await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
-        } else if (message.type === "viewer-left") {
-          const pc = livePeersRef.current.get(message.viewerId);
-          pc?.close();
-          livePeersRef.current.delete(message.viewerId);
-          setViewerCount(livePeersRef.current.size);
-        }
-      };
-
-      ws.onclose = () => {
-        setIsLive(false);
-      };
+      connectBroadcasterSocket(code, false);
     } catch (err) {
       setIsStartingLive(false);
       toast({ title: "Could not start live stream", variant: "destructive" });
@@ -667,6 +730,11 @@ export default function RecordGame() {
   };
 
   const stopGoingLive = () => {
+    liveManualStopRef.current = true;
+    if (liveReconnectTimeoutRef.current) {
+      clearTimeout(liveReconnectTimeoutRef.current);
+      liveReconnectTimeoutRef.current = null;
+    }
     livePeersRef.current.forEach(pc => pc.close());
     livePeersRef.current.clear();
     liveWsRef.current?.close();
@@ -676,6 +744,8 @@ export default function RecordGame() {
     }
     liveCodeRef.current = null;
     setIsLive(false);
+    setIsReconnectingLive(false);
+    setLiveInterrupted(false);
     setLiveCode(null);
     setViewerCount(0);
   };
@@ -1137,13 +1207,13 @@ export default function RecordGame() {
                 {micMuted ? <MicOff className="w-4 h-4 mr-2 text-red-400" /> : <Mic className="w-4 h-4 mr-2" />}
                 {micMuted ? "Muted" : "Mic"}
               </Button>
-              {!isLive && (
+              {!isLive && !isReconnectingLive && (
                 <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive}>
                   {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
                   Go Live
                 </Button>
               )}
-              {isLive && (
+              {(isLive || isReconnectingLive) && (
                 <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={stopGoingLive}>
                   <Radio className="w-4 h-4 mr-2 text-red-500 animate-pulse" /> End Live
                 </Button>
@@ -1154,6 +1224,29 @@ export default function RecordGame() {
           <div className="flex-[2] md:flex-1 min-h-0 overflow-y-auto bg-background p-3 space-y-4">
             {liveScoreboardHud}
             {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
+
+            {isReconnectingLive && liveCode && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+                <span className="flex items-center gap-1 text-sm font-semibold text-amber-600">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Reconnecting live stream...
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  Your recording keeps going. The broadcast will resume automatically once reconnected.
+                </span>
+              </div>
+            )}
+
+            {liveInterrupted && (
+              <div className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-3">
+                <span className="flex items-center gap-1 text-sm font-semibold text-destructive">
+                  <Radio className="w-4 h-4" /> Live stream interrupted
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  Your recording is still safe. Tap "Go Live" to start broadcasting again with the same invite link.
+                </span>
+              </div>
+            )}
+
             {rosterChips}
             {statTrackerCards.length > 0 ? (
               <div className="space-y-4">{statTrackerCards}</div>

@@ -25,14 +25,14 @@ router.get("/live/ice-servers", async (_req: Request, res: Response) => {
  * code (or the watch link built from it) can join as a viewer. No accounts
  * are required on either side.
  */
-router.post("/live/start", (req: Request, res: Response) => {
+router.post("/live/start", async (req: Request, res: Response) => {
   const { opponent, teamName } = req.body ?? {};
   if (typeof opponent !== "string" || !opponent.trim() || typeof teamName !== "string" || !teamName.trim()) {
     res.status(400).json({ error: "Missing or invalid required fields" });
     return;
   }
 
-  const session = liveStreamRegistry.createSession({ opponent, teamName });
+  const session = await liveStreamRegistry.createSession({ opponent, teamName });
   res.json({ code: session.code });
 });
 
@@ -40,11 +40,14 @@ router.post("/live/start", (req: Request, res: Response) => {
  * GET /live/:code/status
  *
  * Public status check used by the viewer page. Does not require the caller
- * to be the broadcaster.
+ * to be the broadcaster. Falls back to the persisted session record if the
+ * in-memory copy was lost to an api-server restart, so viewers polling this
+ * endpoint see "waiting for broadcaster" (and keep retrying) instead of a
+ * hard "not found" while the coach's app is busy reconnecting.
  */
-router.get("/live/:code/status", (req: Request, res: Response) => {
+router.get("/live/:code/status", async (req: Request, res: Response) => {
   const code = Array.isArray(req.params.code) ? req.params.code[0] : req.params.code;
-  const session = liveStreamRegistry.getSession(code ?? "");
+  const session = await liveStreamRegistry.getOrResumeSession(code ?? "");
   if (!session) {
     res.status(404).json({ error: "Stream not found" });
     return;
@@ -66,9 +69,9 @@ router.get("/live/:code/status", (req: Request, res: Response) => {
  * Explicit stop (in addition to automatic cleanup when the broadcaster's
  * websocket disconnects).
  */
-router.post("/live/:code/stop", (req: Request, res: Response) => {
+router.post("/live/:code/stop", async (req: Request, res: Response) => {
   const code = Array.isArray(req.params.code) ? req.params.code[0] : req.params.code;
-  liveStreamRegistry.endSession(code ?? "");
+  await liveStreamRegistry.endSession(code ?? "");
   res.json({ success: true });
 });
 

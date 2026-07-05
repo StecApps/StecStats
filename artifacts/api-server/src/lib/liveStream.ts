@@ -1,4 +1,6 @@
 import type { WebSocket } from "ws";
+import { eq } from "drizzle-orm";
+import { db, liveSessionsTable } from "@workspace/db";
 import { logger } from "./logger";
 
 export type IceServer = {
@@ -76,9 +78,18 @@ function generateCode(length = 6): string {
 class LiveStreamRegistry {
   private sessions = new Map<string, LiveSession>();
 
-  createSession(meta: LiveSessionMeta): LiveSession {
+  /**
+   * Creates a new session in memory AND persists its metadata (code,
+   * opponent, teamName) to the database. Persisting the metadata is what
+   * lets a session's invite code survive an api-server restart/redeploy:
+   * broadcaster/viewer WebSocket connections and RTCPeerConnections cannot
+   * survive a process restart, but the *code* can, so clients can detect
+   * the drop and rejoin the same session once the server comes back up
+   * instead of the invite link being permanently dead.
+   */
+  async createSession(meta: LiveSessionMeta): Promise<LiveSession> {
     let code = generateCode();
-    while (this.sessions.has(code)) {
+    while (this.sessions.has(code) || (await this.codeExistsInDb(code))) {
       code = generateCode();
     }
     const session: LiveSession = {
@@ -90,25 +101,90 @@ class LiveStreamRegistry {
       scoreboard: { teamScore: 0, opponentScore: 0 },
     };
     this.sessions.set(code, session);
+    try {
+      await db.insert(liveSessionsTable).values({
+        code,
+        opponent: meta.opponent,
+        teamName: meta.teamName,
+        active: true,
+      });
+    } catch (err) {
+      logger.error({ err, code }, "Failed to persist live session, invite will not survive a restart");
+    }
     return session;
+  }
+
+  private async codeExistsInDb(code: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: liveSessionsTable.id })
+      .from(liveSessionsTable)
+      .where(eq(liveSessionsTable.code, code))
+      .limit(1);
+    return rows.length > 0;
   }
 
   getSession(code: string): LiveSession | undefined {
     return this.sessions.get(code.toUpperCase());
   }
 
-  endSession(code: string): void {
-    const session = this.sessions.get(code.toUpperCase());
-    if (!session) return;
-    for (const viewerWs of session.viewers.values()) {
-      try {
-        viewerWs.close();
-      } catch {
-        // ignore
+  /**
+   * Looks up a session, transparently resuming it from the database if the
+   * in-memory copy is gone (e.g. the api-server process restarted mid-game
+   * and lost all in-memory WebSocket/peer state). Resuming re-creates the
+   * in-memory shell (broadcaster: null, no viewers) so the coach/viewers can
+   * rejoin with the same invite code rather than getting "stream not found".
+   */
+  async getOrResumeSession(code: string): Promise<LiveSession | undefined> {
+    const upper = code.toUpperCase();
+    const existing = this.sessions.get(upper);
+    if (existing) return existing;
+
+    const rows = await db
+      .select()
+      .from(liveSessionsTable)
+      .where(eq(liveSessionsTable.code, upper))
+      .limit(1);
+    const row = rows[0];
+    if (!row || !row.active) return undefined;
+
+    const resumed: LiveSession = {
+      code: row.code,
+      meta: { opponent: row.opponent, teamName: row.teamName },
+      createdAt: row.createdAt.getTime(),
+      broadcaster: null,
+      viewers: new Map(),
+    };
+    this.sessions.set(upper, resumed);
+    logger.info({ code: upper }, "Resumed live session from persisted state after server restart");
+    return resumed;
+  }
+
+  async endSession(code: string): Promise<void> {
+    const upper = code.toUpperCase();
+    const session = this.sessions.get(upper);
+    if (session) {
+      for (const viewerWs of session.viewers.values()) {
+        try {
+          viewerWs.close();
+        } catch {
+          // ignore
+        }
       }
+      if (session.broadcaster) {
+        try {
+          session.broadcaster.close();
+        } catch {
+          // ignore
+        }
+      }
+      this.sessions.delete(session.code);
     }
-    this.sessions.delete(session.code);
-    logger.info({ code: session.code }, "Live session ended");
+    try {
+      await db.update(liveSessionsTable).set({ active: false }).where(eq(liveSessionsTable.code, upper));
+    } catch (err) {
+      logger.error({ err, code: upper }, "Failed to mark persisted live session inactive");
+    }
+    logger.info({ code: upper }, "Live session ended");
   }
 }
 

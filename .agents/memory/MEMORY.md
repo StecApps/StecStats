@@ -1,6 +1,7 @@
 - [Orval params naming collision](orval-params-collision.md) — an operation combining a path param + query param can produce a TS2308 name collision between zod and type generators; avoid by not mixing them.
 - [Frontend API routing convention](api-routing-convention.md) — hoops-stats/monorepo apps call `/api/...` as root-relative paths directly, not prefixed by artifact BASE_URL.
 - [Testing camera/media features](testing-camera-media.md) — Playwright test sandbox has no real camera; expect getUserMedia to fail there, design a graceful error path and verify via DB/API instead of relying on camera E2E.
-- [Live streaming via custom WebRTC signaling](live-streaming-webrtc.md) — in-memory `ws` signaling relay on api-server, ephemeral sessions not tied to DB, now with Metered.ca TURN relay.
+- [Live streaming via custom WebRTC signaling](live-streaming-webrtc.md) — in-memory `ws` signaling relay on api-server, now with Metered.ca TURN relay and DB-backed session metadata.
 - [Metered.ca TURN credential-scoped API key](metered-turn-api-key.md) — turn/credentials endpoint needs the credential-scoped apiKey, not the account secret/project key.
 - [Canvas camera pipeline](camera-canvas-pipeline.md) — recording draws camera into an offscreen canvas for iOS digital zoom + camera switch; hardware gimbals (DJI) can't be integrated.
+- [Live stream restart resilience](live-stream-restart-resilience.md) — persisted session codes + client auto-reconnect let a broadcast survive an api-server restart mid-game.

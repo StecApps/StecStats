@@ -41,7 +41,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
     let sessionCode: string | null = null;
     let viewerId: string | null = null;
 
-    ws.on("message", (raw: RawData) => {
+    ws.on("message", async (raw: RawData) => {
       let message: ClientMessage;
       try {
         message = JSON.parse(raw.toString());
@@ -49,7 +49,12 @@ export function attachLiveSocketServer(upgradeEmitter: {
         return;
       }
 
-      const session = liveStreamRegistry.getSession(message.code);
+      // Resume-aware lookup: if the api-server restarted mid-game, the
+      // in-memory session is gone but its code/metadata were persisted, so
+      // this transparently recreates the in-memory shell and lets the
+      // broadcaster/viewer rejoin the same session instead of hitting a
+      // dead "stream not found" error.
+      const session = await liveStreamRegistry.getOrResumeSession(message.code);
       if (!session) {
         safeSend(ws, { type: "error", message: "Stream not found" });
         return;

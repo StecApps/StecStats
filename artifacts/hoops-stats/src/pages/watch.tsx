@@ -3,7 +3,10 @@ import { useParams } from "wouter";
 import { Radio, Users, Loader2, WifiOff, VolumeX } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
 
-type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "ended" | "not-found";
+type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
+
+const MAX_WATCH_RECONNECT_ATTEMPTS = 6;
+const WATCH_RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 8000, 8000];
 
 export default function WatchStream() {
   const params = useParams();
@@ -37,6 +40,9 @@ export default function WatchStream() {
       v.play().catch(() => {});
     }
   };
+  const explicitEndRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!code) return;
@@ -54,78 +60,127 @@ export default function WatchStream() {
       setState(s.active ? "connecting" : "waiting-for-broadcaster");
     });
 
-    const ws = new WebSocket(liveWsUrl());
-    wsRef.current = ws;
+    const connect = (isReconnect: boolean) => {
+      const ws = new WebSocket(liveWsUrl());
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "join-viewer", code }));
-    };
-
-    ws.onmessage = async (event) => {
-      const message = JSON.parse(event.data);
-
-      if (message.type === "error") {
-        setState("not-found");
-        return;
-      }
-
-      if (message.type === "joined") {
-        myViewerIdRef.current = message.viewerId;
-        return;
-      }
-
-      if (message.type === "scoreboard") {
-        setScoreboard({ teamScore: message.teamScore, opponentScore: message.opponentScore });
-        return;
-      }
-
-      if (message.type === "offer") {
-        const iceServers = await getIceServers();
-        const pc = new RTCPeerConnection({ iceServers });
-        pcRef.current = pc;
-
-        pc.ontrack = (e) => {
-          remoteStreamRef.current = e.streams[0] ?? new MediaStream([e.track]);
-          attachStream();
-          setState("live");
-        };
-
-        pc.onicecandidate = (e) => {
-          if (e.candidate && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-              type: "ice-candidate",
-              code,
-              targetId: "broadcaster",
-              candidate: e.candidate,
-            }));
-          }
-        };
-
-        await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        ws.send(JSON.stringify({ type: "answer", code, targetId: message.viewerId, sdp: answer }));
-      } else if (message.type === "ice-candidate") {
-        if (pcRef.current && message.candidate) {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "join-viewer", code }));
+        if (isReconnect) {
+          reconnectAttemptsRef.current = 0;
+          // Re-check status rather than assuming a broadcaster is present —
+          // after an api-server restart the broadcaster may take longer to
+          // reconnect than this viewer, in which case we should show
+          // "waiting for broadcaster" instead of getting stuck on
+          // "connecting" forever.
+          getLiveStatus(code).then((s) => {
+            if (cancelled) return;
+            if (s) {
+              setStatus(s);
+              setState(s.active ? "connecting" : "waiting-for-broadcaster");
+            } else {
+              setState("connecting");
+            }
+          });
         }
-      } else if (message.type === "broadcaster-left") {
-        setState("ended");
+      };
+
+      ws.onmessage = async (event) => {
+        const message = JSON.parse(event.data);
+
+        if (message.type === "error") {
+          setState("not-found");
+          return;
+        }
+
+        if (message.type === "joined") {
+          myViewerIdRef.current = message.viewerId;
+          return;
+        }
+
+        if (message.type === "scoreboard") {
+          setScoreboard({ teamScore: message.teamScore, opponentScore: message.opponentScore });
+          return;
+        }
+
+        if (message.type === "offer") {
+          pcRef.current?.close();
+          const iceServers = await getIceServers();
+          const pc = new RTCPeerConnection({ iceServers });
+          pcRef.current = pc;
+
+          pc.ontrack = (e) => {
+            remoteStreamRef.current = e.streams[0] ?? new MediaStream([e.track]);
+            attachStream();
+            setState("live");
+          };
+
+          pc.onicecandidate = (e) => {
+            if (e.candidate && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                type: "ice-candidate",
+                code,
+                targetId: "broadcaster",
+                candidate: e.candidate,
+              }));
+            }
+          };
+
+          await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: "answer", code, targetId: message.viewerId, sdp: answer }));
+        } else if (message.type === "ice-candidate") {
+          if (pcRef.current && message.candidate) {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));
+          }
+        } else if (message.type === "broadcaster-left") {
+          // The coach explicitly ended the stream (as opposed to the
+          // signaling server itself dropping the connection) — show
+          // "ended" immediately rather than attempting to reconnect.
+          explicitEndRef.current = true;
+          setState("ended");
+          pcRef.current?.close();
+          pcRef.current = null;
+        }
+      };
+
+      ws.onclose = () => {
+        if (cancelled) return;
         pcRef.current?.close();
         pcRef.current = null;
-      }
+
+        if (explicitEndRef.current) {
+          setState("ended");
+          return;
+        }
+
+        // Unexpected drop of the signaling connection — most commonly the
+        // api-server restarting mid-game. The invite code is persisted
+        // server-side, so keep retrying to rejoin the same session instead
+        // of immediately declaring the stream over.
+        if (reconnectAttemptsRef.current >= MAX_WATCH_RECONNECT_ATTEMPTS) {
+          setState("ended");
+          return;
+        }
+
+        setState("reconnecting");
+        const delay = WATCH_RECONNECT_DELAYS_MS[reconnectAttemptsRef.current] ?? 8000;
+        reconnectAttemptsRef.current += 1;
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (cancelled) return;
+          connect(true);
+        }, delay);
+      };
     };
 
-    ws.onclose = () => {
-      if (!cancelled) {
-        setState((prev) => (prev === "live" ? "ended" : prev));
-      }
-    };
+    connect(false);
 
     return () => {
       cancelled = true;
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       pcRef.current?.close();
-      ws.close();
+      wsRef.current?.close();
     };
   }, [code]);
 
@@ -190,10 +245,20 @@ export default function WatchStream() {
               <p className="max-w-sm">The coach hasn't started streaming yet. Stay on this page — it will connect automatically.</p>
             </>
           )}
+          {state === "reconnecting" && (
+            <>
+              <Loader2 className="w-8 h-8 animate-spin" />
+              <p className="max-w-sm">Connection lost — reconnecting to the stream. Stay on this page.</p>
+            </>
+          )}
           {state === "ended" && (
             <>
               <WifiOff className="w-8 h-8" />
-              <p>This live stream has ended.</p>
+              <p className="max-w-sm">
+                {explicitEndRef.current
+                  ? "This live stream has ended."
+                  : "We lost connection to the stream and couldn't reconnect. Refresh this page to try again."}
+              </p>
             </>
           )}
           {state === "not-found" && (
