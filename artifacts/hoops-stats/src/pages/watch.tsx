@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { Radio, Users, Loader2, WifiOff } from "lucide-react";
+import { Radio, Users, Loader2, WifiOff, VolumeX } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "ended" | "not-found";
@@ -16,6 +16,26 @@ export default function WatchStream() {
   const wsRef = useRef<WebSocket | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const myViewerIdRef = useRef<string | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const [muted, setMuted] = useState(true);
+
+  const attachStream = () => {
+    const v = videoRef.current;
+    const stream = remoteStreamRef.current;
+    if (v && stream && v.srcObject !== stream) {
+      v.srcObject = stream;
+      v.play().catch(() => {});
+    }
+  };
+
+  const unmute = () => {
+    const v = videoRef.current;
+    if (v) {
+      v.muted = false;
+      setMuted(false);
+      v.play().catch(() => {});
+    }
+  };
 
   useEffect(() => {
     if (!code) return;
@@ -58,10 +78,8 @@ export default function WatchStream() {
         pcRef.current = pc;
 
         pc.ontrack = (e) => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = e.streams[0];
-            videoRef.current.play().catch(() => {});
-          }
+          remoteStreamRef.current = e.streams[0] ?? new MediaStream([e.track]);
+          attachStream();
           setState("live");
         };
 
@@ -104,6 +122,10 @@ export default function WatchStream() {
     };
   }, [code]);
 
+  useEffect(() => {
+    if (state === "live") attachStream();
+  }, [state]);
+
   return (
     <div className="min-h-screen bg-secondary flex flex-col items-center justify-center p-4 gap-6">
       <div className="w-full max-w-2xl space-y-4">
@@ -118,11 +140,24 @@ export default function WatchStream() {
           )}
         </div>
 
-        <div className="w-full aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center">
-          {state === "live" ? (
-            <video ref={videoRef} autoPlay playsInline className="w-full h-full" />
-          ) : (
-            <div className="text-center text-white/70 flex flex-col items-center gap-3 p-6">
+        <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={muted}
+            className={`w-full h-full object-contain ${state === "live" ? "" : "invisible"}`}
+          />
+          {state === "live" && muted && (
+            <button
+              onClick={unmute}
+              className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80"
+            >
+              <VolumeX className="w-4 h-4" /> Tap for sound
+            </button>
+          )}
+          {state !== "live" && (
+            <div className="absolute inset-0 text-center text-white/70 flex flex-col items-center justify-center gap-3 p-6">
               {state === "connecting" && (
                 <>
                   <Loader2 className="w-8 h-8 animate-spin" />
