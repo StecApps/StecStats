@@ -579,7 +579,7 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
                       <TableCell className="text-right">{stat.steals}</TableCell>
                       <TableCell className="text-right text-muted-foreground">{stat.turnovers}</TableCell>
                       <TableCell className="text-right">{stat.blocks}</TableCell>
-                      <TableCell className="text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                      <TableCell className="text-right opacity-100 md:opacity-60 md:group-hover:opacity-100 transition-opacity">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                             <Link href={`/record/${game.id}`}><Edit className="h-4 w-4" /></Link>
