@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -162,7 +162,11 @@ export default function RecordGame() {
   const rafRef = useRef<number | null>(null);
   const zoomRef = useRef(1);
   const usesCanvasRef = useRef(false);
+  const environmentDeviceIdsRef = useRef<string[]>([]);
+  const currentDeviceIdRef = useRef<string | null>(null);
+  const [canCycleLens, setCanCycleLens] = useState(false);
   const MAX_ZOOM = 5;
+  const IDEAL_VIDEO_CONSTRAINTS = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } };
 
   const stopMediaPipeline = () => {
     if (rafRef.current) {
@@ -180,6 +184,25 @@ export default function RecordGame() {
     sourceVideoRef.current = null;
     canvasRef.current = null;
     usesCanvasRef.current = false;
+    environmentDeviceIdsRef.current = [];
+    currentDeviceIdRef.current = null;
+    setCanCycleLens(false);
+  };
+
+  const refreshEnvironmentLensOptions = async (currentDeviceId: string | null): Promise<string | null> => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter(d => d.kind === "videoinput");
+      const backCandidates = videoInputs.filter(d => !/front|user|face|selfie/i.test(d.label));
+      environmentDeviceIdsRef.current = backCandidates.map(d => d.deviceId);
+      setCanCycleLens(backCandidates.length > 1);
+      const wideMatch = backCandidates.find(d => /ultra.?wide|wide.?angle|0\.5x/i.test(d.label));
+      return wideMatch && wideMatch.deviceId !== currentDeviceId ? wideMatch.deviceId : null;
+    } catch {
+      environmentDeviceIdsRef.current = [];
+      setCanCycleLens(false);
+      return null;
+    }
   };
 
   useEffect(() => {
@@ -272,8 +295,54 @@ export default function RecordGame() {
     if (!usesCanvasRef.current || !sourceVideoRef.current) return;
     const next = facingMode === "environment" ? "user" : "environment";
     try {
+      let newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: next, ...IDEAL_VIDEO_CONSTRAINTS },
+        audio: false,
+      });
+      let newDeviceId = newStream.getVideoTracks()[0]?.getSettings().deviceId ?? null;
+
+      if (next === "environment") {
+        const wideId = await refreshEnvironmentLensOptions(newDeviceId);
+        if (wideId) {
+          try {
+            const wideStream = await navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { exact: wideId }, ...IDEAL_VIDEO_CONSTRAINTS },
+              audio: false,
+            });
+            newStream.getVideoTracks().forEach(t => t.stop());
+            newStream = wideStream;
+            newDeviceId = wideId;
+          } catch {
+            // Wide lens open failed; keep the default back camera stream.
+          }
+        }
+      } else {
+        environmentDeviceIdsRef.current = [];
+        setCanCycleLens(false);
+      }
+
+      const src = sourceVideoRef.current;
+      const prev = src.srcObject as MediaStream | null;
+      prev?.getVideoTracks().forEach(t => t.stop());
+      src.srcObject = newStream;
+      await src.play().catch(() => {});
+      currentDeviceIdRef.current = newDeviceId;
+      setFacingMode(next);
+      setZoom(1);
+    } catch {
+      setCameraError("Could not switch camera on this device.");
+    }
+  };
+
+  const cycleLens = async () => {
+    if (!usesCanvasRef.current || !sourceVideoRef.current) return;
+    const ids = environmentDeviceIdsRef.current;
+    if (ids.length < 2) return;
+    const idx = ids.indexOf(currentDeviceIdRef.current || "");
+    const nextId = ids[(idx + 1 + ids.length) % ids.length];
+    try {
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: next },
+        video: { deviceId: { exact: nextId }, ...IDEAL_VIDEO_CONSTRAINTS },
         audio: false,
       });
       const src = sourceVideoRef.current;
@@ -281,10 +350,10 @@ export default function RecordGame() {
       prev?.getVideoTracks().forEach(t => t.stop());
       src.srcObject = newStream;
       await src.play().catch(() => {});
-      setFacingMode(next);
+      currentDeviceIdRef.current = nextId;
       setZoom(1);
     } catch {
-      setCameraError("Could not switch camera on this device.");
+      setCameraError("Could not switch lens on this device.");
     }
   };
 
@@ -295,10 +364,35 @@ export default function RecordGame() {
   const startRecording = async () => {
     setCameraError(null);
     try {
-      const rawStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode },
+      let rawStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, ...IDEAL_VIDEO_CONSTRAINTS },
         audio: true,
       });
+      currentDeviceIdRef.current = rawStream.getVideoTracks()[0]?.getSettings().deviceId ?? null;
+
+      if (facingMode === "environment") {
+        const wideId = await refreshEnvironmentLensOptions(currentDeviceIdRef.current);
+        if (wideId) {
+          try {
+            const wideStream = await navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { exact: wideId }, ...IDEAL_VIDEO_CONSTRAINTS },
+              audio: false,
+            });
+            const wideTrack = wideStream.getVideoTracks()[0];
+            if (wideTrack) {
+              rawStream.getVideoTracks().forEach(t => t.stop());
+              rawStream = new MediaStream([wideTrack, ...rawStream.getAudioTracks()]);
+              currentDeviceIdRef.current = wideId;
+            }
+          } catch {
+            // Wide lens open failed; keep the default back camera stream.
+          }
+        }
+      } else {
+        environmentDeviceIdsRef.current = [];
+        setCanCycleLens(false);
+      }
+
       rawStreamRef.current = rawStream;
 
       let recordStream: MediaStream;
@@ -328,6 +422,7 @@ export default function RecordGame() {
         startDrawLoop();
 
         const canvasStream = canvas.captureStream(30);
+        canvasStream.getVideoTracks().forEach(t => { t.contentHint = "motion"; });
         const output = new MediaStream();
         canvasStream.getVideoTracks().forEach(t => output.addTrack(t));
         rawStream.getAudioTracks().forEach(t => output.addTrack(t));
@@ -346,7 +441,11 @@ export default function RecordGame() {
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus"
         : "video/webm";
-      const recorder = new MediaRecorder(recordStream, { mimeType });
+      const recorder = new MediaRecorder(recordStream, {
+        mimeType,
+        videoBitsPerSecond: 6_000_000,
+        audioBitsPerSecond: 128_000,
+      });
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
@@ -396,7 +495,18 @@ export default function RecordGame() {
     const iceServers = await getIceServers();
     const pc = new RTCPeerConnection({ iceServers });
     streamRef.current?.getTracks().forEach(track => {
-      if (streamRef.current) pc.addTrack(track, streamRef.current);
+      if (!streamRef.current) return;
+      const sender = pc.addTrack(track, streamRef.current);
+      if (track.kind === "video") {
+        try {
+          const params = sender.getParameters();
+          params.encodings = params.encodings?.length ? params.encodings : [{}];
+          params.encodings[0].maxBitrate = 4_000_000;
+          sender.setParameters(params).catch(() => {});
+        } catch {
+          // Explicit bitrate hint is best-effort; the browser default still applies if unsupported.
+        }
+      }
     });
     pc.onicecandidate = (event) => {
       if (event.candidate && liveWsRef.current?.readyState === WebSocket.OPEN) {
@@ -874,6 +984,12 @@ export default function RecordGame() {
                     <SwitchCamera className="w-4 h-4 mr-1" />
                     {facingMode === "environment" ? "Front" : "Back"}
                   </Button>
+                  {facingMode === "environment" && canCycleLens && (
+                    <Button variant="secondary" size="sm" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={cycleLens}>
+                      <Aperture className="w-4 h-4 mr-1" />
+                      Lens
+                    </Button>
+                  )}
                   <div className="flex items-center gap-1 rounded-md bg-black/50 px-1 backdrop-blur-sm">
                     <Button variant="ghost" size="sm" className="h-8 px-2 text-white hover:bg-white/20" onClick={() => adjustZoom(-0.5)} disabled={zoom <= 1}>
                       <ZoomOut className="w-4 h-4" />

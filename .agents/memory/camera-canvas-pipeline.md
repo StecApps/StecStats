@@ -32,3 +32,21 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
 - A hardware gimbal (e.g. DJI Osmo) cannot be integrated — its app/Bluetooth
   controls only talk to DJI's native app, not a browser. It only physically moves
   the phone; in-app zoom/switch is the substitute for its software features.
+
+## Quality and field-of-view (wide angle)
+
+- Browsers cannot zoom *out* past 1x digitally (the canvas crop only zooms in);
+  wider field of view on multi-lens phones requires opening a different physical
+  camera device via `getUserMedia({video:{deviceId:{exact}}})`, not a zoom constraint.
+- `navigator.mediaDevices.enumerateDevices()` only returns usable labels (e.g.
+  "Back Ultra Wide Camera") *after* permission has already been granted once, so
+  the wide-lens auto-detect/enumeration must run after the first `getUserMedia`
+  call, not before it.
+- There is no reliable cross-browser API for "is this the back camera" beyond
+  label heuristics (regex on `MediaDeviceInfo.label`, e.g. excluding
+  `front|user|face|selfie`) — Android/iOS both vary in how many lenses they expose
+  as separate devices and how they're labeled. Treat this as best-effort, not exact.
+- Any place that (re)acquires the environment-facing stream (initial start, camera
+  switch back to "environment") must re-run the lens enumeration/preference logic,
+  and any teardown path must clear the resulting device-id list/flag — otherwise
+  the "extra lens" UI option can go stale or persist after switching to selfie mode.
