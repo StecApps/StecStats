@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture, Mic, MicOff } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -146,6 +146,8 @@ export default function RecordGame() {
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [zoom, setZoom] = useState(1);
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const [focusPlayerId, setFocusPlayerId] = useState<number | null>(null);
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
@@ -280,6 +282,22 @@ export default function RecordGame() {
   useEffect(() => {
     zoomRef.current = zoom;
   }, [zoom]);
+
+  useEffect(() => {
+    if (isLive && liveCodeRef.current && liveWsRef.current?.readyState === WebSocket.OPEN) {
+      liveWsRef.current.send(JSON.stringify({
+        type: "scoreboard",
+        code: liveCodeRef.current,
+        teamScore,
+        opponentScore,
+      }));
+    }
+  }, [teamScore, opponentScore, isLive]);
+
+  useEffect(() => {
+    if (focusPlayerId !== null && selectedPlayerIds.includes(focusPlayerId)) return;
+    setFocusPlayerId(selectedPlayerIds[0] ?? null);
+  }, [selectedPlayerIds, focusPlayerId]);
 
   useEffect(() => {
     if (!isRecording) return;
@@ -427,6 +445,12 @@ export default function RecordGame() {
     setZoom(z => Math.min(MAX_ZOOM, Math.max(1, Math.round((z + delta) * 10) / 10)));
   };
 
+  const toggleMic = () => {
+    const next = !micMuted;
+    rawStreamRef.current?.getAudioTracks().forEach(t => { t.enabled = !next; });
+    setMicMuted(next);
+  };
+
   const startRecording = async () => {
     setCameraError(null);
     try {
@@ -528,6 +552,7 @@ export default function RecordGame() {
       recordingStartRef.current = Date.now();
       recorder.start();
       setIsRecording(true);
+      setMicMuted(false);
       setRecordedBlob(null);
       setEvents([]);
       setElapsedMs(0);
@@ -838,6 +863,39 @@ export default function RecordGame() {
     );
   });
 
+  const teamName = teams?.find(t => t.id.toString() === teamId)?.name || "Team";
+  const focusStats = focusPlayerId !== null ? (stats[focusPlayerId] || initialStats(focusPlayerId)) : null;
+  const focusPts = focusStats ? (focusStats.twoMade * 2) + (focusStats.threeMade * 3) + focusStats.ftMade : 0;
+
+  const liveScoreboardHud = (
+    <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-1 border-b bg-background/95 backdrop-blur-md p-3 space-y-3">
+      <div className="flex items-stretch gap-2">
+        <ScoreControl label={teamName} score={teamScore} accent
+          onAdd={(n: number) => setTeamScore(s => Math.max(0, s + n))} />
+        <ScoreControl label={opponent || "Opponent"} score={opponentScore}
+          onAdd={(n: number) => setOpponentScore(s => Math.max(0, s + n))} />
+      </div>
+      {selectedPlayerIds.length > 0 && focusPlayerId !== null && focusStats && (
+        <div className="flex items-center gap-3">
+          <Select value={focusPlayerId.toString()} onValueChange={v => setFocusPlayerId(parseInt(v, 10))}>
+            <SelectTrigger className="h-9 w-[45%] shrink-0"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {selectedPlayerIds.map(pid => (
+                <SelectItem key={pid} value={pid.toString()}>{players?.find(p => p.id === pid)?.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="flex flex-1 justify-around font-mono text-sm">
+            <span><span className="font-bold text-primary">{focusPts}</span> <span className="text-muted-foreground text-xs">PTS</span></span>
+            <span><span className="font-bold">{focusStats.rebounds}</span> <span className="text-muted-foreground text-xs">REB</span></span>
+            <span><span className="font-bold">{focusStats.assists}</span> <span className="text-muted-foreground text-xs">AST</span></span>
+            <span><span className="font-bold">{focusStats.steals}</span> <span className="text-muted-foreground text-xs">STL</span></span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex flex-col space-y-6 pb-40 md:pb-24">
       <div className="flex items-center gap-4">
@@ -1075,6 +1133,10 @@ export default function RecordGame() {
               <Button variant="destructive" onClick={stopRecording}>
                 <Square className="w-4 h-4 mr-2" /> Stop
               </Button>
+              <Button variant="secondary" className={`bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0 ${micMuted ? "ring-1 ring-red-500/70" : ""}`} onClick={toggleMic}>
+                {micMuted ? <MicOff className="w-4 h-4 mr-2 text-red-400" /> : <Mic className="w-4 h-4 mr-2" />}
+                {micMuted ? "Muted" : "Mic"}
+              </Button>
               {!isLive && (
                 <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive}>
                   {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
@@ -1090,6 +1152,7 @@ export default function RecordGame() {
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto bg-background p-3 space-y-4">
+            {liveScoreboardHud}
             {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
             {rosterChips}
             {statTrackerCards.length > 0 ? (
@@ -1120,6 +1183,23 @@ function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoM
         <Button variant="ghost" className="rounded-none h-12 hover:bg-red-500/10 hover:text-red-600 active:bg-red-500/20" onClick={onMiss} onContextMenu={(e) => { e.preventDefault(); onUndoMiss(); }}>
           MISS
         </Button>
+      </div>
+    </div>
+  );
+}
+
+function ScoreControl({ label, score, onAdd, accent }: { label: string; score: number; onAdd: (n: number) => void; accent?: boolean }) {
+  return (
+    <div className={`flex-1 min-w-0 rounded-lg border p-2 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
+      <div className="text-[11px] font-bold uppercase tracking-wide truncate text-muted-foreground text-center">{label}</div>
+      <div className={`text-center font-mono font-bold text-3xl leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
+      <div className="flex justify-center gap-1 mt-1">
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onAdd(-1)}>
+          <Minus className="w-3.5 h-3.5" />
+        </Button>
+        <Button variant="secondary" size="sm" className="h-7 px-2 text-xs font-bold" onClick={() => onAdd(1)}>+1</Button>
+        <Button variant="secondary" size="sm" className="h-7 px-2 text-xs font-bold" onClick={() => onAdd(2)}>+2</Button>
+        <Button variant="secondary" size="sm" className="h-7 px-2 text-xs font-bold" onClick={() => onAdd(3)}>+3</Button>
       </div>
     </div>
   );

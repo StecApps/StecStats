@@ -49,12 +49,18 @@ export type LiveSessionMeta = {
   teamName: string;
 };
 
+export type Scoreboard = {
+  teamScore: number;
+  opponentScore: number;
+};
+
 export type LiveSession = {
   code: string;
   meta: LiveSessionMeta;
   createdAt: number;
   broadcaster: WebSocket | null;
   viewers: Map<string, WebSocket>;
+  scoreboard: Scoreboard;
 };
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -81,6 +87,7 @@ class LiveStreamRegistry {
       createdAt: Date.now(),
       broadcaster: null,
       viewers: new Map(),
+      scoreboard: { teamScore: 0, opponentScore: 0 },
     };
     this.sessions.set(code, session);
     return session;

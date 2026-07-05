@@ -55,6 +55,8 @@ router.get("/live/:code/status", (req: Request, res: Response) => {
     opponent: session.meta.opponent,
     teamName: session.meta.teamName,
     viewerCount: session.viewers.size,
+    teamScore: session.scoreboard.teamScore,
+    opponentScore: session.scoreboard.opponentScore,
   });
 });
 

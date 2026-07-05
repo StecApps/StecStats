@@ -12,7 +12,8 @@ type ClientMessage =
   | { type: "join-viewer"; code: string }
   | { type: "offer"; code: string; targetId: string; sdp: unknown }
   | { type: "answer"; code: string; targetId: string; sdp: unknown }
-  | { type: "ice-candidate"; code: string; targetId: string; candidate: unknown };
+  | { type: "ice-candidate"; code: string; targetId: string; candidate: unknown }
+  | { type: "scoreboard"; code: string; teamScore: number; opponentScore: number };
 
 function safeSend(ws: WebSocket, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -70,6 +71,11 @@ export function attachLiveSocketServer(upgradeEmitter: {
           role = "viewer";
           sessionCode = session.code;
           safeSend(ws, { type: "joined", viewerId });
+          safeSend(ws, {
+            type: "scoreboard",
+            teamScore: session.scoreboard.teamScore,
+            opponentScore: session.scoreboard.opponentScore,
+          });
           if (session.broadcaster) {
             safeSend(session.broadcaster, { type: "new-viewer", viewerId });
           }
@@ -106,6 +112,16 @@ export function attachLiveSocketServer(upgradeEmitter: {
             if (target) {
               safeSend(target, { type: "ice-candidate", candidate: message.candidate });
             }
+          }
+          break;
+        }
+        case "scoreboard": {
+          if (role !== "broadcaster") break;
+          const teamScore = Math.max(0, Math.round(Number(message.teamScore) || 0));
+          const opponentScore = Math.max(0, Math.round(Number(message.opponentScore) || 0));
+          session.scoreboard = { teamScore, opponentScore };
+          for (const viewerWs of session.viewers.values()) {
+            safeSend(viewerWs, { type: "scoreboard", teamScore, opponentScore });
           }
           break;
         }

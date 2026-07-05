@@ -11,6 +11,7 @@ export default function WatchStream() {
 
   const [state, setState] = useState<ConnectionState>("connecting");
   const [status, setStatus] = useState<LiveStatus | null>(null);
+  const [scoreboard, setScoreboard] = useState<{ teamScore: number; opponentScore: number } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -49,6 +50,7 @@ export default function WatchStream() {
         return;
       }
       setStatus(s);
+      setScoreboard({ teamScore: s.teamScore, opponentScore: s.opponentScore });
       setState(s.active ? "connecting" : "waiting-for-broadcaster");
     });
 
@@ -69,6 +71,11 @@ export default function WatchStream() {
 
       if (message.type === "joined") {
         myViewerIdRef.current = message.viewerId;
+        return;
+      }
+
+      if (message.type === "scoreboard") {
+        setScoreboard({ teamScore: message.teamScore, opponentScore: message.opponentScore });
         return;
       }
 
@@ -148,6 +155,19 @@ export default function WatchStream() {
             muted={muted}
             className={`w-full h-full object-contain ${state === "live" ? "" : "invisible"}`}
           />
+          {state === "live" && scoreboard && (
+            <div className="absolute top-0 left-0 right-0 flex items-center justify-center gap-3 bg-gradient-to-b from-black/70 via-black/40 to-transparent px-3 pt-2 pb-6 text-white pointer-events-none">
+              <span className="text-xs font-bold uppercase tracking-wide truncate max-w-[32%] text-right">
+                {status?.teamName ?? "Team"}
+              </span>
+              <span className="font-mono font-bold text-xl tabular-nums shrink-0">
+                {scoreboard.teamScore}<span className="mx-1.5 opacity-60">-</span>{scoreboard.opponentScore}
+              </span>
+              <span className="text-xs font-bold uppercase tracking-wide truncate max-w-[32%] text-left">
+                {status?.opponent ?? "Opp"}
+              </span>
+            </div>
+          )}
           {state === "live" && muted && (
             <button
               onClick={unmute}

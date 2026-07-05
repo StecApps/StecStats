@@ -28,6 +28,8 @@ export type LiveStatus = {
   opponent: string;
   teamName: string;
   viewerCount: number;
+  teamScore: number;
+  opponentScore: number;
 };
 
 export async function startLiveSession(opponent: string, teamName: string): Promise<string> {
