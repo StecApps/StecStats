@@ -90,10 +90,11 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
       result: gamesTable.result,
     })
     .from(playerGameStatsTable)
-    .innerJoin(gamesTable, eq(playerGameStatsTable.gameId, gamesTable.id))
-    .where(
-      and(eq(playerGameStatsTable.playerId, playerId), eq(gamesTable.ownerId, req.appUser!.id)),
-    );
+    .innerJoin(
+      gamesTable,
+      and(eq(playerGameStatsTable.gameId, gamesTable.id), eq(gamesTable.ownerId, req.appUser!.id)),
+    )
+    .where(eq(playerGameStatsTable.playerId, playerId));
 
   const totals = {
     games: rows.length,
@@ -169,11 +170,15 @@ router.get("/players/:playerId/teams", requireAuth, async (req, res) => {
       result: gamesTable.result,
     })
     .from(playerGameStatsTable)
-    .innerJoin(gamesTable, eq(playerGameStatsTable.gameId, gamesTable.id))
-    .innerJoin(teamsTable, eq(gamesTable.teamId, teamsTable.id))
-    .where(
-      and(eq(playerGameStatsTable.playerId, playerId), eq(gamesTable.ownerId, req.appUser!.id)),
-    );
+    .innerJoin(
+      gamesTable,
+      and(eq(playerGameStatsTable.gameId, gamesTable.id), eq(gamesTable.ownerId, req.appUser!.id)),
+    )
+    .innerJoin(
+      teamsTable,
+      and(eq(gamesTable.teamId, teamsTable.id), eq(teamsTable.ownerId, req.appUser!.id)),
+    )
+    .where(eq(playerGameStatsTable.playerId, playerId));
 
   const groups = new Map<
     number,

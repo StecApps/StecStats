@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   db,
   gamesTable,
@@ -20,10 +20,65 @@ import {
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { getObjectAclPolicy, setObjectAclPolicy } from "../lib/objectAcl";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+async function assertPlayersOwned(
+  playerIds: number[],
+  ownerId: number,
+): Promise<boolean> {
+  const uniqueIds = Array.from(new Set(playerIds));
+  if (uniqueIds.length === 0) return true;
+  const owned = await db.query.playersTable.findMany({
+    where: and(inArray(playersTable.id, uniqueIds), eq(playersTable.ownerId, ownerId)),
+  });
+  return owned.length === uniqueIds.length;
+}
+
+/**
+ * Claims an object path for a game's video, guarding against cross-tenant
+ * object hijacking: a caller may only link an object that either has no ACL
+ * policy yet (fresh, server-issued upload) or is already owned by them. This
+ * prevents an attacker from referencing another tenant's already-uploaded
+ * object path in their own game to reassign its ACL ownership to themselves.
+ * ACL write failures are treated as request failures rather than logged and
+ * ignored, so a game can never end up DB-linked to an object whose ACL
+ * ownership doesn't actually match.
+ *
+ * DB linkage is checked in addition to the ACL policy: even if an object was
+ * never given an ACL (e.g. a legacy row), we still reject the claim if any
+ * *other* tenant's game or highlight already references this exact path.
+ * This closes the gap where ACL-missing objects linked to another tenant
+ * could otherwise be "claimed" by referencing their path.
+ */
+async function claimVideoObjectPath(objectPath: string, ownerId: number): Promise<void> {
+  const [linkedByVideoPath, linkedByHighlightPath] = await Promise.all([
+    db.query.gamesTable.findFirst({ where: eq(gamesTable.videoObjectPath, objectPath) }),
+    db.query.gamesTable.findFirst({ where: eq(gamesTable.highlightObjectPath, objectPath) }),
+  ]);
+  for (const linked of [linkedByVideoPath, linkedByHighlightPath]) {
+    if (linked && linked.ownerId != null && linked.ownerId !== ownerId) {
+      throw new ObjectOwnershipConflictError();
+    }
+  }
+
+  const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+  const existingPolicy = await getObjectAclPolicy(objectFile);
+  if (existingPolicy && existingPolicy.owner !== String(ownerId)) {
+    throw new ObjectOwnershipConflictError();
+  }
+  await setObjectAclPolicy(objectFile, { owner: String(ownerId), visibility: "private" });
+}
+
+class ObjectOwnershipConflictError extends Error {
+  constructor() {
+    super("Object is already owned by another user");
+    this.name = "ObjectOwnershipConflictError";
+  }
+}
 
 async function serializeGame(gameId: number, ownerId: number) {
   const game = await db.query.gamesTable.findFirst({
@@ -31,12 +86,17 @@ async function serializeGame(gameId: number, ownerId: number) {
   });
   if (!game) return null;
 
-  const team = await db.query.teamsTable.findFirst({ where: eq(teamsTable.id, game.teamId) });
+  const team = await db.query.teamsTable.findFirst({
+    where: and(eq(teamsTable.id, game.teamId), eq(teamsTable.ownerId, ownerId)),
+  });
 
   const statRows = await db
     .select({ stat: playerGameStatsTable, playerName: playersTable.name })
     .from(playerGameStatsTable)
-    .innerJoin(playersTable, eq(playerGameStatsTable.playerId, playersTable.id))
+    .innerJoin(
+      playersTable,
+      and(eq(playerGameStatsTable.playerId, playersTable.id), eq(playersTable.ownerId, ownerId)),
+    )
     .where(eq(playerGameStatsTable.gameId, gameId));
 
   const eventRows = await db.query.gameEventsTable.findMany({
@@ -95,6 +155,33 @@ router.post("/games", requireAuth, async (req, res) => {
     return;
   }
 
+  const referencedPlayerIds = [
+    ...body.stats.map((s) => s.playerId),
+    ...body.events.map((e) => e.playerId),
+  ];
+  if (!(await assertPlayersOwned(referencedPlayerIds, ownerId))) {
+    res.status(404).json({ error: "Player not found" });
+    return;
+  }
+
+  const videoObjectPath = body.videoObjectPath
+    ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
+    : null;
+
+  if (videoObjectPath) {
+    try {
+      await claimVideoObjectPath(videoObjectPath, ownerId);
+    } catch (err) {
+      if (err instanceof ObjectOwnershipConflictError) {
+        res.status(409).json({ error: "Video object is already owned by another user" });
+        return;
+      }
+      req.log.error({ err }, "Failed to claim video object ACL policy");
+      res.status(400).json({ error: "Invalid or inaccessible video object" });
+      return;
+    }
+  }
+
   const game = await db.transaction(async (tx) => {
     const [createdGame] = await tx
       .insert(gamesTable)
@@ -106,9 +193,7 @@ router.post("/games", requireAuth, async (req, res) => {
         result: body.result,
         teamScore: body.teamScore,
         opponentScore: body.opponentScore,
-        videoObjectPath: body.videoObjectPath
-          ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
-          : null,
+        videoObjectPath,
       })
       .returning();
 
@@ -132,15 +217,6 @@ router.post("/games", requireAuth, async (req, res) => {
 
     return createdGame;
   });
-
-  if (game.videoObjectPath) {
-    await objectStorageService
-      .trySetObjectEntityAclPolicy(game.videoObjectPath, {
-        owner: String(ownerId),
-        visibility: "private",
-      })
-      .catch((err) => req.log.error({ err }, "Failed to set video ACL policy"));
-  }
 
   const serialized = await serializeGame(game.id, ownerId);
   res.status(201).json(CreateGameResponse.parse(serialized));
@@ -177,9 +253,32 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
     return;
   }
 
+  const referencedPlayerIds = [
+    ...body.stats.map((s) => s.playerId),
+    ...body.events.map((e) => e.playerId),
+  ];
+  if (!(await assertPlayersOwned(referencedPlayerIds, ownerId))) {
+    res.status(404).json({ error: "Player not found" });
+    return;
+  }
+
   const videoObjectPath = body.videoObjectPath
     ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
     : null;
+
+  if (videoObjectPath && videoObjectPath !== existing.videoObjectPath) {
+    try {
+      await claimVideoObjectPath(videoObjectPath, ownerId);
+    } catch (err) {
+      if (err instanceof ObjectOwnershipConflictError) {
+        res.status(409).json({ error: "Video object is already owned by another user" });
+        return;
+      }
+      req.log.error({ err }, "Failed to claim video object ACL policy");
+      res.status(400).json({ error: "Invalid or inaccessible video object" });
+      return;
+    }
+  }
 
   await db.transaction(async (tx) => {
     await tx
@@ -221,15 +320,6 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
       );
     }
   });
-
-  if (videoObjectPath) {
-    await objectStorageService
-      .trySetObjectEntityAclPolicy(videoObjectPath, {
-        owner: String(ownerId),
-        visibility: "private",
-      })
-      .catch((err) => req.log.error({ err }, "Failed to set video ACL policy"));
-  }
 
   const serialized = await serializeGame(gameId, ownerId);
   res.json(UpdateGameResponse.parse(serialized));

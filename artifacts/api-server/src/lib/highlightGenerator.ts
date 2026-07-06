@@ -2,7 +2,7 @@ import { spawn } from "child_process";
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   db,
   gamesTable,
@@ -114,11 +114,15 @@ export async function generateHighlight(gameId: number): Promise<void> {
     }
 
     const playerIds = Array.from(new Set(eligible.map((e) => e.playerId)));
-    const players = playerIds.length
-      ? await db.query.playersTable.findMany({
-          where: inArray(playersTable.id, playerIds),
-        })
-      : [];
+    const players =
+      playerIds.length && game.ownerId != null
+        ? await db.query.playersTable.findMany({
+            where: and(
+              inArray(playersTable.id, playerIds),
+              eq(playersTable.ownerId, game.ownerId),
+            ),
+          })
+        : [];
     const nameById = new Map(players.map((p) => [p.id, p.name]));
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));

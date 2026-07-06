@@ -13,3 +13,4 @@
 - [@workspace/db is a composite emitDeclarationOnly project](db-composite-declarations.md) — after a schema change, consumers read stale `lib/db/dist/*.d.ts`; rebuild with `tsc -b lib/db --force`, not just deleting tsbuildinfo.
 - [Highlight reel pipeline](highlight-reel.md) — fire-and-forget MP4 of good plays; `processing` must be timeout-recoverable and a game edit must invalidate the stored reel.
 - [Express sub-router auth blackhole](express-subrouter-auth-blackhole.md) — `router.use(requireAuth)` with no path prefix silently blocks sibling routers' public routes mounted later; apply auth per-route instead.
+- [Multi-tenant ownerId scoping patterns](multi-tenant-ownerid-scoping.md) — claim-on-first-login, FK-from-body validation, unscoped-join leaks, and object-storage ACL hijack guards for per-account isolation.

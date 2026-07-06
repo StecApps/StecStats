@@ -49,20 +49,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       // every subsequent signup. We only attempt this when we actually
       // inserted a brand-new user row, not on a lookup of an existing one.
       if (inserted) {
-        await Promise.all([
-          db
+        await db.transaction(async (tx) => {
+          await tx
             .update(playersTable)
             .set({ ownerId: inserted.id })
-            .where(isNull(playersTable.ownerId)),
-          db
+            .where(isNull(playersTable.ownerId));
+          await tx
             .update(teamsTable)
             .set({ ownerId: inserted.id })
-            .where(isNull(teamsTable.ownerId)),
-          db
+            .where(isNull(teamsTable.ownerId));
+          await tx
             .update(gamesTable)
             .set({ ownerId: inserted.id })
-            .where(isNull(gamesTable.ownerId)),
-        ]);
+            .where(isNull(gamesTable.ownerId));
+        });
       }
     }
 

@@ -101,7 +101,13 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
     ? await db
         .select({ stat: playerGameStatsTable, playerName: playersTable.name })
         .from(playerGameStatsTable)
-        .innerJoin(playersTable, eq(playerGameStatsTable.playerId, playersTable.id))
+        .innerJoin(
+          playersTable,
+          and(
+            eq(playerGameStatsTable.playerId, playersTable.id),
+            eq(playersTable.ownerId, req.appUser!.id),
+          ),
+        )
         .where(inArray(playerGameStatsTable.gameId, gameIds))
     : [];
 
