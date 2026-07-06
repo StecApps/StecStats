@@ -22,21 +22,22 @@ import {
   ListTeamGamesResponse,
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
-router.get("/teams", async (_req, res) => {
+router.get("/teams", requireAuth, async (_req, res) => {
   const teams = await db.select().from(teamsTable).orderBy(teamsTable.name);
   res.json(ListTeamsResponse.parse(teams));
 });
 
-router.post("/teams", async (req, res) => {
+router.post("/teams", requireAuth, async (req, res) => {
   const body = CreateTeamBody.parse(req.body);
   const [team] = await db.insert(teamsTable).values(body).returning();
   res.status(201).json(CreateTeamResponse.parse(team));
 });
 
-router.get("/teams/:teamId", async (req, res) => {
+router.get("/teams/:teamId", requireAuth, async (req, res) => {
   const { teamId } = GetTeamParams.parse(req.params);
   const team = await db.query.teamsTable.findFirst({ where: eq(teamsTable.id, teamId) });
   if (!team) {
@@ -46,7 +47,7 @@ router.get("/teams/:teamId", async (req, res) => {
   res.json(GetTeamResponse.parse(team));
 });
 
-router.patch("/teams/:teamId", async (req, res) => {
+router.patch("/teams/:teamId", requireAuth, async (req, res) => {
   const { teamId } = UpdateTeamParams.parse(req.params);
   const body = UpdateTeamBody.parse(req.body);
   const [team] = await db
@@ -61,13 +62,13 @@ router.patch("/teams/:teamId", async (req, res) => {
   res.json(UpdateTeamResponse.parse(team));
 });
 
-router.delete("/teams/:teamId", async (req, res) => {
+router.delete("/teams/:teamId", requireAuth, async (req, res) => {
   const { teamId } = DeleteTeamParams.parse(req.params);
   await db.delete(teamsTable).where(eq(teamsTable.id, teamId));
   res.status(204).send();
 });
 
-router.get("/teams/:teamId/games", async (req, res) => {
+router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
   const { teamId } = ListTeamGamesParams.parse(req.params);
   const team = await db.query.teamsTable.findFirst({ where: eq(teamsTable.id, teamId) });
   if (!team) {

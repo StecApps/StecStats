@@ -17,21 +17,22 @@ import {
   ListPlayerTeamGroupsResponse,
 } from "@workspace/api-zod";
 import { computePoints, safeDiv } from "../lib/stats";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
-router.get("/players", async (_req, res) => {
+router.get("/players", requireAuth, async (_req, res) => {
   const players = await db.select().from(playersTable).orderBy(playersTable.name);
   res.json(ListPlayersResponse.parse(players));
 });
 
-router.post("/players", async (req, res) => {
+router.post("/players", requireAuth, async (req, res) => {
   const body = CreatePlayerBody.parse(req.body);
   const [player] = await db.insert(playersTable).values(body).returning();
   res.status(201).json(CreatePlayerResponse.parse(player));
 });
 
-router.get("/players/:playerId", async (req, res) => {
+router.get("/players/:playerId", requireAuth, async (req, res) => {
   const { playerId } = GetPlayerParams.parse(req.params);
   const player = await db.query.playersTable.findFirst({
     where: eq(playersTable.id, playerId),
@@ -43,7 +44,7 @@ router.get("/players/:playerId", async (req, res) => {
   res.json(GetPlayerResponse.parse(player));
 });
 
-router.patch("/players/:playerId", async (req, res) => {
+router.patch("/players/:playerId", requireAuth, async (req, res) => {
   const { playerId } = UpdatePlayerParams.parse(req.params);
   const body = UpdatePlayerBody.parse(req.body);
   const [player] = await db
@@ -58,13 +59,13 @@ router.patch("/players/:playerId", async (req, res) => {
   res.json(UpdatePlayerResponse.parse(player));
 });
 
-router.delete("/players/:playerId", async (req, res) => {
+router.delete("/players/:playerId", requireAuth, async (req, res) => {
   const { playerId } = DeletePlayerParams.parse(req.params);
   await db.delete(playersTable).where(eq(playersTable.id, playerId));
   res.status(204).send();
 });
 
-router.get("/players/:playerId/summary", async (req, res) => {
+router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
   const { playerId } = GetPlayerSummaryParams.parse(req.params);
   const player = await db.query.playersTable.findFirst({
     where: eq(playersTable.id, playerId),
@@ -140,7 +141,7 @@ router.get("/players/:playerId/summary", async (req, res) => {
   res.json(GetPlayerSummaryResponse.parse(summary));
 });
 
-router.get("/players/:playerId/teams", async (req, res) => {
+router.get("/players/:playerId/teams", requireAuth, async (req, res) => {
   const { playerId } = ListPlayerTeamGroupsParams.parse(req.params);
   const player = await db.query.playersTable.findFirst({
     where: eq(playersTable.id, playerId),

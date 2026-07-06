@@ -6,6 +6,7 @@ import {
   countEligibleMoments,
   generateHighlight,
 } from "../lib/highlightGenerator";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
@@ -22,7 +23,7 @@ function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | 
   return "idle";
 }
 
-router.get("/games/:gameId/highlight", async (req, res) => {
+router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
   const { gameId } = GetGameParams.parse(req.params);
   const game = await db.query.gamesTable.findFirst({
     where: eq(gamesTable.id, gameId),
@@ -43,7 +44,7 @@ router.get("/games/:gameId/highlight", async (req, res) => {
   );
 });
 
-router.post("/games/:gameId/highlight", async (req, res) => {
+router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
   const { gameId } = GetGameParams.parse(req.params);
   const game = await db.query.gamesTable.findFirst({
     where: eq(gamesTable.id, gameId),

@@ -1,12 +1,43 @@
 import { Link, useLocation } from "wouter";
-import { Trophy, FileUp, Activity } from "lucide-react";
+import { Trophy, FileUp, Activity, LogOut } from "lucide-react";
+import { useUser, useClerk } from "@clerk/react";
 import { cn } from "@/lib/utils";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function UserMenu() {
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
+
+  if (!isLoaded || !user) return null;
+
+  const label = user.primaryEmailAddress?.emailAddress ?? user.username ?? "Account";
+
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        data-testid="user-email-display"
+        className="hidden sm:inline text-xs text-foreground/60 truncate max-w-[160px]"
+      >
+        {label}
+      </span>
+      <button
+        type="button"
+        onClick={() => signOut({ redirectUrl: basePath || "/" })}
+        className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/70 hover:text-foreground hover:bg-accent transition-colors"
+      >
+        <LogOut className="w-3.5 h-3.5" />
+        Log out
+      </button>
+    </div>
+  );
+}
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
   const navItems = [
-    { href: "/", label: "Dashboard", icon: Trophy },
+    { href: "/dashboard", label: "Dashboard", icon: Trophy },
     { href: "/record", label: "Record Game", icon: Activity },
     { href: "/import", label: "Import", icon: FileUp },
   ];
@@ -15,38 +46,41 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-[100dvh] flex flex-col w-full">
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-14 max-w-screen-2xl items-center mx-auto px-4 md:px-8">
-          <div className="mr-4 hidden md:flex">
-            <Link href="/" className="mr-6 flex items-center space-x-2">
-              <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-display text-2xl leading-none">
-                S
-              </div>
-              <span className="hidden sm:flex flex-col leading-none">
-                <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
-                <span className="text-[10px] font-medium uppercase tracking-widest text-primary/80 leading-none mt-0.5">Your all-in-one app</span>
-              </span>
-            </Link>
-            <nav className="flex items-center space-x-6 text-sm font-medium">
-              {navItems.map((item) => {
-                const isActive = location === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "transition-colors hover:text-foreground/80 flex items-center gap-2",
-                      isActive ? "text-foreground font-bold" : "text-foreground/60"
-                    )}
-                  >
-                    <item.icon className="w-4 h-4" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
+          <div className="mr-4 hidden md:flex flex-1 items-center justify-between">
+            <div className="flex items-center">
+              <Link href="/dashboard" className="mr-6 flex items-center space-x-2">
+                <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-display text-2xl leading-none">
+                  S
+                </div>
+                <span className="hidden sm:flex flex-col leading-none">
+                  <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
+                  <span className="text-[10px] font-medium uppercase tracking-widest text-primary/80 leading-none mt-0.5">Your all-in-one app</span>
+                </span>
+              </Link>
+              <nav className="flex items-center space-x-6 text-sm font-medium">
+                {navItems.map((item) => {
+                  const isActive = location === item.href;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={cn(
+                        "transition-colors hover:text-foreground/80 flex items-center gap-2",
+                        isActive ? "text-foreground font-bold" : "text-foreground/60"
+                      )}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </div>
+            <UserMenu />
           </div>
           {/* Mobile nav */}
           <div className="md:hidden flex w-full justify-between items-center">
-            <Link href="/" className="flex items-center space-x-2">
+            <Link href="/dashboard" className="flex items-center space-x-2">
               <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-display text-2xl leading-none">
                 S
               </div>
@@ -55,6 +89,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <span className="text-[9px] font-medium uppercase tracking-widest text-primary/80 leading-none mt-0.5">Your all-in-one app</span>
               </span>
             </Link>
+            <UserMenu />
           </div>
         </div>
       </header>

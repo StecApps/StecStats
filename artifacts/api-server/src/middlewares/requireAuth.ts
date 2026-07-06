@@ -44,6 +44,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         }));
     }
 
+    if (!user) {
+      req.log?.error({ clerkUserId }, "Failed to provision or locate local user record");
+      res.status(500).json({ error: "Failed to resolve authenticated user" });
+      return;
+    }
+
     req.appUser = user;
     next();
   } catch (error) {

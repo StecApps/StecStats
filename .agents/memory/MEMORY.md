@@ -12,3 +12,4 @@
 - [Drizzle schema not pushed in sandbox](drizzle-schema-not-pushed.md) — a fresh/restarted env can have code referencing DB tables that were never pushed; run `drizzle-kit push` before assuming a query bug.
 - [@workspace/db is a composite emitDeclarationOnly project](db-composite-declarations.md) — after a schema change, consumers read stale `lib/db/dist/*.d.ts`; rebuild with `tsc -b lib/db --force`, not just deleting tsbuildinfo.
 - [Highlight reel pipeline](highlight-reel.md) — fire-and-forget MP4 of good plays; `processing` must be timeout-recoverable and a game edit must invalidate the stored reel.
+- [Express sub-router auth blackhole](express-subrouter-auth-blackhole.md) — `router.use(requireAuth)` with no path prefix silently blocks sibling routers' public routes mounted later; apply auth per-route instead.

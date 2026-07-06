@@ -2,10 +2,11 @@ import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
 import { db, playersTable, teamsTable, gamesTable, playerGameStatsTable } from "@workspace/db";
 import { ImportDataBody, ImportDataResponse } from "@workspace/api-zod";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
-router.post("/import", async (req, res) => {
+router.post("/import", requireAuth, async (req, res) => {
   const body = ImportDataBody.parse(req.body);
 
   let playersCreated = 0;

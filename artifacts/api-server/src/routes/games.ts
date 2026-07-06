@@ -20,6 +20,7 @@ import {
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -80,7 +81,7 @@ async function serializeGame(gameId: number) {
   };
 }
 
-router.post("/games", async (req, res) => {
+router.post("/games", requireAuth, async (req, res) => {
   const body = CreateGameBody.parse(req.body);
 
   const game = await db.transaction(async (tx) => {
@@ -124,7 +125,7 @@ router.post("/games", async (req, res) => {
   res.status(201).json(CreateGameResponse.parse(serialized));
 });
 
-router.get("/games/:gameId", async (req, res) => {
+router.get("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = GetGameParams.parse(req.params);
   const serialized = await serializeGame(gameId);
   if (!serialized) {
@@ -134,7 +135,7 @@ router.get("/games/:gameId", async (req, res) => {
   res.json(GetGameResponse.parse(serialized));
 });
 
-router.patch("/games/:gameId", async (req, res) => {
+router.patch("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = UpdateGameParams.parse(req.params);
   const body = UpdateGameBody.parse(req.body);
 
@@ -191,7 +192,7 @@ router.patch("/games/:gameId", async (req, res) => {
   res.json(UpdateGameResponse.parse(serialized));
 });
 
-router.delete("/games/:gameId", async (req, res) => {
+router.delete("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = DeleteGameParams.parse(req.params);
   await db.delete(gamesTable).where(eq(gamesTable.id, gameId));
   res.status(204).send();

@@ -918,7 +918,7 @@ export default function RecordGame() {
       });
       queryClient.invalidateQueries({ queryKey: getListTeamGamesQueryKey(parseInt(teamId, 10)) });
       
-      navigate("/");
+      navigate("/dashboard");
     } catch(err) {
       toast({ title: "Error saving game", variant: "destructive" });
     }
@@ -1037,7 +1037,7 @@ export default function RecordGame() {
   return (
     <div className="flex flex-col space-y-6 pb-40 md:pb-24">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/")}><ArrowLeft className="w-5 h-5" /></Button>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}><ArrowLeft className="w-5 h-5" /></Button>
         <h1 className="flex items-center gap-3 text-4xl font-display font-bold uppercase tracking-tight text-foreground">
           <span className="w-1.5 h-8 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.6)]" />
           {isEditing ? "Edit Game" : "Record Game"}

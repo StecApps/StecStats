@@ -374,7 +374,7 @@ export default function ImportData() {
             <div className="flex gap-3 mt-4">
               <Button variant="outline" onClick={resetAll}>Import Another File</Button>
               <Button asChild size="lg">
-                <Link href="/">Go to Dashboard <ArrowRight className="w-4 h-4 ml-2" /></Link>
+                <Link href="/dashboard">Go to Dashboard <ArrowRight className="w-4 h-4 ml-2" /></Link>
               </Button>
             </div>
           </CardContent>

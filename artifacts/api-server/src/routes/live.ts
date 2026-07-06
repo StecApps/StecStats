@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { liveStreamRegistry, getIceServers } from "../lib/liveStream";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
@@ -25,7 +26,7 @@ router.get("/live/ice-servers", async (_req: Request, res: Response) => {
  * code (or the watch link built from it) can join as a viewer. No accounts
  * are required on either side.
  */
-router.post("/live/start", async (req: Request, res: Response) => {
+router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
   const { opponent, teamName } = req.body ?? {};
   if (typeof opponent !== "string" || !opponent.trim() || typeof teamName !== "string" || !teamName.trim()) {
     res.status(400).json({ error: "Missing or invalid required fields" });
@@ -69,7 +70,7 @@ router.get("/live/:code/status", async (req: Request, res: Response) => {
  * Explicit stop (in addition to automatic cleanup when the broadcaster's
  * websocket disconnects).
  */
-router.post("/live/:code/stop", async (req: Request, res: Response) => {
+router.post("/live/:code/stop", requireAuth, async (req: Request, res: Response) => {
   const code = Array.isArray(req.params.code) ? req.params.code[0] : req.params.code;
   await liveStreamRegistry.endSession(code ?? "");
   res.json({ success: true });
