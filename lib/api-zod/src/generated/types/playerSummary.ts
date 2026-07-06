@@ -5,10 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { PlayerSummaryPlan } from './playerSummaryPlan';
+import type { PlayerSummarySeasonScope } from './playerSummarySeasonScope';
 
 export interface PlayerSummary {
   playerId: number;
   playerName: string;
+  plan: PlayerSummaryPlan;
+  seasonScope: PlayerSummarySeasonScope;
   games: number;
   wins: number;
   losses: number;
@@ -30,7 +34,7 @@ export interface PlayerSummary {
   spg: number;
   topg: number;
   bpg: number;
-  fgPct: number;
-  threePct: number;
-  ftPct: number;
+  fgPct?: number;
+  threePct?: number;
+  ftPct?: number;
 }

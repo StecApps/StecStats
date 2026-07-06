@@ -24,6 +24,8 @@ import {
 import { computePoints } from "../lib/stats";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements } from "../lib/entitlements";
+import { getCurrentSeasonStartDate } from "../lib/season";
+import { gte } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -112,10 +114,24 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
     return;
   }
 
+  // Free plan: "current season only" -- a single team record can span
+  // multiple real-world seasons of recorded games, so filter by date too.
+  // Enforced server-side (source of truth) -- the UI gate is cosmetic only.
+  const isFree = (await getEntitlements(req.appUser!.stripeCustomerId)).plan === "free";
+  const seasonStart = getCurrentSeasonStartDate();
+
   const games = await db
     .select()
     .from(gamesTable)
-    .where(and(eq(gamesTable.teamId, teamId), eq(gamesTable.ownerId, req.appUser!.id)))
+    .where(
+      isFree
+        ? and(
+            eq(gamesTable.teamId, teamId),
+            eq(gamesTable.ownerId, req.appUser!.id),
+            gte(gamesTable.date, seasonStart),
+          )
+        : and(eq(gamesTable.teamId, teamId), eq(gamesTable.ownerId, req.appUser!.id)),
+    )
     .orderBy(gamesTable.date);
 
   const gameIds = games.map((g) => g.id);

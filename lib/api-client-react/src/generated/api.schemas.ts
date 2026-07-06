@@ -25,9 +25,27 @@ export interface PlayerUpdate {
   name?: string;
 }
 
+export type PlayerSummaryPlan = typeof PlayerSummaryPlan[keyof typeof PlayerSummaryPlan];
+
+
+export const PlayerSummaryPlan = {
+  free: 'free',
+  pro: 'pro',
+} as const;
+
+export type PlayerSummarySeasonScope = typeof PlayerSummarySeasonScope[keyof typeof PlayerSummarySeasonScope];
+
+
+export const PlayerSummarySeasonScope = {
+  current: 'current',
+  career: 'career',
+} as const;
+
 export interface PlayerSummary {
   playerId: number;
   playerName: string;
+  plan: PlayerSummaryPlan;
+  seasonScope: PlayerSummarySeasonScope;
   games: number;
   wins: number;
   losses: number;
@@ -49,9 +67,9 @@ export interface PlayerSummary {
   spg: number;
   topg: number;
   bpg: number;
-  fgPct: number;
-  threePct: number;
-  ftPct: number;
+  fgPct?: number;
+  threePct?: number;
+  ftPct?: number;
 }
 
 export interface PlayerTeamGroup {

@@ -19,6 +19,8 @@ import {
 import { computePoints, safeDiv } from "../lib/stats";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements } from "../lib/entitlements";
+import { getCurrentSeasonStartDate } from "../lib/season";
+import { gte } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -106,6 +108,13 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
     return;
   }
 
+  // Free plan: "current season only, basic stats" -- no career-spanning
+  // data and no shooting-efficiency percentages (Pro-only gauges). This is
+  // enforced here server-side; the UI gate is cosmetic only.
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  const isFree = entitlements.plan === "free";
+  const seasonStart = getCurrentSeasonStartDate();
+
   const rows = await db
     .select({
       stat: playerGameStatsTable,
@@ -116,7 +125,11 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
       gamesTable,
       and(eq(playerGameStatsTable.gameId, gamesTable.id), eq(gamesTable.ownerId, req.appUser!.id)),
     )
-    .where(eq(playerGameStatsTable.playerId, playerId));
+    .where(
+      isFree
+        ? and(eq(playerGameStatsTable.playerId, playerId), gte(gamesTable.date, seasonStart))
+        : eq(playerGameStatsTable.playerId, playerId),
+    );
 
   const totals = {
     games: rows.length,
@@ -160,6 +173,8 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
   const summary = {
     playerId: player.id,
     playerName: player.name,
+    plan: entitlements.plan,
+    seasonScope: isFree ? ("current" as const) : ("career" as const),
     ...totals,
     ppg: safeDiv(totals.points, games),
     rpg: safeDiv(totals.rebounds, games),
@@ -167,9 +182,16 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
     spg: safeDiv(totals.steals, games),
     topg: safeDiv(totals.turnovers, games),
     bpg: safeDiv(totals.blocks, games),
-    fgPct: safeDiv(fgMade, fgAttempted),
-    threePct: safeDiv(totals.threeMade, totals.threeAttempted),
-    ftPct: safeDiv(totals.ftMade, totals.ftAttempted),
+    // Shooting-efficiency gauges are a Pro-only feature -- omit entirely for
+    // free accounts rather than sending (and relying on the client to hide)
+    // the real numbers.
+    ...(isFree
+      ? {}
+      : {
+          fgPct: safeDiv(fgMade, fgAttempted),
+          threePct: safeDiv(totals.threeMade, totals.threeAttempted),
+          ftPct: safeDiv(totals.ftMade, totals.ftAttempted),
+        }),
   };
 
   res.json(GetPlayerSummaryResponse.parse(summary));
@@ -184,6 +206,11 @@ router.get("/players/:playerId/teams", requireAuth, async (req, res) => {
     res.status(404).json({ error: "Player not found" });
     return;
   }
+
+  // Free plan: "current season only" -- career team/season history beyond
+  // the current season is Pro-only. Enforced server-side.
+  const isFree = (await getEntitlements(req.appUser!.stripeCustomerId)).plan === "free";
+  const seasonStart = getCurrentSeasonStartDate();
 
   const rows = await db
     .select({
@@ -200,7 +227,11 @@ router.get("/players/:playerId/teams", requireAuth, async (req, res) => {
       teamsTable,
       and(eq(gamesTable.teamId, teamsTable.id), eq(teamsTable.ownerId, req.appUser!.id)),
     )
-    .where(eq(playerGameStatsTable.playerId, playerId));
+    .where(
+      isFree
+        ? and(eq(playerGameStatsTable.playerId, playerId), gte(gamesTable.date, seasonStart))
+        : eq(playerGameStatsTable.playerId, playerId),
+    );
 
   const groups = new Map<
     number,

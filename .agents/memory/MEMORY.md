@@ -17,3 +17,4 @@
 - [Multi-tenant ownerId scoping patterns](multi-tenant-ownerid-scoping.md) — designated-owner legacy claim (not first-signup), FK-from-body validation, unscoped-join leaks, and object-storage ACL hijack guards.
 - [stripe-replit-sync migration race on first boot](stripe-sync-migration-race.md) — first automatic boot can log "relation stripe.accounts does not exist" even though migrations succeed; confirm tables then just restart.
 - [Flaky e2e failure from mid-test workflow restart](flaky-e2e-workflow-restart.md) — api-server can auto-restart during an e2e run, causing a spurious network failure; re-run the test before assuming a real app bug.
+- [Paywall gating must cover every response field/section, not just limits](paywall-full-surface-gating.md) — a "current season only" spec item and Pro-only computed fields (shooting %) need explicit server-side filtering/omission, not just create-limits.

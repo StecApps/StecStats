@@ -32,6 +32,8 @@ export * from './playerGameStatInput';
 export * from './playerGameStatLine';
 export * from './playerInput';
 export * from './playerSummary';
+export * from './playerSummaryPlan';
+export * from './playerSummarySeasonScope';
 export * from './playerTeamGroup';
 export * from './playerUpdate';
 export * from './portalSessionResponse';

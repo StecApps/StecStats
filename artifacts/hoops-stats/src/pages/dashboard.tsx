@@ -23,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -208,7 +208,8 @@ function PlayerDashboard({ playerId, player }: { playerId: number, player?: {id:
           </h1>
           <div className="mt-5 flex items-center gap-3">
             <span className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/60 px-4 py-1.5 text-[0.65rem] font-bold uppercase tracking-[0.25em] text-muted-foreground">
-              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" /> Career Summary Dashboard
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              {summary.seasonScope === "career" ? "Career Summary Dashboard" : "Current Season Summary"}
             </span>
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
               <DialogTrigger asChild>
@@ -247,14 +248,31 @@ function PlayerDashboard({ playerId, player }: { playerId: number, player?: {id:
         <HeadlineStat label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} total`} className="border-t md:border-t-0 border-border/60" />
       </div>
 
-      {/* SHOOTING EFFICIENCY */}
+      {/* SHOOTING EFFICIENCY (Pro-only) */}
       <div>
         <SectionHeader title="Shooting Efficiency" />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <GaugeCard label="Field Goal" value={summary.fgPct} made={summary.twoMade + summary.threeMade} attempted={summary.twoAttempted + summary.threeAttempted} />
-          <GaugeCard label="3-Point" value={summary.threePct} made={summary.threeMade} attempted={summary.threeAttempted} />
-          <GaugeCard label="Free Throw" value={summary.ftPct} made={summary.ftMade} attempted={summary.ftAttempted} />
-        </div>
+        {summary.plan === "pro" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <GaugeCard label="Field Goal" value={summary.fgPct ?? 0} made={summary.twoMade + summary.threeMade} attempted={summary.twoAttempted + summary.threeAttempted} />
+            <GaugeCard label="3-Point" value={summary.threePct ?? 0} made={summary.threeMade} attempted={summary.threeAttempted} />
+            <GaugeCard label="Free Throw" value={summary.ftPct ?? 0} made={summary.ftMade} attempted={summary.ftAttempted} />
+          </div>
+        ) : (
+          <Card className="border-dashed border-2 border-muted bg-transparent">
+            <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <Lock className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-display font-bold uppercase">Shooting Gauges are a Pro Feature</h3>
+                <p className="text-muted-foreground text-sm">Upgrade to Pro to unlock FG%, 3PT%, and FT% efficiency gauges.</p>
+              </div>
+              <Button asChild size="sm">
+                <Link href="/billing">Upgrade to Pro</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* PLAYMAKING & DEFENSE */}
@@ -270,7 +288,15 @@ function PlayerDashboard({ playerId, player }: { playerId: number, player?: {id:
       
       <div className="mt-8">
         <div className="flex justify-between items-center mb-4 border-b-2 border-secondary/10 pb-2">
-          <h2 className="text-2xl font-display font-bold uppercase text-secondary">Teams & Seasons</h2>
+          <div>
+            <h2 className="text-2xl font-display font-bold uppercase text-secondary">Teams & Seasons</h2>
+            {summary.seasonScope === "current" && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Showing current season only.{" "}
+                <Link href="/billing" className="text-primary underline">Upgrade to Pro</Link> for full career history.
+              </p>
+            )}
+          </div>
           <ManageTeamsDialog
             trigger={<Button variant="outline" size="sm"><ListTree className="w-4 h-4 mr-2" /> Manage Teams</Button>}
           />

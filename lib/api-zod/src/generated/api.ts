@@ -100,6 +100,8 @@ export const GetPlayerSummaryParams = zod.object({
 export const GetPlayerSummaryResponse = zod.object({
   "playerId": zod.number(),
   "playerName": zod.string(),
+  "plan": zod.enum(['free', 'pro']),
+  "seasonScope": zod.enum(['current', 'career']),
   "games": zod.number(),
   "wins": zod.number(),
   "losses": zod.number(),
@@ -121,9 +123,9 @@ export const GetPlayerSummaryResponse = zod.object({
   "spg": zod.number(),
   "topg": zod.number(),
   "bpg": zod.number(),
-  "fgPct": zod.number(),
-  "threePct": zod.number(),
-  "ftPct": zod.number()
+  "fgPct": zod.number().optional(),
+  "threePct": zod.number().optional(),
+  "ftPct": zod.number().optional()
 })
 
 

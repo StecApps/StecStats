@@ -576,6 +576,8 @@ components:
       required:
         - playerId
         - playerName
+        - plan
+        - seasonScope
         - games
         - wins
         - losses
@@ -597,12 +599,15 @@ components:
         - spg
         - topg
         - bpg
-        - fgPct
-        - threePct
-        - ftPct
       properties:
         playerId: { type: integer }
         playerName: { type: string }
+        # "free" accounts only ever see current-season data, and never see
+        # shooting-efficiency percentages (fgPct/threePct/ftPct) -- both are
+        # Pro-only per Task #18. The frontend uses these to render upgrade
+        # prompts; the server is the actual (authoritative) enforcement.
+        plan: { type: string, enum: [free, pro] }
+        seasonScope: { type: string, enum: [current, career] }
         games: { type: integer }
         wins: { type: integer }
         losses: { type: integer }
@@ -624,6 +629,7 @@ components:
         spg: { type: number }
         topg: { type: number }
         bpg: { type: number }
+        # Only present for Pro accounts (shooting-efficiency gauges are Pro-only).
         fgPct: { type: number }
         threePct: { type: number }
         ftPct: { type: number }
