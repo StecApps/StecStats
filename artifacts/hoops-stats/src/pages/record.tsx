@@ -1389,7 +1389,7 @@ export default function RecordGame() {
             </div>
           </div>
 
-          <div className="flex-[2] md:flex-1 min-h-0 phone-landscape:min-w-0 phone-landscape:w-[46%] phone-landscape:flex-none overflow-y-auto bg-background p-3 space-y-4">
+          <div className="flex-[2] md:flex-1 min-h-0 phone-landscape:min-w-0 phone-landscape:w-[35%] phone-landscape:flex-none overflow-y-auto bg-background p-3 space-y-4">
             {liveScoreboardHud}
             {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
 
