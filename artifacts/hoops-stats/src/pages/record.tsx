@@ -1065,7 +1065,7 @@ export default function RecordGame() {
                 src={recordedPreviewUrl || (existingVideoObjectPath ? videoObjectSrc(existingVideoObjectPath) : undefined)}
                 controls
                 playsInline
-                className="w-full max-w-md max-h-[70vh] rounded-lg bg-black object-contain"
+                className="w-full max-w-md max-h-[70vh] rounded-lg bg-black object-contain phone-landscape:max-w-full phone-landscape:max-h-[85vh]"
               />
               {events.length > 0 && (
                 <div className="space-y-1 max-w-md">
