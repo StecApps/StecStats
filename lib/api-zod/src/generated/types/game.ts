@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GameEvent } from './gameEvent';
+import type { GameHighlightStatus } from './gameHighlightStatus';
 import type { GameResult } from './gameResult';
 import type { PlayerGameStatLine } from './playerGameStatLine';
 
@@ -19,6 +20,9 @@ export interface Game {
   teamScore: number;
   opponentScore: number;
   videoObjectPath?: string | null;
+  highlightObjectPath?: string | null;
+  highlightStatus?: GameHighlightStatus;
+  highlightError?: string | null;
   createdAt: Date;
   stats: PlayerGameStatLine[];
   events: GameEvent[];

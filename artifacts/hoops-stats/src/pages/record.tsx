@@ -7,6 +7,9 @@ import {
   useGetGame,
   useCreateTeam,
   useCreatePlayer,
+  useGetGameHighlight,
+  useGenerateGameHighlight,
+  getGetGameHighlightQueryKey,
   getGetGameQueryKey,
   getGetPlayerSummaryQueryKey,
   getListPlayerTeamGroupsQueryKey,
@@ -19,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture, Mic, MicOff } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -114,6 +117,58 @@ export default function RecordGame() {
   const createPlayer = useCreatePlayer();
   const createGame = useCreateGame();
   const updateGame = useUpdateGame();
+  const generateHighlight = useGenerateGameHighlight();
+
+  const { data: highlight } = useGetGameHighlight(gameId as number, {
+    query: {
+      enabled: isEditing,
+      queryKey: getGetGameHighlightQueryKey(gameId as number),
+      refetchInterval: (query) =>
+        query.state.data?.status === "processing" ? 3000 : false,
+    },
+  });
+
+  const highlightFileName = () => {
+    const opp = (opponent || "game").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
+    return `stec-highlights-${opp || "game"}.mp4`;
+  };
+
+  const handleGenerateHighlight = async () => {
+    if (!gameId) return;
+    try {
+      await generateHighlight.mutateAsync({ gameId });
+      await queryClient.invalidateQueries({ queryKey: getGetGameHighlightQueryKey(gameId) });
+    } catch {
+      toast({ title: "Couldn't start the highlight reel", variant: "destructive" });
+    }
+  };
+
+  const handleDownloadHighlight = () => {
+    if (!highlight?.highlightObjectPath) return;
+    const a = document.createElement("a");
+    a.href = videoObjectSrc(highlight.highlightObjectPath);
+    a.download = highlightFileName();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const handleShareHighlight = async () => {
+    if (!highlight?.highlightObjectPath) return;
+    try {
+      const res = await fetch(videoObjectSrc(highlight.highlightObjectPath));
+      const blob = await res.blob();
+      const file = new File([blob], highlightFileName(), { type: "video/mp4" });
+      const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], title: "Game Highlights" });
+      } else {
+        handleDownloadHighlight();
+      }
+    } catch {
+      toast({ title: "Couldn't share the highlight reel", variant: "destructive" });
+    }
+  };
 
   const [teamId, setTeamId] = useState<string>(preselectedTeamId);
   const [opponent, setOpponent] = useState("");
@@ -1116,6 +1171,59 @@ export default function RecordGame() {
 
           {isUploadingVideo && (
             <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Uploading video...</p>
+          )}
+
+          {isEditing && existingVideoObjectPath && !recordedPreviewUrl && (
+            <div className="max-w-md rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                <span className="font-display font-bold uppercase tracking-wide text-foreground">Highlight Reel</span>
+              </div>
+
+              {highlight && highlight.eligibleMoments === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Tag some made shots, rebounds, assists, steals or blocks during the game to build a highlight reel.
+                </p>
+              ) : highlight?.status === "processing" ? (
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Building your highlight reel… this can take a minute.
+                </p>
+              ) : highlight?.status === "ready" && highlight.highlightObjectPath ? (
+                <div className="space-y-3">
+                  <video
+                    src={videoObjectSrc(highlight.highlightObjectPath)}
+                    controls
+                    playsInline
+                    className="w-full rounded-lg bg-black object-contain max-h-[70vh]"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" onClick={handleShareHighlight}>
+                      <Share2 className="w-4 h-4 mr-2" /> Share
+                    </Button>
+                    <Button type="button" variant="outline" onClick={handleDownloadHighlight}>
+                      <Download className="w-4 h-4 mr-2" /> Download
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={handleGenerateHighlight} disabled={generateHighlight.isPending}>
+                      {generateHighlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                      Regenerate
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Turn this game into one shareable clip of only the best plays{highlight ? ` — ${highlight.eligibleMoments} moment${highlight.eligibleMoments === 1 ? "" : "s"} found` : ""}.
+                  </p>
+                  {highlight?.status === "failed" && highlight.error && (
+                    <p className="text-sm text-destructive">{highlight.error}</p>
+                  )}
+                  <Button type="button" onClick={handleGenerateHighlight} disabled={generateHighlight.isPending}>
+                    {generateHighlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    {highlight?.status === "failed" ? "Try Again" : "Generate Highlight Reel"}
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

@@ -238,6 +238,9 @@ export const ListTeamGamesResponseItem = zod.object({
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
+  "highlightObjectPath": zod.string().nullish(),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightError": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -343,6 +346,9 @@ export const CreateGameResponse = zod.object({
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
+  "highlightObjectPath": zod.string().nullish(),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightError": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -390,6 +396,9 @@ export const GetGameResponse = zod.object({
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
+  "highlightObjectPath": zod.string().nullish(),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightError": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -498,6 +507,9 @@ export const UpdateGameResponse = zod.object({
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
+  "highlightObjectPath": zod.string().nullish(),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightError": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -532,6 +544,39 @@ export const DeleteGameParams = zod.object({
 })
 
 export const DeleteGameResponse = zod.void()
+
+
+/**
+ * @summary Get the highlight reel status for a game
+ */
+export const GetGameHighlightParams = zod.object({
+  "gameId": zod.coerce.number()
+})
+
+export const GetGameHighlightResponse = zod.object({
+  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "highlightObjectPath": zod.string().nullish(),
+  "error": zod.string().nullish(),
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
+})
+
+
+/**
+ * Kicks off asynchronous server-side generation of an MP4 highlight reel
+ * from the game's recorded video, including only made shots, rebounds,
+ * assists, steals and blocks, with an on-screen caption per moment.
+ * @summary Start generating a highlight reel for a game
+ */
+export const GenerateGameHighlightParams = zod.object({
+  "gameId": zod.coerce.number()
+})
+
+export const GenerateGameHighlightResponse = zod.object({
+  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "highlightObjectPath": zod.string().nullish(),
+  "error": zod.string().nullish(),
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
+})
 
 
 /**

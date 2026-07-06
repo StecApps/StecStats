@@ -24,6 +24,10 @@ export const gamesTable = pgTable("games", {
   teamScore: integer("team_score").notNull(),
   opponentScore: integer("opponent_score").notNull(),
   videoObjectPath: text("video_object_path"),
+  highlightObjectPath: text("highlight_object_path"),
+  highlightStatus: text("highlight_status"),
+  highlightError: text("highlight_error"),
+  highlightStartedAt: timestamp("highlight_started_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

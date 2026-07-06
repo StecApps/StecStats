@@ -122,6 +122,9 @@ router.get("/teams/:teamId/games", async (req, res) => {
     teamScore: game.teamScore,
     opponentScore: game.opponentScore,
     videoObjectPath: game.videoObjectPath,
+    highlightObjectPath: game.highlightObjectPath ?? null,
+    highlightStatus: game.highlightStatus ?? null,
+    highlightError: game.highlightError ?? null,
     createdAt: game.createdAt,
     stats: (statsByGame.get(game.id) ?? []).map(({ stat, playerName }) => ({
       playerId: stat.playerId,

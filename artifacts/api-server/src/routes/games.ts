@@ -51,6 +51,9 @@ async function serializeGame(gameId: number) {
     teamScore: game.teamScore,
     opponentScore: game.opponentScore,
     videoObjectPath: game.videoObjectPath,
+    highlightObjectPath: game.highlightObjectPath ?? null,
+    highlightStatus: game.highlightStatus ?? null,
+    highlightError: game.highlightError ?? null,
     createdAt: game.createdAt,
     stats: statRows.map(({ stat, playerName }) => ({
       playerId: stat.playerId,
@@ -154,6 +157,11 @@ router.patch("/games/:gameId", async (req, res) => {
         videoObjectPath: body.videoObjectPath
           ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
           : null,
+        // Editing stats/events/video invalidates any existing highlight reel.
+        highlightObjectPath: null,
+        highlightStatus: "idle",
+        highlightError: null,
+        highlightStartedAt: null,
       })
       .where(eq(gamesTable.id, gameId));
 

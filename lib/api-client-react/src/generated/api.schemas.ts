@@ -129,6 +129,16 @@ export const GameResult = {
   L: 'L',
 } as const;
 
+export type GameHighlightStatus = typeof GameHighlightStatus[keyof typeof GameHighlightStatus] | null;
+
+
+export const GameHighlightStatus = {
+  idle: 'idle',
+  processing: 'processing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
 export interface GameEvent {
   playerId: number;
   statField: string;
@@ -147,6 +157,9 @@ export interface Game {
   teamScore: number;
   opponentScore: number;
   videoObjectPath?: string | null;
+  highlightObjectPath?: string | null;
+  highlightStatus?: GameHighlightStatus;
+  highlightError?: string | null;
   createdAt: string;
   stats: PlayerGameStatLine[];
   events: GameEvent[];
@@ -266,5 +279,23 @@ export interface UploadUrlResponse {
 
 export interface ErrorEnvelope {
   error: string;
+}
+
+export type HighlightStatusStatus = typeof HighlightStatusStatus[keyof typeof HighlightStatusStatus];
+
+
+export const HighlightStatusStatus = {
+  idle: 'idle',
+  processing: 'processing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
+export interface HighlightStatus {
+  status: HighlightStatusStatus;
+  highlightObjectPath?: string | null;
+  error?: string | null;
+  /** Number of qualifying moments (made shots, rebounds, assists, steals, blocks). */
+  eligibleMoments: number;
 }
 

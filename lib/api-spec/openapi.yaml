@@ -308,6 +308,58 @@ paths:
         "204":
           description: Deleted
 
+  /games/{gameId}/highlight:
+    parameters:
+      - name: gameId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getGameHighlight
+      tags: [games]
+      summary: Get the highlight reel status for a game
+      responses:
+        "200":
+          description: Highlight reel status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighlightStatus"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: generateGameHighlight
+      tags: [games]
+      summary: Start generating a highlight reel for a game
+      description: |
+        Kicks off asynchronous server-side generation of an MP4 highlight reel
+        from the game's recorded video, including only made shots, rebounds,
+        assists, steals and blocks, with an on-screen caption per moment.
+      responses:
+        "202":
+          description: Generation started (or already in progress)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighlightStatus"
+        "400":
+          description: Not eligible (no video or no qualifying moments)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /import:
     post:
       operationId: importData
@@ -632,6 +684,12 @@ components:
         teamScore: { type: integer }
         opponentScore: { type: integer }
         videoObjectPath: { type: string, nullable: true }
+        highlightObjectPath: { type: string, nullable: true }
+        highlightStatus:
+          type: string
+          nullable: true
+          enum: [idle, processing, ready, failed]
+        highlightError: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
         stats:
           type: array
@@ -758,6 +816,19 @@ components:
       properties:
         error:
           type: string
+
+    HighlightStatus:
+      type: object
+      required: [status, eligibleMoments]
+      properties:
+        status:
+          type: string
+          enum: [idle, processing, ready, failed]
+        highlightObjectPath: { type: string, nullable: true }
+        error: { type: string, nullable: true }
+        eligibleMoments:
+          type: integer
+          description: Number of qualifying moments (made shots, rebounds, assists, steals, blocks).
 
     GameEvent:
       type: object

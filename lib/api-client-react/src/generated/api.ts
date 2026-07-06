@@ -25,6 +25,7 @@ import type {
   GameInput,
   GameUpdate,
   HealthStatus,
+  HighlightStatus,
   ImportInput,
   ImportResult,
   Player,
@@ -1391,6 +1392,156 @@ export const useDeleteGame = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteGameMutationOptions(options));
+    }
+
+export const getGetGameHighlightUrl = (gameId: number,) => {
+
+
+
+
+  return `/api/games/${gameId}/highlight`
+}
+
+/**
+ * @summary Get the highlight reel status for a game
+ */
+export const getGameHighlight = async (gameId: number, options?: RequestInit): Promise<HighlightStatus> => {
+
+  return customFetch<HighlightStatus>(getGetGameHighlightUrl(gameId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGameHighlightQueryKey = (gameId: number,) => {
+    return [
+    `/api/games/${gameId}/highlight`
+    ] as const;
+    }
+
+
+export const getGetGameHighlightQueryOptions = <TData = Awaited<ReturnType<typeof getGameHighlight>>, TError = ErrorType<ErrorEnvelope>>(gameId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameHighlight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGameHighlightQueryKey(gameId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGameHighlight>>> = ({ signal }) => getGameHighlight(gameId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: gameId !== null && gameId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGameHighlight>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGameHighlightQueryResult = NonNullable<Awaited<ReturnType<typeof getGameHighlight>>>
+export type GetGameHighlightQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the highlight reel status for a game
+ */
+
+export function useGetGameHighlight<TData = Awaited<ReturnType<typeof getGameHighlight>>, TError = ErrorType<ErrorEnvelope>>(
+ gameId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameHighlight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGameHighlightQueryOptions(gameId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGenerateGameHighlightUrl = (gameId: number,) => {
+
+
+
+
+  return `/api/games/${gameId}/highlight`
+}
+
+/**
+ * Kicks off asynchronous server-side generation of an MP4 highlight reel
+ * from the game's recorded video, including only made shots, rebounds,
+ * assists, steals and blocks, with an on-screen caption per moment.
+ * @summary Start generating a highlight reel for a game
+ */
+export const generateGameHighlight = async (gameId: number, options?: RequestInit): Promise<HighlightStatus> => {
+
+  return customFetch<HighlightStatus>(getGenerateGameHighlightUrl(gameId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGenerateGameHighlightMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateGameHighlight>>, TError,{gameId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateGameHighlight>>, TError,{gameId: number}, TContext> => {
+
+const mutationKey = ['generateGameHighlight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateGameHighlight>>, {gameId: number}> = (props) => {
+          const {gameId} = props ?? {};
+
+          return  generateGameHighlight(gameId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateGameHighlightMutationResult = NonNullable<Awaited<ReturnType<typeof generateGameHighlight>>>
+
+    export type GenerateGameHighlightMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Start generating a highlight reel for a game
+ */
+export const useGenerateGameHighlight = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateGameHighlight>>, TError,{gameId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateGameHighlight>>,
+        TError,
+        {gameId: number},
+        TContext
+      > => {
+      return useMutation(getGenerateGameHighlightMutationOptions(options));
     }
 
 export const getImportDataUrl = () => {
