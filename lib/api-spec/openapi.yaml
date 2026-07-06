@@ -310,6 +310,58 @@ paths:
         "204":
           description: Deleted
 
+  /teams/{teamId}/highlight:
+    parameters:
+      - name: teamId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getTeamHighlight
+      tags: [teams]
+      summary: Get the season highlight reel status for a team
+      responses:
+        "200":
+          description: Season highlight reel status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighlightStatus"
+        "404":
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: generateTeamHighlight
+      tags: [teams]
+      summary: Start generating a combined season highlight reel for a team
+      description: |
+        Kicks off asynchronous server-side generation of one MP4 that
+        concatenates the good-play moments from every game recorded for the
+        team (in date order), each with an on-screen caption.
+      responses:
+        "202":
+          description: Generation started (or already in progress)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HighlightStatus"
+        "400":
+          description: Not eligible (no videos or no qualifying moments across the team's games)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Team not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /games/{gameId}/highlight:
     parameters:
       - name: gameId

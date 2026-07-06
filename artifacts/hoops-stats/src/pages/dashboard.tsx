@@ -12,23 +12,30 @@ import {
   useUpdateTeam,
   useDeleteTeam,
   useDeleteGame,
+  useGetTeamHighlight,
+  useGenerateTeamHighlight,
   getListPlayersQueryKey,
   getGetPlayerSummaryQueryKey,
   getListPlayerTeamGroupsQueryKey,
   getListTeamGamesQueryKey,
-  getListTeamsQueryKey
+  getListTeamsQueryKey,
+  getGetTeamHighlightQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
+
+function videoObjectSrc(objectPath: string): string {
+  return `/api/storage/objects/${objectPath.replace(/^\/objects\//, "")}`;
+}
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
@@ -594,6 +601,47 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
 
   const playerGames = games?.filter(g => g.stats.some(s => s.playerId === playerId)) || [];
 
+  const { data: seasonHighlight } = useGetTeamHighlight(team.teamId, {
+    query: { enabled: !!team.teamId, queryKey: getGetTeamHighlightQueryKey(team.teamId) }
+  });
+  const generateSeasonHighlight = useGenerateTeamHighlight();
+
+  const seasonHighlightFileName = () => `stec-season-highlights-${team.teamName || "team"}.mp4`;
+
+  const handleGenerateSeasonHighlight = async () => {
+    try {
+      await generateSeasonHighlight.mutateAsync({ teamId: team.teamId });
+      queryClient.invalidateQueries({ queryKey: getGetTeamHighlightQueryKey(team.teamId) });
+    } catch (err) {
+      toast({ title: "Couldn't start the season highlight reel", variant: "destructive" });
+    }
+  };
+
+  const handleDownloadSeasonHighlight = () => {
+    if (!seasonHighlight?.highlightObjectPath) return;
+    const a = document.createElement("a");
+    a.href = videoObjectSrc(seasonHighlight.highlightObjectPath);
+    a.download = seasonHighlightFileName();
+    a.click();
+  };
+
+  const handleShareSeasonHighlight = async () => {
+    if (!seasonHighlight?.highlightObjectPath) return;
+    try {
+      const res = await fetch(videoObjectSrc(seasonHighlight.highlightObjectPath));
+      const blob = await res.blob();
+      const file = new File([blob], seasonHighlightFileName(), { type: "video/mp4" });
+      const nav = navigator as Navigator & { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title: string }) => Promise<void> };
+      if (nav.canShare?.({ files: [file] }) && nav.share) {
+        await nav.share({ files: [file], title: "Season Highlights" });
+      } else {
+        handleDownloadSeasonHighlight();
+      }
+    } catch (err) {
+      toast({ title: "Couldn't share the season highlight reel", variant: "destructive" });
+    }
+  };
+
   return (
     <AccordionItem value={team.teamId.toString()} className="border rounded-lg bg-card overflow-hidden">
       <div className="flex items-center justify-between px-4 hover:bg-muted/50 data-[state=open]:bg-muted/50 transition-colors">
@@ -711,6 +759,61 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
                 })}
               </TableBody>
             </Table>
+          </div>
+        )}
+
+        {playerGames.length > 0 && (
+          <div className="p-4 border-t">
+            <div className="max-w-md rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                <span className="font-display font-bold uppercase tracking-wide text-foreground">Season Highlight Reel</span>
+              </div>
+
+              {seasonHighlight && seasonHighlight.eligibleMoments === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Tag some made shots, rebounds, assists, steals or blocks in recorded games to build a season highlight reel.
+                </p>
+              ) : seasonHighlight?.status === "processing" ? (
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Building your season highlight reel… this can take a few minutes.
+                </p>
+              ) : seasonHighlight?.status === "ready" && seasonHighlight.highlightObjectPath ? (
+                <div className="space-y-3">
+                  <video
+                    src={videoObjectSrc(seasonHighlight.highlightObjectPath)}
+                    controls
+                    playsInline
+                    className="w-full rounded-lg bg-black object-contain max-h-[70vh]"
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" onClick={handleShareSeasonHighlight}>
+                      <Share2 className="w-4 h-4 mr-2" /> Share
+                    </Button>
+                    <Button type="button" variant="outline" onClick={handleDownloadSeasonHighlight}>
+                      <Download className="w-4 h-4 mr-2" /> Download
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={handleGenerateSeasonHighlight} disabled={generateSeasonHighlight.isPending}>
+                      {generateSeasonHighlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                      Regenerate
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Combine the best plays from every recorded game on this team into one shareable clip{seasonHighlight ? ` — ${seasonHighlight.eligibleMoments} moment${seasonHighlight.eligibleMoments === 1 ? "" : "s"} found` : ""}.
+                  </p>
+                  {seasonHighlight?.status === "failed" && seasonHighlight.error && (
+                    <p className="text-sm text-destructive">{seasonHighlight.error}</p>
+                  )}
+                  <Button type="button" onClick={handleGenerateSeasonHighlight} disabled={generateSeasonHighlight.isPending}>
+                    {generateSeasonHighlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    {seasonHighlight?.status === "failed" ? "Try Again" : "Generate Season Highlight Reel"}
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </AccordionContent>

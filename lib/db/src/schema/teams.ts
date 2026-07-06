@@ -9,6 +9,14 @@ export const teamsTable = pgTable("teams", {
   // See players.ts for why this is nullable at the DB level.
   ownerId: integer("owner_id").references(() => usersTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Season highlight reel: one combined MP4 built from every game's good
+  // plays across the whole team. Mirrors gamesTable's per-game highlight
+  // fields (see highlight-reel memory: status is a fire-and-forget state
+  // machine that must be recoverable from a stale "processing").
+  highlightObjectPath: text("highlight_object_path"),
+  highlightStatus: text("highlight_status"),
+  highlightError: text("highlight_error"),
+  highlightStartedAt: timestamp("highlight_started_at"),
 });
 
 export const insertTeamSchema = createInsertSchema(teamsTable).omit({

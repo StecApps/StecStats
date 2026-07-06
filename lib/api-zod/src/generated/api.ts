@@ -549,6 +549,39 @@ export const DeleteGameResponse = zod.void()
 
 
 /**
+ * @summary Get the season highlight reel status for a team
+ */
+export const GetTeamHighlightParams = zod.object({
+  "teamId": zod.coerce.number()
+})
+
+export const GetTeamHighlightResponse = zod.object({
+  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "highlightObjectPath": zod.string().nullish(),
+  "error": zod.string().nullish(),
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
+})
+
+
+/**
+ * Kicks off asynchronous server-side generation of one MP4 that
+ * concatenates the good-play moments from every game recorded for the
+ * team (in date order), each with an on-screen caption.
+ * @summary Start generating a combined season highlight reel for a team
+ */
+export const GenerateTeamHighlightParams = zod.object({
+  "teamId": zod.coerce.number()
+})
+
+export const GenerateTeamHighlightResponse = zod.object({
+  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "highlightObjectPath": zod.string().nullish(),
+  "error": zod.string().nullish(),
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
+})
+
+
+/**
  * @summary Get the highlight reel status for a game
  */
 export const GetGameHighlightParams = zod.object({

@@ -20,12 +20,18 @@ import {
   DeleteTeamParams,
   ListTeamGamesParams,
   ListTeamGamesResponse,
+  GetTeamHighlightParams,
+  GetTeamHighlightResponse,
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements } from "../lib/entitlements";
 import { getCurrentSeasonStartDate } from "../lib/season";
 import { gte } from "drizzle-orm";
+import {
+  countEligibleMomentsForTeam,
+  generateTeamHighlight,
+} from "../lib/highlightGenerator";
 
 const router: IRouter = Router();
 
@@ -33,6 +39,18 @@ const router: IRouter = Router();
 // (season) per account. Enforced server-side (source of truth) -- the UI
 // gate is cosmetic only.
 const FREE_TEAM_LIMIT = 1;
+
+// Guards against launching a second season-highlight generation while one is
+// already running for the same team (survives concurrent requests).
+const teamHighlightInFlight = new Set<number>();
+// A DB status of "processing" older than this is considered abandoned (e.g.
+// the server restarted mid-job) and may be retried.
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
+
+function normalizeHighlightStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
+  if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
+  return "idle";
+}
 
 router.get("/teams", requireAuth, async (req, res) => {
   const teams = await db
@@ -210,6 +228,79 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
   }));
 
   res.json(ListTeamGamesResponse.parse(response));
+});
+
+router.get("/teams/:teamId/highlight", requireAuth, async (req, res) => {
+  const { teamId } = GetTeamHighlightParams.parse(req.params);
+  const team = await db.query.teamsTable.findFirst({
+    where: and(eq(teamsTable.id, teamId), eq(teamsTable.ownerId, req.appUser!.id)),
+  });
+  if (!team) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+
+  const eligibleMoments = await countEligibleMomentsForTeam(teamId);
+  res.json(
+    GetTeamHighlightResponse.parse({
+      status: normalizeHighlightStatus(team.highlightStatus),
+      highlightObjectPath: team.highlightObjectPath ?? null,
+      error: team.highlightError ?? null,
+      eligibleMoments,
+    }),
+  );
+});
+
+router.post("/teams/:teamId/highlight", requireAuth, async (req, res) => {
+  const { teamId } = GetTeamHighlightParams.parse(req.params);
+  const team = await db.query.teamsTable.findFirst({
+    where: and(eq(teamsTable.id, teamId), eq(teamsTable.ownerId, req.appUser!.id)),
+  });
+  if (!team) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+
+  const eligibleMoments = await countEligibleMomentsForTeam(teamId);
+  if (eligibleMoments === 0) {
+    res.status(400).json({
+      error: "No highlight-worthy moments were tagged across this team's recorded games",
+    });
+    return;
+  }
+
+  const startedAtMs = team.highlightStartedAt
+    ? new Date(team.highlightStartedAt).getTime()
+    : 0;
+  const staleProcessing =
+    team.highlightStatus === "processing" && Date.now() - startedAtMs > STALE_PROCESSING_MS;
+  const alreadyRunning =
+    teamHighlightInFlight.has(teamId) || (team.highlightStatus === "processing" && !staleProcessing);
+  if (!alreadyRunning) {
+    teamHighlightInFlight.add(teamId);
+    await db
+      .update(teamsTable)
+      .set({
+        highlightStatus: "processing",
+        highlightError: null,
+        highlightStartedAt: new Date(),
+      })
+      .where(eq(teamsTable.id, teamId));
+
+    // Fire-and-forget: generation continues after the response is sent.
+    void generateTeamHighlight(teamId)
+      .catch(() => {})
+      .finally(() => teamHighlightInFlight.delete(teamId));
+  }
+
+  res.status(202).json(
+    GetTeamHighlightResponse.parse({
+      status: "processing",
+      highlightObjectPath: team.highlightObjectPath ?? null,
+      error: null,
+      eligibleMoments,
+    }),
+  );
 });
 
 export default router;

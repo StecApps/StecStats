@@ -1398,6 +1398,156 @@ export const useDeleteGame = <TError = ErrorType<unknown>,
       return useMutation(getDeleteGameMutationOptions(options));
     }
 
+export const getGetTeamHighlightUrl = (teamId: number,) => {
+
+
+
+
+  return `/api/teams/${teamId}/highlight`
+}
+
+/**
+ * @summary Get the season highlight reel status for a team
+ */
+export const getTeamHighlight = async (teamId: number, options?: RequestInit): Promise<HighlightStatus> => {
+
+  return customFetch<HighlightStatus>(getGetTeamHighlightUrl(teamId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTeamHighlightQueryKey = (teamId: number,) => {
+    return [
+    `/api/teams/${teamId}/highlight`
+    ] as const;
+    }
+
+
+export const getGetTeamHighlightQueryOptions = <TData = Awaited<ReturnType<typeof getTeamHighlight>>, TError = ErrorType<ErrorEnvelope>>(teamId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamHighlight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTeamHighlightQueryKey(teamId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTeamHighlight>>> = ({ signal }) => getTeamHighlight(teamId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: teamId !== null && teamId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTeamHighlight>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTeamHighlightQueryResult = NonNullable<Awaited<ReturnType<typeof getTeamHighlight>>>
+export type GetTeamHighlightQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the season highlight reel status for a team
+ */
+
+export function useGetTeamHighlight<TData = Awaited<ReturnType<typeof getTeamHighlight>>, TError = ErrorType<ErrorEnvelope>>(
+ teamId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTeamHighlight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTeamHighlightQueryOptions(teamId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGenerateTeamHighlightUrl = (teamId: number,) => {
+
+
+
+
+  return `/api/teams/${teamId}/highlight`
+}
+
+/**
+ * Kicks off asynchronous server-side generation of one MP4 that
+ * concatenates the good-play moments from every game recorded for the
+ * team (in date order), each with an on-screen caption.
+ * @summary Start generating a combined season highlight reel for a team
+ */
+export const generateTeamHighlight = async (teamId: number, options?: RequestInit): Promise<HighlightStatus> => {
+
+  return customFetch<HighlightStatus>(getGenerateTeamHighlightUrl(teamId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGenerateTeamHighlightMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateTeamHighlight>>, TError,{teamId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateTeamHighlight>>, TError,{teamId: number}, TContext> => {
+
+const mutationKey = ['generateTeamHighlight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateTeamHighlight>>, {teamId: number}> = (props) => {
+          const {teamId} = props ?? {};
+
+          return  generateTeamHighlight(teamId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateTeamHighlightMutationResult = NonNullable<Awaited<ReturnType<typeof generateTeamHighlight>>>
+
+    export type GenerateTeamHighlightMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Start generating a combined season highlight reel for a team
+ */
+export const useGenerateTeamHighlight = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateTeamHighlight>>, TError,{teamId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateTeamHighlight>>,
+        TError,
+        {teamId: number},
+        TContext
+      > => {
+      return useMutation(getGenerateTeamHighlightMutationOptions(options));
+    }
+
 export const getGetGameHighlightUrl = (gameId: number,) => {
 
 

@@ -205,6 +205,8 @@ export default function RecordGame() {
   const [focusPlayerId, setFocusPlayerId] = useState<number | null>(null);
   const [isReconnectingLive, setIsReconnectingLive] = useState(false);
   const [liveInterrupted, setLiveInterrupted] = useState(false);
+  const [showRotateTip, setShowRotateTip] = useState(false);
+  const [reviewIsPortrait, setReviewIsPortrait] = useState(false);
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
@@ -340,6 +342,23 @@ export default function RecordGame() {
       livePreviewRef.current.play().catch(() => {});
     }
   }, [isRecording]);
+
+  useEffect(() => {
+    if (!isRecording) return;
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const dismissed = sessionStorage.getItem("hoops-rotate-tip-dismissed") === "1";
+    if (dismissed) return;
+    const mq = window.matchMedia("(orientation: portrait) and (pointer: coarse)");
+    setShowRotateTip(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setShowRotateTip(e.matches && !dismissed);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, [isRecording]);
+
+  const dismissRotateTip = () => {
+    setShowRotateTip(false);
+    sessionStorage.setItem("hoops-rotate-tip-dismissed", "1");
+  };
 
   useEffect(() => {
     zoomRef.current = zoom;
@@ -1122,8 +1141,17 @@ export default function RecordGame() {
                 src={recordedPreviewUrl || (existingVideoObjectPath ? videoObjectSrc(existingVideoObjectPath) : undefined)}
                 controls
                 playsInline
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget;
+                  setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
+                }}
                 className="w-full max-w-md max-h-[70vh] rounded-lg bg-black object-contain phone-landscape:max-w-full phone-landscape:max-h-[85vh]"
               />
+              {reviewIsPortrait && (
+                <p className="text-xs text-muted-foreground">
+                  This clip was recorded in portrait, so it will show with black bars when watched in landscape. Record in landscape next time for a full-screen video.
+                </p>
+              )}
               {events.length > 0 && (
                 <div className="space-y-1 max-w-md">
                   <Label>Stat Moments</Label>
@@ -1275,6 +1303,22 @@ export default function RecordGame() {
               playsInline
               className="w-full h-full object-cover"
             />
+
+            {showRotateTip && (
+              <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-3 rounded-lg bg-black/70 px-3 py-2 text-white backdrop-blur-sm phone-landscape:hidden">
+                <span className="text-xs font-medium">
+                  Tip: rotate your phone to landscape so this video fills the screen when you watch it back.
+                </span>
+                <button
+                  type="button"
+                  onClick={dismissRotateTip}
+                  className="shrink-0 rounded-full p-1 hover:bg-white/20"
+                  aria-label="Dismiss tip"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             <div className="absolute top-0 left-0 right-0 flex items-start justify-between gap-2 p-3">
               <div className="flex flex-col gap-2">
