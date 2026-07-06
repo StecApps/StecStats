@@ -101,6 +101,7 @@ export async function generateHighlight(gameId: number): Promise<void> {
     });
     if (!game) throw new HighlightError("Game not found");
     if (!game.videoObjectPath) throw new HighlightError("This game has no recorded video");
+    if (game.ownerId == null) throw new HighlightError("This game has no owner account");
 
     const events = await db.query.gameEventsTable.findMany({
       where: eq(gameEventsTable.gameId, gameId),
@@ -271,7 +272,7 @@ export async function generateHighlight(gameId: number): Promise<void> {
     await run("ffmpeg", concatArgs);
 
     // Upload the result to object storage.
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL();
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL(game.ownerId);
     const buffer = await fs.readFile(outPath);
     const putRes = await fetch(uploadURL, {
       method: "PUT",
@@ -283,16 +284,14 @@ export async function generateHighlight(gameId: number): Promise<void> {
     }
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
-    if (game.ownerId != null) {
-      await objectStorageService
-        .trySetObjectEntityAclPolicy(objectPath, {
-          owner: String(game.ownerId),
-          visibility: "private",
-        })
-        .catch((err) =>
-          logger.error({ err, gameId }, "Failed to set highlight ACL policy"),
-        );
-    }
+    await objectStorageService
+      .trySetObjectEntityAclPolicy(objectPath, {
+        owner: String(game.ownerId),
+        visibility: "private",
+      })
+      .catch((err) =>
+        logger.error({ err, gameId }, "Failed to set highlight ACL policy"),
+      );
 
     await setStatus(gameId, "ready", {
       highlightObjectPath: objectPath,

@@ -106,7 +106,7 @@ export class ObjectStorageService {
     return new Response(webStream, { headers });
   }
 
-  async getObjectEntityUploadURL(): Promise<string> {
+  async getObjectEntityUploadURL(ownerId: number): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -116,7 +116,9 @@ export class ObjectStorageService {
     }
 
     const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    // Namespace uploads per account so paths are segregated on disk, not
+    // just gated by the ACL/DB-linkage checks layered on top.
+    const fullPath = `${privateObjectDir}/uploads/${ownerId}/${objectId}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
 

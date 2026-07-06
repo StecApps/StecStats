@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { getAuth } from "@clerk/express";
+import { getAuth, clerkClient } from "@clerk/express";
 import { eq, isNull } from "drizzle-orm";
 import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
 
@@ -32,9 +32,25 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     });
 
     if (!user) {
+      // Look up the account's email from Clerk so we can identify whether
+      // this is the designated project owner (see below) — never trust a
+      // client-supplied email for this decision.
+      let email: string | null = null;
+      try {
+        const clerkUser = await clerkClient.users.getUser(clerkUserId);
+        email =
+          clerkUser.emailAddresses.find(
+            (e) => e.id === clerkUser.primaryEmailAddressId,
+          )?.emailAddress ??
+          clerkUser.emailAddresses[0]?.emailAddress ??
+          null;
+      } catch (err) {
+        req.log?.warn({ err, clerkUserId }, "Failed to fetch Clerk user email");
+      }
+
       const [inserted] = await db
         .insert(usersTable)
-        .values({ clerkUserId })
+        .values({ clerkUserId, email })
         .onConflictDoNothing()
         .returning();
       user =
@@ -43,12 +59,19 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           where: eq(usersTable.clerkUserId, clerkUserId),
         }));
 
-      // Claim any still-unowned legacy rows (created before accounts existed)
-      // for whichever account signs in first. This is self-limiting: once
-      // claimed, no more NULL-owner rows remain, so it's a cheap no-op for
-      // every subsequent signup. We only attempt this when we actually
-      // inserted a brand-new user row, not on a lookup of an existing one.
-      if (inserted) {
+      // One-time legacy backfill: pre-existing STEC data (created before
+      // accounts existed) is assigned to the designated project owner only —
+      // never to whichever account happens to sign in first. This is
+      // self-limiting: once claimed, no NULL-owner rows remain, so it's a
+      // no-op for every other signup, including future signups by the owner.
+      const ownerEmail = process.env.OWNER_CLERK_EMAIL;
+      const isDesignatedOwner =
+        inserted &&
+        !!ownerEmail &&
+        !!email &&
+        email.toLowerCase() === ownerEmail.toLowerCase();
+
+      if (isDesignatedOwner) {
         await db.transaction(async (tx) => {
           await tx
             .update(playersTable)

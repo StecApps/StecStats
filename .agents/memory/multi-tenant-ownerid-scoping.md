@@ -8,8 +8,12 @@ Every table holding user data gets a nullable `ownerId` column. Reads/writes fil
 
 **Why:** legacy pre-multi-tenant rows exist with `ownerId = NULL`; nullable + app-level enforcement lets those rows be "claimed" by whichever account signs in first, without a destructive migration.
 
-## Claim-on-first-login
+## Claim-on-first-login must target a designated owner, not "whoever signs in first"
 On JIT user provisioning (first login), wrap the "claim all NULL-owner rows" UPDATEs in a single `db.transaction(...)`, not `Promise.all(...)`. Partial claims (some tables updated, others not) are a valid failure mode if updates run independently and one throws mid-flight.
+
+**Why:** "whichever account signs in first claims all legacy data" is a real vulnerability, not just a convenience shortcut — any signup (including an attacker's) racing to be first captures another business's pre-existing data. A task spec saying legacy data must go to "the owner's account" means a *specific* identity, not an opportunistic first-mover.
+
+**How to apply:** gate the claim on the signing-in user's verified identity (e.g. email from the auth provider's backend API, never a client-supplied field) matching a designated-owner value stored in an env var (e.g. `OWNER_CLERK_EMAIL`). Only run the NULL-owner claim transaction when that match succeeds; every other signup — including future ones — is a no-op against already-claimed rows.
 
 ## FK-from-request-body is a distinct vulnerability class
 Any endpoint accepting a body that references another table's row by ID (e.g. `stats[].playerId` inside a game payload) must explicitly validate that every referenced ID belongs to the requesting owner — a per-table ownerId filter on the *parent* resource is not sufficient, because the child IDs travel in the body and can be scoped to any tenant. Write a small `assertXOwned(ids, ownerId)` helper (dedupe, `inArray` + `eq(ownerId)`, compare counts) and call it before any insert/update transaction that accepts foreign IDs.
