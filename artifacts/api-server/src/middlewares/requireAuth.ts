@@ -31,11 +31,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       where: eq(usersTable.clerkUserId, clerkUserId),
     });
 
-    if (!user) {
-      // Look up the account's email from Clerk so we can identify whether
-      // this is the designated project owner (see below) — never trust a
-      // client-supplied email for this decision.
-      let email: string | null = null;
+    let email: string | null = user?.email ?? null;
+
+    // Look up the account's email from Clerk when we don't already have it
+    // locally (brand-new user, or an existing row predating the email
+    // column) so we can identify whether this is the designated project
+    // owner below — never trust a client-supplied email for this decision.
+    if (!email) {
       try {
         const clerkUser = await clerkClient.users.getUser(clerkUserId);
         email =
@@ -47,7 +49,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       } catch (err) {
         req.log?.warn({ err, clerkUserId }, "Failed to fetch Clerk user email");
       }
+    }
 
+    if (!user) {
       const [inserted] = await db
         .insert(usersTable)
         .values({ clerkUserId, email })
@@ -58,34 +62,61 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         (await db.query.usersTable.findFirst({
           where: eq(usersTable.clerkUserId, clerkUserId),
         }));
+    } else if (email && user.email !== email) {
+      // Backfill the email column for a pre-existing row that predates it.
+      await db.update(usersTable).set({ email }).where(eq(usersTable.id, user.id));
+    }
 
-      // One-time legacy backfill: pre-existing STEC data (created before
-      // accounts existed) is assigned to the designated project owner only —
-      // never to whichever account happens to sign in first. This is
-      // self-limiting: once claimed, no NULL-owner rows remain, so it's a
-      // no-op for every other signup, including future signups by the owner.
+    // One-time legacy backfill: pre-existing STEC data (created before
+    // accounts existed) is assigned to the designated project owner only —
+    // never to whichever account happens to sign in first. Runs regardless
+    // of whether this is the owner's first-ever login or a later one (the
+    // owner's local `users` row may already exist from an earlier phase),
+    // and is self-limiting: once claimed, no NULL-owner rows remain, so the
+    // existence check below makes it a cheap no-op afterward.
+    if (user) {
       const ownerEmail = process.env.OWNER_CLERK_EMAIL;
       const isDesignatedOwner =
-        inserted &&
-        !!ownerEmail &&
-        !!email &&
-        email.toLowerCase() === ownerEmail.toLowerCase();
+        !!ownerEmail && !!email && email.toLowerCase() === ownerEmail.toLowerCase();
 
       if (isDesignatedOwner) {
-        await db.transaction(async (tx) => {
-          await tx
-            .update(playersTable)
-            .set({ ownerId: inserted.id })
-            .where(isNull(playersTable.ownerId));
-          await tx
-            .update(teamsTable)
-            .set({ ownerId: inserted.id })
-            .where(isNull(teamsTable.ownerId));
-          await tx
-            .update(gamesTable)
-            .set({ ownerId: inserted.id })
-            .where(isNull(gamesTable.ownerId));
-        });
+        const unclaimed = await db
+          .select({ id: playersTable.id })
+          .from(playersTable)
+          .where(isNull(playersTable.ownerId))
+          .limit(1)
+          .union(
+            db
+              .select({ id: teamsTable.id })
+              .from(teamsTable)
+              .where(isNull(teamsTable.ownerId))
+              .limit(1),
+          )
+          .union(
+            db
+              .select({ id: gamesTable.id })
+              .from(gamesTable)
+              .where(isNull(gamesTable.ownerId))
+              .limit(1),
+          );
+
+        if (unclaimed.length > 0) {
+          const ownerId = user.id;
+          await db.transaction(async (tx) => {
+            await tx
+              .update(playersTable)
+              .set({ ownerId })
+              .where(isNull(playersTable.ownerId));
+            await tx
+              .update(teamsTable)
+              .set({ ownerId })
+              .where(isNull(teamsTable.ownerId));
+            await tx
+              .update(gamesTable)
+              .set({ ownerId })
+              .where(isNull(gamesTable.ownerId));
+          });
+        }
       }
     }
 
