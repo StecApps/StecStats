@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -26,20 +26,29 @@ import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
-router.get("/teams", requireAuth, async (_req, res) => {
-  const teams = await db.select().from(teamsTable).orderBy(teamsTable.name);
+router.get("/teams", requireAuth, async (req, res) => {
+  const teams = await db
+    .select()
+    .from(teamsTable)
+    .where(eq(teamsTable.ownerId, req.appUser!.id))
+    .orderBy(teamsTable.name);
   res.json(ListTeamsResponse.parse(teams));
 });
 
 router.post("/teams", requireAuth, async (req, res) => {
   const body = CreateTeamBody.parse(req.body);
-  const [team] = await db.insert(teamsTable).values(body).returning();
+  const [team] = await db
+    .insert(teamsTable)
+    .values({ ...body, ownerId: req.appUser!.id })
+    .returning();
   res.status(201).json(CreateTeamResponse.parse(team));
 });
 
 router.get("/teams/:teamId", requireAuth, async (req, res) => {
   const { teamId } = GetTeamParams.parse(req.params);
-  const team = await db.query.teamsTable.findFirst({ where: eq(teamsTable.id, teamId) });
+  const team = await db.query.teamsTable.findFirst({
+    where: and(eq(teamsTable.id, teamId), eq(teamsTable.ownerId, req.appUser!.id)),
+  });
   if (!team) {
     res.status(404).json({ error: "Team not found" });
     return;
@@ -53,7 +62,7 @@ router.patch("/teams/:teamId", requireAuth, async (req, res) => {
   const [team] = await db
     .update(teamsTable)
     .set(body)
-    .where(eq(teamsTable.id, teamId))
+    .where(and(eq(teamsTable.id, teamId), eq(teamsTable.ownerId, req.appUser!.id)))
     .returning();
   if (!team) {
     res.status(404).json({ error: "Team not found" });
@@ -64,13 +73,17 @@ router.patch("/teams/:teamId", requireAuth, async (req, res) => {
 
 router.delete("/teams/:teamId", requireAuth, async (req, res) => {
   const { teamId } = DeleteTeamParams.parse(req.params);
-  await db.delete(teamsTable).where(eq(teamsTable.id, teamId));
+  await db
+    .delete(teamsTable)
+    .where(and(eq(teamsTable.id, teamId), eq(teamsTable.ownerId, req.appUser!.id)));
   res.status(204).send();
 });
 
 router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
   const { teamId } = ListTeamGamesParams.parse(req.params);
-  const team = await db.query.teamsTable.findFirst({ where: eq(teamsTable.id, teamId) });
+  const team = await db.query.teamsTable.findFirst({
+    where: and(eq(teamsTable.id, teamId), eq(teamsTable.ownerId, req.appUser!.id)),
+  });
   if (!team) {
     res.status(404).json({ error: "Team not found" });
     return;
@@ -79,7 +92,7 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
   const games = await db
     .select()
     .from(gamesTable)
-    .where(eq(gamesTable.teamId, teamId))
+    .where(and(eq(gamesTable.teamId, teamId), eq(gamesTable.ownerId, req.appUser!.id)))
     .orderBy(gamesTable.date);
 
   const gameIds = games.map((g) => g.id);

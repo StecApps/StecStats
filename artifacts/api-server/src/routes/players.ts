@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, playersTable, gamesTable, playerGameStatsTable, teamsTable } from "@workspace/db";
 import {
   ListPlayersResponse,
@@ -21,21 +21,28 @@ import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
-router.get("/players", requireAuth, async (_req, res) => {
-  const players = await db.select().from(playersTable).orderBy(playersTable.name);
+router.get("/players", requireAuth, async (req, res) => {
+  const players = await db
+    .select()
+    .from(playersTable)
+    .where(eq(playersTable.ownerId, req.appUser!.id))
+    .orderBy(playersTable.name);
   res.json(ListPlayersResponse.parse(players));
 });
 
 router.post("/players", requireAuth, async (req, res) => {
   const body = CreatePlayerBody.parse(req.body);
-  const [player] = await db.insert(playersTable).values(body).returning();
+  const [player] = await db
+    .insert(playersTable)
+    .values({ ...body, ownerId: req.appUser!.id })
+    .returning();
   res.status(201).json(CreatePlayerResponse.parse(player));
 });
 
 router.get("/players/:playerId", requireAuth, async (req, res) => {
   const { playerId } = GetPlayerParams.parse(req.params);
   const player = await db.query.playersTable.findFirst({
-    where: eq(playersTable.id, playerId),
+    where: and(eq(playersTable.id, playerId), eq(playersTable.ownerId, req.appUser!.id)),
   });
   if (!player) {
     res.status(404).json({ error: "Player not found" });
@@ -50,7 +57,7 @@ router.patch("/players/:playerId", requireAuth, async (req, res) => {
   const [player] = await db
     .update(playersTable)
     .set(body)
-    .where(eq(playersTable.id, playerId))
+    .where(and(eq(playersTable.id, playerId), eq(playersTable.ownerId, req.appUser!.id)))
     .returning();
   if (!player) {
     res.status(404).json({ error: "Player not found" });
@@ -61,14 +68,16 @@ router.patch("/players/:playerId", requireAuth, async (req, res) => {
 
 router.delete("/players/:playerId", requireAuth, async (req, res) => {
   const { playerId } = DeletePlayerParams.parse(req.params);
-  await db.delete(playersTable).where(eq(playersTable.id, playerId));
+  await db
+    .delete(playersTable)
+    .where(and(eq(playersTable.id, playerId), eq(playersTable.ownerId, req.appUser!.id)));
   res.status(204).send();
 });
 
 router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
   const { playerId } = GetPlayerSummaryParams.parse(req.params);
   const player = await db.query.playersTable.findFirst({
-    where: eq(playersTable.id, playerId),
+    where: and(eq(playersTable.id, playerId), eq(playersTable.ownerId, req.appUser!.id)),
   });
   if (!player) {
     res.status(404).json({ error: "Player not found" });
@@ -82,7 +91,9 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
     })
     .from(playerGameStatsTable)
     .innerJoin(gamesTable, eq(playerGameStatsTable.gameId, gamesTable.id))
-    .where(eq(playerGameStatsTable.playerId, playerId));
+    .where(
+      and(eq(playerGameStatsTable.playerId, playerId), eq(gamesTable.ownerId, req.appUser!.id)),
+    );
 
   const totals = {
     games: rows.length,
@@ -144,7 +155,7 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
 router.get("/players/:playerId/teams", requireAuth, async (req, res) => {
   const { playerId } = ListPlayerTeamGroupsParams.parse(req.params);
   const player = await db.query.playersTable.findFirst({
-    where: eq(playersTable.id, playerId),
+    where: and(eq(playersTable.id, playerId), eq(playersTable.ownerId, req.appUser!.id)),
   });
   if (!player) {
     res.status(404).json({ error: "Player not found" });
@@ -160,7 +171,9 @@ router.get("/players/:playerId/teams", requireAuth, async (req, res) => {
     .from(playerGameStatsTable)
     .innerJoin(gamesTable, eq(playerGameStatsTable.gameId, gamesTable.id))
     .innerJoin(teamsTable, eq(gamesTable.teamId, teamsTable.id))
-    .where(eq(playerGameStatsTable.playerId, playerId));
+    .where(
+      and(eq(playerGameStatsTable.playerId, playerId), eq(gamesTable.ownerId, req.appUser!.id)),
+    );
 
   const groups = new Map<
     number,

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, gamesTable } from "@workspace/db";
 import { GetGameParams, GetGameHighlightResponse } from "@workspace/api-zod";
 import {
@@ -26,7 +26,7 @@ function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | 
 router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
   const { gameId } = GetGameParams.parse(req.params);
   const game = await db.query.gamesTable.findFirst({
-    where: eq(gamesTable.id, gameId),
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)),
   });
   if (!game) {
     res.status(404).json({ error: "Game not found" });
@@ -47,7 +47,7 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
 router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
   const { gameId } = GetGameParams.parse(req.params);
   const game = await db.query.gamesTable.findFirst({
-    where: eq(gamesTable.id, gameId),
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)),
   });
   if (!game) {
     res.status(404).json({ error: "Game not found" });

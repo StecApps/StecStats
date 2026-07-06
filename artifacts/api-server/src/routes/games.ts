@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   db,
   gamesTable,
@@ -25,8 +25,10 @@ import { requireAuth } from "../middlewares/requireAuth";
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
-async function serializeGame(gameId: number) {
-  const game = await db.query.gamesTable.findFirst({ where: eq(gamesTable.id, gameId) });
+async function serializeGame(gameId: number, ownerId: number) {
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+  });
   if (!game) return null;
 
   const team = await db.query.teamsTable.findFirst({ where: eq(teamsTable.id, game.teamId) });
@@ -83,12 +85,22 @@ async function serializeGame(gameId: number) {
 
 router.post("/games", requireAuth, async (req, res) => {
   const body = CreateGameBody.parse(req.body);
+  const ownerId = req.appUser!.id;
+
+  const team = await db.query.teamsTable.findFirst({
+    where: and(eq(teamsTable.id, body.teamId), eq(teamsTable.ownerId, ownerId)),
+  });
+  if (!team) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
 
   const game = await db.transaction(async (tx) => {
     const [createdGame] = await tx
       .insert(gamesTable)
       .values({
         teamId: body.teamId,
+        ownerId,
         opponent: body.opponent,
         date: body.date.toISOString().slice(0, 10),
         result: body.result,
@@ -121,13 +133,22 @@ router.post("/games", requireAuth, async (req, res) => {
     return createdGame;
   });
 
-  const serialized = await serializeGame(game.id);
+  if (game.videoObjectPath) {
+    await objectStorageService
+      .trySetObjectEntityAclPolicy(game.videoObjectPath, {
+        owner: String(ownerId),
+        visibility: "private",
+      })
+      .catch((err) => req.log.error({ err }, "Failed to set video ACL policy"));
+  }
+
+  const serialized = await serializeGame(game.id, ownerId);
   res.status(201).json(CreateGameResponse.parse(serialized));
 });
 
 router.get("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = GetGameParams.parse(req.params);
-  const serialized = await serializeGame(gameId);
+  const serialized = await serializeGame(gameId, req.appUser!.id);
   if (!serialized) {
     res.status(404).json({ error: "Game not found" });
     return;
@@ -138,12 +159,27 @@ router.get("/games/:gameId", requireAuth, async (req, res) => {
 router.patch("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = UpdateGameParams.parse(req.params);
   const body = UpdateGameBody.parse(req.body);
+  const ownerId = req.appUser!.id;
 
-  const existing = await db.query.gamesTable.findFirst({ where: eq(gamesTable.id, gameId) });
+  const existing = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+  });
   if (!existing) {
     res.status(404).json({ error: "Game not found" });
     return;
   }
+
+  const team = await db.query.teamsTable.findFirst({
+    where: and(eq(teamsTable.id, body.teamId), eq(teamsTable.ownerId, ownerId)),
+  });
+  if (!team) {
+    res.status(404).json({ error: "Team not found" });
+    return;
+  }
+
+  const videoObjectPath = body.videoObjectPath
+    ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
+    : null;
 
   await db.transaction(async (tx) => {
     await tx
@@ -155,16 +191,14 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
         result: body.result,
         teamScore: body.teamScore,
         opponentScore: body.opponentScore,
-        videoObjectPath: body.videoObjectPath
-          ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
-          : null,
+        videoObjectPath,
         // Editing stats/events/video invalidates any existing highlight reel.
         highlightObjectPath: null,
         highlightStatus: "idle",
         highlightError: null,
         highlightStartedAt: null,
       })
-      .where(eq(gamesTable.id, gameId));
+      .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
 
     await tx.delete(playerGameStatsTable).where(eq(playerGameStatsTable.gameId, gameId));
     await tx.delete(gameEventsTable).where(eq(gameEventsTable.gameId, gameId));
@@ -188,13 +222,24 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
     }
   });
 
-  const serialized = await serializeGame(gameId);
+  if (videoObjectPath) {
+    await objectStorageService
+      .trySetObjectEntityAclPolicy(videoObjectPath, {
+        owner: String(ownerId),
+        visibility: "private",
+      })
+      .catch((err) => req.log.error({ err }, "Failed to set video ACL policy"));
+  }
+
+  const serialized = await serializeGame(gameId, ownerId);
   res.json(UpdateGameResponse.parse(serialized));
 });
 
 router.delete("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = DeleteGameParams.parse(req.params);
-  await db.delete(gamesTable).where(eq(gamesTable.id, gameId));
+  await db
+    .delete(gamesTable)
+    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)));
   res.status(204).send();
 });
 

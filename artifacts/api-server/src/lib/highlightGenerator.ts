@@ -279,6 +279,17 @@ export async function generateHighlight(gameId: number): Promise<void> {
     }
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
+    if (game.ownerId != null) {
+      await objectStorageService
+        .trySetObjectEntityAclPolicy(objectPath, {
+          owner: String(game.ownerId),
+          visibility: "private",
+        })
+        .catch((err) =>
+          logger.error({ err, gameId }, "Failed to set highlight ACL policy"),
+        );
+    }
+
     await setStatus(gameId, "ready", {
       highlightObjectPath: objectPath,
       highlightError: null,

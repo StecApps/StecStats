@@ -8,6 +8,7 @@ const router: IRouter = Router();
 
 router.post("/import", requireAuth, async (req, res) => {
   const body = ImportDataBody.parse(req.body);
+  const ownerId = req.appUser!.id;
 
   let playersCreated = 0;
   let teamsCreated = 0;
@@ -23,14 +24,14 @@ router.post("/import", requireAuth, async (req, res) => {
       let teamId = teamCache.get(row.teamName);
       if (teamId === undefined) {
         const existingTeam = await tx.query.teamsTable.findFirst({
-          where: eq(teamsTable.name, row.teamName),
+          where: and(eq(teamsTable.name, row.teamName), eq(teamsTable.ownerId, ownerId)),
         });
         if (existingTeam) {
           teamId = existingTeam.id;
         } else {
           const [created] = await tx
             .insert(teamsTable)
-            .values({ name: row.teamName })
+            .values({ name: row.teamName, ownerId })
             .returning();
           teamId = created.id;
           teamsCreated += 1;
@@ -41,14 +42,14 @@ router.post("/import", requireAuth, async (req, res) => {
       let playerId = playerCache.get(row.playerName);
       if (playerId === undefined) {
         const existingPlayer = await tx.query.playersTable.findFirst({
-          where: eq(playersTable.name, row.playerName),
+          where: and(eq(playersTable.name, row.playerName), eq(playersTable.ownerId, ownerId)),
         });
         if (existingPlayer) {
           playerId = existingPlayer.id;
         } else {
           const [created] = await tx
             .insert(playersTable)
-            .values({ name: row.playerName })
+            .values({ name: row.playerName, ownerId })
             .returning();
           playerId = created.id;
           playersCreated += 1;
@@ -64,6 +65,7 @@ router.post("/import", requireAuth, async (req, res) => {
             eq(gamesTable.teamId, teamId),
             eq(gamesTable.opponent, row.opponent),
             eq(gamesTable.date, row.date),
+            eq(gamesTable.ownerId, ownerId),
           ),
         });
         if (existingGame) {
@@ -73,6 +75,7 @@ router.post("/import", requireAuth, async (req, res) => {
             .insert(gamesTable)
             .values({
               teamId,
+              ownerId,
               opponent: row.opponent,
               date: row.date,
               result: row.result,

@@ -1,5 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
+import { and, eq, or } from "drizzle-orm";
+import { db, gamesTable } from "@workspace/db";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
@@ -91,6 +93,32 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+
+    const ownerId = req.appUser!.id;
+
+    // Prefer the authoritative DB ownership link (covers legacy objects that
+    // predate ACL metadata being written), falling back to ACL metadata.
+    const ownedGame = await db.query.gamesTable.findFirst({
+      where: and(
+        eq(gamesTable.ownerId, ownerId),
+        or(
+          eq(gamesTable.videoObjectPath, objectPath),
+          eq(gamesTable.highlightObjectPath, objectPath),
+        ),
+      ),
+    });
+
+    const canAccess =
+      !!ownedGame ||
+      (await objectStorageService.canAccessObjectEntity({
+        userId: String(ownerId),
+        objectFile,
+        requestedPermission: ObjectPermission.READ,
+      }));
+    if (!canAccess) {
+      res.status(404).json({ error: "Object not found" });
+      return;
+    }
 
     const response = await objectStorageService.downloadObject(objectFile);
 

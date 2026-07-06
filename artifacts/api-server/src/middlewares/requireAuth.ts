@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { getAuth } from "@clerk/express";
-import { eq } from "drizzle-orm";
-import { db, usersTable, type User } from "@workspace/db";
+import { eq, isNull } from "drizzle-orm";
+import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
 
 declare global {
   namespace Express {
@@ -42,6 +42,28 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         (await db.query.usersTable.findFirst({
           where: eq(usersTable.clerkUserId, clerkUserId),
         }));
+
+      // Claim any still-unowned legacy rows (created before accounts existed)
+      // for whichever account signs in first. This is self-limiting: once
+      // claimed, no more NULL-owner rows remain, so it's a cheap no-op for
+      // every subsequent signup. We only attempt this when we actually
+      // inserted a brand-new user row, not on a lookup of an existing one.
+      if (inserted) {
+        await Promise.all([
+          db
+            .update(playersTable)
+            .set({ ownerId: inserted.id })
+            .where(isNull(playersTable.ownerId)),
+          db
+            .update(teamsTable)
+            .set({ ownerId: inserted.id })
+            .where(isNull(teamsTable.ownerId)),
+          db
+            .update(gamesTable)
+            .set({ ownerId: inserted.id })
+            .where(isNull(gamesTable.ownerId)),
+        ]);
+      }
     }
 
     if (!user) {
