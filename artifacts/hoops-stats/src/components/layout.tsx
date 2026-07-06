@@ -1,9 +1,29 @@
 import { Link, useLocation } from "wouter";
-import { Trophy, FileUp, Activity, LogOut } from "lucide-react";
+import { Trophy, FileUp, Activity, LogOut, Crown, CreditCard } from "lucide-react";
 import { useUser, useClerk } from "@clerk/react";
+import { useGetBillingStatus } from "@workspace/api-client-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function PlanBadge() {
+  const { data: status } = useGetBillingStatus();
+  const isPro = status?.plan === "pro";
+
+  return (
+    <Link href="/billing">
+      <Badge
+        data-testid="badge-plan-status"
+        variant={isPro ? "default" : "secondary"}
+        className="cursor-pointer flex items-center gap-1"
+      >
+        {isPro ? <Crown className="w-3 h-3" /> : null}
+        {isPro ? "Pro" : "Free"}
+      </Badge>
+    </Link>
+  );
+}
 
 function UserMenu() {
   const { user, isLoaded } = useUser();
@@ -15,6 +35,7 @@ function UserMenu() {
 
   return (
     <div className="flex items-center gap-3">
+      <PlanBadge />
       <span
         data-testid="user-email-display"
         className="hidden sm:inline text-xs text-foreground/60 truncate max-w-[160px]"
@@ -40,6 +61,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: "/dashboard", label: "Dashboard", icon: Trophy },
     { href: "/record", label: "Record Game", icon: Activity },
     { href: "/import", label: "Import", icon: FileUp },
+    { href: "/billing", label: "Billing", icon: CreditCard },
   ];
 
   return (

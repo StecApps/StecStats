@@ -281,6 +281,53 @@ export interface ErrorEnvelope {
   error: string;
 }
 
+/**
+ * Effective plan derived from Stripe subscription status.
+ */
+export type BillingStatusPlan = typeof BillingStatusPlan[keyof typeof BillingStatusPlan];
+
+
+export const BillingStatusPlan = {
+  free: 'free',
+  pro: 'pro',
+} as const;
+
+export interface BillingStatus {
+  /** Effective plan derived from Stripe subscription status. */
+  plan: BillingStatusPlan;
+  /** Raw Stripe subscription status (e.g. trialing, active, past_due, canceled), or null if never subscribed. */
+  status: string | null;
+  currentPeriodEnd?: string | null;
+  trialEnd?: string | null;
+  cancelAtPeriodEnd: boolean;
+}
+
+/**
+ * Which Pro price to check out with.
+ */
+export type CreateCheckoutSessionInputInterval = typeof CreateCheckoutSessionInputInterval[keyof typeof CreateCheckoutSessionInputInterval];
+
+
+export const CreateCheckoutSessionInputInterval = {
+  month: 'month',
+  year: 'year',
+} as const;
+
+export interface CreateCheckoutSessionInput {
+  /** Which Pro price to check out with. */
+  interval: CreateCheckoutSessionInputInterval;
+}
+
+export interface CheckoutSessionResponse {
+  /** Stripe-hosted Checkout URL to redirect the user to. */
+  url: string;
+}
+
+export interface PortalSessionResponse {
+  /** Stripe-hosted Billing Portal URL to redirect the user to. */
+  url: string;
+}
+
 export type HighlightStatusStatus = typeof HighlightStatusStatus[keyof typeof HighlightStatusStatus];
 
 

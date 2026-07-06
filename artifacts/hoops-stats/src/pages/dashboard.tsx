@@ -51,7 +51,8 @@ export default function Dashboard() {
       setSelectedPlayerId(p.id);
       toast({ title: "Player added", description: `Added ${p.name}` });
     } catch (err) {
-      toast({ title: "Error", description: "Failed to add player", variant: "destructive" });
+      const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : "Failed to add player";
+      toast({ title: "Error", description, variant: "destructive" });
     }
   };
 
@@ -426,7 +427,8 @@ function TeamFormDialog({ trigger, team, onSaved }: { trigger: React.ReactNode, 
       setName(team ? name : "");
       onSaved();
     } catch (err) {
-      toast({ title: "Error saving team", variant: "destructive" });
+      const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : undefined;
+      toast({ title: "Error saving team", description, variant: "destructive" });
     }
   };
 

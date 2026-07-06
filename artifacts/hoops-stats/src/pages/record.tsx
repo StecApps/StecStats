@@ -780,7 +780,8 @@ export default function RecordGame() {
       connectBroadcasterSocket(code, false);
     } catch (err) {
       setIsStartingLive(false);
-      toast({ title: "Could not start live stream", variant: "destructive" });
+      const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : undefined;
+      toast({ title: "Could not start live stream", description, variant: "destructive" });
     }
   };
 
@@ -920,7 +921,8 @@ export default function RecordGame() {
       
       navigate("/dashboard");
     } catch(err) {
-      toast({ title: "Error saving game", variant: "destructive" });
+      const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : undefined;
+      toast({ title: "Error saving game", description, variant: "destructive" });
     }
   };
 

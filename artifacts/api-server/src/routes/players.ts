@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, playersTable, gamesTable, playerGameStatsTable, teamsTable } from "@workspace/db";
 import {
   ListPlayersResponse,
@@ -18,8 +18,13 @@ import {
 } from "@workspace/api-zod";
 import { computePoints, safeDiv } from "../lib/stats";
 import { requireAuth } from "../middlewares/requireAuth";
+import { getEntitlements } from "../lib/entitlements";
 
 const router: IRouter = Router();
+
+// Free tier is capped at 1 player. Enforced server-side (source of truth) --
+// the UI gate is cosmetic only.
+const FREE_PLAYER_LIMIT = 1;
 
 router.get("/players", requireAuth, async (req, res) => {
   const players = await db
@@ -32,9 +37,26 @@ router.get("/players", requireAuth, async (req, res) => {
 
 router.post("/players", requireAuth, async (req, res) => {
   const body = CreatePlayerBody.parse(req.body);
+  const ownerId = req.appUser!.id;
+
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  if (entitlements.plan === "free") {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(playersTable)
+      .where(eq(playersTable.ownerId, ownerId));
+    if (count >= FREE_PLAYER_LIMIT) {
+      res.status(403).json({
+        error: `Free plan is limited to ${FREE_PLAYER_LIMIT} player. Upgrade to Pro for unlimited players.`,
+        code: "UPGRADE_REQUIRED",
+      });
+      return;
+    }
+  }
+
   const [player] = await db
     .insert(playersTable)
-    .values({ ...body, ownerId: req.appUser!.id })
+    .values({ ...body, ownerId })
     .returning();
   res.status(201).json(CreatePlayerResponse.parse(player));
 });

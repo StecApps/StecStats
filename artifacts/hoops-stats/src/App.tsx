@@ -11,6 +11,7 @@ import Home from "@/pages/home";
 import Dashboard from "@/pages/dashboard";
 import RecordGame from "@/pages/record";
 import ImportData from "@/pages/import";
+import Billing from "@/pages/billing";
 import WatchStream from "@/pages/watch";
 import Layout from "@/components/layout";
 
@@ -115,6 +116,7 @@ function ProtectedApp() {
             <Route path="/record" component={RecordGame} />
             <Route path="/record/:id" component={RecordGame} />
             <Route path="/import" component={ImportData} />
+            <Route path="/billing" component={Billing} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

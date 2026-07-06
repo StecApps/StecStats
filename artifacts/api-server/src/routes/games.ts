@@ -22,6 +22,7 @@ import { computePoints } from "../lib/stats";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { getObjectAclPolicy, setObjectAclPolicy } from "../lib/objectAcl";
 import { requireAuth } from "../middlewares/requireAuth";
+import { getEntitlements } from "../lib/entitlements";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -164,6 +165,17 @@ router.post("/games", requireAuth, async (req, res) => {
     return;
   }
 
+  if (body.videoObjectPath) {
+    const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+    if (entitlements.plan !== "pro") {
+      res.status(403).json({
+        error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",
+        code: "UPGRADE_REQUIRED",
+      });
+      return;
+    }
+  }
+
   const videoObjectPath = body.videoObjectPath
     ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
     : null;
@@ -260,6 +272,17 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
   if (!(await assertPlayersOwned(referencedPlayerIds, ownerId))) {
     res.status(404).json({ error: "Player not found" });
     return;
+  }
+
+  if (body.videoObjectPath && body.videoObjectPath !== existing.videoObjectPath) {
+    const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+    if (entitlements.plan !== "pro") {
+      res.status(403).json({
+        error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",
+        code: "UPGRADE_REQUIRED",
+      });
+      return;
+    }
   }
 
   const videoObjectPath = body.videoObjectPath

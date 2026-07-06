@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { liveStreamRegistry, getIceServers } from "../lib/liveStream";
 import { requireAuth } from "../middlewares/requireAuth";
+import { getEntitlements } from "../lib/entitlements";
 
 const router: IRouter = Router();
 
@@ -27,6 +28,15 @@ router.get("/live/ice-servers", async (_req: Request, res: Response) => {
  * are required on either side.
  */
 router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  if (entitlements.plan !== "pro") {
+    res.status(403).json({
+      error: "Live streaming is a Pro feature. Upgrade to Pro to broadcast games live.",
+      code: "UPGRADE_REQUIRED",
+    });
+    return;
+  }
+
   const { opponent, teamName } = req.body ?? {};
   if (typeof opponent !== "string" || !opponent.trim() || typeof teamName !== "string" || !teamName.trim()) {
     res.status(400).json({ error: "Missing or invalid required fields" });

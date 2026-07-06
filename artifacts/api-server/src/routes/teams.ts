@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -23,8 +23,14 @@ import {
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
 import { requireAuth } from "../middlewares/requireAuth";
+import { getEntitlements } from "../lib/entitlements";
 
 const router: IRouter = Router();
+
+// Free tier is limited to "current season only" -- modeled as a single team
+// (season) per account. Enforced server-side (source of truth) -- the UI
+// gate is cosmetic only.
+const FREE_TEAM_LIMIT = 1;
 
 router.get("/teams", requireAuth, async (req, res) => {
   const teams = await db
@@ -37,9 +43,26 @@ router.get("/teams", requireAuth, async (req, res) => {
 
 router.post("/teams", requireAuth, async (req, res) => {
   const body = CreateTeamBody.parse(req.body);
+  const ownerId = req.appUser!.id;
+
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  if (entitlements.plan === "free") {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(teamsTable)
+      .where(eq(teamsTable.ownerId, ownerId));
+    if (count >= FREE_TEAM_LIMIT) {
+      res.status(403).json({
+        error: `Free plan is limited to the current season (${FREE_TEAM_LIMIT} team). Upgrade to Pro for unlimited seasons.`,
+        code: "UPGRADE_REQUIRED",
+      });
+      return;
+    }
+  }
+
   const [team] = await db
     .insert(teamsTable)
-    .values({ ...body, ownerId: req.appUser!.id })
+    .values({ ...body, ownerId })
     .returning();
   res.status(201).json(CreateTeamResponse.parse(team));
 });

@@ -614,6 +614,38 @@ export const ImportDataResponse = zod.object({
 
 
 /**
+ * @summary Get the caller's current plan and subscription status
+ */
+export const GetBillingStatusResponse = zod.object({
+  "plan": zod.enum(['free', 'pro']).describe('Effective plan derived from Stripe subscription status.'),
+  "status": zod.string().nullable().describe('Raw Stripe subscription status (e.g. trialing, active, past_due, canceled), or null if never subscribed.'),
+  "currentPeriodEnd": zod.coerce.date().nullish(),
+  "trialEnd": zod.coerce.date().nullish(),
+  "cancelAtPeriodEnd": zod.boolean()
+})
+
+
+/**
+ * @summary Create a Stripe Checkout session to start/upgrade a Pro subscription
+ */
+export const CreateCheckoutSessionBody = zod.object({
+  "interval": zod.enum(['month', 'year']).describe('Which Pro price to check out with.')
+})
+
+export const CreateCheckoutSessionResponse = zod.object({
+  "url": zod.string().url().describe('Stripe-hosted Checkout URL to redirect the user to.')
+})
+
+
+/**
+ * @summary Create a Stripe Billing Portal session for the caller to manage their subscription
+ */
+export const CreateBillingPortalSessionResponse = zod.object({
+  "url": zod.string().url().describe('Stripe-hosted Billing Portal URL to redirect the user to.')
+})
+
+
+/**
  * Returns a presigned GCS URL for direct upload. The client sends JSON
  * metadata here, then uploads the file directly to the returned URL.
  * @summary Request a presigned URL for file upload

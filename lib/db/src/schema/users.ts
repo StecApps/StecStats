@@ -10,6 +10,12 @@ export const usersTable = pgTable("users", {
   id: serial("id").primaryKey(),
   clerkUserId: text("clerk_user_id").notNull().unique(),
   email: text("email"),
+  // Stripe customer id for this account, if one has been created (lazily,
+  // on first checkout). Subscription/plan status itself is never stored
+  // here — it is derived on read from the `stripe.subscriptions` table that
+  // stripe-replit-sync keeps in sync via webhooks, which is the source of
+  // truth. See lib/entitlements.ts in api-server.
+  stripeCustomerId: text("stripe_customer_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
