@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import { eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { db, liveSessionsTable } from "@workspace/db";
 import { logger } from "./logger";
 
@@ -85,8 +85,32 @@ function generateCode(length = 6): string {
   return code;
 }
 
+const HEARTBEAT_THROTTLE_MS = 10 * 60 * 1000;
+
 class LiveStreamRegistry {
   private sessions = new Map<string, LiveSession>();
+  private lastHeartbeatAt = new Map<string, number>();
+
+  /**
+   * Heartbeat: refreshes the persisted lastSeenAt for a session with live
+   * activity (signaling, scoreboard/stat updates, joins). Throttled to one
+   * DB write per session per 10 minutes so ongoing streams never look
+   * "abandoned" to the cleanup job, without hammering the database.
+   */
+  touchSession(code: string): void {
+    const upper = code.toUpperCase();
+    const now = Date.now();
+    const last = this.lastHeartbeatAt.get(upper) ?? 0;
+    if (now - last < HEARTBEAT_THROTTLE_MS) return;
+    this.lastHeartbeatAt.set(upper, now);
+    db.update(liveSessionsTable)
+      .set({ lastSeenAt: new Date() })
+      .where(eq(liveSessionsTable.code, upper))
+      .catch((err: unknown) => {
+        this.lastHeartbeatAt.delete(upper);
+        logger.warn({ err, code: upper }, "Failed to heartbeat live session lastSeenAt");
+      });
+  }
 
   /**
    * Creates a new session in memory AND persists its metadata (code,
@@ -168,6 +192,14 @@ class LiveStreamRegistry {
       recentEvents: [],
     };
     this.sessions.set(upper, resumed);
+    try {
+      await db
+        .update(liveSessionsTable)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(liveSessionsTable.code, upper));
+    } catch (err) {
+      logger.warn({ err, code: upper }, "Failed to refresh lastSeenAt on resumed live session");
+    }
     logger.info({ code: upper }, "Resumed live session from persisted state after server restart");
     return resumed;
   }
@@ -192,12 +224,64 @@ class LiveStreamRegistry {
       }
       this.sessions.delete(session.code);
     }
+    this.lastHeartbeatAt.delete(upper);
     try {
-      await db.update(liveSessionsTable).set({ active: false }).where(eq(liveSessionsTable.code, upper));
+      await db
+        .update(liveSessionsTable)
+        .set({ active: false, lastSeenAt: new Date() })
+        .where(eq(liveSessionsTable.code, upper));
     } catch (err) {
       logger.error({ err, code: upper }, "Failed to mark persisted live session inactive");
     }
     logger.info({ code: upper }, "Live session ended");
+  }
+
+  /**
+   * Purges old live_sessions rows so invite codes don't pile up forever:
+   * - inactive (ended) sessions untouched for more than 3 days
+   * - "active" sessions abandoned for more than 7 days (e.g. the coach never
+   *   ended the stream and the server restarted, so no endSession ran)
+   * Active or recently-ended sessions are never touched, so restart-resume
+   * and rejoining a just-ended stream keep working.
+   */
+  async purgeOldSessions(): Promise<void> {
+    const now = Date.now();
+    const inactiveCutoff = new Date(now - 3 * 24 * 60 * 60 * 1000);
+    const abandonedCutoff = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    try {
+      const endedRows = await db
+        .delete(liveSessionsTable)
+        .where(and(eq(liveSessionsTable.active, false), lt(liveSessionsTable.lastSeenAt, inactiveCutoff)))
+        .returning({ code: liveSessionsTable.code });
+      const abandonedRows = await db
+        .delete(liveSessionsTable)
+        .where(and(eq(liveSessionsTable.active, true), lt(liveSessionsTable.lastSeenAt, abandonedCutoff)))
+        .returning({ code: liveSessionsTable.code });
+      for (const row of abandonedRows) {
+        this.sessions.delete(row.code);
+        this.lastHeartbeatAt.delete(row.code);
+      }
+      for (const row of endedRows) {
+        this.lastHeartbeatAt.delete(row.code);
+      }
+      if (endedRows.length > 0 || abandonedRows.length > 0) {
+        logger.info(
+          { ended: endedRows.length, abandoned: abandonedRows.length },
+          "Purged old live sessions from database",
+        );
+      }
+    } catch (err) {
+      logger.error({ err }, "Failed to purge old live sessions");
+    }
+  }
+
+  startCleanupTimer(intervalMs = 60 * 60 * 1000): NodeJS.Timeout {
+    void this.purgeOldSessions();
+    const timer = setInterval(() => {
+      void this.purgeOldSessions();
+    }, intervalMs);
+    timer.unref();
+    return timer;
   }
 }
 

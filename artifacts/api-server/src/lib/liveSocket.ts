@@ -62,6 +62,11 @@ export function attachLiveSocketServer(upgradeEmitter: {
         return;
       }
 
+      // Heartbeat: any live signaling activity keeps the persisted session
+      // fresh so the cleanup job never mistakes an ongoing stream for an
+      // abandoned one (throttled internally).
+      liveStreamRegistry.touchSession(session.code);
+
       switch (message.type) {
         case "join-broadcaster": {
           session.broadcaster = ws;

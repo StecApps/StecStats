@@ -3,6 +3,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedDatabase } from "./lib/seed";
 import { attachLiveSocketServer } from "./lib/liveSocket";
+import { liveStreamRegistry } from "./lib/liveStream";
 import { getStripeSync } from "./lib/stripeClient";
 
 const rawPort = process.env["PORT"];
@@ -58,4 +59,5 @@ Promise.all([
   });
 
   attachLiveSocketServer(server);
+  liveStreamRegistry.startCleanupTimer();
 });
