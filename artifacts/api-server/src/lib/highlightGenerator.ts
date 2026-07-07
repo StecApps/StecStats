@@ -179,6 +179,35 @@ async function renderGameSegments(
     duration = parseFloat(streamDurStr);
   }
 
+  // MediaRecorder WebM files never write a duration header — neither the
+  // container nor stream fields are populated. Remux to MKV (copy-only,
+  // very fast) so ffmpeg computes and writes a proper duration, then probe
+  // the remuxed file.
+  if (!Number.isFinite(duration) || duration <= 0) {
+    const remuxPath = path.join(tmpDir, `${prefix}_remux.mkv`);
+    try {
+      await run("ffmpeg", [
+        "-y",
+        "-analyzeduration", "2147483647",
+        "-probesize", "2147483647",
+        "-i", srcPath,
+        "-c", "copy",
+        remuxPath,
+      ]);
+      const remuxDurStr = await ffprobe([
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=nw=1:nk=1",
+        remuxPath,
+      ]);
+      duration = parseFloat(remuxDurStr);
+    } catch {
+      // remux failed; duration stays NaN and we throw below
+    } finally {
+      fs.unlink(remuxPath).catch(() => {});
+    }
+  }
+
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new HighlightError("Could not read the video duration");
   }
