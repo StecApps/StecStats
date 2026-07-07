@@ -480,28 +480,34 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-team-"));
 
-    const allSegPaths: string[] = [];
-    let anyAudio = false;
-    for (const game of videoGames) {
-      const eligible = eventsByGame.get(game.id);
-      if (!eligible || eligible.length === 0) continue;
+    // Process each game in parallel: download + remux + segment extraction all
+    // run concurrently so total time ≈ slowest game instead of sum of all games.
+    const gameResults = await Promise.all(
+      videoGames.map(async (game) => {
+        const eligible = eventsByGame.get(game.id);
+        if (!eligible || eligible.length === 0) return { segPaths: [], hasAudio: false };
 
-      const srcPath = path.join(tmpDir, `source_${game.id}`);
-      const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath!);
-      await objectFile.download({ destination: srcPath });
+        const srcPath = path.join(tmpDir!, `source_${game.id}`);
+        const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath!);
+        await objectFile.download({ destination: srcPath });
 
-      const audioStreams = await ffprobe([
-        "-v", "error",
-        "-select_streams", "a",
-        "-show_entries", "stream=index",
-        "-of", "csv=p=0",
-        srcPath,
-      ]);
-      if (audioStreams.length > 0) anyAudio = true;
+        const audioProbe = await ffprobe([
+          "-v", "error",
+          "-select_streams", "a",
+          "-show_entries", "stream=index",
+          "-of", "csv=p=0",
+          srcPath,
+        ]);
+        const hasAudio = audioProbe.length > 0;
 
-      const segPaths = await renderGameSegments(srcPath, tmpDir, `t${game.id}`, eligible, nameById);
-      allSegPaths.push(...segPaths);
-    }
+        const segPaths = await renderGameSegments(srcPath, tmpDir!, `t${game.id}`, eligible, nameById);
+        return { segPaths, hasAudio };
+      }),
+    );
+
+    // Flatten in game date order (videoGames is already ordered by date + id)
+    const allSegPaths = gameResults.flatMap((r) => r.segPaths);
+    const anyAudio = gameResults.some((r) => r.hasAudio);
 
     if (allSegPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments across this team's games");
