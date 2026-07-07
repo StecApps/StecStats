@@ -20,4 +20,5 @@
 - [Paywall gating must cover every response field/section, not just limits](paywall-full-surface-gating.md) — a "current season only" spec item and Pro-only computed fields (shooting %) need explicit server-side filtering/omission, not just create-limits.
 - [Premium tier via stripe product name join](premium-tier-entitlements.md) — plan = "premium" when stripe sub_items→prices→products join finds product name containing "premium"; billing checkout uses `tier` param to search "STEC STATS Premium" product by name.
 - [MediaPipe auto-follow in draw loop](mediapipe-autofollow.md) — ObjectDetector runs at 3fps on sourceVideoRef; EMA-smoothed center drives canvas crop offset; detection must NOT run inside the rAF draw loop (use setInterval instead).
+- [requireAuth in-memory user must be updated after email backfill](requireauth-email-backfill.md) — after `db.update(email)` do `user = {...user, email}` or req.appUser.email stays null and owner/premium checks fail.
 - [runTest needs testClerkAuth flag](clerk-testclerkauth-flag-required.md) — `[Clerk Auth]` test steps without `testClerkAuth: true` hit real Clerk UI and get Cloudflare-blocked, looking like an app bug.

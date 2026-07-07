@@ -65,6 +65,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     } else if (email && user.email !== email) {
       // Backfill the email column for a pre-existing row that predates it.
       await db.update(usersTable).set({ email }).where(eq(usersTable.id, user.id));
+      user = { ...user, email };
     }
 
     // One-time legacy backfill: pre-existing STEC data (created before
