@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { Radio, Users, Loader2, WifiOff, VolumeX } from "lucide-react";
+import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
@@ -25,6 +25,19 @@ export default function WatchStream() {
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const [muted, setMuted] = useState(true);
+  const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
+
+  const shareLink = async () => {
+    const url = window.location.href;
+    const title = status ? `Watch ${status.teamName} vs ${status.opponent} — Live` : "Watch Live Game";
+    if (navigator.share) {
+      try { await navigator.share({ title, url }); } catch { /* user cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(url).catch(() => {});
+      setShareStatus("copied");
+      setTimeout(() => setShareStatus("idle"), 2000);
+    }
+  };
 
   const attachStream = () => {
     const v = videoRef.current;
@@ -290,6 +303,22 @@ export default function WatchStream() {
         </div>
       )}
 
+      {state === "live" && (
+        <div
+          className="absolute left-3 flex items-center gap-2"
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
+        >
+          <button
+            onClick={shareLink}
+            className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors"
+          >
+            {shareStatus === "copied"
+              ? <><Check className="w-4 h-4 text-green-400" /> Copied!</>
+              : <><Share2 className="w-4 h-4" /> Share</>}
+          </button>
+        </div>
+      )}
+
       {state === "live" && muted && (
         <button
           onClick={unmute}
@@ -308,40 +337,64 @@ export default function WatchStream() {
           {state === "connecting" && (
             <>
               <Loader2 className="w-8 h-8 animate-spin" />
-              <p>Connecting to the stream...</p>
+              <p>Joining the stream...</p>
             </>
           )}
           {state === "waiting-for-broadcaster" && (
             <>
-              <Users className="w-8 h-8" />
-              <p className="max-w-sm">The coach hasn't started streaming yet. Stay on this page — it will connect automatically.</p>
+              <Users className="w-8 h-8 text-primary" />
+              <p className="max-w-sm text-white">Game hasn't started yet. You're in the right place — it'll connect automatically when the coach goes live.</p>
+              <button
+                onClick={shareLink}
+                className="mt-2 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20 transition-colors"
+              >
+                {shareStatus === "copied"
+                  ? <><Check className="w-4 h-4 text-green-400" /> Link copied!</>
+                  : <><Share2 className="w-4 h-4" /> Share with family</>}
+              </button>
             </>
           )}
           {state === "reconnecting" && (
             <>
               <Loader2 className="w-8 h-8 animate-spin" />
-              <p className="max-w-sm">Connection lost — reconnecting to the stream. Stay on this page.</p>
+              <p className="max-w-sm">Reconnecting... stay on this page.</p>
             </>
           )}
           {state === "ended" && (
             <>
               <WifiOff className="w-8 h-8" />
-              <p className="max-w-sm">
+              <p className="max-w-sm text-white">
                 {explicitEndRef.current
-                  ? "This live stream has ended."
-                  : mediaFailedRef.current
-                  ? "Stream disconnected — we couldn't restore the video connection. Refresh this page to try again."
-                  : "We lost connection to the stream and couldn't reconnect. Refresh this page to try again."}
+                  ? "The game has ended."
+                  : "Connection dropped and couldn't be restored."}
               </p>
+              {!explicitEndRef.current && (
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+                >
+                  Refresh and try again
+                </button>
+              )}
+              {explicitEndRef.current && (
+                <button
+                  onClick={shareLink}
+                  className="mt-2 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+                >
+                  {shareStatus === "copied"
+                    ? <><Check className="w-4 h-4 text-green-400" /> Link copied!</>
+                    : <><Share2 className="w-4 h-4" /> Share this game</>}
+                </button>
+              )}
             </>
           )}
           {state === "not-found" && (
             <>
               <WifiOff className="w-8 h-8" />
-              <p>This invite link is no longer valid.</p>
+              <p className="max-w-sm">This link has expired or isn't valid. Ask the coach for a new one.</p>
             </>
           )}
-          <p className="text-xs text-white/40 mt-4">You're watching via a private invite link. No account needed.</p>
+          <p className="text-xs text-white/40 mt-4">No account needed to watch.</p>
         </div>
       )}
     </div>
