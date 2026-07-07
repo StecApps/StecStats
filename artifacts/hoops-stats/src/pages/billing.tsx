@@ -93,13 +93,17 @@ export default function Billing() {
       ? `Your Premium subscription will end on ${periodEnd}.`
       : isPremium && periodEnd
         ? `Your Premium subscription renews on ${periodEnd}.`
-        : isPro && isTrialing && trialEnd
-          ? `You're in your free trial. It ends on ${trialEnd}.`
-          : isPro && status?.cancelAtPeriodEnd && periodEnd
-            ? `Your subscription will end on ${periodEnd}.`
-            : isPro && periodEnd
-              ? `Your subscription renews on ${periodEnd}.`
-              : "You're on the Free plan. Upgrade to unlock the full app.";
+        : isPremium
+          ? "You have an active Premium plan."
+          : isPro && isTrialing && trialEnd
+            ? `You're in your free trial. It ends on ${trialEnd}.`
+            : isPro && status?.cancelAtPeriodEnd && periodEnd
+              ? `Your subscription will end on ${periodEnd}.`
+              : isPro && periodEnd
+                ? `Your subscription renews on ${periodEnd}.`
+                : isPro
+                  ? "You have an active Pro plan."
+                  : "You're on the Free plan. Upgrade to unlock the full app.";
 
   return (
     <div className="flex flex-col space-y-6 max-w-4xl mx-auto w-full">

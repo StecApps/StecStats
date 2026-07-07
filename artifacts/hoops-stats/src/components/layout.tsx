@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Trophy, FileUp, Activity, LogOut, Crown, CreditCard, Sparkles } from "lucide-react";
+import { Trophy, FileUp, Activity, LogOut, Crown, CreditCard, Sparkles, Zap } from "lucide-react";
 import { useUser, useClerk } from "@clerk/react";
 import { useGetBillingStatus } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
@@ -10,16 +10,17 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 function PlanBadge() {
   const { data: status } = useGetBillingStatus();
   const isPro = status?.plan === "pro";
+  const isPremium = status?.plan === "premium";
 
   return (
     <Link href="/billing">
       <Badge
         data-testid="badge-plan-status"
-        variant={isPro ? "default" : "secondary"}
+        variant={(isPro || isPremium) ? "default" : "secondary"}
         className="cursor-pointer flex items-center gap-1"
       >
-        {isPro ? <Crown className="w-3 h-3" /> : null}
-        {isPro ? "Pro" : "Free"}
+        {isPremium ? <Zap className="w-3 h-3" /> : isPro ? <Crown className="w-3 h-3" /> : null}
+        {isPremium ? "Premium" : isPro ? "Pro" : "Free"}
       </Badge>
     </Link>
   );
