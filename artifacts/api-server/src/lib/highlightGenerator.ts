@@ -153,9 +153,13 @@ async function renderGameSegments(
   eligible: { videoTimestampMs: number; playerId: number; statField: string }[],
   nameById: Map<number, string>,
 ): Promise<string[]> {
-  // MediaRecorder WebM files often lack a container-level duration header.
-  // Use a large analyzeduration/probesize so ffprobe scans the whole file,
-  // then fall back to the video stream's own duration field if needed.
+  // MediaRecorder WebM files often lack a container-level duration header AND
+  // have no seek index (cue points), making -ss seeks extremely slow.
+  // Strategy: try cheap probes first; if they fail, remux to MKV (copy-only,
+  // fast) which writes both a duration header and cue points.  All subsequent
+  // probes and segment extractions use activeSrcPath so seeking is O(1).
+  let activeSrcPath = srcPath;
+
   let durationStr = await ffprobe([
     "-v", "error",
     "-analyzeduration", "2147483647",
@@ -179,33 +183,27 @@ async function renderGameSegments(
     duration = parseFloat(streamDurStr);
   }
 
-  // MediaRecorder WebM files never write a duration header — neither the
-  // container nor stream fields are populated. Remux to MKV (copy-only,
-  // very fast) so ffmpeg computes and writes a proper duration, then probe
-  // the remuxed file.
   if (!Number.isFinite(duration) || duration <= 0) {
+    // Remux to MKV: ffmpeg rewrites the container with a duration header and
+    // cue points, enabling accurate random-access seeking for all later steps.
+    // Keep the remuxed file alive; it becomes activeSrcPath.
     const remuxPath = path.join(tmpDir, `${prefix}_remux.mkv`);
-    try {
-      await run("ffmpeg", [
-        "-y",
-        "-analyzeduration", "2147483647",
-        "-probesize", "2147483647",
-        "-i", srcPath,
-        "-c", "copy",
-        remuxPath,
-      ]);
-      const remuxDurStr = await ffprobe([
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=nw=1:nk=1",
-        remuxPath,
-      ]);
-      duration = parseFloat(remuxDurStr);
-    } catch {
-      // remux failed; duration stays NaN and we throw below
-    } finally {
-      fs.unlink(remuxPath).catch(() => {});
-    }
+    await run("ffmpeg", [
+      "-y",
+      "-analyzeduration", "2147483647",
+      "-probesize", "2147483647",
+      "-i", srcPath,
+      "-c", "copy",
+      remuxPath,
+    ]);
+    const remuxDurStr = await ffprobe([
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=nw=1:nk=1",
+      remuxPath,
+    ]);
+    duration = parseFloat(remuxDurStr);
+    activeSrcPath = remuxPath;
   }
 
   if (!Number.isFinite(duration) || duration <= 0) {
@@ -217,7 +215,7 @@ async function renderGameSegments(
     "-select_streams", "v:0",
     "-show_entries", "stream=width,height",
     "-of", "csv=s=x:p=0",
-    srcPath,
+    activeSrcPath,
   ]);
   const height = parseInt(dims.split("x")[1] ?? "720", 10) || 720;
 
@@ -226,7 +224,7 @@ async function renderGameSegments(
     "-select_streams", "a",
     "-show_entries", "stream=index",
     "-of", "csv=p=0",
-    srcPath,
+    activeSrcPath,
   ]);
   const hasAudio = audioStreams.length > 0;
 
@@ -277,7 +275,7 @@ async function renderGameSegments(
     const args = [
       "-y",
       "-ss", seg.start.toFixed(3),
-      "-i", srcPath,
+      "-i", activeSrcPath,
       "-t", segDur.toFixed(3),
       "-vf", vf,
       "-r", "30",
