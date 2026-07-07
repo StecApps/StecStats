@@ -9,12 +9,14 @@ import {
   useCreatePlayer,
   useGetGameHighlight,
   useGenerateGameHighlight,
+  useGetBillingStatus,
   getGetGameHighlightQueryKey,
   getGetGameQueryKey,
   getGetPlayerSummaryQueryKey,
   getListPlayerTeamGroupsQueryKey,
   getListTeamGamesQueryKey
 } from "@workspace/api-client-react";
+import { getObjectDetector, detectPersonCenter } from "@/lib/playerTracking";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -22,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2 } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -110,6 +112,9 @@ export default function RecordGame() {
   const { data: gameToEdit, isLoading: gameLoading } = useGetGame(gameId as number, {
     query: { enabled: isEditing, queryKey: getGetGameQueryKey(gameId as number) }
   });
+
+  const { data: billingStatus } = useGetBillingStatus();
+  const isPremium = billingStatus?.plan === "premium";
 
   const { data: players } = useListPlayers();
   const { data: teams, refetch: refetchTeams } = useListTeams();
@@ -229,6 +234,14 @@ export default function RecordGame() {
   const currentDeviceIdRef = useRef<string | null>(null);
   const [canCycleLens, setCanCycleLens] = useState(false);
   const [lensLabel, setLensLabel] = useState("");
+  const [autoFollowEnabled, setAutoFollowEnabled] = useState(false);
+  const [isTrackingLoading, setIsTrackingLoading] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
+  const autoFollowRef = useRef(false);
+  const trackCenterXRef = useRef(0.5);
+  const trackCenterYRef = useRef(0.5);
+  const objectDetectorRef = useRef<Awaited<ReturnType<typeof getObjectDetector>> | null>(null);
+  const detectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartZoomRef = useRef(1);
@@ -268,6 +281,15 @@ export default function RecordGame() {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
+    }
+    autoFollowRef.current = false;
+    setAutoFollowEnabled(false);
+    setIsTracking(false);
+    trackCenterXRef.current = 0.5;
+    trackCenterYRef.current = 0.5;
     const src = sourceVideoRef.current;
     const srcStream = src?.srcObject as MediaStream | null;
     srcStream?.getTracks().forEach(t => t.stop());
@@ -466,6 +488,40 @@ export default function RecordGame() {
     };
   }, [isRecording]);
 
+  useEffect(() => {
+    if (!autoFollowEnabled || !isRecording) {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+        detectionIntervalRef.current = null;
+      }
+      return;
+    }
+    detectionIntervalRef.current = setInterval(() => {
+      const det = objectDetectorRef.current;
+      const v = sourceVideoRef.current;
+      if (!det || !v || v.videoWidth === 0 || v.videoHeight === 0) return;
+      try {
+        const center = detectPersonCenter(det, v);
+        if (center) {
+          const alpha = 0.2;
+          trackCenterXRef.current = (1 - alpha) * trackCenterXRef.current + alpha * center.x;
+          trackCenterYRef.current = (1 - alpha) * trackCenterYRef.current + alpha * center.y;
+          setIsTracking(true);
+        } else {
+          setIsTracking(false);
+        }
+      } catch {
+        // detection failed this frame — keep current pan position
+      }
+    }, 333);
+    return () => {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+        detectionIntervalRef.current = null;
+      }
+    };
+  }, [autoFollowEnabled, isRecording]);
+
   const startDrawLoop = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const draw = () => {
@@ -486,8 +542,10 @@ export default function RecordGame() {
           const z = Math.max(1, zoomRef.current);
           const sw = vw / z;
           const sh = vh / z;
-          const sx = (vw - sw) / 2;
-          const sy = (vh - sh) / 2;
+          const cx = autoFollowRef.current ? trackCenterXRef.current : 0.5;
+          const cy = autoFollowRef.current ? trackCenterYRef.current : 0.5;
+          const sx = Math.max(0, Math.min(vw - sw, cx * vw - sw / 2));
+          const sy = Math.max(0, Math.min(vh - sh, cy * vh - sh / 2));
           if (rot !== 0) {
             ctx.save();
             ctx.translate(cw / 2, ch / 2);
@@ -589,6 +647,33 @@ export default function RecordGame() {
 
   const adjustZoom = (delta: number) => {
     setZoom(z => Math.min(MAX_ZOOM, Math.max(1, Math.round((z + delta) * 10) / 10)));
+  };
+
+  const toggleAutoFollow = async () => {
+    if (autoFollowEnabled) {
+      autoFollowRef.current = false;
+      setAutoFollowEnabled(false);
+      setIsTracking(false);
+      trackCenterXRef.current = 0.5;
+      trackCenterYRef.current = 0.5;
+      return;
+    }
+    setIsTrackingLoading(true);
+    try {
+      const det = await getObjectDetector();
+      objectDetectorRef.current = det;
+    } catch {
+      toast({ title: "Auto-follow unavailable", description: "Could not load the tracking model. Check your connection and try again.", variant: "destructive" });
+      setIsTrackingLoading(false);
+      return;
+    }
+    setIsTrackingLoading(false);
+    if (zoomRef.current <= 1) {
+      setZoom(1.5);
+      zoomRef.current = 1.5;
+    }
+    autoFollowRef.current = true;
+    setAutoFollowEnabled(true);
   };
 
   const toggleMic = () => {
@@ -1520,6 +1605,20 @@ export default function RecordGame() {
                     <Button variant="secondary" size="sm" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={cycleLens}>
                       <Aperture className="w-4 h-4 mr-1" />
                       {lensLabel ? `Lens ${lensLabel}` : "Lens"}
+                    </Button>
+                  )}
+                  {isPremium && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className={`bg-black/50 backdrop-blur-sm border-0 ${autoFollowEnabled ? "text-primary ring-1 ring-primary/60 hover:bg-black/70" : "text-white hover:bg-black/70"}`}
+                      onClick={toggleAutoFollow}
+                      disabled={isTrackingLoading}
+                    >
+                      {isTrackingLoading
+                        ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        : <Crosshair className={`w-4 h-4 mr-1 ${isTracking ? "animate-pulse" : ""}`} />}
+                      {isTrackingLoading ? "Loading…" : autoFollowEnabled ? (isTracking ? "Tracking" : "Searching…") : "Auto-Follow"}
                     </Button>
                   )}
                   <div className="flex items-center gap-1 rounded-md bg-black/50 px-1 backdrop-blur-sm">

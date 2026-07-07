@@ -19,4 +19,5 @@
 - [Flaky e2e failure from mid-test workflow restart](flaky-e2e-workflow-restart.md) — api-server can auto-restart during an e2e run, causing a spurious network failure; re-run the test before assuming a real app bug.
 - [Paywall gating must cover every response field/section, not just limits](paywall-full-surface-gating.md) — a "current season only" spec item and Pro-only computed fields (shooting %) need explicit server-side filtering/omission, not just create-limits.
 - [Premium tier via stripe product name join](premium-tier-entitlements.md) — plan = "premium" when stripe sub_items→prices→products join finds product name containing "premium"; billing checkout uses `tier` param to search "STEC STATS Premium" product by name.
+- [MediaPipe auto-follow in draw loop](mediapipe-autofollow.md) — ObjectDetector runs at 3fps on sourceVideoRef; EMA-smoothed center drives canvas crop offset; detection must NOT run inside the rAF draw loop (use setInterval instead).
 - [runTest needs testClerkAuth flag](clerk-testclerkauth-flag-required.md) — `[Clerk Auth]` test steps without `testClerkAuth: true` hit real Clerk UI and get Cloudflare-blocked, looking like an app bug.
