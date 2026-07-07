@@ -20,7 +20,7 @@ function getAppBaseUrl(req: { protocol: string; get: (name: string) => string | 
 }
 
 router.get("/billing/status", requireAuth, async (req, res) => {
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
   res.json(
     GetBillingStatusResponse.parse({
       plan: entitlements.plan,

@@ -166,7 +166,7 @@ router.post("/games", requireAuth, async (req, res) => {
   }
 
   if (body.videoObjectPath) {
-    const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+    const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
     if (entitlements.plan !== "pro") {
       res.status(403).json({
         error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",
@@ -275,7 +275,7 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
   }
 
   if (body.videoObjectPath && body.videoObjectPath !== existing.videoObjectPath) {
-    const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+    const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
     if (entitlements.plan !== "pro") {
       res.status(403).json({
         error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",

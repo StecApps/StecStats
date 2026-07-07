@@ -41,7 +41,7 @@ router.post("/players", requireAuth, async (req, res) => {
   const body = CreatePlayerBody.parse(req.body);
   const ownerId = req.appUser!.id;
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
   if (entitlements.plan === "free") {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -111,7 +111,7 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
   // Free plan: "current season only, basic stats" -- no career-spanning
   // data and no shooting-efficiency percentages (Pro-only gauges). This is
   // enforced here server-side; the UI gate is cosmetic only.
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
   const isFree = entitlements.plan === "free";
   const seasonStart = getCurrentSeasonStartDate();
 
@@ -209,7 +209,7 @@ router.get("/players/:playerId/teams", requireAuth, async (req, res) => {
 
   // Free plan: "current season only" -- career team/season history beyond
   // the current season is Pro-only. Enforced server-side.
-  const isFree = (await getEntitlements(req.appUser!.stripeCustomerId)).plan === "free";
+  const isFree = (await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email)).plan === "free";
   const seasonStart = getCurrentSeasonStartDate();
 
   const rows = await db

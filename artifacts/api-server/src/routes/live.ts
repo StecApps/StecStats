@@ -28,7 +28,7 @@ router.get("/live/ice-servers", async (_req: Request, res: Response) => {
  * are required on either side.
  */
 router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
   if (entitlements.plan !== "pro") {
     res.status(403).json({
       error: "Live streaming is a Pro feature. Upgrade to Pro to broadcast games live.",

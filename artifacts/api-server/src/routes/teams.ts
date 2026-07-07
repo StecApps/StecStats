@@ -65,7 +65,7 @@ router.post("/teams", requireAuth, async (req, res) => {
   const body = CreateTeamBody.parse(req.body);
   const ownerId = req.appUser!.id;
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId);
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
   if (entitlements.plan === "free") {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -135,7 +135,7 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
   // Free plan: "current season only" -- a single team record can span
   // multiple real-world seasons of recorded games, so filter by date too.
   // Enforced server-side (source of truth) -- the UI gate is cosmetic only.
-  const isFree = (await getEntitlements(req.appUser!.stripeCustomerId)).plan === "free";
+  const isFree = (await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email)).plan === "free";
   const seasonStart = getCurrentSeasonStartDate();
 
   const games = await db
