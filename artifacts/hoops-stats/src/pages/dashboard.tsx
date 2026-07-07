@@ -413,7 +413,7 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
       {/* SHOOTING EFFICIENCY (Pro-only) */}
       <div>
         <SectionHeader title="Shooting Efficiency" />
-        {summary.plan === "pro" ? (
+        {isPro ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <GaugeCard label="Field Goal" value={summary.fgPct ?? 0} made={summary.twoMade + summary.threeMade} attempted={summary.twoAttempted + summary.threeAttempted} />
             <GaugeCard label="3-Point" value={summary.threePct ?? 0} made={summary.threeMade} attempted={summary.threeAttempted} />
