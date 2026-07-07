@@ -18,3 +18,4 @@
 - [stripe-replit-sync migration race on first boot](stripe-sync-migration-race.md) — first automatic boot can log "relation stripe.accounts does not exist" even though migrations succeed; confirm tables then just restart.
 - [Flaky e2e failure from mid-test workflow restart](flaky-e2e-workflow-restart.md) — api-server can auto-restart during an e2e run, causing a spurious network failure; re-run the test before assuming a real app bug.
 - [Paywall gating must cover every response field/section, not just limits](paywall-full-surface-gating.md) — a "current season only" spec item and Pro-only computed fields (shooting %) need explicit server-side filtering/omission, not just create-limits.
+- [runTest needs testClerkAuth flag](clerk-testclerkauth-flag-required.md) — `[Clerk Auth]` test steps without `testClerkAuth: true` hit real Clerk UI and get Cloudflare-blocked, looking like an app bug.

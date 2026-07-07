@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Trophy, FileUp, Activity, LogOut, Crown, CreditCard } from "lucide-react";
+import { Trophy, FileUp, Activity, LogOut, Crown, CreditCard, Sparkles } from "lucide-react";
 import { useUser, useClerk } from "@clerk/react";
 import { useGetBillingStatus } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +62,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: "/record", label: "Record Game", icon: Activity },
     { href: "/import", label: "Import", icon: FileUp },
     { href: "/billing", label: "Billing", icon: CreditCard },
+    { href: "/pricing", label: "Pricing", icon: Sparkles },
   ];
 
   return (

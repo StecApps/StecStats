@@ -4,10 +4,15 @@ import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/reac
 import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
+import { useListPlayers, useCreateCheckoutSession } from "@workspace/api-client-react";
+import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useToast } from "@/hooks/use-toast";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
+import Pricing, { PENDING_CHECKOUT_KEY } from "@/pages/pricing";
+import Onboarding from "@/pages/onboarding";
 import Dashboard from "@/pages/dashboard";
 import RecordGame from "@/pages/record";
 import ImportData from "@/pages/import";
@@ -106,19 +111,78 @@ function HomeRedirect() {
   );
 }
 
+// Fired-once checkout resumption for a user who picked a plan on the public
+// pricing page while signed out, then completed sign-up. Reads the pending
+// interval left in sessionStorage and immediately kicks off Stripe Checkout.
+function PendingCheckoutResumer() {
+  const { toast } = useToast();
+  const checkout = useCreateCheckoutSession();
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+    const interval = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
+    if (interval !== "month" && interval !== "year") return;
+    startedRef.current = true;
+    sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
+    checkout
+      .mutateAsync({ data: { interval } })
+      .then((res) => {
+        window.location.href = res.url;
+      })
+      .catch(() => {
+        toast({
+          title: "Error",
+          description: "Failed to start checkout. You can retry from the Billing page.",
+          variant: "destructive",
+        });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return null;
+}
+
+// Routes a brand-new signed-in user (no players yet) into the guided
+// onboarding flow instead of dropping them straight onto an empty dashboard.
+function OnboardingGate({ children }: { children: React.ReactNode }) {
+  const [location] = useLocation();
+  const { data: players, isLoading } = useListPlayers();
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  const hasPlayers = (players?.length ?? 0) > 0;
+
+  if (!hasPlayers && location !== "/onboarding") {
+    return <Redirect to="/onboarding" />;
+  }
+
+  return <>{children}</>;
+}
+
 function ProtectedApp() {
   return (
     <>
       <Show when="signed-in">
+        <PendingCheckoutResumer />
         <Layout>
-          <Switch>
-            <Route path="/dashboard" component={Dashboard} />
-            <Route path="/record" component={RecordGame} />
-            <Route path="/record/:id" component={RecordGame} />
-            <Route path="/import" component={ImportData} />
-            <Route path="/billing" component={Billing} />
-            <Route component={NotFound} />
-          </Switch>
+          <OnboardingGate>
+            <Switch>
+              <Route path="/dashboard" component={Dashboard} />
+              <Route path="/onboarding" component={Onboarding} />
+              <Route path="/record" component={RecordGame} />
+              <Route path="/record/:id" component={RecordGame} />
+              <Route path="/import" component={ImportData} />
+              <Route path="/billing" component={Billing} />
+              <Route component={NotFound} />
+            </Switch>
+          </OnboardingGate>
         </Layout>
       </Show>
       <Show when="signed-out">
@@ -196,6 +260,7 @@ function ClerkProviderWithRoutes() {
         <TooltipProvider>
           <Switch>
             <Route path="/watch/:code" component={WatchStream} />
+            <Route path="/pricing" component={Pricing} />
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
