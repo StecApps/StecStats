@@ -153,13 +153,32 @@ async function renderGameSegments(
   eligible: { videoTimestampMs: number; playerId: number; statField: string }[],
   nameById: Map<number, string>,
 ): Promise<string[]> {
-  const durationStr = await ffprobe([
+  // MediaRecorder WebM files often lack a container-level duration header.
+  // Use a large analyzeduration/probesize so ffprobe scans the whole file,
+  // then fall back to the video stream's own duration field if needed.
+  let durationStr = await ffprobe([
     "-v", "error",
+    "-analyzeduration", "2147483647",
+    "-probesize", "2147483647",
     "-show_entries", "format=duration",
     "-of", "default=nw=1:nk=1",
     srcPath,
   ]);
-  const duration = parseFloat(durationStr);
+  let duration = parseFloat(durationStr);
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    const streamDurStr = await ffprobe([
+      "-v", "error",
+      "-analyzeduration", "2147483647",
+      "-probesize", "2147483647",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=duration",
+      "-of", "default=nw=1:nk=1",
+      srcPath,
+    ]);
+    duration = parseFloat(streamDurStr);
+  }
+
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new HighlightError("Could not read the video duration");
   }

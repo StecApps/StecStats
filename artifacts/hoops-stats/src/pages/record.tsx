@@ -442,6 +442,23 @@ export default function RecordGame() {
     };
   }, [isRecording]);
 
+  useEffect(() => {
+    if (!isRecording) return;
+    const recalc = () => {
+      setTimeout(() => {
+        const src = sourceVideoRef.current;
+        if (!src || src.videoWidth === 0) return;
+        videoRotationRef.current = detectVideoRotation(src.videoWidth, src.videoHeight);
+      }, 350);
+    };
+    window.addEventListener("orientationchange", recalc);
+    screen.orientation?.addEventListener("change", recalc);
+    return () => {
+      window.removeEventListener("orientationchange", recalc);
+      screen.orientation?.removeEventListener("change", recalc);
+    };
+  }, [isRecording]);
+
   const startDrawLoop = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const draw = () => {
