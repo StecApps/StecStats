@@ -811,6 +811,27 @@ export default function RecordGame() {
     }
   };
 
+  const stopRecordingAsync = (): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      const recorder = mediaRecorderRef.current;
+      if (!recorder || recorder.state !== "recording") {
+        resolve(recordedBlob);
+        return;
+      }
+      const mimeType = recorder.mimeType;
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        setRecordedBlob(blob);
+        setRecordedPreviewUrl(URL.createObjectURL(blob));
+        stopMediaPipeline();
+        resolve(blob);
+      };
+      recorder.stop();
+      setIsRecording(false);
+      if (isLive) stopGoingLive();
+    });
+  };
+
   const discardVideo = () => {
     if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
     setRecordedPreviewUrl(null);
@@ -1136,8 +1157,9 @@ export default function RecordGame() {
     }
     savingRef.current = true;
 
+    let blobToUpload = recordedBlob;
     if (isRecording) {
-      stopRecording();
+      blobToUpload = await stopRecordingAsync();
     }
 
     const isWin = teamScore > opponentScore;
@@ -1145,10 +1167,10 @@ export default function RecordGame() {
     const result = isWin ? 'W' : 'L'; // Backend requires W or L
 
     let videoObjectPath = existingVideoObjectPath;
-    if (recordedBlob) {
+    if (blobToUpload) {
       setIsUploadingVideo(true);
       try {
-        videoObjectPath = await uploadVideoBlob(recordedBlob);
+        videoObjectPath = await uploadVideoBlob(blobToUpload);
       } catch (err) {
         setIsUploadingVideo(false);
         toast({ title: "Error uploading video", description: "The game was not saved. Try again.", variant: "destructive" });
