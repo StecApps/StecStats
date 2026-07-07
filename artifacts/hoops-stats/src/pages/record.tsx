@@ -117,6 +117,7 @@ export default function RecordGame() {
   const createPlayer = useCreatePlayer();
   const createGame = useCreateGame();
   const updateGame = useUpdateGame();
+  const savingRef = useRef(false);
   const generateHighlight = useGenerateGameHighlight();
 
   const { data: highlight } = useGetGameHighlight(gameId as number, {
@@ -1042,10 +1043,12 @@ export default function RecordGame() {
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
     if (!teamId || !opponent || !date || selectedPlayerIds.length === 0) {
       toast({ title: "Incomplete", description: "Select team, opponent, date, and at least one player.", variant: "destructive" });
       return;
     }
+    savingRef.current = true;
 
     if (isRecording) {
       stopRecording();
@@ -1097,6 +1100,7 @@ export default function RecordGame() {
       
       navigate("/dashboard");
     } catch(err) {
+      savingRef.current = false;
       const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : undefined;
       toast({ title: "Error saving game", description, variant: "destructive" });
     }
@@ -1381,6 +1385,7 @@ export default function RecordGame() {
                     src={videoObjectSrc(highlight.highlightObjectPath)}
                     controls
                     playsInline
+                    preload="none"
                     className="w-full rounded-lg bg-black object-contain max-h-[70vh]"
                   />
                   <div className="flex flex-wrap items-center gap-2">

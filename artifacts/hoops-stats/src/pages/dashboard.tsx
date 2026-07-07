@@ -806,6 +806,7 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
                     src={videoObjectSrc(seasonHighlight.highlightObjectPath)}
                     controls
                     playsInline
+                    preload="none"
                     className="w-full rounded-lg bg-black object-contain max-h-[70vh]"
                   />
                   <div className="flex flex-wrap items-center gap-2">
