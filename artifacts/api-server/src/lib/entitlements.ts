@@ -112,9 +112,13 @@ export async function getEntitlements(
   };
 }
 
+export function isPro(entitlements: Entitlements): boolean {
+  return entitlements.plan === "pro" || entitlements.plan === "premium";
+}
+
 export async function requirePro(stripeCustomerId: string | null): Promise<boolean> {
   const entitlements = await getEntitlements(stripeCustomerId);
-  return entitlements.plan === "pro" || entitlements.plan === "premium";
+  return isPro(entitlements);
 }
 
 export async function requirePremium(stripeCustomerId: string | null): Promise<boolean> {

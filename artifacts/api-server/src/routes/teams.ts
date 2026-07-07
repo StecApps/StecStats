@@ -25,7 +25,7 @@ import {
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements } from "../lib/entitlements";
+import { getEntitlements, isPro } from "../lib/entitlements";
 import { getCurrentSeasonStartDate } from "../lib/season";
 import { gte } from "drizzle-orm";
 import {
@@ -262,7 +262,7 @@ router.post("/teams/:teamId/highlight", requireAuth, async (req, res) => {
   }
 
   const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
-  if (entitlements.plan !== "pro") {
+  if (!isPro(entitlements)) {
     res.status(403).json({ error: "UPGRADE_REQUIRED", message: "Season highlight reels are a Pro feature" });
     return;
   }

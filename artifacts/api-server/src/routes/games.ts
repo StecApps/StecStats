@@ -22,7 +22,7 @@ import { computePoints } from "../lib/stats";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { getObjectAclPolicy, setObjectAclPolicy } from "../lib/objectAcl";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements } from "../lib/entitlements";
+import { getEntitlements, isPro } from "../lib/entitlements";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -167,7 +167,7 @@ router.post("/games", requireAuth, async (req, res) => {
 
   if (body.videoObjectPath) {
     const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
-    if (entitlements.plan !== "pro") {
+    if (!isPro(entitlements)) {
       res.status(403).json({
         error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",
         code: "UPGRADE_REQUIRED",
@@ -276,7 +276,7 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
 
   if (body.videoObjectPath && body.videoObjectPath !== existing.videoObjectPath) {
     const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
-    if (entitlements.plan !== "pro") {
+    if (!isPro(entitlements)) {
       res.status(403).json({
         error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",
         code: "UPGRADE_REQUIRED",

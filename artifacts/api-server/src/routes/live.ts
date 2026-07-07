@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { liveStreamRegistry, getIceServers } from "../lib/liveStream";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements } from "../lib/entitlements";
+import { getEntitlements, isPro } from "../lib/entitlements";
 
 const router: IRouter = Router();
 
@@ -29,7 +29,7 @@ router.get("/live/ice-servers", async (_req: Request, res: Response) => {
  */
 router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
   const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
-  if (entitlements.plan !== "pro") {
+  if (!isPro(entitlements)) {
     res.status(403).json({
       error: "Live streaming is a Pro feature. Upgrade to Pro to broadcast games live.",
       code: "UPGRADE_REQUIRED",
