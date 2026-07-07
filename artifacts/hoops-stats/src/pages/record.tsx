@@ -301,6 +301,8 @@ export default function RecordGame() {
   const liveManualStopRef = useRef(false);
   const liveReconnectAttemptsRef = useRef(0);
   const liveReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewerIceAttemptsRef = useRef<Map<string, number>>(new Map());
+  const viewerIceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   useEffect(() => {
     if (isEditing && gameToEdit) {
@@ -336,6 +338,9 @@ export default function RecordGame() {
       if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
       liveManualStopRef.current = true;
       if (liveReconnectTimeoutRef.current) clearTimeout(liveReconnectTimeoutRef.current);
+      viewerIceTimeoutsRef.current.forEach(t => clearTimeout(t));
+      viewerIceTimeoutsRef.current.clear();
+      viewerIceAttemptsRef.current.clear();
       livePeersRef.current.forEach(pc => pc.close());
       liveWsRef.current?.close();
       if (liveCodeRef.current) stopLiveSession(liveCodeRef.current);
@@ -728,6 +733,68 @@ export default function RecordGame() {
     toast({ title: "Video discarded", description: "Your stats are kept — the game will save without a video." });
   };
 
+  const MAX_PEER_ICE_RESTART_ATTEMPTS = 3;
+  const PEER_ICE_RESTART_DELAYS_MS = [1500, 3000, 6000];
+
+  // A relayed connection can blip (common on mobile networks/TURN under
+  // load) and leave the RTCPeerConnection "disconnected"/"failed" with no
+  // automatic recovery. This attempts an ICE restart on the existing peer
+  // connection a few times with backoff before giving up on that viewer.
+  const scheduleIceRestart = (viewerId: string) => {
+    if (liveManualStopRef.current) return;
+    if (viewerIceTimeoutsRef.current.has(viewerId)) return;
+
+    const attempts = viewerIceAttemptsRef.current.get(viewerId) ?? 0;
+    if (attempts >= MAX_PEER_ICE_RESTART_ATTEMPTS) {
+      const pc = livePeersRef.current.get(viewerId);
+      pc?.close();
+      livePeersRef.current.delete(viewerId);
+      viewerIceAttemptsRef.current.delete(viewerId);
+      setViewerCount(livePeersRef.current.size);
+      if (liveWsRef.current?.readyState === WebSocket.OPEN && liveCodeRef.current) {
+        liveWsRef.current.send(JSON.stringify({
+          type: "peer-connection-failed",
+          code: liveCodeRef.current,
+          targetId: viewerId,
+        }));
+      }
+      return;
+    }
+
+    const delay = PEER_ICE_RESTART_DELAYS_MS[attempts] ?? 6000;
+    const timeout = setTimeout(async () => {
+      viewerIceTimeoutsRef.current.delete(viewerId);
+      const pc = livePeersRef.current.get(viewerId);
+      if (!pc || liveManualStopRef.current) return;
+
+      const state = pc.connectionState;
+      if (state === "connected") {
+        viewerIceAttemptsRef.current.delete(viewerId);
+        return;
+      }
+
+      viewerIceAttemptsRef.current.set(viewerId, attempts + 1);
+      try {
+        pc.restartIce();
+        const offer = await pc.createOffer({ iceRestart: true });
+        await pc.setLocalDescription(offer);
+        if (liveWsRef.current?.readyState === WebSocket.OPEN && liveCodeRef.current) {
+          liveWsRef.current.send(JSON.stringify({
+            type: "offer",
+            code: liveCodeRef.current,
+            targetId: viewerId,
+            sdp: offer,
+            renegotiate: true,
+          }));
+        }
+      } catch {
+        // Fall through to schedule the next attempt (or give up if exhausted).
+      }
+      scheduleIceRestart(viewerId);
+    }, delay);
+    viewerIceTimeoutsRef.current.set(viewerId, timeout);
+  };
+
   const createPeerConnectionForViewer = async (viewerId: string) => {
     const iceServers = await getIceServers();
     const pc = new RTCPeerConnection({ iceServers });
@@ -755,6 +822,21 @@ export default function RecordGame() {
         }));
       }
     };
+    const handleConnectionStateChange = () => {
+      const state = pc.connectionState;
+      if (state === "connected") {
+        viewerIceAttemptsRef.current.delete(viewerId);
+        const t = viewerIceTimeoutsRef.current.get(viewerId);
+        if (t) {
+          clearTimeout(t);
+          viewerIceTimeoutsRef.current.delete(viewerId);
+        }
+      } else if (state === "disconnected" || state === "failed") {
+        scheduleIceRestart(viewerId);
+      }
+    };
+    pc.onconnectionstatechange = handleConnectionStateChange;
+    pc.oniceconnectionstatechange = handleConnectionStateChange;
     livePeersRef.current.set(viewerId, pc);
     return pc;
   };
@@ -796,6 +878,12 @@ export default function RecordGame() {
         const pc = livePeersRef.current.get(message.viewerId);
         pc?.close();
         livePeersRef.current.delete(message.viewerId);
+        viewerIceAttemptsRef.current.delete(message.viewerId);
+        const t = viewerIceTimeoutsRef.current.get(message.viewerId);
+        if (t) {
+          clearTimeout(t);
+          viewerIceTimeoutsRef.current.delete(message.viewerId);
+        }
         setViewerCount(livePeersRef.current.size);
       }
     };
@@ -812,6 +900,9 @@ export default function RecordGame() {
       // as viewers rejoin.
       livePeersRef.current.forEach(pc => pc.close());
       livePeersRef.current.clear();
+      viewerIceTimeoutsRef.current.forEach(t => clearTimeout(t));
+      viewerIceTimeoutsRef.current.clear();
+      viewerIceAttemptsRef.current.clear();
       setViewerCount(0);
       setIsLive(false);
 
@@ -875,6 +966,9 @@ export default function RecordGame() {
     }
     livePeersRef.current.forEach(pc => pc.close());
     livePeersRef.current.clear();
+    viewerIceTimeoutsRef.current.forEach(t => clearTimeout(t));
+    viewerIceTimeoutsRef.current.clear();
+    viewerIceAttemptsRef.current.clear();
     liveWsRef.current?.close();
     liveWsRef.current = null;
     if (liveCodeRef.current) {

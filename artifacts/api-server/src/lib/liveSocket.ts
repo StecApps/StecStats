@@ -10,11 +10,12 @@ const LIVE_WS_PATH = "/api/live/ws";
 type ClientMessage =
   | { type: "join-broadcaster"; code: string }
   | { type: "join-viewer"; code: string }
-  | { type: "offer"; code: string; targetId: string; sdp: unknown }
+  | { type: "offer"; code: string; targetId: string; sdp: unknown; renegotiate?: boolean }
   | { type: "answer"; code: string; targetId: string; sdp: unknown }
   | { type: "ice-candidate"; code: string; targetId: string; candidate: unknown }
   | { type: "scoreboard"; code: string; teamScore: number; opponentScore: number }
-  | { type: "stat-event"; code: string; playerName: string; label: string };
+  | { type: "stat-event"; code: string; playerName: string; label: string }
+  | { type: "peer-connection-failed"; code: string; targetId: string };
 
 function safeSend(ws: WebSocket, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -91,7 +92,12 @@ export function attachLiveSocketServer(upgradeEmitter: {
         case "offer": {
           const target = session.viewers.get(message.targetId);
           if (target) {
-            safeSend(target, { type: "offer", sdp: message.sdp, viewerId: message.targetId });
+            safeSend(target, {
+              type: "offer",
+              sdp: message.sdp,
+              viewerId: message.targetId,
+              renegotiate: message.renegotiate === true,
+            });
           }
           break;
         }
@@ -141,6 +147,18 @@ export function attachLiveSocketServer(upgradeEmitter: {
           session.recentEvents = [...session.recentEvents, statEvent].slice(-MAX_RECENT_STAT_EVENTS);
           for (const viewerWs of session.viewers.values()) {
             safeSend(viewerWs, { type: "stat-event", event: statEvent });
+          }
+          break;
+        }
+        case "peer-connection-failed": {
+          // The broadcaster exhausted its ICE-restart attempts for this
+          // specific viewer's media connection. Let that viewer know so it
+          // can show a clear "disconnected" state instead of a frozen
+          // silent video.
+          if (role !== "broadcaster") break;
+          const target = session.viewers.get(message.targetId);
+          if (target) {
+            safeSend(target, { type: "peer-connection-failed" });
           }
           break;
         }

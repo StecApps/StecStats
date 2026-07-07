@@ -44,8 +44,26 @@ export default function WatchStream() {
     }
   };
   const explicitEndRef = useRef(false);
+  const mediaFailedRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const attachConnectionStateHandlers = (pc: RTCPeerConnection) => {
+    const handleConnectionStateChange = () => {
+      const s = pc.connectionState;
+      if (s === "connected") {
+        mediaFailedRef.current = false;
+        setState("live");
+      } else if (s === "disconnected" || s === "failed") {
+        // The broadcaster drives ICE restarts for this connection; while it
+        // retries, show a clear "reconnecting" state instead of leaving a
+        // frozen, silent frame on screen.
+        setState((prev) => (prev === "ended" ? prev : "reconnecting"));
+      }
+    };
+    pc.onconnectionstatechange = handleConnectionStateChange;
+    pc.oniceconnectionstatechange = handleConnectionStateChange;
+  };
 
   useEffect(() => {
     if (!code) return;
@@ -69,6 +87,7 @@ export default function WatchStream() {
 
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "join-viewer", code }));
+        mediaFailedRef.current = false;
         if (isReconnect) {
           reconnectAttemptsRef.current = 0;
           // Re-check status rather than assuming a broadcaster is present —
@@ -118,10 +137,23 @@ export default function WatchStream() {
         }
 
         if (message.type === "offer") {
+          if (message.renegotiate && pcRef.current) {
+            // ICE restart from the broadcaster on the existing peer
+            // connection — reuse it instead of tearing down and rebuilding,
+            // so media resumes as soon as connectivity is restored.
+            const pc = pcRef.current;
+            await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: "answer", code, targetId: message.viewerId, sdp: answer }));
+            return;
+          }
+
           pcRef.current?.close();
           const iceServers = await getIceServers();
           const pc = new RTCPeerConnection({ iceServers });
           pcRef.current = pc;
+          mediaFailedRef.current = false;
 
           pc.ontrack = (e) => {
             remoteStreamRef.current = e.streams[0] ?? new MediaStream([e.track]);
@@ -140,6 +172,8 @@ export default function WatchStream() {
             }
           };
 
+          attachConnectionStateHandlers(pc);
+
           await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -153,6 +187,14 @@ export default function WatchStream() {
           // signaling server itself dropping the connection) — show
           // "ended" immediately rather than attempting to reconnect.
           explicitEndRef.current = true;
+          setState("ended");
+          pcRef.current?.close();
+          pcRef.current = null;
+        } else if (message.type === "peer-connection-failed") {
+          // The broadcaster exhausted its ICE-restart attempts for our
+          // media connection specifically. Show a clear "disconnected"
+          // state instead of leaving a frozen, silent frame on screen.
+          mediaFailedRef.current = true;
           setState("ended");
           pcRef.current?.close();
           pcRef.current = null;
@@ -287,6 +329,8 @@ export default function WatchStream() {
               <p className="max-w-sm">
                 {explicitEndRef.current
                   ? "This live stream has ended."
+                  : mediaFailedRef.current
+                  ? "Stream disconnected — we couldn't restore the video connection. Refresh this page to try again."
                   : "We lost connection to the stream and couldn't reconnect. Refresh this page to try again."}
               </p>
             </>
