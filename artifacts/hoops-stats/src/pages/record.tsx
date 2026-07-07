@@ -230,8 +230,9 @@ export default function RecordGame() {
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartZoomRef = useRef(1);
+  const videoRotationRef = useRef<-90 | 0 | 90>(0);
   const MAX_ZOOM = 5;
-  const IDEAL_VIDEO_CONSTRAINTS = { width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30 } };
+  const IDEAL_VIDEO_CONSTRAINTS = { width: { ideal: 1920 }, height: { ideal: 1080 }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } };
 
   const lensLabelFromDeviceLabel = (label: string): string => {
     if (/ultra.?wide|0\.5/i.test(label)) return "0.5×";
@@ -243,6 +244,21 @@ export default function RecordGame() {
   const syncLensLabel = (deviceId: string | null) => {
     const lens = environmentLensesRef.current.find(l => l.id === deviceId);
     setLensLabel(lens?.label ?? "");
+  };
+
+  const detectVideoRotation = (videoWidth: number, videoHeight: number): -90 | 0 | 90 => {
+    const videoIsLandscape = videoWidth > videoHeight;
+    const deviceIsPortrait = window.innerHeight > window.innerWidth;
+    if (!videoIsLandscape || !deviceIsPortrait) return 0;
+    const angle = (
+      typeof screen !== "undefined" && screen.orientation?.angle != null
+        ? screen.orientation.angle
+        : typeof (window as any).orientation === "number"
+          ? (window as any).orientation
+          : 0
+    );
+    const normalized = ((angle % 360) + 360) % 360;
+    return normalized === 180 ? 90 : -90;
   };
 
   const stopMediaPipeline = () => {
@@ -436,16 +452,27 @@ export default function RecordGame() {
         if (ctx) {
           const vw = v.videoWidth;
           const vh = v.videoHeight;
-          if (c.width !== vw || c.height !== vh) {
-            c.width = vw;
-            c.height = vh;
+          const rot = videoRotationRef.current;
+          const cw = rot !== 0 ? vh : vw;
+          const ch = rot !== 0 ? vw : vh;
+          if (c.width !== cw || c.height !== ch) {
+            c.width = cw;
+            c.height = ch;
           }
           const z = Math.max(1, zoomRef.current);
           const sw = vw / z;
           const sh = vh / z;
           const sx = (vw - sw) / 2;
           const sy = (vh - sh) / 2;
-          ctx.drawImage(v, sx, sy, sw, sh, 0, 0, vw, vh);
+          if (rot !== 0) {
+            ctx.save();
+            ctx.translate(cw / 2, ch / 2);
+            ctx.rotate((rot * Math.PI) / 180);
+            ctx.drawImage(v, sx, sy, sw, sh, -vw / 2, -vh / 2, vw, vh);
+            ctx.restore();
+          } else {
+            ctx.drawImage(v, sx, sy, sw, sh, 0, 0, vw, vh);
+          }
         }
       }
       rafRef.current = requestAnimationFrame(draw);
@@ -490,9 +517,16 @@ export default function RecordGame() {
       prev?.getVideoTracks().forEach(t => t.stop());
       src.srcObject = newStream;
       await src.play().catch(() => {});
+      await new Promise<void>(r => {
+        if (src.videoWidth > 0) { r(); return; }
+        src.onloadedmetadata = () => r();
+        setTimeout(r, 1000);
+      });
+      videoRotationRef.current = detectVideoRotation(src.videoWidth, src.videoHeight);
       currentDeviceIdRef.current = newDeviceId;
       setFacingMode(next);
       setZoom(1);
+      zoomRef.current = 1;
     } catch {
       setCameraError("Could not switch camera on this device.");
     }
@@ -514,9 +548,16 @@ export default function RecordGame() {
       prev?.getVideoTracks().forEach(t => t.stop());
       src.srcObject = newStream;
       await src.play().catch(() => {});
+      await new Promise<void>(r => {
+        if (src.videoWidth > 0) { r(); return; }
+        src.onloadedmetadata = () => r();
+        setTimeout(r, 1000);
+      });
+      videoRotationRef.current = detectVideoRotation(src.videoWidth, src.videoHeight);
       currentDeviceIdRef.current = nextLens.id;
       syncLensLabel(nextLens.id);
       setZoom(1);
+      zoomRef.current = 1;
     } catch {
       setCameraError("Could not switch lens on this device.");
     }
@@ -586,9 +627,14 @@ export default function RecordGame() {
           setTimeout(() => resolve(), 1500);
         });
 
+        const trackW = sourceVideo.videoWidth || 1280;
+        const trackH = sourceVideo.videoHeight || 720;
+        const rot = detectVideoRotation(trackW, trackH);
+        videoRotationRef.current = rot;
+
         const canvas = document.createElement("canvas");
-        canvas.width = sourceVideo.videoWidth || 1280;
-        canvas.height = sourceVideo.videoHeight || 720;
+        canvas.width = rot !== 0 ? trackH : trackW;
+        canvas.height = rot !== 0 ? trackW : trackH;
         canvasRef.current = canvas;
         setZoom(1);
         zoomRef.current = 1;
@@ -1301,7 +1347,7 @@ export default function RecordGame() {
               ref={livePreviewRef}
               muted
               playsInline
-              className="w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover"
             />
 
             {showRotateTip && (

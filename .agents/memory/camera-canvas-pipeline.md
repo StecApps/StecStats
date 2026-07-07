@@ -50,14 +50,23 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
   switch back to "environment") must re-run the lens enumeration/preference logic,
   and any teardown path must clear the resulting device-id list/flag — otherwise
   the "extra lens" UI option can go stale or persist after switching to selfie mode.
+- **Portrait rotation bug**: `drawImage()` on an OFF-SCREEN `<video>` element
+  reads raw sensor frames and IGNORES the rotation metadata that iOS/Android
+  applies to visible `<video>` elements. Portrait phone → landscape sensor frames
+  → canvas records sideways video. Fix: `detectVideoRotation(vw, vh)` compares
+  `window.innerHeight > innerWidth` (device portrait) vs `videoWidth > videoHeight`
+  (landscape frame). If mismatch, apply `-90` (or `+90` for upside-down portrait)
+  via `screen.orientation.angle` / `window.orientation`. Canvas gets swapped
+  dimensions (`vh × vw`), draw loop does `ctx.save/translate/rotate(angleRad)/
+  drawImage(v, sx,sy,sw,sh, -vw/2,-vh/2, vw,vh)/ctx.restore`. The destination
+  `(-vw/2,-vh/2,vw,vh)` fills the rotated canvas correctly at any zoom level.
+  Recalculate rotation in `switchCamera` + `cycleLens` after new stream plays.
+- **Preview black bars on tablet**: `<video class="w-full h-full object-cover">`
+  inside a flex child doesn't always get a definite height. Fix: add
+  `absolute inset-0` so the video always fills its `relative` container.
 - "Fill the screen" vs "wide angle / cover more space" are in direct tension when the
-  phone is held in portrait: a phone camera sensor is landscape (16:9), so a
-  portrait container either letterboxes (object-contain) or crops the sides
-  (object-cover). You cannot have both a full-bleed portrait preview AND maximum
-  horizontal coverage. For sports recording, landscape orientation is the only way
-  to get both. The recording itself always captures the full sensor frame via the
-  canvas regardless of the preview's object-fit, so object-cover only crops the
-  *preview*, not the saved/streamed video.
+  phone is held in portrait: a phone camera sensor is landscape (16:9). For sports
+  recording, landscape orientation is the only way to get both.
 - Generic control labels like "Lens" confuse users — surface the *active* lens
   (0.5×/1×/Tele derived from the device label) so a multi-lens button is
   self-explanatory. iOS device labels are only readable after permission is granted.
