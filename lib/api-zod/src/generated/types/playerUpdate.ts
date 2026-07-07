@@ -9,4 +9,5 @@
 export interface PlayerUpdate {
   /** @minLength 1 */
   name?: string;
+  photoObjectPath?: string | null;
 }

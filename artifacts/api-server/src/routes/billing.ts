@@ -33,25 +33,26 @@ router.get("/billing/status", requireAuth, async (req, res) => {
 });
 
 router.post("/billing/checkout", requireAuth, async (req, res) => {
-  const { interval } = CreateCheckoutSessionBody.parse(req.body);
+  const { interval, tier = "pro" } = CreateCheckoutSessionBody.parse(req.body);
   const appUser = req.appUser!;
 
   const stripe = await getUncachableStripeClient();
 
-  // Look up the Pro product/price fresh from Stripe rather than hardcoding
-  // price ids, so re-seeding (e.g. in a new environment) doesn't require a
-  // code change.
-  const products = await stripe.products.search({ query: "name:'STEC STATS Pro' AND active:'true'" });
-  const proProduct = products.data[0];
-  if (!proProduct) {
-    res.status(400).json({ error: "Pro plan is not configured yet. Please try again later." });
+  // Look up the product/price fresh from Stripe rather than hardcoding price
+  // ids, so re-seeding (e.g. in a new environment) doesn't require a code
+  // change. Product names: "STEC STATS Pro" and "STEC STATS Premium".
+  const productName = tier === "premium" ? "STEC STATS Premium" : "STEC STATS Pro";
+  const products = await stripe.products.search({ query: `name:'${productName}' AND active:'true'` });
+  const product = products.data[0];
+  if (!product) {
+    res.status(400).json({ error: `${tier === "premium" ? "Premium" : "Pro"} plan is not configured yet. Please try again later.` });
     return;
   }
 
-  const prices = await stripe.prices.list({ product: proProduct.id, active: true, limit: 10 });
+  const prices = await stripe.prices.list({ product: product.id, active: true, limit: 10 });
   const price = prices.data.find((p) => p.recurring?.interval === interval);
   if (!price) {
-    res.status(400).json({ error: `No active ${interval}ly price found for the Pro plan.` });
+    res.status(400).json({ error: `No active ${interval}ly price found for the ${tier === "premium" ? "Premium" : "Pro"} plan.` });
     return;
   }
 

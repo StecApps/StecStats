@@ -14,6 +14,12 @@ export const playersTable = pgTable("players", {
   // effectively required post-claim.
   ownerId: integer("owner_id").references(() => usersTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Player tracking photo — Premium feature. Stored in object storage.
+  // photoUpdatedAt is set server-side whenever photoObjectPath is written so
+  // the client can enforce the 6-month freshness prompt without trusting
+  // client-supplied timestamps.
+  photoObjectPath: text("photo_object_path"),
+  photoUpdatedAt: timestamp("photo_updated_at"),
 });
 
 export const insertPlayerSchema = createInsertSchema(playersTable).omit({

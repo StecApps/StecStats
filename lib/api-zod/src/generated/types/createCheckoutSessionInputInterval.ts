@@ -7,7 +7,7 @@
  */
 
 /**
- * Which Pro price to check out with.
+ * Billing interval.
  */
 export type CreateCheckoutSessionInputInterval = typeof CreateCheckoutSessionInputInterval[keyof typeof CreateCheckoutSessionInputInterval];
 

@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import { and, eq, or } from "drizzle-orm";
-import { db, gamesTable } from "@workspace/db";
+import { db, gamesTable, playersTable } from "@workspace/db";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
@@ -108,8 +108,19 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
       ),
     });
 
+    // Player tracking photos are also stored as private objects.
+    const ownedPlayerPhoto = !ownedGame
+      ? await db.query.playersTable.findFirst({
+          where: and(
+            eq(playersTable.ownerId, ownerId),
+            eq(playersTable.photoObjectPath, objectPath),
+          ),
+        })
+      : null;
+
     const canAccess =
       !!ownedGame ||
+      !!ownedPlayerPhoto ||
       (await objectStorageService.canAccessObjectEntity({
         userId: String(ownerId),
         objectFile,

@@ -6,8 +6,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateCheckoutSessionInputInterval } from './createCheckoutSessionInputInterval';
+import type { CreateCheckoutSessionInputTier } from './createCheckoutSessionInputTier';
 
 export interface CreateCheckoutSessionInput {
-  /** Which Pro price to check out with. */
+  /** Billing interval. */
   interval: CreateCheckoutSessionInputInterval;
+  /** Which plan tier to check out with. Defaults to pro. */
+  tier?: CreateCheckoutSessionInputTier;
 }

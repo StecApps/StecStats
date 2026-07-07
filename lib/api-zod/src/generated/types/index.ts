@@ -11,6 +11,7 @@ export * from './billingStatusPlan';
 export * from './checkoutSessionResponse';
 export * from './createCheckoutSessionInput';
 export * from './createCheckoutSessionInputInterval';
+export * from './createCheckoutSessionInputTier';
 export * from './errorEnvelope';
 export * from './game';
 export * from './gameEvent';

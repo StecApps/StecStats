@@ -13,6 +13,8 @@ export interface Player {
   id: number;
   name: string;
   createdAt: string;
+  photoObjectPath?: string | null;
+  photoUpdatedAt?: string | null;
 }
 
 export interface PlayerInput {
@@ -23,6 +25,7 @@ export interface PlayerInput {
 export interface PlayerUpdate {
   /** @minLength 1 */
   name?: string;
+  photoObjectPath?: string | null;
 }
 
 export type PlayerSummaryPlan = typeof PlayerSummaryPlan[keyof typeof PlayerSummaryPlan];
@@ -31,6 +34,7 @@ export type PlayerSummaryPlan = typeof PlayerSummaryPlan[keyof typeof PlayerSumm
 export const PlayerSummaryPlan = {
   free: 'free',
   pro: 'pro',
+  premium: 'premium',
 } as const;
 
 export type PlayerSummarySeasonScope = typeof PlayerSummarySeasonScope[keyof typeof PlayerSummarySeasonScope];
@@ -308,6 +312,7 @@ export type BillingStatusPlan = typeof BillingStatusPlan[keyof typeof BillingSta
 export const BillingStatusPlan = {
   free: 'free',
   pro: 'pro',
+  premium: 'premium',
 } as const;
 
 export interface BillingStatus {
@@ -321,7 +326,7 @@ export interface BillingStatus {
 }
 
 /**
- * Which Pro price to check out with.
+ * Billing interval.
  */
 export type CreateCheckoutSessionInputInterval = typeof CreateCheckoutSessionInputInterval[keyof typeof CreateCheckoutSessionInputInterval];
 
@@ -331,9 +336,22 @@ export const CreateCheckoutSessionInputInterval = {
   year: 'year',
 } as const;
 
+/**
+ * Which plan tier to check out with. Defaults to pro.
+ */
+export type CreateCheckoutSessionInputTier = typeof CreateCheckoutSessionInputTier[keyof typeof CreateCheckoutSessionInputTier];
+
+
+export const CreateCheckoutSessionInputTier = {
+  pro: 'pro',
+  premium: 'premium',
+} as const;
+
 export interface CreateCheckoutSessionInput {
-  /** Which Pro price to check out with. */
+  /** Billing interval. */
   interval: CreateCheckoutSessionInputInterval;
+  /** Which plan tier to check out with. Defaults to pro. */
+  tier?: CreateCheckoutSessionInputTier;
 }
 
 export interface CheckoutSessionResponse {

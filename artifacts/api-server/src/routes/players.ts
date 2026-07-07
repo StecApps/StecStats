@@ -78,9 +78,18 @@ router.get("/players/:playerId", requireAuth, async (req, res) => {
 router.patch("/players/:playerId", requireAuth, async (req, res) => {
   const { playerId } = UpdatePlayerParams.parse(req.params);
   const body = UpdatePlayerBody.parse(req.body);
+
+  // When the photo is being updated, stamp the server-side timestamp so the
+  // client can enforce the 6-month freshness rule without trusting a
+  // client-supplied date.
+  const updatePayload: Record<string, unknown> = { ...body };
+  if ("photoObjectPath" in body) {
+    updatePayload.photoUpdatedAt = body.photoObjectPath ? new Date() : null;
+  }
+
   const [player] = await db
     .update(playersTable)
-    .set(body)
+    .set(updatePayload)
     .where(and(eq(playersTable.id, playerId), eq(playersTable.ownerId, req.appUser!.id)))
     .returning();
   if (!player) {

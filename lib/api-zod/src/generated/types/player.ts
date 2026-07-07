@@ -10,4 +10,6 @@ export interface Player {
   id: number;
   name: string;
   createdAt: Date;
+  photoObjectPath?: string | null;
+  photoUpdatedAt?: Date | null;
 }

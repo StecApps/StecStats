@@ -12,4 +12,5 @@ export type PlayerSummaryPlan = typeof PlayerSummaryPlan[keyof typeof PlayerSumm
 export const PlayerSummaryPlan = {
   free: 'free',
   pro: 'pro',
+  premium: 'premium',
 } as const;

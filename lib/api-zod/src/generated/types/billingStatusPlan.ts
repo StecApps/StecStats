@@ -15,4 +15,5 @@ export type BillingStatusPlan = typeof BillingStatusPlan[keyof typeof BillingSta
 export const BillingStatusPlan = {
   free: 'free',
   pro: 'pro',
+  premium: 'premium',
 } as const;

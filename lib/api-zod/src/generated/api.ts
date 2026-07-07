@@ -23,7 +23,9 @@ export const HealthCheckResponse = zod.object({
 export const ListPlayersResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "photoObjectPath": zod.string().nullish(),
+  "photoUpdatedAt": zod.coerce.date().nullish()
 })
 export const ListPlayersResponse = zod.array(ListPlayersResponseItem)
 
@@ -41,7 +43,9 @@ export const CreatePlayerBody = zod.object({
 export const CreatePlayerResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "photoObjectPath": zod.string().nullish(),
+  "photoUpdatedAt": zod.coerce.date().nullish()
 })
 
 
@@ -55,7 +59,9 @@ export const GetPlayerParams = zod.object({
 export const GetPlayerResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "photoObjectPath": zod.string().nullish(),
+  "photoUpdatedAt": zod.coerce.date().nullish()
 })
 
 
@@ -70,13 +76,16 @@ export const UpdatePlayerParams = zod.object({
 
 
 export const UpdatePlayerBody = zod.object({
-  "name": zod.string().min(1).optional()
+  "name": zod.string().min(1).optional(),
+  "photoObjectPath": zod.string().nullish()
 })
 
 export const UpdatePlayerResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "photoObjectPath": zod.string().nullish(),
+  "photoUpdatedAt": zod.coerce.date().nullish()
 })
 
 
@@ -100,7 +109,7 @@ export const GetPlayerSummaryParams = zod.object({
 export const GetPlayerSummaryResponse = zod.object({
   "playerId": zod.number(),
   "playerName": zod.string(),
-  "plan": zod.enum(['free', 'pro']),
+  "plan": zod.enum(['free', 'pro', 'premium']),
   "seasonScope": zod.enum(['current', 'career']),
   "games": zod.number(),
   "wins": zod.number(),
@@ -652,7 +661,7 @@ export const ImportDataResponse = zod.object({
  * @summary Get the caller's current plan and subscription status
  */
 export const GetBillingStatusResponse = zod.object({
-  "plan": zod.enum(['free', 'pro']).describe('Effective plan derived from Stripe subscription status.'),
+  "plan": zod.enum(['free', 'pro', 'premium']).describe('Effective plan derived from Stripe subscription status.'),
   "status": zod.string().nullable().describe('Raw Stripe subscription status (e.g. trialing, active, past_due, canceled), or null if never subscribed.'),
   "currentPeriodEnd": zod.coerce.date().nullish(),
   "trialEnd": zod.coerce.date().nullish(),
@@ -664,7 +673,8 @@ export const GetBillingStatusResponse = zod.object({
  * @summary Create a Stripe Checkout session to start/upgrade a Pro subscription
  */
 export const CreateCheckoutSessionBody = zod.object({
-  "interval": zod.enum(['month', 'year']).describe('Which Pro price to check out with.')
+  "interval": zod.enum(['month', 'year']).describe('Billing interval.'),
+  "tier": zod.enum(['pro', 'premium']).optional().describe('Which plan tier to check out with. Defaults to pro.')
 })
 
 export const CreateCheckoutSessionResponse = zod.object({

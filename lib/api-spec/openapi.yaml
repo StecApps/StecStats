@@ -611,6 +611,10 @@ components:
         id: { type: integer }
         name: { type: string }
         createdAt: { type: string, format: date-time }
+        # Premium: player tracking reference photo stored in object storage.
+        # photoUpdatedAt is server-set; use it to enforce the 6-month freshness rule.
+        photoObjectPath: { type: string, nullable: true }
+        photoUpdatedAt: { type: string, format: date-time, nullable: true }
 
     PlayerInput:
       type: object
@@ -622,6 +626,9 @@ components:
       type: object
       properties:
         name: { type: string, minLength: 1 }
+        # Set to the object path returned by the upload URL endpoint.
+        # Server sets photoUpdatedAt automatically when this is provided.
+        photoObjectPath: { type: string, nullable: true }
 
     PlayerSummary:
       type: object
@@ -658,7 +665,7 @@ components:
         # shooting-efficiency percentages (fgPct/threePct/ftPct) -- both are
         # Pro-only per Task #18. The frontend uses these to render upgrade
         # prompts; the server is the actual (authoritative) enforcement.
-        plan: { type: string, enum: [free, pro] }
+        plan: { type: string, enum: [free, pro, premium] }
         seasonScope: { type: string, enum: [current, career] }
         games: { type: integer }
         wins: { type: integer }
@@ -940,7 +947,7 @@ components:
       properties:
         plan:
           type: string
-          enum: [free, pro]
+          enum: [free, pro, premium]
           description: Effective plan derived from Stripe subscription status.
         status:
           type: string
@@ -964,7 +971,11 @@ components:
         interval:
           type: string
           enum: [month, year]
-          description: Which Pro price to check out with.
+          description: Billing interval.
+        tier:
+          type: string
+          enum: [pro, premium]
+          description: Which plan tier to check out with. Defaults to pro.
 
     CheckoutSessionResponse:
       type: object

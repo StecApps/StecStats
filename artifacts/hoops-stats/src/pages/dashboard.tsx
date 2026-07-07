@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { 
   useListPlayers, 
   useCreatePlayer, 
@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -38,12 +38,41 @@ function videoObjectSrc(objectPath: string): string {
   return `/api/storage/objects/${objectPath.replace(/^\/objects\//, "")}`;
 }
 
+function playerPhotoSrc(objectPath: string): string {
+  return `/api/storage/objects/${objectPath.replace(/^\/objects\//, "")}`;
+}
+
+function isPhotoStale(photoUpdatedAt: Date | null | undefined): boolean {
+  if (!photoUpdatedAt) return false;
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  return new Date(photoUpdatedAt) < sixMonthsAgo;
+}
+
+async function uploadPhoto(file: File): Promise<string> {
+  const requestRes = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "image/jpeg" }),
+  });
+  if (!requestRes.ok) throw new Error("Failed to get upload URL");
+  const { uploadURL, objectPath } = await requestRes.json();
+  const uploadRes = await fetch(uploadURL, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "image/jpeg" },
+    body: file,
+  });
+  if (!uploadRes.ok) throw new Error("Failed to upload photo");
+  return objectPath;
+}
+
 export default function Dashboard() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: players, isLoading: playersLoading } = useListPlayers();
   const { data: billingStatus } = useGetBillingStatus();
-  const isPro = billingStatus?.plan === "pro";
+  const isPro = billingStatus?.plan === "pro" || billingStatus?.plan === "premium";
+  const isPremium = billingStatus?.plan === "premium";
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [highlightAspect, setHighlightAspect] = useState('');
 
@@ -147,13 +176,15 @@ export default function Dashboard() {
       )}
 
       {activePlayerId && (
-        <PlayerDashboard playerId={activePlayerId} player={players?.find(p => p.id === activePlayerId)} isPro={isPro} />
+        <PlayerDashboard playerId={activePlayerId} player={players?.find(p => p.id === activePlayerId)} isPro={isPro} isPremium={isPremium} />
       )}
     </div>
   );
 }
 
-function PlayerDashboard({ playerId, player, isPro }: { playerId: number, player?: {id: number, name: string}, isPro: boolean }) {
+type PlayerWithPhoto = { id: number; name: string; photoObjectPath?: string | null; photoUpdatedAt?: Date | null };
+
+function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: number, player?: PlayerWithPhoto, isPro: boolean, isPremium: boolean }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
@@ -169,6 +200,10 @@ function PlayerDashboard({ playerId, player, isPro }: { playerId: number, player
   const deletePlayer = useDeletePlayer();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editName, setEditName] = useState(player?.name || "");
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const photoStale = isPhotoStale(player?.photoUpdatedAt);
 
   const handleUpdate = async () => {
     if (!editName.trim()) return;
@@ -179,6 +214,33 @@ function PlayerDashboard({ playerId, player, isPro }: { playerId: number, player
       toast({ title: "Player updated" });
     } catch(err) {
       toast({ title: "Error updating player", variant: "destructive" });
+    }
+  };
+
+  const handlePhotoFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingPhoto(true);
+    try {
+      const objectPath = await uploadPhoto(file);
+      await updatePlayer.mutateAsync({ playerId, data: { photoObjectPath: objectPath } });
+      queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey() });
+      toast({ title: "Photo saved", description: "Player photo updated for tracking." });
+    } catch (err) {
+      toast({ title: "Failed to upload photo", variant: "destructive" });
+    } finally {
+      setIsUploadingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    try {
+      await updatePlayer.mutateAsync({ playerId, data: { photoObjectPath: null } });
+      queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey() });
+      toast({ title: "Photo removed" });
+    } catch (err) {
+      toast({ title: "Failed to remove photo", variant: "destructive" });
     }
   };
 
@@ -214,6 +276,21 @@ function PlayerDashboard({ playerId, player, isPro }: { playerId: number, player
           <p className="flex items-center gap-2 text-[0.65rem] md:text-xs font-bold uppercase tracking-[0.35em] text-primary">
             <Zap className="w-3.5 h-3.5 fill-primary" /> Live Player Stats <Zap className="w-3.5 h-3.5 fill-primary" />
           </p>
+          {/* Player tracking photo avatar */}
+          {player?.photoObjectPath ? (
+            <div className="mt-4 relative">
+              <img
+                src={playerPhotoSrc(player.photoObjectPath)}
+                alt={player.name}
+                className="w-24 h-24 rounded-full object-cover border-4 border-primary/40 shadow-lg"
+              />
+              {photoStale && (
+                <span className="absolute -bottom-1 -right-1 bg-yellow-500 rounded-full p-1" title="Photo may be outdated — update before next game">
+                  <AlertTriangle className="w-3.5 h-3.5 text-black" />
+                </span>
+              )}
+            </div>
+          ) : null}
           <h1 className="mt-3 font-display font-bold uppercase leading-[0.85] tracking-tight text-6xl md:text-8xl text-jumbotron break-words max-w-full">
             {player?.name ?? "Player"}
           </h1>
@@ -232,10 +309,84 @@ function PlayerDashboard({ playerId, player, isPro }: { playerId: number, player
                 <DialogHeader>
                   <DialogTitle>Manage Player</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
+                <div className="space-y-5 py-4">
                   <div className="space-y-2">
                     <Label>Name</Label>
                     <Input value={editName} onChange={e => setEditName(e.target.value)} />
+                  </div>
+
+                  {/* Tracking photo — Premium feature */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label>Tracking Photo</Label>
+                      {!isPremium && (
+                        <span className="text-[0.65rem] font-bold uppercase tracking-wider text-primary border border-primary/40 rounded-full px-2 py-0.5">Premium</span>
+                      )}
+                    </div>
+                    {isPremium ? (
+                      <div className="flex items-center gap-4">
+                        {player?.photoObjectPath ? (
+                          <img
+                            src={playerPhotoSrc(player.photoObjectPath)}
+                            alt="Player tracking photo"
+                            className="w-16 h-16 rounded-full object-cover border-2 border-border"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-border">
+                            <UserCircle2 className="w-8 h-8 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex flex-col gap-2">
+                          <input
+                            ref={photoInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={handlePhotoFileSelected}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={isUploadingPhoto}
+                            onClick={() => photoInputRef.current?.click()}
+                          >
+                            {isUploadingPhoto ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Camera className="w-4 h-4 mr-2" />}
+                            {player?.photoObjectPath ? "Replace Photo" : "Add Photo"}
+                          </Button>
+                          {player?.photoObjectPath && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-muted-foreground"
+                              onClick={handleRemovePhoto}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" /> Remove
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-3">
+                        <Lock className="w-5 h-5 text-primary shrink-0" />
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">Save a photo of your player for automatic tracking during games. </span>
+                          <Link href="/billing" className="text-primary underline font-medium">Upgrade to Premium</Link>
+                        </div>
+                      </div>
+                    )}
+                    {isPremium && photoStale && player?.photoObjectPath && (
+                      <p className="text-xs text-yellow-500 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> Photo is over 6 months old — consider updating before your next game.
+                      </p>
+                    )}
+                    {isPremium && !player?.photoObjectPath && (
+                      <p className="text-xs text-muted-foreground">
+                        A clear recent photo ensures the best tracking accuracy. The app uses this to automatically follow your player during recording.
+                      </p>
+                    )}
                   </div>
                 </div>
                 <DialogFooter className="flex justify-between sm:justify-between items-center">
