@@ -208,6 +208,7 @@ export default function RecordGame() {
   const [liveInterrupted, setLiveInterrupted] = useState(false);
   const [showRotateTip, setShowRotateTip] = useState(false);
   const [reviewIsPortrait, setReviewIsPortrait] = useState(false);
+  const [previewAspect, setPreviewAspect] = useState('');
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
@@ -1304,9 +1305,14 @@ export default function RecordGame() {
                 playsInline
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
-                  setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
+                  const isPortrait = v.videoWidth > 0 && v.videoHeight > v.videoWidth;
+                  setReviewIsPortrait(isPortrait);
+                  if (v.videoWidth > 0 && v.videoHeight > 0) {
+                    setPreviewAspect(`${v.videoWidth} / ${v.videoHeight}`);
+                  }
                 }}
-                className="w-full max-w-md max-h-[70vh] rounded-lg bg-black object-contain phone-landscape:max-w-full phone-landscape:max-h-[85vh]"
+                style={previewAspect ? { aspectRatio: previewAspect } : undefined}
+                className="block h-auto w-full max-w-md max-h-[70vh] rounded-lg bg-black object-contain phone-landscape:max-w-full phone-landscape:max-h-[85vh]"
               />
               {reviewIsPortrait && (
                 <p className="text-xs text-muted-foreground">
@@ -1463,7 +1469,7 @@ export default function RecordGame() {
               ref={livePreviewRef}
               muted
               playsInline
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-contain"
             />
 
             {showRotateTip && (

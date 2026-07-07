@@ -45,6 +45,7 @@ export default function Dashboard() {
   const { data: billingStatus } = useGetBillingStatus();
   const isPro = billingStatus?.plan === "pro";
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
+  const [highlightAspect, setHighlightAspect] = useState('');
 
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState("");
@@ -807,7 +808,14 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
                     controls
                     playsInline
                     preload="none"
-                    className="w-full rounded-lg bg-black object-contain max-h-[70vh]"
+                    onLoadedMetadata={(e) => {
+                      const v = e.currentTarget;
+                      if (v.videoWidth > 0 && v.videoHeight > 0) {
+                        setHighlightAspect(`${v.videoWidth} / ${v.videoHeight}`);
+                      }
+                    }}
+                    style={highlightAspect ? { aspectRatio: highlightAspect } : undefined}
+                    className="block h-auto w-full rounded-lg bg-black object-contain max-h-[70vh]"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareSeasonHighlight}>
