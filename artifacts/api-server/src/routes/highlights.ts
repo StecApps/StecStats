@@ -7,6 +7,7 @@ import {
   generateHighlight,
 } from "../lib/highlightGenerator";
 import { requireAuth } from "../middlewares/requireAuth";
+import { getEntitlements } from "../lib/entitlements";
 
 const router: IRouter = Router();
 
@@ -51,6 +52,12 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
   });
   if (!game) {
     res.status(404).json({ error: "Game not found" });
+    return;
+  }
+
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  if (entitlements.plan !== "pro") {
+    res.status(403).json({ error: "UPGRADE_REQUIRED", message: "Game highlight reels are a Pro feature" });
     return;
   }
 

@@ -14,6 +14,7 @@ import {
   useDeleteGame,
   useGetTeamHighlight,
   useGenerateTeamHighlight,
+  useGetBillingStatus,
   getListPlayersQueryKey,
   getGetPlayerSummaryQueryKey,
   getListPlayerTeamGroupsQueryKey,
@@ -26,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -41,6 +42,8 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: players, isLoading: playersLoading } = useListPlayers();
+  const { data: billingStatus } = useGetBillingStatus();
+  const isPro = billingStatus?.plan === "pro";
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
 
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
@@ -143,13 +146,13 @@ export default function Dashboard() {
       )}
 
       {activePlayerId && (
-        <PlayerDashboard playerId={activePlayerId} player={players?.find(p => p.id === activePlayerId)} />
+        <PlayerDashboard playerId={activePlayerId} player={players?.find(p => p.id === activePlayerId)} isPro={isPro} />
       )}
     </div>
   );
 }
 
-function PlayerDashboard({ playerId, player }: { playerId: number, player?: {id: number, name: string} }) {
+function PlayerDashboard({ playerId, player, isPro }: { playerId: number, player?: {id: number, name: string}, isPro: boolean }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
@@ -326,7 +329,7 @@ function PlayerDashboard({ playerId, player }: { playerId: number, player?: {id:
         ) : (
           <Accordion type="multiple" className="space-y-4">
             {teams.map(team => (
-              <TeamGamesAccordionItem key={team.teamId} team={team} playerId={playerId} />
+              <TeamGamesAccordionItem key={team.teamId} team={team} playerId={playerId} isPro={isPro} />
             ))}
           </Accordion>
         )}
@@ -560,7 +563,7 @@ function ManageTeamsDialog({ trigger }: { trigger: React.ReactNode }) {
   );
 }
 
-function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: number }) {
+function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId: number, isPro: boolean }) {
   const { data: games, isLoading } = useListTeamGames(team.teamId, {
     query: { enabled: !!team.teamId, queryKey: getListTeamGamesQueryKey(team.teamId) }
   });
@@ -746,6 +749,15 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
                       <TableCell className="text-right">{stat.blocks}</TableCell>
                       <TableCell className="text-right opacity-100 md:opacity-60 md:group-hover:opacity-100 transition-opacity">
                         <div className="flex items-center justify-end gap-1">
+                          {isPro ? (
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" title="Game Highlight Reel" asChild>
+                              <Link href={`/record/${game.id}`}><Film className="h-4 w-4" /></Link>
+                            </Button>
+                          ) : (
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/40" title="Game Highlight Reel (Pro)" asChild>
+                              <Link href="/pricing"><Lock className="h-3.5 w-3.5" /></Link>
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                             <Link href={`/record/${game.id}`}><Edit className="h-4 w-4" /></Link>
                           </Button>
@@ -768,9 +780,19 @@ function TeamGamesAccordionItem({ team, playerId }: { team: any, playerId: numbe
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-primary" />
                 <span className="font-display font-bold uppercase tracking-wide text-foreground">Season Highlight Reel</span>
+                {!isPro && <span className="ml-auto text-xs font-bold text-primary border border-primary/40 rounded px-1.5 py-0.5 flex items-center gap-1"><Lock className="w-3 h-3" /> Pro</span>}
               </div>
 
-              {seasonHighlight && seasonHighlight.eligibleMoments === 0 ? (
+              {!isPro ? (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Combine the best plays from every recorded game into one shareable reel. Upgrade to Pro to unlock highlight reels — for every game and the full season.
+                  </p>
+                  <Button type="button" asChild>
+                    <Link href="/pricing"><Sparkles className="w-4 h-4 mr-2" /> Upgrade to Pro</Link>
+                  </Button>
+                </div>
+              ) : seasonHighlight && seasonHighlight.eligibleMoments === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   Tag some made shots, rebounds, assists, steals or blocks in recorded games to build a season highlight reel.
                 </p>

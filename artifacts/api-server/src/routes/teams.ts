@@ -261,6 +261,12 @@ router.post("/teams/:teamId/highlight", requireAuth, async (req, res) => {
     return;
   }
 
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  if (entitlements.plan !== "pro") {
+    res.status(403).json({ error: "UPGRADE_REQUIRED", message: "Season highlight reels are a Pro feature" });
+    return;
+  }
+
   const eligibleMoments = await countEligibleMomentsForTeam(teamId);
   if (eligibleMoments === 0) {
     res.status(400).json({
