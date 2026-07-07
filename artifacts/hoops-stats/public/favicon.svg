@@ -1,23 +1,18 @@
 <svg width="180" height="180" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <radialGradient id="ballGrad" cx="35%" cy="28%" r="80%">
-      <stop offset="0%" stop-color="#FF8A4D"/>
-      <stop offset="55%" stop-color="#FF5C1A"/>
-      <stop offset="100%" stop-color="#D63A00"/>
-    </radialGradient>
-    <linearGradient id="bgGrad" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#1c1815"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e1a17"/>
       <stop offset="100%" stop-color="#0a0807"/>
     </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FF8A4D"/>
+      <stop offset="100%" stop-color="#E84B00"/>
+    </linearGradient>
   </defs>
-  <rect width="180" height="180" rx="40" fill="url(#bgGrad)"/>
-  <circle cx="90" cy="92" r="64" fill="url(#ballGrad)"/>
-  <g stroke="#150f0b" stroke-width="4.5" fill="none" stroke-linecap="round">
-    <path d="M90 28 V156"/>
-    <path d="M26 92 H154"/>
-    <path d="M43 42 C70 66 70 118 43 142"/>
-    <path d="M137 42 C110 66 110 118 137 142"/>
-  </g>
-  <circle cx="90" cy="92" r="64" fill="none" stroke="#150f0b" stroke-width="4.5"/>
-  <ellipse cx="66" cy="60" rx="20" ry="11" fill="#ffffff" opacity="0.28"/>
+  <rect width="180" height="180" rx="38" fill="url(#bg)"/>
+  <circle cx="90" cy="90" r="76" fill="none" stroke="#FF5C1A" stroke-width="1.5" opacity="0.18"/>
+  <path d="M14 90 Q90 38 166 90" fill="none" stroke="#FF5C1A" stroke-width="1.5" opacity="0.18"/>
+  <path d="M14 90 Q90 142 166 90" fill="none" stroke="#FF5C1A" stroke-width="1.5" opacity="0.18"/>
+  <text x="90" y="118" font-family="'Arial Black', 'Impact', sans-serif" font-weight="900"
+        font-size="88" text-anchor="middle" fill="url(#orange)" letter-spacing="-4">SS</text>
 </svg>
