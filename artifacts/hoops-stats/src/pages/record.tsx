@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -237,9 +237,13 @@ export default function RecordGame() {
   const [autoFollowEnabled, setAutoFollowEnabled] = useState(false);
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
+  const [courtViewSet, setCourtViewSet] = useState(false);
   const autoFollowRef = useRef(false);
   const trackCenterXRef = useRef(0.5);
   const trackCenterYRef = useRef(0.5);
+  const courtViewRef = useRef({ x: 0.5, y: 0.5, zoom: 1 });
+  const detectionMissCountRef = useRef(0);
+  const MISS_THRESHOLD = 6;
   const objectDetectorRef = useRef<Awaited<ReturnType<typeof getObjectDetector>> | null>(null);
   const detectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
@@ -503,12 +507,23 @@ export default function RecordGame() {
       try {
         const center = detectPersonCenter(det, v);
         if (center) {
+          detectionMissCountRef.current = 0;
           const alpha = 0.2;
           trackCenterXRef.current = (1 - alpha) * trackCenterXRef.current + alpha * center.x;
           trackCenterYRef.current = (1 - alpha) * trackCenterYRef.current + alpha * center.y;
           setIsTracking(true);
         } else {
+          detectionMissCountRef.current += 1;
           setIsTracking(false);
+          if (detectionMissCountRef.current > MISS_THRESHOLD) {
+            const home = courtViewRef.current;
+            const alpha = 0.08;
+            trackCenterXRef.current = (1 - alpha) * trackCenterXRef.current + alpha * home.x;
+            trackCenterYRef.current = (1 - alpha) * trackCenterYRef.current + alpha * home.y;
+            if (detectionMissCountRef.current === MISS_THRESHOLD + 1) {
+              setZoom(home.zoom);
+            }
+          }
         }
       } catch {
         // detection failed this frame — keep current pan position
@@ -649,11 +664,20 @@ export default function RecordGame() {
     setZoom(z => Math.min(MAX_ZOOM, Math.max(1, Math.round((z + delta) * 10) / 10)));
   };
 
+  const saveCourtView = () => {
+    courtViewRef.current = { x: trackCenterXRef.current, y: trackCenterYRef.current, zoom: zoom };
+    setCourtViewSet(true);
+    toast({ title: "Court view saved", description: "Auto-Follow will return here when your player goes to the bench." });
+  };
+
   const toggleAutoFollow = async () => {
     if (autoFollowEnabled) {
       autoFollowRef.current = false;
       setAutoFollowEnabled(false);
       setIsTracking(false);
+      setCourtViewSet(false);
+      detectionMissCountRef.current = 0;
+      courtViewRef.current = { x: 0.5, y: 0.5, zoom: 1 };
       trackCenterXRef.current = 0.5;
       trackCenterYRef.current = 0.5;
       return;
@@ -1641,6 +1665,17 @@ export default function RecordGame() {
                         ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                         : <Crosshair className={`w-4 h-4 mr-1 ${isTracking ? "animate-pulse" : ""}`} />}
                       {isTrackingLoading ? "Loading…" : autoFollowEnabled ? (isTracking ? "Tracking" : "Searching…") : "Auto-Follow"}
+                    </Button>
+                  )}
+                  {isPremium && autoFollowEnabled && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className={`bg-black/50 backdrop-blur-sm border-0 hover:bg-black/70 ${courtViewSet ? "text-green-400 ring-1 ring-green-400/50" : "text-white"}`}
+                      onClick={saveCourtView}
+                    >
+                      <Home className="w-4 h-4 mr-1" />
+                      {courtViewSet ? "Court ✓" : "Set Court"}
                     </Button>
                   )}
                   <div className="flex items-center gap-1 rounded-md bg-black/50 px-1 backdrop-blur-sm">
