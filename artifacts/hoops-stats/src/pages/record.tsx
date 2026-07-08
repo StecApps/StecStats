@@ -114,6 +114,7 @@ export default function RecordGame() {
   });
 
   const { data: billingStatus } = useGetBillingStatus();
+  const isPro = billingStatus?.plan === "pro" || billingStatus?.plan === "premium";
   const isPremium = billingStatus?.plan === "premium";
 
   const { data: players } = useListPlayers();
@@ -238,7 +239,8 @@ export default function RecordGame() {
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
   const [courtViewSet, setCourtViewSet] = useState(false);
-  const [shotPrompt, setShotPrompt] = useState<{ playerId: number; playerName: string } | null>(null);
+  const [shotPrompt, setShotPrompt] = useState<{ playerId: number; playerName: string; usageIndex: number } | null>(null);
+  const [showShotUpgradeNudge, setShowShotUpgradeNudge] = useState(false);
   const autoFollowRef = useRef(false);
   const trackCenterXRef = useRef(0.5);
   const trackCenterYRef = useRef(0.5);
@@ -249,6 +251,9 @@ export default function RecordGame() {
   const poseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastShotPromptRef = useRef(0);
   const SHOT_COOLDOWN_MS = 4500;
+  const FREE_TASTE_LIMIT = 2;
+  const shotDetectionUsageRef = useRef(0);
+  const shotDetectionLimitNudgedRef = useRef(false);
   const shotPromptDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const objectDetectorRef = useRef<Awaited<ReturnType<typeof getObjectDetector>> | null>(null);
   const detectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -562,8 +567,19 @@ export default function RecordGame() {
       try {
         if (detectShotPose(lm, v)) {
           lastShotPromptRef.current = now;
+          if (!isPro) {
+            if (shotDetectionUsageRef.current >= FREE_TASTE_LIMIT) {
+              if (!shotDetectionLimitNudgedRef.current) {
+                shotDetectionLimitNudgedRef.current = true;
+                setShowShotUpgradeNudge(true);
+              }
+              return;
+            }
+            shotDetectionUsageRef.current += 1;
+          }
+          const usageIndex = isPro ? -1 : shotDetectionUsageRef.current;
           const player = players?.find(p => p.id === focusPlayerId);
-          setShotPrompt({ playerId: focusPlayerId, playerName: player?.name ?? "Player" });
+          setShotPrompt({ playerId: focusPlayerId, playerName: player?.name ?? "Player", usageIndex });
           if (shotPromptDismissRef.current) clearTimeout(shotPromptDismissRef.current);
           shotPromptDismissRef.current = setTimeout(() => setShotPrompt(null), 5000);
         }
@@ -571,7 +587,7 @@ export default function RecordGame() {
     }, 1000);
 
     return cleanup;
-  }, [isRecording, focusPlayerId, players]);
+  }, [isRecording, focusPlayerId, players, isPro]);
 
   const startDrawLoop = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -855,6 +871,9 @@ export default function RecordGame() {
       recordingStartRef.current = Date.now();
       recorder.start();
       setIsRecording(true);
+      shotDetectionUsageRef.current = 0;
+      shotDetectionLimitNudgedRef.current = false;
+      setShowShotUpgradeNudge(false);
       setMicMuted(false);
       setRecordedBlob(null);
       setEvents([]);
@@ -1786,9 +1805,18 @@ export default function RecordGame() {
 
             {shotPrompt && (
               <div className="rounded-xl border border-primary/40 bg-primary/5 px-4 py-3 space-y-2 animate-in slide-in-from-top-2 duration-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold uppercase tracking-wide text-primary">🏀 Shot detected — {shotPrompt.playerName}</span>
-                  <button onClick={() => setShotPrompt(null)} className="text-muted-foreground hover:text-foreground text-lg leading-none px-1">✕</button>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-sm font-bold uppercase tracking-wide text-primary">🏀 Shot detected — {shotPrompt.playerName}</span>
+                    {!isPro && shotPrompt.usageIndex > 0 && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {shotPrompt.usageIndex >= FREE_TASTE_LIMIT
+                          ? `Last free detection this session — upgrade for unlimited`
+                          : `${shotPrompt.usageIndex} of ${FREE_TASTE_LIMIT} free detections`}
+                      </p>
+                    )}
+                  </div>
+                  <button onClick={() => setShotPrompt(null)} className="text-muted-foreground hover:text-foreground text-lg leading-none px-1 shrink-0">✕</button>
                 </div>
                 <div className="grid grid-cols-4 gap-2">
                   <Button size="sm" className="bg-green-600 hover:bg-green-500 text-white font-bold text-xs flex flex-col h-12 gap-0.5 leading-none" onClick={() => logShotFromPrompt('twoMade')}>
@@ -1804,6 +1832,19 @@ export default function RecordGame() {
                     <X className="w-3.5 h-3.5" /><span>3 Miss</span>
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {showShotUpgradeNudge && !shotPrompt && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 py-3 space-y-2 animate-in slide-in-from-top-2 duration-200">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-amber-500">🔒 AI Shot Detection — Upgrade to Pro</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">You've used your {FREE_TASTE_LIMIT} free detections this session. Pro unlocks unlimited AI shot detection, auto-follow tracking, highlight reels, and live streaming.</p>
+                  </div>
+                  <button onClick={() => setShowShotUpgradeNudge(false)} className="text-muted-foreground hover:text-foreground text-lg leading-none px-1 shrink-0">✕</button>
+                </div>
+                <Button size="sm" className="w-full" onClick={() => navigate("/billing")}>Upgrade to Pro →</Button>
               </div>
             )}
 
