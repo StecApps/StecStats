@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2 } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -276,19 +276,53 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
           <p className="flex items-center gap-2 text-[0.65rem] md:text-xs font-bold uppercase tracking-[0.35em] text-primary">
             <Zap className="w-3.5 h-3.5 fill-primary" /> Live Player Stats <Zap className="w-3.5 h-3.5 fill-primary" />
           </p>
-          {/* Player tracking photo avatar */}
-          {player?.photoObjectPath ? (
+          {/* Player tracking photo avatar — tappable for Premium users */}
+          {isPremium ? (
+            player?.photoObjectPath ? (
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={isUploadingPhoto}
+                className="mt-4 relative group focus:outline-none"
+                title={photoStale ? "Photo over 6 months old — tap to update" : "Tap to update photo"}
+              >
+                <img
+                  src={playerPhotoSrc(player.photoObjectPath)}
+                  alt={player.name}
+                  className="w-24 h-24 rounded-full object-cover border-4 border-primary/40 shadow-lg"
+                />
+                <div className="absolute inset-0 rounded-full bg-black/55 opacity-0 group-hover:opacity-100 group-focus:opacity-100 flex items-center justify-center transition-opacity">
+                  {isUploadingPhoto
+                    ? <Loader2 className="w-6 h-6 text-white animate-spin" />
+                    : <Camera className="w-6 h-6 text-white" />}
+                </div>
+                {photoStale && (
+                  <span className="absolute -bottom-1 -right-1 bg-yellow-500 rounded-full p-1" title="Photo over 6 months old">
+                    <AlertTriangle className="w-3.5 h-3.5 text-black" />
+                  </span>
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={isUploadingPhoto}
+                className="mt-4 w-24 h-24 rounded-full border-2 border-dashed border-primary/50 bg-primary/5 flex flex-col items-center justify-center gap-1 hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors"
+                title="Add a tracking photo for automatic player follow"
+              >
+                {isUploadingPhoto
+                  ? <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                  : <Camera className="w-6 h-6 text-primary" />}
+                <span className="text-[0.6rem] font-bold uppercase tracking-wider text-primary leading-none">Add Photo</span>
+              </button>
+            )
+          ) : player?.photoObjectPath ? (
             <div className="mt-4 relative">
               <img
                 src={playerPhotoSrc(player.photoObjectPath)}
                 alt={player.name}
                 className="w-24 h-24 rounded-full object-cover border-4 border-primary/40 shadow-lg"
               />
-              {photoStale && (
-                <span className="absolute -bottom-1 -right-1 bg-yellow-500 rounded-full p-1" title="Photo may be outdated — update before next game">
-                  <AlertTriangle className="w-3.5 h-3.5 text-black" />
-                </span>
-              )}
             </div>
           ) : null}
           <h1 className="mt-3 font-display font-bold uppercase leading-[0.85] tracking-tight text-6xl md:text-8xl text-jumbotron break-words max-w-full">
@@ -341,7 +375,6 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
                             ref={photoInputRef}
                             type="file"
                             accept="image/*"
-                            capture="environment"
                             className="hidden"
                             onChange={handlePhotoFileSelected}
                           />
@@ -352,8 +385,8 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
                             disabled={isUploadingPhoto}
                             onClick={() => photoInputRef.current?.click()}
                           >
-                            {isUploadingPhoto ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Camera className="w-4 h-4 mr-2" />}
-                            {player?.photoObjectPath ? "Replace Photo" : "Add Photo"}
+                            {isUploadingPhoto ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ImagePlus className="w-4 h-4 mr-2" />}
+                            {player?.photoObjectPath ? "Change Photo" : "Upload Photo"}
                           </Button>
                           {player?.photoObjectPath && (
                             <Button
