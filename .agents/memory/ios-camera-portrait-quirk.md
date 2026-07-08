@@ -11,8 +11,13 @@ On iOS Safari, `getUserMedia` always reports `videoWidth < videoHeight` (portrai
 
 **How to apply:**
 
-1. **In `detectVideoRotation` (record.tsx):** Compare `videoIsLandscape` (from `videoWidth > videoHeight`) vs `deviceIsLandscape` (from `window.innerWidth > window.innerHeight`). If they differ and the device is landscape (but video says portrait), use `screen.orientation.angle` to pick ±90° rotation. Landscape-left (angle≈90) → -90°; landscape-right (angle≈270) → +90°.
+1. **In `detectVideoRotation` (record.tsx):** Compare `videoIsLandscape` vs `deviceIsLandscape`. If device is landscape but video says portrait, read the angle to pick rotation direction — but NEVER mix `screen.orientation.angle` and `window.orientation` into a single normalized value. They have OPPOSITE conventions for landscape-left/-right:
+   - `screen.orientation.angle` (iOS 16.4+): 90 = landscape-left → need -90°; 270 = landscape-right → need +90°
+   - `window.orientation` (old iOS): -90 = landscape-left → need -90°; 90 = landscape-right → need +90°
+   - Check which API is available and read its value directly — do not normalize and compare both.
 
-2. **Never force `aspectRatio` CSS on `<video>` elements:** Pre-rotation `videoWidth/videoHeight` gives the wrong aspect ratio on iOS. Remove `style={{ aspectRatio }}` and let the browser size the video at its natural display dimensions (`max-w-full max-h-[70vh]` is sufficient).
+2. **Pose/motion detection also runs on portrait pixels:** MediaPipe landmarks are in portrait normalized coords. In landscape mode, physical "up" = portrait x-axis. Arm-raise detection must check x-displacement (both ±) instead of y-displacement. See `detectShotPose` in playerTracking.ts.
 
-3. **MediaRecorder mimeType:** iOS doesn't support `video/webm`. Add `video/mp4` as final fallback: `isTypeSupported("video/webm;codecs=vp9,opus") ? ... : isTypeSupported("video/webm") ? ... : "video/mp4"`.
+3. **Never force `aspectRatio` CSS on `<video>` elements:** Pre-rotation `videoWidth/videoHeight` gives the wrong ratio on iOS. Remove `style={{ aspectRatio }}` and use `max-w-full max-h-[70vh]`.
+
+4. **MediaRecorder mimeType:** iOS doesn't support `video/webm`. Add `video/mp4` as final fallback: `isTypeSupported("video/webm;codecs=vp9,opus") ? ... : isTypeSupported("video/webm") ? ... : "video/mp4"`.

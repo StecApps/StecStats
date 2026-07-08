@@ -300,9 +300,19 @@ export default function RecordGame() {
       // iOS getUserMedia always reports the camera as portrait (sensor native),
       // even when the device is held landscape.  We must rotate the canvas to
       // produce correct landscape output.
-      // landscape-left  (angle ≈ 90):  need -90° (counterclockwise)
-      // landscape-right (angle ≈ 270): need +90° (clockwise)
-      return normalized === 270 ? 90 : -90;
+      //
+      // IMPORTANT: screen.orientation.angle and window.orientation use OPPOSITE
+      // conventions.  Do NOT mix them after normalization.
+      //   screen.orientation.angle: 90 = landscape-left → need -90°
+      //                            270 = landscape-right → need +90°
+      //   window.orientation (old iOS): -90 = landscape-left → need -90°
+      //                                  90 = landscape-right → need +90°
+      if (typeof screen !== "undefined" && screen.orientation?.angle != null) {
+        return screen.orientation.angle === 270 ? 90 : -90;
+      } else {
+        const wo = typeof (window as any).orientation === "number" ? (window as any).orientation : 0;
+        return wo === 90 ? 90 : -90;
+      }
     }
   };
 

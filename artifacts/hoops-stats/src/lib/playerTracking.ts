@@ -119,12 +119,31 @@ export function detectShotPose(
 
   if (!lShoulder || !rShoulder || !lElbow || !rElbow || !lWrist || !rWrist) return false;
 
-  // In MediaPipe normalized coords, y=0 is top of frame.
-  // "Arm raised" = wrist clearly above shoulder (lower y) AND elbow also elevated.
-  const WRIST_RAISE = 0.07;
-  const rightArmRaised = rWrist.y < rShoulder.y - WRIST_RAISE && rElbow.y < rShoulder.y + 0.04;
-  const leftArmRaised = lWrist.y < lShoulder.y - WRIST_RAISE && lElbow.y < lShoulder.y + 0.04;
+  // The pose landmarker always runs on the raw camera video element, which iOS
+  // reports in portrait orientation (videoWidth < videoHeight) regardless of
+  // how the device is physically held.  In portrait raw coordinates, y=0 is
+  // the top of the frame.  In landscape mode, however, the physical "up"
+  // direction maps to the portrait x-axis, so we must check x-displacement
+  // rather than y-displacement for arm raises.
+  const RAISE = 0.07;
+  const deviceIsLandscape = window.innerWidth > window.innerHeight;
 
+  if (deviceIsLandscape) {
+    // When the device is landscape, iOS still delivers portrait-oriented pixels.
+    // Physical "up" = portrait right (+x) for landscape-left (screen.orientation
+    // angle ≈ 90 / window.orientation ≈ -90), and portrait left (-x) for
+    // landscape-right.  We check both directions so the detection works
+    // regardless of which landscape side the user holds the phone.
+    const rightArmRaisedR = rWrist.x > rShoulder.x + RAISE && rElbow.x > rShoulder.x - 0.04;
+    const rightArmRaisedL = rWrist.x < rShoulder.x - RAISE && rElbow.x < rShoulder.x + 0.04;
+    const leftArmRaisedR  = lWrist.x > lShoulder.x + RAISE && lElbow.x > lShoulder.x - 0.04;
+    const leftArmRaisedL  = lWrist.x < lShoulder.x - RAISE && lElbow.x < lShoulder.x + 0.04;
+    return rightArmRaisedR || rightArmRaisedL || leftArmRaisedR || leftArmRaisedL;
+  }
+
+  // Portrait mode: y=0 is top; "arm raised" = wrist clearly above shoulder.
+  const rightArmRaised = rWrist.y < rShoulder.y - RAISE && rElbow.y < rShoulder.y + 0.04;
+  const leftArmRaised  = lWrist.y < lShoulder.y - RAISE && lElbow.y < lShoulder.y + 0.04;
   return rightArmRaised || leftArmRaised;
 }
 
