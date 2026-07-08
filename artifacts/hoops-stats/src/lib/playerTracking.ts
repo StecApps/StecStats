@@ -39,7 +39,7 @@ export async function getObjectDetector(): Promise<ObjectDetector> {
 export function detectPersonCenter(
   det: ObjectDetector,
   videoEl: HTMLVideoElement
-): { x: number; y: number } | null {
+): { x: number; y: number; normHeight: number } | null {
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
   if (vw === 0 || vh === 0) return null;
@@ -60,6 +60,7 @@ export function detectPersonCenter(
   return {
     x: (bb.originX + bb.width / 2) / vw,
     y: (bb.originY + bb.height / 2) / vh,
+    normHeight: bb.height / vh,
   };
 }
 

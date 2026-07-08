@@ -245,6 +245,7 @@ export default function RecordGame() {
   const trackCenterXRef = useRef(0.5);
   const trackCenterYRef = useRef(0.5);
   const courtViewRef = useRef({ x: 0.5, y: 0.5, zoom: 1 });
+  const trackZoomRef = useRef(1);
   const detectionMissCountRef = useRef(0);
   const MISS_THRESHOLD = 6;
   const poseLandmarkerRef = useRef<Awaited<ReturnType<typeof getPoseLandmarker>> | null>(null);
@@ -519,9 +520,16 @@ export default function RecordGame() {
         const center = detectPersonCenter(det, v);
         if (center) {
           detectionMissCountRef.current = 0;
-          const alpha = 0.2;
-          trackCenterXRef.current = (1 - alpha) * trackCenterXRef.current + alpha * center.x;
-          trackCenterYRef.current = (1 - alpha) * trackCenterYRef.current + alpha * center.y;
+          const panAlpha = 0.2;
+          trackCenterXRef.current = (1 - panAlpha) * trackCenterXRef.current + panAlpha * center.x;
+          trackCenterYRef.current = (1 - panAlpha) * trackCenterYRef.current + panAlpha * center.y;
+          // Adaptive zoom: target zoom so the player fills ~40% of frame height
+          const TARGET_FILL = 0.40;
+          const rawZoom = TARGET_FILL / Math.max(0.04, center.normHeight);
+          const targetZoom = Math.min(MAX_ZOOM, Math.max(1.4, rawZoom));
+          const zoomAlpha = 0.06;
+          trackZoomRef.current = (1 - zoomAlpha) * trackZoomRef.current + zoomAlpha * targetZoom;
+          zoomRef.current = trackZoomRef.current;
           setIsTracking(true);
         } else {
           detectionMissCountRef.current += 1;
@@ -531,9 +539,9 @@ export default function RecordGame() {
             const alpha = 0.08;
             trackCenterXRef.current = (1 - alpha) * trackCenterXRef.current + alpha * home.x;
             trackCenterYRef.current = (1 - alpha) * trackCenterYRef.current + alpha * home.y;
-            if (detectionMissCountRef.current === MISS_THRESHOLD + 1) {
-              setZoom(home.zoom);
-            }
+            // Smooth zoom back to court view
+            trackZoomRef.current = (1 - alpha) * trackZoomRef.current + alpha * home.zoom;
+            zoomRef.current = trackZoomRef.current;
           }
         }
       } catch {
@@ -739,6 +747,7 @@ export default function RecordGame() {
       courtViewRef.current = { x: 0.5, y: 0.5, zoom: 1 };
       trackCenterXRef.current = 0.5;
       trackCenterYRef.current = 0.5;
+      trackZoomRef.current = 1;
       return;
     }
     setIsTrackingLoading(true);
@@ -751,10 +760,8 @@ export default function RecordGame() {
       return;
     }
     setIsTrackingLoading(false);
-    if (zoomRef.current <= 1) {
-      setZoom(1.5);
-      zoomRef.current = 1.5;
-    }
+    // Seed trackZoomRef from whatever the user's current zoom is
+    trackZoomRef.current = Math.max(1, zoomRef.current);
     autoFollowRef.current = true;
     setAutoFollowEnabled(true);
   };
@@ -1656,7 +1663,7 @@ export default function RecordGame() {
       </div>
 
       {isRecording && (
-        <div className="fixed inset-0 z-50 flex flex-col phone-landscape:flex-row bg-black">
+        <div className="fixed inset-0 z-[9999] flex flex-col phone-landscape:flex-row bg-black">
           <div ref={previewContainerRef} className="relative flex-[3] phone-landscape:flex-1 min-h-0 phone-landscape:min-w-0 bg-black" style={{ touchAction: "none" }}>
             <video
               ref={livePreviewRef}
