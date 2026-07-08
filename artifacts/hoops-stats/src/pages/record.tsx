@@ -1568,11 +1568,15 @@ export default function RecordGame() {
                   const v = e.currentTarget;
                   setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
                 }}
-                className="block h-auto max-w-full max-h-[70vh] rounded-lg bg-black phone-landscape:max-h-[85vh]"
+                className={
+                  reviewIsPortrait
+                    ? "block w-auto max-h-[70vh] mx-auto rounded-lg bg-black phone-landscape:max-h-[85vh]"
+                    : "block max-w-full max-h-[70vh] rounded-lg bg-black phone-landscape:max-h-[85vh]"
+                }
               />
               {reviewIsPortrait && (
                 <p className="text-xs text-muted-foreground">
-                  This clip was recorded in portrait, so it will show with black bars when watched in landscape. Record in landscape next time for a full-screen video.
+                  Portrait clip — will show with black bars when watched on a landscape screen.
                 </p>
               )}
               {events.length > 0 && (
