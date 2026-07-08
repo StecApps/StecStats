@@ -240,6 +240,7 @@ export default function RecordGame() {
   const [courtViewSet, setCourtViewSet] = useState(false);
   const [shotPrompt, setShotPrompt] = useState<{ playerId: number; playerName: string; usageIndex: number } | null>(null);
   const [showShotUpgradeNudge, setShowShotUpgradeNudge] = useState(false);
+  const [poseModelReady, setPoseModelReady] = useState(false);
   const autoFollowRef = useRef(false);
   const trackCenterXRef = useRef(0.5);
   const trackCenterYRef = useRef(0.5);
@@ -278,7 +279,22 @@ export default function RecordGame() {
 
   const detectVideoRotation = (videoWidth: number, videoHeight: number): -90 | 0 | 90 => {
     const videoIsLandscape = videoWidth > videoHeight;
-    const deviceIsLandscape = window.innerWidth > window.innerHeight;
+
+    // Use orientation APIs rather than window.innerWidth/innerHeight.
+    // On iOS, innerWidth/innerHeight can lag by a full layout cycle after an
+    // orientationchange event — so the 350ms delayed callback still reads stale
+    // portrait dimensions.  screen.orientation.type and window.orientation
+    // update synchronously with the event.
+    let deviceIsLandscape: boolean;
+    if (typeof screen !== "undefined" && screen.orientation?.type) {
+      deviceIsLandscape = screen.orientation.type.startsWith("landscape");
+    } else if (typeof (window as any).orientation === "number") {
+      const wo = (window as any).orientation as number;
+      deviceIsLandscape = wo === 90 || wo === -90;
+    } else {
+      // Desktop fallback only — these browsers always have correct innerWidth.
+      deviceIsLandscape = window.innerWidth > window.innerHeight;
+    }
 
     // If video and device orientations already match, no canvas rotation needed.
     if (videoIsLandscape === deviceIsLandscape) return 0;
@@ -585,10 +601,14 @@ export default function RecordGame() {
       if (poseIntervalRef.current) { clearInterval(poseIntervalRef.current); poseIntervalRef.current = null; }
       if (shotPromptDismissRef.current) { clearTimeout(shotPromptDismissRef.current); shotPromptDismissRef.current = null; }
       setShotPrompt(null);
+      setPoseModelReady(false);
     };
     if (!isRecording || focusPlayerId === null) { cleanup(); return; }
 
-    getPoseLandmarker().then(lm => { poseLandmarkerRef.current = lm; }).catch(() => {});
+    setPoseModelReady(false);
+    getPoseLandmarker()
+      .then(lm => { poseLandmarkerRef.current = lm; setPoseModelReady(true); })
+      .catch(() => { setPoseModelReady(false); });
 
     poseIntervalRef.current = setInterval(() => {
       const lm = poseLandmarkerRef.current;
@@ -1423,20 +1443,35 @@ export default function RecordGame() {
           onAdd={(n: number) => setOpponentScore(s => Math.max(0, s + n))} />
       </div>
       {selectedPlayerIds.length > 0 && focusPlayerId !== null && focusStats && (
-        <div className="flex items-center gap-3">
-          <Select value={focusPlayerId.toString()} onValueChange={v => setFocusPlayerId(parseInt(v, 10))}>
-            <SelectTrigger className="h-8 w-[45%] shrink-0"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {selectedPlayerIds.map(pid => (
-                <SelectItem key={pid} value={pid.toString()}>{players?.find(p => p.id === pid)?.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex flex-1 justify-around font-mono text-sm">
-            <span><span className="font-bold text-primary">{focusPts}</span> <span className="text-muted-foreground text-xs">PTS</span></span>
-            <span><span className="font-bold">{focusStats.rebounds}</span> <span className="text-muted-foreground text-xs">REB</span></span>
-            <span><span className="font-bold">{focusStats.assists}</span> <span className="text-muted-foreground text-xs">AST</span></span>
-            <span><span className="font-bold">{focusStats.steals}</span> <span className="text-muted-foreground text-xs">STL</span></span>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-3">
+            <Select value={focusPlayerId.toString()} onValueChange={v => setFocusPlayerId(parseInt(v, 10))}>
+              <SelectTrigger className="h-8 w-[45%] shrink-0"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {selectedPlayerIds.map(pid => (
+                  <SelectItem key={pid} value={pid.toString()}>{players?.find(p => p.id === pid)?.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex flex-1 justify-around font-mono text-sm">
+              <span><span className="font-bold text-primary">{focusPts}</span> <span className="text-muted-foreground text-xs">PTS</span></span>
+              <span><span className="font-bold">{focusStats.rebounds}</span> <span className="text-muted-foreground text-xs">REB</span></span>
+              <span><span className="font-bold">{focusStats.assists}</span> <span className="text-muted-foreground text-xs">AST</span></span>
+              <span><span className="font-bold">{focusStats.steals}</span> <span className="text-muted-foreground text-xs">STL</span></span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]">
+            {poseModelReady ? (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                <span className="text-green-500 font-medium">Shot detection ready</span>
+              </>
+            ) : (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">Loading shot detection…</span>
+              </>
+            )}
           </div>
         </div>
       )}
