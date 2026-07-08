@@ -34,12 +34,30 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
     return;
   }
 
+  // Detect stale "processing" — job was abandoned (e.g. server restarted mid-run).
+  // Reset to "failed" so the client shows a retry button instead of a permanent spinner.
+  let highlightStatus = game.highlightStatus;
+  let highlightError = game.highlightError;
+  const startedAtMs = game.highlightStartedAt ? new Date(game.highlightStartedAt).getTime() : 0;
+  const isStale =
+    highlightStatus === "processing" &&
+    !inFlight.has(gameId) &&
+    Date.now() - startedAtMs > STALE_PROCESSING_MS;
+  if (isStale) {
+    highlightStatus = "failed";
+    highlightError = "Generation timed out — tap Try Again to rebuild.";
+    await db
+      .update(gamesTable)
+      .set({ highlightStatus, highlightError })
+      .where(eq(gamesTable.id, gameId));
+  }
+
   const eligibleMoments = await countEligibleMoments(gameId);
   res.json(
     GetGameHighlightResponse.parse({
-      status: normalizeStatus(game.highlightStatus),
+      status: normalizeStatus(highlightStatus),
       highlightObjectPath: game.highlightObjectPath ?? null,
-      error: game.highlightError ?? null,
+      error: highlightError ?? null,
       eligibleMoments,
     }),
   );

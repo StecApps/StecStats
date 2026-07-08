@@ -240,12 +240,30 @@ router.get("/teams/:teamId/highlight", requireAuth, async (req, res) => {
     return;
   }
 
+  // Detect stale "processing" — job was abandoned (e.g. server restarted mid-run).
+  // Reset to "failed" so the client shows a retry button instead of a permanent spinner.
+  let highlightStatus = team.highlightStatus;
+  let highlightError = team.highlightError;
+  const startedAtMs = team.highlightStartedAt ? new Date(team.highlightStartedAt).getTime() : 0;
+  const isStale =
+    highlightStatus === "processing" &&
+    !teamHighlightInFlight.has(teamId) &&
+    Date.now() - startedAtMs > STALE_PROCESSING_MS;
+  if (isStale) {
+    highlightStatus = "failed";
+    highlightError = "Generation timed out — tap Try Again to rebuild.";
+    await db
+      .update(teamsTable)
+      .set({ highlightStatus, highlightError })
+      .where(eq(teamsTable.id, teamId));
+  }
+
   const eligibleMoments = await countEligibleMomentsForTeam(teamId);
   res.json(
     GetTeamHighlightResponse.parse({
-      status: normalizeHighlightStatus(team.highlightStatus),
+      status: normalizeHighlightStatus(highlightStatus),
       highlightObjectPath: team.highlightObjectPath ?? null,
-      error: team.highlightError ?? null,
+      error: highlightError ?? null,
       eligibleMoments,
     }),
   );
