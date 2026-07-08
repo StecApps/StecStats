@@ -42,7 +42,7 @@ function playerPhotoSrc(objectPath: string): string {
   return `/api/storage/objects/${objectPath.replace(/^\/objects\//, "")}`;
 }
 
-function isPhotoStale(photoUpdatedAt: Date | null | undefined): boolean {
+function isPhotoStale(photoUpdatedAt: Date | string | null | undefined): boolean {
   if (!photoUpdatedAt) return false;
   const sixMonthsAgo = new Date();
   sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -74,8 +74,6 @@ export default function Dashboard() {
   const isPro = billingStatus?.plan === "pro" || billingStatus?.plan === "premium";
   const isPremium = billingStatus?.plan === "premium";
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
-  const [highlightAspect, setHighlightAspect] = useState('');
-
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState("");
 
@@ -182,7 +180,7 @@ export default function Dashboard() {
   );
 }
 
-type PlayerWithPhoto = { id: number; name: string; photoObjectPath?: string | null; photoUpdatedAt?: Date | null };
+type PlayerWithPhoto = { id: number; name: string; photoObjectPath?: string | null; photoUpdatedAt?: Date | string | null };
 
 function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: number, player?: PlayerWithPhoto, isPro: boolean, isPremium: boolean }) {
   const queryClient = useQueryClient();
@@ -992,14 +990,7 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
                     controls
                     playsInline
                     preload="none"
-                    onLoadedMetadata={(e) => {
-                      const v = e.currentTarget;
-                      if (v.videoWidth > 0 && v.videoHeight > 0) {
-                        setHighlightAspect(`${v.videoWidth} / ${v.videoHeight}`);
-                      }
-                    }}
-                    style={highlightAspect ? { aspectRatio: highlightAspect } : undefined}
-                    className="block h-auto w-full rounded-lg bg-black object-contain max-h-[70vh]"
+                    className="block h-auto max-w-full rounded-lg bg-black max-h-[70vh]"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareSeasonHighlight}>

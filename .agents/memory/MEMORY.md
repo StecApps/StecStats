@@ -22,3 +22,4 @@
 - [MediaPipe auto-follow in draw loop](mediapipe-autofollow.md) — ObjectDetector runs at 3fps on sourceVideoRef; EMA-smoothed center drives canvas crop offset; detection must NOT run inside the rAF draw loop (use setInterval instead).
 - [requireAuth in-memory user must be updated after email backfill](requireauth-email-backfill.md) — after `db.update(email)` do `user = {...user, email}` or req.appUser.email stays null and owner/premium checks fail.
 - [runTest needs testClerkAuth flag](clerk-testclerkauth-flag-required.md) — `[Clerk Auth]` test steps without `testClerkAuth: true` hit real Clerk UI and get Cloudflare-blocked, looking like an app bug.
+- [iOS camera always reports portrait dimensions](ios-camera-portrait-quirk.md) — getUserMedia on iOS always reports videoWidth/videoHeight as portrait (sensor native) even in landscape; also don't force aspectRatio CSS on video elements — let the browser size naturally.

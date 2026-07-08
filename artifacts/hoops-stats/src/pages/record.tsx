@@ -214,7 +214,6 @@ export default function RecordGame() {
   const [liveInterrupted, setLiveInterrupted] = useState(false);
   const [showRotateTip, setShowRotateTip] = useState(false);
   const [reviewIsPortrait, setReviewIsPortrait] = useState(false);
-  const [previewAspect, setPreviewAspect] = useState('');
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
@@ -279,8 +278,11 @@ export default function RecordGame() {
 
   const detectVideoRotation = (videoWidth: number, videoHeight: number): -90 | 0 | 90 => {
     const videoIsLandscape = videoWidth > videoHeight;
-    const deviceIsPortrait = window.innerHeight > window.innerWidth;
-    if (!videoIsLandscape || !deviceIsPortrait) return 0;
+    const deviceIsLandscape = window.innerWidth > window.innerHeight;
+
+    // If video and device orientations already match, no canvas rotation needed.
+    if (videoIsLandscape === deviceIsLandscape) return 0;
+
     const angle = (
       typeof screen !== "undefined" && screen.orientation?.angle != null
         ? screen.orientation.angle
@@ -289,7 +291,19 @@ export default function RecordGame() {
           : 0
     );
     const normalized = ((angle % 360) + 360) % 360;
-    return normalized === 180 ? 90 : -90;
+
+    if (videoIsLandscape && !deviceIsLandscape) {
+      // Portrait device, landscape camera — original case (rare on iOS).
+      return normalized === 180 ? 90 : -90;
+    } else {
+      // Landscape device, portrait-reporting camera — iOS landscape quirk.
+      // iOS getUserMedia always reports the camera as portrait (sensor native),
+      // even when the device is held landscape.  We must rotate the canvas to
+      // produce correct landscape output.
+      // landscape-left  (angle ≈ 90):  need -90° (counterclockwise)
+      // landscape-right (angle ≈ 270): need +90° (clockwise)
+      return normalized === 270 ? 90 : -90;
+    }
   };
 
   const stopMediaPipeline = () => {
@@ -858,7 +872,9 @@ export default function RecordGame() {
       chunksRef.current = [];
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus"
-        : "video/webm";
+        : MediaRecorder.isTypeSupported("video/webm")
+          ? "video/webm"
+          : "video/mp4";
       const recorder = new MediaRecorder(recordStream, {
         mimeType,
         videoBitsPerSecond: 10_000_000,
@@ -1505,14 +1521,9 @@ export default function RecordGame() {
                 playsInline
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
-                  const isPortrait = v.videoWidth > 0 && v.videoHeight > v.videoWidth;
-                  setReviewIsPortrait(isPortrait);
-                  if (v.videoWidth > 0 && v.videoHeight > 0) {
-                    setPreviewAspect(`${v.videoWidth} / ${v.videoHeight}`);
-                  }
+                  setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
                 }}
-                style={previewAspect ? { aspectRatio: previewAspect } : undefined}
-                className="block h-auto w-full max-w-md max-h-[70vh] rounded-lg bg-black object-contain phone-landscape:max-w-full phone-landscape:max-h-[85vh]"
+                className="block h-auto max-w-full max-h-[70vh] rounded-lg bg-black phone-landscape:max-h-[85vh]"
               />
               {reviewIsPortrait && (
                 <p className="text-xs text-muted-foreground">
