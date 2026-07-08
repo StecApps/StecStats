@@ -16,7 +16,7 @@ import {
   getListPlayerTeamGroupsQueryKey,
   getListTeamGamesQueryKey
 } from "@workspace/api-client-react";
-import { getObjectDetector, detectPersonCenter } from "@/lib/playerTracking";
+import { getObjectDetector, detectPersonCenter, getPoseLandmarker, detectShotPose } from "@/lib/playerTracking";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -238,12 +238,18 @@ export default function RecordGame() {
   const [isTrackingLoading, setIsTrackingLoading] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
   const [courtViewSet, setCourtViewSet] = useState(false);
+  const [shotPrompt, setShotPrompt] = useState<{ playerId: number; playerName: string } | null>(null);
   const autoFollowRef = useRef(false);
   const trackCenterXRef = useRef(0.5);
   const trackCenterYRef = useRef(0.5);
   const courtViewRef = useRef({ x: 0.5, y: 0.5, zoom: 1 });
   const detectionMissCountRef = useRef(0);
   const MISS_THRESHOLD = 6;
+  const poseLandmarkerRef = useRef<Awaited<ReturnType<typeof getPoseLandmarker>> | null>(null);
+  const poseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastShotPromptRef = useRef(0);
+  const SHOT_COOLDOWN_MS = 4500;
+  const shotPromptDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const objectDetectorRef = useRef<Awaited<ReturnType<typeof getObjectDetector>> | null>(null);
   const detectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
@@ -537,6 +543,36 @@ export default function RecordGame() {
     };
   }, [autoFollowEnabled, isRecording]);
 
+  useEffect(() => {
+    const cleanup = () => {
+      if (poseIntervalRef.current) { clearInterval(poseIntervalRef.current); poseIntervalRef.current = null; }
+      if (shotPromptDismissRef.current) { clearTimeout(shotPromptDismissRef.current); shotPromptDismissRef.current = null; }
+      setShotPrompt(null);
+    };
+    if (!isRecording || focusPlayerId === null) { cleanup(); return; }
+
+    getPoseLandmarker().then(lm => { poseLandmarkerRef.current = lm; }).catch(() => {});
+
+    poseIntervalRef.current = setInterval(() => {
+      const lm = poseLandmarkerRef.current;
+      const v = sourceVideoRef.current;
+      if (!lm || !v || v.videoWidth === 0 || v.videoHeight === 0) return;
+      const now = Date.now();
+      if (now - lastShotPromptRef.current < SHOT_COOLDOWN_MS) return;
+      try {
+        if (detectShotPose(lm, v)) {
+          lastShotPromptRef.current = now;
+          const player = players?.find(p => p.id === focusPlayerId);
+          setShotPrompt({ playerId: focusPlayerId, playerName: player?.name ?? "Player" });
+          if (shotPromptDismissRef.current) clearTimeout(shotPromptDismissRef.current);
+          shotPromptDismissRef.current = setTimeout(() => setShotPrompt(null), 5000);
+        }
+      } catch { /* pose detection unavailable this frame */ }
+    }, 1000);
+
+    return cleanup;
+  }, [isRecording, focusPlayerId, players]);
+
   const startDrawLoop = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const draw = () => {
@@ -662,6 +698,13 @@ export default function RecordGame() {
 
   const adjustZoom = (delta: number) => {
     setZoom(z => Math.min(MAX_ZOOM, Math.max(1, Math.round((z + delta) * 10) / 10)));
+  };
+
+  const logShotFromPrompt = (type: 'twoMade' | 'threeMade' | 'twoAttempted' | 'threeAttempted') => {
+    if (!shotPrompt) return;
+    updateStat(shotPrompt.playerId, type, 1);
+    if (shotPromptDismissRef.current) clearTimeout(shotPromptDismissRef.current);
+    setShotPrompt(null);
   };
 
   const saveCourtView = () => {
@@ -1740,6 +1783,30 @@ export default function RecordGame() {
             )}
 
             {rosterChips}
+
+            {shotPrompt && (
+              <div className="rounded-xl border border-primary/40 bg-primary/5 px-4 py-3 space-y-2 animate-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold uppercase tracking-wide text-primary">🏀 Shot detected — {shotPrompt.playerName}</span>
+                  <button onClick={() => setShotPrompt(null)} className="text-muted-foreground hover:text-foreground text-lg leading-none px-1">✕</button>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  <Button size="sm" className="bg-green-600 hover:bg-green-500 text-white font-bold text-xs flex flex-col h-12 gap-0.5 leading-none" onClick={() => logShotFromPrompt('twoMade')}>
+                    <Check className="w-3.5 h-3.5" /><span>2PT</span>
+                  </Button>
+                  <Button size="sm" className="bg-green-600 hover:bg-green-500 text-white font-bold text-xs flex flex-col h-12 gap-0.5 leading-none" onClick={() => logShotFromPrompt('threeMade')}>
+                    <Check className="w-3.5 h-3.5" /><span>3PT</span>
+                  </Button>
+                  <Button size="sm" className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex flex-col h-12 gap-0.5 leading-none" onClick={() => logShotFromPrompt('twoAttempted')}>
+                    <X className="w-3.5 h-3.5" /><span>2 Miss</span>
+                  </Button>
+                  <Button size="sm" className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex flex-col h-12 gap-0.5 leading-none" onClick={() => logShotFromPrompt('threeAttempted')}>
+                    <X className="w-3.5 h-3.5" /><span>3 Miss</span>
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {statTrackerCards.length > 0 ? (
               <div className="space-y-4">{statTrackerCards}</div>
             ) : (
@@ -1762,11 +1829,23 @@ function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoM
         </div>
       </div>
       <div className="grid grid-cols-2 divide-x border-t">
-        <Button variant="ghost" className="rounded-none h-12 hover:bg-green-500/10 hover:text-green-600 active:bg-green-500/20" onClick={onMake} onContextMenu={(e) => { e.preventDefault(); onUndoMake(); }}>
-          MAKE
+        <Button
+          variant="ghost"
+          className="rounded-none h-14 flex flex-col items-center justify-center gap-0.5 bg-green-500/15 text-green-500 hover:bg-green-500/25 hover:text-green-400 active:bg-green-500/35"
+          onClick={onMake}
+          onContextMenu={(e) => { e.preventDefault(); onUndoMake(); }}
+        >
+          <Check className="w-4 h-4" />
+          <span className="text-[10px] font-bold tracking-wide">MAKE</span>
         </Button>
-        <Button variant="ghost" className="rounded-none h-12 hover:bg-red-500/10 hover:text-red-600 active:bg-red-500/20" onClick={onMiss} onContextMenu={(e) => { e.preventDefault(); onUndoMiss(); }}>
-          MISS
+        <Button
+          variant="ghost"
+          className="rounded-none h-14 flex flex-col items-center justify-center gap-0.5 bg-red-500/15 text-red-500 hover:bg-red-500/25 hover:text-red-400 active:bg-red-500/35"
+          onClick={onMiss}
+          onContextMenu={(e) => { e.preventDefault(); onUndoMiss(); }}
+        >
+          <X className="w-4 h-4" />
+          <span className="text-[10px] font-bold tracking-wide">MISS</span>
         </Button>
       </div>
     </div>
