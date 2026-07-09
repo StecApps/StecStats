@@ -217,7 +217,38 @@ async function renderGameSegments(
     "-of", "csv=s=x:p=0",
     activeSrcPath,
   ]);
-  const height = parseInt(dims.split("x")[1] ?? "720", 10) || 720;
+  let rawWidth  = parseInt(dims.split("x")[0] ?? "1280", 10) || 1280;
+  let rawHeight = parseInt(dims.split("x")[1] ?? "720",  10) || 720;
+
+  // Some iOS versions incorrectly stamp a `rotate` tag onto canvas-recorded
+  // streams.  ffmpeg re-encodes with the raw pixels and ignores the tag by
+  // default, so we detect it here and apply a transpose filter to physically
+  // rotate the pixels before encoding — giving the highlight reel the correct
+  // orientation instead of sideways/stretched output.
+  const rotateMeta = await ffprobe([
+    "-v", "error",
+    "-select_streams", "v:0",
+    "-show_entries", "stream_tags=rotate",
+    "-of", "default=nw=1:nk=1",
+    activeSrcPath,
+  ]).catch(() => "0");
+  const rotationDeg = parseInt(rotateMeta.trim() || "0", 10) || 0;
+
+  // After a 90°/270° transpose the logical width ↔ height swap.
+  let displayWidth  = rawWidth;
+  let displayHeight = rawHeight;
+  let transposeFilter: string | null = null;
+  if (rotationDeg === 90) {
+    transposeFilter = "transpose=1";           // 90° CW
+    [displayWidth, displayHeight] = [rawHeight, rawWidth];
+  } else if (rotationDeg === 270 || rotationDeg === -90) {
+    transposeFilter = "transpose=2";           // 90° CCW
+    [displayWidth, displayHeight] = [rawHeight, rawWidth];
+  } else if (rotationDeg === 180) {
+    transposeFilter = "transpose=1,transpose=1"; // 180°
+  }
+
+  const height = displayHeight;
 
   const audioStreams = await ffprobe([
     "-v", "error",
@@ -252,7 +283,11 @@ async function renderGameSegments(
       drawFilters.map((d) => fs.writeFile(d.capFile, d.text, "utf8")),
     );
 
-    const filterParts = ["scale=trunc(iw/2)*2:trunc(ih/2)*2"];
+    // Build filter chain: optional rotation correction first, then scale to
+    // ensure even dimensions (required by H.264), then captions.
+    const filterParts: string[] = [];
+    if (transposeFilter) filterParts.push(transposeFilter);
+    filterParts.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
     for (const d of drawFilters) {
       filterParts.push(
         [
