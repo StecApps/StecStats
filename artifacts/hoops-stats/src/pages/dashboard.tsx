@@ -990,7 +990,7 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
                     controls
                     playsInline
                     preload="none"
-                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black"
+                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black phone-landscape:max-h-none phone-landscape:w-[62vw]"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareSeasonHighlight}>

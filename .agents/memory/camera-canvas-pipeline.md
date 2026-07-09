@@ -70,3 +70,12 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
 - Generic control labels like "Lens" confuse users — surface the *active* lens
   (0.5×/1×/Tele derived from the device label) so a multi-lens button is
   self-explanatory. iOS device labels are only readable after permission is granted.
+- **Camera flip can silently no-op on mobile:** requesting the new-facing stream
+  BEFORE stopping the old one's tracks (request-then-stop) can make some mobile
+  browsers refuse the second concurrent capture session, or silently hand back the
+  same camera — looking like "the flip button does nothing" with no visible error.
+  Fix: stop the previous stream's tracks FIRST, then request the new facingMode
+  stream (stop-then-request). If the new request then fails, try to re-open the
+  previous facingMode to avoid leaving the recording with a dead video source, and
+  always surface the failure via a toast (a `cameraError` text in a packed camera
+  overlay is easy to miss).

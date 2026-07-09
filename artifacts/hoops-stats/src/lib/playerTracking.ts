@@ -75,6 +75,7 @@ export function detectPersonNear(
   videoEl: HTMLVideoElement,
   targetX: number,
   targetY: number,
+  maxDist?: number,
 ): { x: number; y: number; normHeight: number } | null {
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
@@ -97,6 +98,11 @@ export function detectPersonNear(
     if (dist < bestDist) { bestDist = dist; best = p; }
   }
   if (!best?.boundingBox) return null;
+  // Reject the match if it's implausibly far from the last known spot — this
+  // prevents the tracker from snapping onto a different (closer-to-stale-target)
+  // person when the locked player is briefly occluded or leaves frame, instead
+  // of treating it as a miss and letting the caller's re-acquisition logic run.
+  if (maxDist !== undefined && bestDist > maxDist * maxDist) return null;
   const bb = best.boundingBox;
   return {
     x: (bb.originX + bb.width / 2) / vw,

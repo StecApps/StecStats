@@ -62,3 +62,27 @@ The detection interval useEffect also cleans up on `[autoFollowEnabled, isRecord
 - Picks the **largest** person bounding box — assumes the parent is aiming at their player (most of frame)
 - No person re-identification: doesn't use the player's reference photo yet (stored as `photoObjectPath`)
 - Phase 3: use the reference photo to build a feature embedding and match the closest detected person
+
+## Tap-to-lock re-identification is nearest-distance only — needs gating
+`detectPersonNear(det, video, targetX, targetY)` (used once a player is locked) has no
+appearance model — it just returns whichever detected person's bbox center is closest
+to the last known spot, every frame. Without a max-distance cap this will happily
+"lock onto" a different, merely-closer person the instant the real target is briefly
+occluded/leaves frame, and the tracker silently drifts to the wrong player forever
+(no false-positive signal, since it always finds *someone*).
+
+**Fix applied:** added an optional `maxDist` param that rejects a match beyond a
+plausible per-frame movement radius (returns null → counted as a miss → existing
+home-view fallback kicks in after `MISS_THRESHOLD`). Radius grows a little with each
+consecutive miss (re-acquire nearby after occlusion) but resets on every hit — this
+is a re-acquisition radius, not a hard cap, so tune `SEARCH_RADIUS_BASE`/`_MAX` in
+record.tsx's detection interval if it feels too sticky or too jumpy.
+
+Also add short hysteresis (2 consecutive misses, not 1) before flipping the UI to
+"Searching…" — the object detector naturally drops single frames, so 1-frame-miss-
+driven UI state flickers between "Tracking"/"Searching" even when lock is fine.
+
+True appearance-based re-ID (jersey number OCR, jersey color) was evaluated and
+deferred: OCR on phone-quality/motion-blurred video at typical shooting distance is
+unlikely to be reliably accurate; jersey-color matching is more tractable if revisited
+(sample average pixel color in the bbox from the source video via an offscreen canvas).

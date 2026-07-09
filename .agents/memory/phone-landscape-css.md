@@ -10,3 +10,5 @@ Do NOT target "phone in landscape" with width-based Tailwind breakpoints like `m
 The `(pointer: coarse)` clause keeps a desktop browser with a short window from accidentally matching. Use `phone-landscape:*` on the recording overlay so video + scoring panel sit side-by-side only on real phones in landscape.
 
 **Testing caveat:** the recording overlay only mounts when a camera stream is active, which the Playwright/screenshot sandbox has no access to — you cannot screenshot it. Reason about the layout and rely on typecheck + the media-query logic rather than a live capture.
+
+**Portrait video review looks "scrunched" on phone-landscape:** capping a portrait `<video>` by `max-h-*vh` alone makes it tiny on a short landscape viewport, because height is the scarce dimension there and width is derived from it (9:16 aspect → small height means even smaller width). Don't just bump the vh percentage — switch the constraint to `phone-landscape:max-h-none phone-landscape:w-[~60vw]` so the video sizes off the (plentiful) width instead, even if that makes it taller than the viewport (the page already scrolls).

@@ -564,8 +564,14 @@ export default function RecordGame() {
       if (!det || !v || v.videoWidth === 0 || v.videoHeight === 0) return;
       try {
         const locked = lockTargetRef.current;
+        // Search radius grows with consecutive misses so a briefly-occluded
+        // player can be re-acquired nearby, but a single miss won't let the
+        // tracker snap onto a completely different (merely closer) person.
+        const SEARCH_RADIUS_BASE = 0.16;
+        const SEARCH_RADIUS_MAX = 0.5;
+        const searchRadius = Math.min(SEARCH_RADIUS_MAX, SEARCH_RADIUS_BASE + detectionMissCountRef.current * 0.05);
         const center = locked
-          ? detectPersonNear(det, v, locked.x, locked.y)
+          ? detectPersonNear(det, v, locked.x, locked.y, searchRadius)
           : detectPersonCenter(det, v);
         if (center) {
           // Update the raw-video lock position to follow the player.
@@ -575,7 +581,11 @@ export default function RecordGame() {
             if (pct) setLockedDisplayTarget(pct);
           }
           detectionMissCountRef.current = 0;
-          const panAlpha = 0.2;
+          // Pan faster at higher zoom — the same normalised movement covers a
+          // much bigger fraction of the (smaller) visible crop window once
+          // zoomed in, so a fixed alpha would let a fast player outrun the pan
+          // and escape the visible crop before the camera catches up.
+          const panAlpha = Math.min(0.45, 0.2 + (Math.max(1, zoomRef.current) - 1) * 0.08);
           trackCenterXRef.current = (1 - panAlpha) * trackCenterXRef.current + panAlpha * center.x;
           trackCenterYRef.current = (1 - panAlpha) * trackCenterYRef.current + panAlpha * center.y;
           // Adaptive zoom: target zoom so the player fills ~40% of frame height
@@ -588,7 +598,10 @@ export default function RecordGame() {
           setIsTracking(true);
         } else {
           detectionMissCountRef.current += 1;
-          setIsTracking(false);
+          // Small hysteresis: don't flash "Searching…" for a single dropped
+          // frame — only report a loss of lock after a couple of consecutive
+          // misses, since the object detector naturally drops frames.
+          if (detectionMissCountRef.current >= 2) setIsTracking(false);
           if (detectionMissCountRef.current > MISS_THRESHOLD) {
             const home = courtViewRef.current;
             const alpha = 0.08;
@@ -699,6 +712,16 @@ export default function RecordGame() {
   const switchCamera = async () => {
     if (!usesCanvasRef.current || !sourceVideoRef.current) return;
     const next = facingMode === "environment" ? "user" : "environment";
+    const src = sourceVideoRef.current;
+    const prevFacingMode = facingMode;
+    const prevStream = src.srcObject as MediaStream | null;
+    // Stop the current camera BEFORE requesting the new one. Several mobile
+    // browsers refuse to open a second camera stream while the first capture
+    // session is still active, and some will silently hand back the same
+    // device instead of erroring — which looks like "the flip button does
+    // nothing". Releasing the old track first avoids both failure modes.
+    prevStream?.getVideoTracks().forEach(t => t.stop());
+    setCameraError(null);
     try {
       let newStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: next, ...IDEAL_VIDEO_CONSTRAINTS },
@@ -728,9 +751,6 @@ export default function RecordGame() {
         setLensLabel("");
       }
 
-      const src = sourceVideoRef.current;
-      const prev = src.srcObject as MediaStream | null;
-      prev?.getVideoTracks().forEach(t => t.stop());
       src.srcObject = newStream;
       await src.play().catch(() => {});
       await new Promise<void>(r => {
@@ -744,7 +764,22 @@ export default function RecordGame() {
       setZoom(1);
       zoomRef.current = 1;
     } catch {
-      setCameraError("Could not switch camera on this device.");
+      // Switch failed — try to restore the camera we just released so the
+      // recording isn't left frozen with no video source at all.
+      try {
+        const restoredStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: prevFacingMode, ...IDEAL_VIDEO_CONSTRAINTS },
+          audio: false,
+        });
+        src.srcObject = restoredStream;
+        await src.play().catch(() => {});
+        currentDeviceIdRef.current = restoredStream.getVideoTracks()[0]?.getSettings().deviceId ?? null;
+      } catch {
+        // Restoration also failed; cameraError below will surface it.
+      }
+      const message = "Could not switch camera on this device.";
+      setCameraError(message);
+      toast({ title: "Camera switch failed", description: message, variant: "destructive" });
     }
   };
 
@@ -1693,7 +1728,7 @@ export default function RecordGame() {
                 }}
                 className={
                   reviewIsPortrait
-                    ? "block w-auto max-h-[70vh] mx-auto rounded-lg bg-black phone-landscape:max-h-[85vh]"
+                    ? "block w-auto max-h-[70vh] mx-auto rounded-lg bg-black phone-landscape:max-h-none phone-landscape:w-[62vw]"
                     : "block max-w-full max-h-[70vh] rounded-lg bg-black phone-landscape:max-h-[85vh]"
                 }
               />
@@ -1775,7 +1810,7 @@ export default function RecordGame() {
                     controls
                     playsInline
                     preload="none"
-                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black"
+                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black phone-landscape:max-h-none phone-landscape:w-[62vw]"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareHighlight}>
