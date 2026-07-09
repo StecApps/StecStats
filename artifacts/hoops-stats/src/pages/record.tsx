@@ -568,9 +568,11 @@ export default function RecordGame() {
         // Search radius grows with consecutive misses so a briefly-occluded
         // player can be re-acquired nearby, but a single miss won't let the
         // tracker snap onto a completely different (merely closer) person.
-        const SEARCH_RADIUS_BASE = 0.16;
-        const SEARCH_RADIUS_MAX = 0.5;
-        const searchRadius = Math.min(SEARCH_RADIUS_MAX, SEARCH_RADIUS_BASE + detectionMissCountRef.current * 0.05);
+        // Kept intentionally tight so the tracker prefers losing lock (and
+        // recentering on the court) over jumping to a farther-away player.
+        const SEARCH_RADIUS_BASE = 0.1;
+        const SEARCH_RADIUS_MAX = 0.3;
+        const searchRadius = Math.min(SEARCH_RADIUS_MAX, SEARCH_RADIUS_BASE + detectionMissCountRef.current * 0.03);
         const center = locked
           ? detectPersonNear(det, v, locked.x, locked.y, searchRadius, lockColorRef.current)
           : detectPersonCenter(det, v);

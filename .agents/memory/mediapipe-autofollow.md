@@ -116,3 +116,13 @@ radius, score them by `positionDistance + colorDistance*1.2` instead of
 position alone. This helps most when the target's jersey colour differs from
 nearby players (e.g. opposing team) — it will NOT disambiguate teammates in
 identical uniforms, since colour alone can't tell them apart in that case.
+
+## Search radius: prefer losing lock over jumping to the wrong player
+After adding colour re-ID, user feedback was still "prefer a tighter radius
+that won't jump to a farther-away player" over recovering faster from misses.
+Tightened `SEARCH_RADIUS_BASE`/`_MAX`/per-miss growth in record.tsx's
+detection interval (from 0.16/0.5/0.05 down to 0.1/0.3/0.03) — this trades
+away some re-acquisition speed after a real occlusion in exchange for making
+an incorrect jump much less likely. If re-acquisition ever feels too
+trigger-happy dropping to "Searching…"/home-view, these are the first knobs
+to loosen back up (see `MISS_THRESHOLD` for when it gives up and recenters).
