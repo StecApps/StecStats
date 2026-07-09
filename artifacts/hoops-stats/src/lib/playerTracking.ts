@@ -125,23 +125,44 @@ export function detectShotPose(
   // the top of the frame.  In landscape mode, however, the physical "up"
   // direction maps to the portrait x-axis, so we must check x-displacement
   // rather than y-displacement for arm raises.
-  const RAISE = 0.07;
   const deviceIsLandscape = window.innerWidth > window.innerHeight;
 
   if (deviceIsLandscape) {
-    // When the device is landscape, iOS still delivers portrait-oriented pixels.
-    // Physical "up" = portrait right (+x) for landscape-left (screen.orientation
-    // angle ≈ 90 / window.orientation ≈ -90), and portrait left (-x) for
-    // landscape-right.  We check both directions so the detection works
-    // regardless of which landscape side the user holds the phone.
-    const rightArmRaisedR = rWrist.x > rShoulder.x + RAISE && rElbow.x > rShoulder.x - 0.04;
-    const rightArmRaisedL = rWrist.x < rShoulder.x - RAISE && rElbow.x < rShoulder.x + 0.04;
-    const leftArmRaisedR  = lWrist.x > lShoulder.x + RAISE && lElbow.x > lShoulder.x - 0.04;
-    const leftArmRaisedL  = lWrist.x < lShoulder.x - RAISE && lElbow.x < lShoulder.x + 0.04;
-    return rightArmRaisedR || rightArmRaisedL || leftArmRaisedR || leftArmRaisedL;
+    // In landscape mode the camera still delivers portrait-oriented pixels, so
+    // physical "up" maps to the portrait x-axis.  We must determine WHICH
+    // x-direction is "up" from the orientation API — checking both directions
+    // simultaneously caused too many false positives.
+    //   screen.orientation.angle 90  = landscape-left  → up = portrait +x (right)
+    //   screen.orientation.angle 270 = landscape-right → up = portrait -x (left)
+    //   window.orientation -90 = landscape-left  → up = +x
+    //   window.orientation  90 = landscape-right → up = -x
+    let upIsPortraitRight = true;
+    if (typeof screen !== "undefined" && screen.orientation?.angle != null) {
+      upIsPortraitRight = screen.orientation.angle !== 270;
+    } else if (typeof (window as any).orientation === "number") {
+      upIsPortraitRight = (window as any).orientation !== 90;
+    }
+
+    // Use a higher threshold for the x-axis — casual sideways movement is more
+    // common than raising an arm vertically, so we need a bigger margin.
+    const LANDSCAPE_RAISE = 0.12;
+
+    if (upIsPortraitRight) {
+      // Physical "up" = portrait right (+x). Arm raised = wrist clearly to the
+      // right of the shoulder AND elbow at or past shoulder level.
+      const rightArmRaised = rWrist.x > rShoulder.x + LANDSCAPE_RAISE && rElbow.x > rShoulder.x;
+      const leftArmRaised  = lWrist.x > lShoulder.x + LANDSCAPE_RAISE && lElbow.x > lShoulder.x;
+      return rightArmRaised || leftArmRaised;
+    } else {
+      // Physical "up" = portrait left (-x).
+      const rightArmRaised = rWrist.x < rShoulder.x - LANDSCAPE_RAISE && rElbow.x < rShoulder.x;
+      const leftArmRaised  = lWrist.x < lShoulder.x - LANDSCAPE_RAISE && lElbow.x < lShoulder.x;
+      return rightArmRaised || leftArmRaised;
+    }
   }
 
   // Portrait mode: y=0 is top; "arm raised" = wrist clearly above shoulder.
+  const RAISE = 0.07;
   const rightArmRaised = rWrist.y < rShoulder.y - RAISE && rElbow.y < rShoulder.y + 0.04;
   const leftArmRaised  = lWrist.y < lShoulder.y - RAISE && lElbow.y < lShoulder.y + 0.04;
   return rightArmRaised || leftArmRaised;

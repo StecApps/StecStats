@@ -1652,7 +1652,7 @@ export default function RecordGame() {
                     controls
                     playsInline
                     preload="none"
-                    className="w-full rounded-lg bg-black object-contain max-h-[70vh]"
+                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareHighlight}>
