@@ -611,8 +611,9 @@ export default function RecordGame() {
             zoomRef.current = trackZoomRef.current;
           }
         }
-      } catch {
+      } catch (err) {
         // detection failed this frame — keep current pan position
+        console.error("auto-follow detection error", err);
       }
     }, 333);
     return () => {
@@ -662,7 +663,9 @@ export default function RecordGame() {
           if (shotPromptDismissRef.current) clearTimeout(shotPromptDismissRef.current);
           shotPromptDismissRef.current = setTimeout(() => setShotPrompt(null), 5000);
         }
-      } catch { /* pose detection unavailable this frame */ }
+      } catch (err) {
+        console.error("shot detection error", err);
+      }
     }, 1000);
 
     return cleanup;
@@ -1647,7 +1650,7 @@ export default function RecordGame() {
                 }}
                 className={
                   reviewIsPortrait
-                    ? "block w-auto max-h-[70vh] mx-auto rounded-lg bg-black phone-landscape:max-h-none phone-landscape:w-[62vw]"
+                    ? "block w-auto max-h-[70vh] mx-auto rounded-lg bg-black touch-landscape:max-h-none touch-landscape:w-[62vw]"
                     : "block max-w-full max-h-[70vh] rounded-lg bg-black phone-landscape:max-h-[85vh]"
                 }
               />
@@ -1729,7 +1732,7 @@ export default function RecordGame() {
                     controls
                     playsInline
                     preload="none"
-                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black phone-landscape:max-h-none phone-landscape:w-[62vw]"
+                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black touch-landscape:max-h-none touch-landscape:w-[62vw]"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareHighlight}>

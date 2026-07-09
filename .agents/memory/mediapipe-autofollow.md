@@ -86,3 +86,18 @@ True appearance-based re-ID (jersey number OCR, jersey color) was evaluated and
 deferred: OCR on phone-quality/motion-blurred video at typical shooting distance is
 unlikely to be reliably accurate; jersey-color matching is more tractable if revisited
 (sample average pixel color in the bbox from the source video via an offscreen canvas).
+
+## Two concurrent GPU-delegate MediaPipe tasks silently break the second one
+Auto-follow's `ObjectDetector` and shot detection's `PoseLandmarker` both call
+`detectForVideo()` on the same `<video>` element from separate `setInterval`s
+(333ms / 1000ms). When BOTH used `delegate: "GPU"`, once auto-follow tracking
+became reliable enough to run continuously, shot detection stopped firing
+entirely — with no thrown/visible error, because the failure was caught and
+swallowed silently. Two GPU-delegated tasks-vision models contending for the
+same WebGL context is the suspected cause. Fix: give the less latency-sensitive
+task (`PoseLandmarker`, sampled once/second) `delegate: "CPU"` instead, leaving
+`ObjectDetector` (sampled 3x/second, needs to be fast) on GPU. If adding a THIRD
+concurrent vision task later, keep at most one of them on GPU.
+Also: never let a `detectForVideo` catch block swallow silently — log
+`console.error` even though the UI shouldn't surface every dropped frame, or a
+real regression like this one is undiagnosable from a user's screenshot alone.

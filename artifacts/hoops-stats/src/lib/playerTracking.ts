@@ -126,10 +126,16 @@ export async function getPoseLandmarker(): Promise<PoseLandmarker> {
 
   _poseLoadPromise = (async () => {
     const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
+    // CPU delegate (not GPU): the auto-follow ObjectDetector already holds a GPU
+    // delegate context, and running two GPU-delegated tasks-vision models at once
+    // silently fails detectForVideo() calls on one or both of them (no thrown
+    // error surfaces to the UI — shot detection just stops firing). Shot
+    // detection only samples once/second, so CPU is plenty fast here and avoids
+    // the contention entirely.
     _poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
       baseOptions: {
         modelAssetPath: POSE_MODEL_URL,
-        delegate: "GPU",
+        delegate: "CPU",
       },
       runningMode: "VIDEO",
       numPoses: 1,
