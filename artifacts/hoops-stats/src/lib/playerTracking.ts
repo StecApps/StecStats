@@ -7,6 +7,25 @@ const MODEL_URL =
 const POSE_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task";
 
+const MODEL_LOAD_TIMEOUT_MS = 20_000;
+
+/**
+ * Races a promise against a timeout. The underlying model-loading fetches
+ * have no built-in timeout, so on flaky/captive-portal networks (e.g.
+ * airport wifi) a stalled request can hang forever with no thrown error —
+ * this turns that silent hang into a rejection callers can catch and let
+ * the user retry.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 let _detector: ObjectDetector | null = null;
 let _loadPromise: Promise<ObjectDetector> | null = null;
 
@@ -14,7 +33,7 @@ export async function getObjectDetector(): Promise<ObjectDetector> {
   if (_detector) return _detector;
   if (_loadPromise) return _loadPromise;
 
-  _loadPromise = (async () => {
+  _loadPromise = withTimeout((async () => {
     const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
     _detector = await ObjectDetector.createFromOptions(vision, {
       baseOptions: {
@@ -26,7 +45,7 @@ export async function getObjectDetector(): Promise<ObjectDetector> {
       runningMode: "VIDEO",
     });
     return _detector;
-  })();
+  })(), MODEL_LOAD_TIMEOUT_MS, "Object detector load");
 
   try {
     return await _loadPromise;
@@ -217,7 +236,7 @@ export async function getPoseLandmarker(): Promise<PoseLandmarker> {
   if (_poseLandmarker) return _poseLandmarker;
   if (_poseLoadPromise) return _poseLoadPromise;
 
-  _poseLoadPromise = (async () => {
+  _poseLoadPromise = withTimeout((async () => {
     const vision = await FilesetResolver.forVisionTasks(WASM_PATH);
     // CPU delegate (not GPU): the auto-follow ObjectDetector already holds a GPU
     // delegate context, and running two GPU-delegated tasks-vision models at once
@@ -234,7 +253,7 @@ export async function getPoseLandmarker(): Promise<PoseLandmarker> {
       numPoses: 1,
     });
     return _poseLandmarker;
-  })();
+  })(), MODEL_LOAD_TIMEOUT_MS, "Pose landmarker load");
 
   try {
     return await _poseLoadPromise;

@@ -117,6 +117,17 @@ position alone. This helps most when the target's jersey colour differs from
 nearby players (e.g. opposing team) — it will NOT disambiguate teammates in
 identical uniforms, since colour alone can't tell them apart in that case.
 
+## Model downloads need a client-side timeout on unreliable networks
+`getObjectDetector()`/`getPoseLandmarker()` await `FilesetResolver`/model
+`createFromOptions` fetches with no timeout. On a flaky/captive-portal
+network (e.g. airport wifi) a stalled fetch can hang forever with no thrown
+error, leaving the UI stuck on "Loading…" indefinitely (Auto-Follow button)
+with no way to retry. Fixed by racing both loaders against a 20s timeout
+(`withTimeout` helper in playerTracking.ts) so a stalled load rejects and
+existing catch blocks (toast + reset for auto-follow) can run. Any future
+network-dependent model/asset load in this app should go through the same
+pattern rather than a bare `await`.
+
 ## Search radius: prefer losing lock over jumping to the wrong player
 After adding colour re-ID, user feedback was still "prefer a tighter radius
 that won't jump to a farther-away player" over recovering faster from misses.
