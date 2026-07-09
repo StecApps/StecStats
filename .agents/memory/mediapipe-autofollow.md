@@ -101,3 +101,18 @@ concurrent vision task later, keep at most one of them on GPU.
 Also: never let a `detectForVideo` catch block swallow silently — log
 `console.error` even though the UI shouldn't surface every dropped frame, or a
 real regression like this one is undiagnosable from a user's screenshot alone.
+
+## Position-only re-ID isn't enough when players are close together
+`detectPersonNear` originally picked whichever detected person was nearest the
+last known lock position. With several similar-sized players clustered near
+each other (e.g. a scrum, or teammates standing close), this let the lock jump
+onto the wrong player whenever she momentarily became "nearest" — a real
+problem when the object detector only gives person bounding boxes, no
+identity. Added a jersey/torso colour signature: on tap-to-lock, sample the
+average colour of the middle-upper ~40% of the bbox (avoids hair/face/shorts
+and edge background bleed); keep a running EMA-blended `lockColorRef`; when
+`detectPersonNear` finds multiple plausible candidates within the search
+radius, score them by `positionDistance + colorDistance*1.2` instead of
+position alone. This helps most when the target's jersey colour differs from
+nearby players (e.g. opposing team) — it will NOT disambiguate teammates in
+identical uniforms, since colour alone can't tell them apart in that case.

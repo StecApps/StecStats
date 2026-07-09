@@ -64,11 +64,76 @@ export function detectPersonCenter(
   };
 }
 
+export interface PersonColor { r: number; g: number; b: number; }
+
+let _colorCanvas: HTMLCanvasElement | null = null;
+function getColorCanvas(): HTMLCanvasElement {
+  if (!_colorCanvas) {
+    _colorCanvas = document.createElement("canvas");
+    _colorCanvas.width = 8;
+    _colorCanvas.height = 8;
+  }
+  return _colorCanvas;
+}
+
+/**
+ * Samples the average colour of a player's jersey/torso area from a detected
+ * bounding box (the middle-upper portion, avoiding hair/face/shorts and
+ * background bleed at the box edges). Used to disambiguate between
+ * similar-sized players standing near each other, where position alone isn't
+ * enough to tell them apart.
+ */
+function sampleTorsoColor(
+  videoEl: HTMLVideoElement,
+  bb: { originX: number; originY: number; width: number; height: number },
+): PersonColor | null {
+  try {
+    const canvas = getColorCanvas();
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    const sx = bb.originX + bb.width * 0.3;
+    const sy = bb.originY + bb.height * 0.15;
+    const sw = bb.width * 0.4;
+    const sh = bb.height * 0.4;
+    if (sw <= 0 || sh <= 0) return null;
+    ctx.drawImage(videoEl, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
+    }
+    if (n === 0) return null;
+    return { r: r / n, g: g / n, b: b / n };
+  } catch {
+    return null;
+  }
+}
+
+function colorDistance(a: PersonColor, b: PersonColor): number {
+  const dr = a.r - b.r, dg = a.g - b.g, db = a.b - b.b;
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+/** Exponential blend toward a freshly observed colour, to track gradual lighting
+ * changes while staying resistant to a single bad match skewing the signature. */
+export function blendColor(prev: PersonColor | null, next: PersonColor | null, alpha = 0.15): PersonColor | null {
+  if (!next) return prev;
+  if (!prev) return next;
+  return {
+    r: (1 - alpha) * prev.r + alpha * next.r,
+    g: (1 - alpha) * prev.g + alpha * next.g,
+    b: (1 - alpha) * prev.b + alpha * next.b,
+  };
+}
+
 /**
  * Like detectPersonCenter but returns the person whose bounding-box centre is
  * closest to (targetX, targetY) in normalised video coords — used to keep the
  * camera locked on a specific player rather than always following the biggest
- * person in frame.
+ * person in frame. When multiple detections are plausibly close to the last
+ * known spot (e.g. two similar-sized players standing near each other),
+ * `refColor` — the locked player's running jersey-colour signature — is used
+ * to break the tie instead of picking whichever happens to be nearest.
  */
 export function detectPersonNear(
   det: ObjectDetector,
@@ -76,7 +141,8 @@ export function detectPersonNear(
   targetX: number,
   targetY: number,
   maxDist?: number,
-): { x: number; y: number; normHeight: number } | null {
+  refColor?: PersonColor | null,
+): { x: number; y: number; normHeight: number; color: PersonColor | null } | null {
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
   if (vw === 0 || vh === 0) return null;
@@ -85,8 +151,12 @@ export function detectPersonNear(
   const persons = results.detections;
   if (persons.length === 0) return null;
 
-  let best: (typeof persons)[0] | null = null;
-  let bestDist = Infinity;
+  type Candidate = {
+    bb: { originX: number; originY: number; width: number; height: number };
+    dist: number;
+    color: PersonColor | null;
+  };
+  const candidates: Candidate[] = [];
   for (const p of persons) {
     const bb = p.boundingBox;
     if (!bb) continue;
@@ -95,19 +165,42 @@ export function detectPersonNear(
     const dx = cx - targetX;
     const dy = cy - targetY;
     const dist = dx * dx + dy * dy;
-    if (dist < bestDist) { bestDist = dist; best = p; }
+    // Reject implausibly far matches — this prevents the tracker from snapping
+    // onto a different (closer-to-stale-target) person when the locked player
+    // is briefly occluded or leaves frame, instead of treating it as a miss
+    // and letting the caller's re-acquisition logic run.
+    if (maxDist !== undefined && dist > maxDist * maxDist) continue;
+    candidates.push({ bb, dist, color: null });
   }
-  if (!best?.boundingBox) return null;
-  // Reject the match if it's implausibly far from the last known spot — this
-  // prevents the tracker from snapping onto a different (closer-to-stale-target)
-  // person when the locked player is briefly occluded or leaves frame, instead
-  // of treating it as a miss and letting the caller's re-acquisition logic run.
-  if (maxDist !== undefined && bestDist > maxDist * maxDist) return null;
-  const bb = best.boundingBox;
+  if (candidates.length === 0) return null;
+
+  let best: Candidate;
+  if (candidates.length === 1) {
+    best = candidates[0];
+  } else if (refColor) {
+    const radius = Math.max(maxDist ?? 0.16, 0.01);
+    let bestScore = Infinity;
+    best = candidates[0];
+    for (const c of candidates) {
+      c.color = sampleTorsoColor(videoEl, c.bb);
+      const distNorm = Math.sqrt(c.dist) / radius;
+      const colorNorm = c.color ? colorDistance(c.color, refColor) / 255 : 1;
+      // Colour mismatch is weighted slightly higher than position — two
+      // players standing shoulder-to-shoulder can be nearly equidistant, but
+      // jersey colour reliably tells them apart.
+      const score = distNorm + colorNorm * 1.2;
+      if (score < bestScore) { bestScore = score; best = c; }
+    }
+  } else {
+    best = candidates.reduce((a, b) => (a.dist <= b.dist ? a : b));
+  }
+
+  const color = best.color ?? sampleTorsoColor(videoEl, best.bb);
   return {
-    x: (bb.originX + bb.width / 2) / vw,
-    y: (bb.originY + bb.height / 2) / vh,
-    normHeight: bb.height / vh,
+    x: (best.bb.originX + best.bb.width / 2) / vw,
+    y: (best.bb.originY + best.bb.height / 2) / vh,
+    normHeight: best.bb.height / vh,
+    color,
   };
 }
 

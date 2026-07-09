@@ -16,7 +16,7 @@ import {
   getListPlayerTeamGroupsQueryKey,
   getListTeamGamesQueryKey
 } from "@workspace/api-client-react";
-import { getObjectDetector, detectPersonCenter, detectPersonNear, getPoseLandmarker, detectShotPose } from "@/lib/playerTracking";
+import { getObjectDetector, detectPersonCenter, detectPersonNear, getPoseLandmarker, detectShotPose, blendColor, type PersonColor } from "@/lib/playerTracking";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -245,6 +245,7 @@ export default function RecordGame() {
   const trackCenterYRef = useRef(0.5);
   // Raw-video-normalised coords of the player the user tapped to lock onto.
   const lockTargetRef = useRef<{ x: number; y: number } | null>(null);
+  const lockColorRef = useRef<PersonColor | null>(null);
   // CSS % position within the preview container div (including letterbox) for the ring overlay.
   const [lockedDisplayTarget, setLockedDisplayTarget] = useState<{ leftPct: number; topPct: number } | null>(null);
   const courtViewRef = useRef({ x: 0.5, y: 0.5, zoom: 1 });
@@ -350,6 +351,7 @@ export default function RecordGame() {
     trackCenterXRef.current = 0.5;
     trackCenterYRef.current = 0.5;
     lockTargetRef.current = null;
+    lockColorRef.current = null;
     setLockedDisplayTarget(null);
     const src = sourceVideoRef.current;
     const srcStream = src?.srcObject as MediaStream | null;
@@ -570,7 +572,7 @@ export default function RecordGame() {
         const SEARCH_RADIUS_MAX = 0.5;
         const searchRadius = Math.min(SEARCH_RADIUS_MAX, SEARCH_RADIUS_BASE + detectionMissCountRef.current * 0.05);
         const center = locked
-          ? detectPersonNear(det, v, locked.x, locked.y, searchRadius)
+          ? detectPersonNear(det, v, locked.x, locked.y, searchRadius, lockColorRef.current)
           : detectPersonCenter(det, v);
         if (center) {
           // Update the raw-video lock position to follow the player.
@@ -578,6 +580,10 @@ export default function RecordGame() {
             lockTargetRef.current = { x: center.x, y: center.y };
             const pct = rawToDisplayPct(center.x, center.y);
             if (pct) setLockedDisplayTarget(pct);
+            if ("color" in center) {
+              const observedColor = (center as { color: PersonColor | null }).color;
+              lockColorRef.current = blendColor(lockColorRef.current, observedColor);
+            }
           }
           detectionMissCountRef.current = 0;
           // Pan faster at higher zoom — the same normalised movement covers a
@@ -860,6 +866,9 @@ export default function RecordGame() {
     const found = detectPersonNear(det, v, rawX, rawY);
     const target = found ?? { x: rawX, y: rawY };
     lockTargetRef.current = { x: target.x, y: target.y };
+    // Capture this player's jersey-colour signature so the tracker can tell
+    // them apart from other similar-sized players standing nearby.
+    lockColorRef.current = found?.color ?? null;
 
     const pct = rawToDisplayPct(target.x, target.y);
     if (pct) setLockedDisplayTarget(pct);
@@ -877,6 +886,7 @@ export default function RecordGame() {
       trackCenterYRef.current = 0.5;
       trackZoomRef.current = 1;
       lockTargetRef.current = null;
+      lockColorRef.current = null;
       setLockedDisplayTarget(null);
       return;
     }
@@ -1650,7 +1660,7 @@ export default function RecordGame() {
                 }}
                 className={
                   reviewIsPortrait
-                    ? "block w-auto max-h-[70vh] mx-auto rounded-lg bg-black touch-landscape:max-h-none touch-landscape:w-[62vw]"
+                    ? "block w-auto max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
                     : "block max-w-full max-h-[70vh] rounded-lg bg-black phone-landscape:max-h-[85vh]"
                 }
               />
@@ -1732,7 +1742,7 @@ export default function RecordGame() {
                     controls
                     playsInline
                     preload="none"
-                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black touch-landscape:max-h-none touch-landscape:w-[62vw]"
+                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareHighlight}>
