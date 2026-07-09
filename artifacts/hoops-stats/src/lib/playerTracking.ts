@@ -64,6 +64,47 @@ export function detectPersonCenter(
   };
 }
 
+/**
+ * Like detectPersonCenter but returns the person whose bounding-box centre is
+ * closest to (targetX, targetY) in normalised video coords — used to keep the
+ * camera locked on a specific player rather than always following the biggest
+ * person in frame.
+ */
+export function detectPersonNear(
+  det: ObjectDetector,
+  videoEl: HTMLVideoElement,
+  targetX: number,
+  targetY: number,
+): { x: number; y: number; normHeight: number } | null {
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+  if (vw === 0 || vh === 0) return null;
+
+  const results = det.detectForVideo(videoEl, performance.now());
+  const persons = results.detections;
+  if (persons.length === 0) return null;
+
+  let best: (typeof persons)[0] | null = null;
+  let bestDist = Infinity;
+  for (const p of persons) {
+    const bb = p.boundingBox;
+    if (!bb) continue;
+    const cx = (bb.originX + bb.width / 2) / vw;
+    const cy = (bb.originY + bb.height / 2) / vh;
+    const dx = cx - targetX;
+    const dy = cy - targetY;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) { bestDist = dist; best = p; }
+  }
+  if (!best?.boundingBox) return null;
+  const bb = best.boundingBox;
+  return {
+    x: (bb.originX + bb.width / 2) / vw,
+    y: (bb.originY + bb.height / 2) / vh,
+    normHeight: bb.height / vh,
+  };
+}
+
 export function disposeObjectDetector() {
   _detector?.close();
   _detector = null;

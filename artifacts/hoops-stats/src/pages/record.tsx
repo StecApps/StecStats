@@ -16,7 +16,7 @@ import {
   getListPlayerTeamGroupsQueryKey,
   getListTeamGamesQueryKey
 } from "@workspace/api-client-react";
-import { getObjectDetector, detectPersonCenter, getPoseLandmarker, detectShotPose } from "@/lib/playerTracking";
+import { getObjectDetector, detectPersonCenter, detectPersonNear, getPoseLandmarker, detectShotPose } from "@/lib/playerTracking";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -244,6 +244,10 @@ export default function RecordGame() {
   const autoFollowRef = useRef(false);
   const trackCenterXRef = useRef(0.5);
   const trackCenterYRef = useRef(0.5);
+  // Raw-video-normalised coords of the player the user tapped to lock onto.
+  const lockTargetRef = useRef<{ x: number; y: number } | null>(null);
+  // Display-normalised coords (0-1 within letterbox content) for the ring overlay.
+  const [lockedDisplayTarget, setLockedDisplayTarget] = useState<{ x: number; y: number } | null>(null);
   const courtViewRef = useRef({ x: 0.5, y: 0.5, zoom: 1 });
   const trackZoomRef = useRef(1);
   const detectionMissCountRef = useRef(0);
@@ -346,6 +350,8 @@ export default function RecordGame() {
     setIsTracking(false);
     trackCenterXRef.current = 0.5;
     trackCenterYRef.current = 0.5;
+    lockTargetRef.current = null;
+    setLockedDisplayTarget(null);
     const src = sourceVideoRef.current;
     const srcStream = src?.srcObject as MediaStream | null;
     srcStream?.getTracks().forEach(t => t.stop());
@@ -557,8 +563,22 @@ export default function RecordGame() {
       const v = sourceVideoRef.current;
       if (!det || !v || v.videoWidth === 0 || v.videoHeight === 0) return;
       try {
-        const center = detectPersonCenter(det, v);
+        const locked = lockTargetRef.current;
+        const center = locked
+          ? detectPersonNear(det, v, locked.x, locked.y)
+          : detectPersonCenter(det, v);
         if (center) {
+          // Update the raw-video lock position to follow the player.
+          if (locked) {
+            lockTargetRef.current = { x: center.x, y: center.y };
+            // Also update the display-space indicator, accounting for rotation.
+            const rot = videoRotationRef.current;
+            let dispX: number, dispY: number;
+            if (rot === -90)      { dispX = center.y;     dispY = 1 - center.x; }
+            else if (rot === 90)  { dispX = 1 - center.y; dispY = center.x; }
+            else                  { dispX = center.x;     dispY = center.y; }
+            setLockedDisplayTarget({ x: dispX, y: dispY });
+          }
           detectionMissCountRef.current = 0;
           const panAlpha = 0.2;
           trackCenterXRef.current = (1 - panAlpha) * trackCenterXRef.current + panAlpha * center.x;
@@ -781,6 +801,61 @@ export default function RecordGame() {
     toast({ title: "Court view saved", description: "Auto-Follow will return here when your player goes to the bench." });
   };
 
+  /**
+   * Called when the user taps the live preview with auto-follow active.
+   * Maps the tap back through the current rotation to raw-video coords,
+   * snaps to the nearest detected person, and locks the camera onto them.
+   */
+  const handlePreviewTap = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!autoFollowEnabled) return;
+    const container = previewContainerRef.current;
+    const v = sourceVideoRef.current;
+    const det = objectDetectorRef.current;
+    if (!container || !v || !det || v.videoWidth === 0) return;
+
+    const rect = container.getBoundingClientRect();
+    const tapX = e.clientX - rect.left;
+    const tapY = e.clientY - rect.top;
+
+    // The canvas stream respects the current rotation, so display dimensions
+    // are the post-rotation canvas size.
+    const rot = videoRotationRef.current;
+    const displayW = rot !== 0 ? v.videoHeight : v.videoWidth;
+    const displayH = rot !== 0 ? v.videoWidth  : v.videoHeight;
+
+    // Letterbox offset: object-contain scales to fit within the container.
+    const scale    = Math.min(rect.width / displayW, rect.height / displayH);
+    const contentW = scale * displayW;
+    const contentH = scale * displayH;
+    const offX     = (rect.width  - contentW) / 2;
+    const offY     = (rect.height - contentH) / 2;
+
+    // Normalised coords within the visible video content (0-1).
+    const ndx = Math.max(0, Math.min(1, (tapX - offX) / contentW));
+    const ndy = Math.max(0, Math.min(1, (tapY - offY) / contentH));
+
+    // Convert display-space → raw-video-space based on the applied rotation.
+    let rawX: number, rawY: number;
+    if      (rot === -90) { rawX = 1 - ndy; rawY = ndx; }
+    else if (rot ===  90) { rawX = ndy;     rawY = 1 - ndx; }
+    else                  { rawX = ndx;     rawY = ndy; }
+
+    // Snap to the nearest detected person (or fall back to the raw tap point).
+    const found = detectPersonNear(det, v, rawX, rawY);
+    if (found) {
+      lockTargetRef.current = { x: found.x, y: found.y };
+      // Convert found raw position back to display-space for the ring overlay.
+      let dispX: number, dispY: number;
+      if      (rot === -90) { dispX = found.y;     dispY = 1 - found.x; }
+      else if (rot ===  90) { dispX = 1 - found.y; dispY = found.x; }
+      else                  { dispX = found.x;     dispY = found.y; }
+      setLockedDisplayTarget({ x: dispX, y: dispY });
+    } else {
+      lockTargetRef.current = { x: rawX, y: rawY };
+      setLockedDisplayTarget({ x: ndx, y: ndy });
+    }
+  };
+
   const toggleAutoFollow = async () => {
     if (autoFollowEnabled) {
       autoFollowRef.current = false;
@@ -792,6 +867,8 @@ export default function RecordGame() {
       trackCenterXRef.current = 0.5;
       trackCenterYRef.current = 0.5;
       trackZoomRef.current = 1;
+      lockTargetRef.current = null;
+      setLockedDisplayTarget(null);
       return;
     }
     setIsTrackingLoading(true);
@@ -1724,13 +1801,36 @@ export default function RecordGame() {
 
       {isRecording && (
         <div className="fixed inset-0 z-[9999] flex flex-col phone-landscape:flex-row bg-black">
-          <div ref={previewContainerRef} className="relative flex-[3] phone-landscape:flex-1 min-h-0 phone-landscape:min-w-0 bg-black" style={{ touchAction: "none" }}>
+          <div ref={previewContainerRef} className="relative flex-[3] phone-landscape:flex-1 min-h-0 phone-landscape:min-w-0 bg-black" style={{ touchAction: "none" }} onPointerUp={handlePreviewTap}>
             <video
               ref={livePreviewRef}
               muted
               playsInline
               className="absolute inset-0 w-full h-full object-contain"
             />
+
+            {/* Tap-to-follow ring: tracks across the preview as the player moves */}
+            {autoFollowEnabled && lockedDisplayTarget && (
+              <div
+                className="absolute pointer-events-none z-20"
+                style={{
+                  left: `${lockedDisplayTarget.x * 100}%`,
+                  top:  `${lockedDisplayTarget.y * 100}%`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div className="w-14 h-14 rounded-full border-2 border-primary animate-pulse ring-2 ring-white/30" />
+              </div>
+            )}
+
+            {/* Instruction shown before user taps a player */}
+            {autoFollowEnabled && !lockedDisplayTarget && (
+              <div className="absolute inset-x-0 bottom-20 flex justify-center pointer-events-none z-20 phone-landscape:bottom-4">
+                <span className="text-xs font-semibold text-white bg-black/65 rounded-full px-4 py-2 backdrop-blur-sm">
+                  Tap your player to lock focus
+                </span>
+              </div>
+            )}
 
             {showRotateTip && (
               <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-3 rounded-lg bg-black/70 px-3 py-2 text-white backdrop-blur-sm phone-landscape:hidden">
