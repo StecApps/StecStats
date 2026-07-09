@@ -1658,11 +1658,7 @@ export default function RecordGame() {
                   const v = e.currentTarget;
                   setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
                 }}
-                className={
-                  reviewIsPortrait
-                    ? "block w-auto max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
-                    : "block max-w-full max-h-[70vh] rounded-lg bg-black phone-landscape:max-h-[85vh]"
-                }
+                className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
               />
               {reviewIsPortrait && (
                 <p className="text-xs text-muted-foreground">
