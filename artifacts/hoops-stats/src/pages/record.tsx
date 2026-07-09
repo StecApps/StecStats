@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, SwitchCamera, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -205,7 +205,6 @@ export default function RecordGame() {
   const [viewerCount, setViewerCount] = useState(0);
   const [isStartingLive, setIsStartingLive] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [zoom, setZoom] = useState(1);
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
@@ -709,80 +708,6 @@ export default function RecordGame() {
     rafRef.current = requestAnimationFrame(draw);
   };
 
-  const switchCamera = async () => {
-    if (!usesCanvasRef.current || !sourceVideoRef.current) return;
-    const next = facingMode === "environment" ? "user" : "environment";
-    const src = sourceVideoRef.current;
-    const prevFacingMode = facingMode;
-    const prevStream = src.srcObject as MediaStream | null;
-    // Stop the current camera BEFORE requesting the new one. Several mobile
-    // browsers refuse to open a second camera stream while the first capture
-    // session is still active, and some will silently hand back the same
-    // device instead of erroring — which looks like "the flip button does
-    // nothing". Releasing the old track first avoids both failure modes.
-    prevStream?.getVideoTracks().forEach(t => t.stop());
-    setCameraError(null);
-    try {
-      let newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: next, ...IDEAL_VIDEO_CONSTRAINTS },
-        audio: false,
-      });
-      let newDeviceId = newStream.getVideoTracks()[0]?.getSettings().deviceId ?? null;
-
-      if (next === "environment") {
-        const wideId = await refreshEnvironmentLensOptions(newDeviceId);
-        if (wideId) {
-          try {
-            const wideStream = await navigator.mediaDevices.getUserMedia({
-              video: { deviceId: { exact: wideId }, ...IDEAL_VIDEO_CONSTRAINTS },
-              audio: false,
-            });
-            newStream.getVideoTracks().forEach(t => t.stop());
-            newStream = wideStream;
-            newDeviceId = wideId;
-          } catch {
-            // Wide lens open failed; keep the default back camera stream.
-          }
-        }
-        syncLensLabel(newDeviceId);
-      } else {
-        environmentLensesRef.current = [];
-        setCanCycleLens(false);
-        setLensLabel("");
-      }
-
-      src.srcObject = newStream;
-      await src.play().catch(() => {});
-      await new Promise<void>(r => {
-        if (src.videoWidth > 0) { r(); return; }
-        src.onloadedmetadata = () => r();
-        setTimeout(r, 1000);
-      });
-      videoRotationRef.current = detectVideoRotation(src.videoWidth, src.videoHeight);
-      currentDeviceIdRef.current = newDeviceId;
-      setFacingMode(next);
-      setZoom(1);
-      zoomRef.current = 1;
-    } catch {
-      // Switch failed — try to restore the camera we just released so the
-      // recording isn't left frozen with no video source at all.
-      try {
-        const restoredStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: prevFacingMode, ...IDEAL_VIDEO_CONSTRAINTS },
-          audio: false,
-        });
-        src.srcObject = restoredStream;
-        await src.play().catch(() => {});
-        currentDeviceIdRef.current = restoredStream.getVideoTracks()[0]?.getSettings().deviceId ?? null;
-      } catch {
-        // Restoration also failed; cameraError below will surface it.
-      }
-      const message = "Could not switch camera on this device.";
-      setCameraError(message);
-      toast({ title: "Camera switch failed", description: message, variant: "destructive" });
-    }
-  };
-
   const cycleLens = async () => {
     if (!usesCanvasRef.current || !sourceVideoRef.current) return;
     const lenses = environmentLensesRef.current;
@@ -978,35 +903,29 @@ export default function RecordGame() {
     setCameraError(null);
     try {
       let rawStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, ...IDEAL_VIDEO_CONSTRAINTS },
+        video: { facingMode: "environment", ...IDEAL_VIDEO_CONSTRAINTS },
         audio: true,
       });
       currentDeviceIdRef.current = rawStream.getVideoTracks()[0]?.getSettings().deviceId ?? null;
 
-      if (facingMode === "environment") {
-        const wideId = await refreshEnvironmentLensOptions(currentDeviceIdRef.current);
-        if (wideId) {
-          try {
-            const wideStream = await navigator.mediaDevices.getUserMedia({
-              video: { deviceId: { exact: wideId }, ...IDEAL_VIDEO_CONSTRAINTS },
-              audio: false,
-            });
-            const wideTrack = wideStream.getVideoTracks()[0];
-            if (wideTrack) {
-              rawStream.getVideoTracks().forEach(t => t.stop());
-              rawStream = new MediaStream([wideTrack, ...rawStream.getAudioTracks()]);
-              currentDeviceIdRef.current = wideId;
-            }
-          } catch {
-            // Wide lens open failed; keep the default back camera stream.
+      const wideId = await refreshEnvironmentLensOptions(currentDeviceIdRef.current);
+      if (wideId) {
+        try {
+          const wideStream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: wideId }, ...IDEAL_VIDEO_CONSTRAINTS },
+            audio: false,
+          });
+          const wideTrack = wideStream.getVideoTracks()[0];
+          if (wideTrack) {
+            rawStream.getVideoTracks().forEach(t => t.stop());
+            rawStream = new MediaStream([wideTrack, ...rawStream.getAudioTracks()]);
+            currentDeviceIdRef.current = wideId;
           }
+        } catch {
+          // Wide lens open failed; keep the default back camera stream.
         }
-        syncLensLabel(currentDeviceIdRef.current);
-      } else {
-        environmentLensesRef.current = [];
-        setCanCycleLens(false);
-        setLensLabel("");
       }
+      syncLensLabel(currentDeviceIdRef.current);
 
       rawStreamRef.current = rawStream;
 
@@ -1956,11 +1875,7 @@ export default function RecordGame() {
 
               {canSwitchCamera && (
                 <div className="flex flex-col items-end gap-2">
-                  <Button variant="secondary" size="sm" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={switchCamera}>
-                    <SwitchCamera className="w-4 h-4 mr-1" />
-                    {facingMode === "environment" ? "Front" : "Back"}
-                  </Button>
-                  {facingMode === "environment" && canCycleLens && (
+                  {canCycleLens && (
                     <Button variant="secondary" size="sm" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={cycleLens}>
                       <Aperture className="w-4 h-4 mr-1" />
                       {lensLabel ? `Lens ${lensLabel}` : "Lens"}

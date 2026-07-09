@@ -79,3 +79,10 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
   previous facingMode to avoid leaving the recording with a dead video source, and
   always surface the failure via a toast (a `cameraError` text in a packed camera
   overlay is easy to miss).
+- **Front/selfie camera was removed entirely (2026-07-09):** for a sports-recording
+  app there's no legitimate use for facing the phone at the parent, so the
+  front/back toggle (`switchCamera`, `facingMode` state) was deleted rather than
+  fixed further — `getUserMedia` now always requests `facingMode: "environment"`.
+  Only the multi-lens control (`cycleLens`, wide/normal/tele on the back camera)
+  remains. If a front-camera use case comes back, re-add it as an explicit opt-in
+  rather than a toggle a user could hit accidentally mid-game.
