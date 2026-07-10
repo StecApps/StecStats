@@ -56,6 +56,11 @@ export default function WatchStream() {
       v.play().catch(() => {});
     }
   };
+  const [finalSummary, setFinalSummary] = useState<{
+    teamScore: number;
+    opponentScore: number;
+    events: StatEvent[];
+  } | null>(null);
   const explicitEndRef = useRef(false);
   const mediaFailedRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
@@ -195,11 +200,23 @@ export default function WatchStream() {
           if (pcRef.current && message.candidate) {
             await pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));
           }
-        } else if (message.type === "broadcaster-left") {
+        } else if (message.type === "broadcaster-left" || message.type === "stream-ended") {
           // The coach explicitly ended the stream (as opposed to the
           // signaling server itself dropping the connection) — show
           // "ended" immediately rather than attempting to reconnect.
+          // The server includes the final scoreboard and recent stat
+          // events so we can show a final-score summary.
           explicitEndRef.current = true;
+          setFinalSummary((prev) => {
+            const hasScores =
+              typeof message.teamScore === "number" && typeof message.opponentScore === "number";
+            if (!hasScores) return prev;
+            return {
+              teamScore: message.teamScore,
+              opponentScore: message.opponentScore,
+              events: Array.isArray(message.events) ? message.events : [],
+            };
+          });
           setState("ended");
           pcRef.current?.close();
           pcRef.current = null;
@@ -360,34 +377,85 @@ export default function WatchStream() {
               <p className="max-w-sm">Reconnecting... stay on this page.</p>
             </>
           )}
-          {state === "ended" && (
-            <>
-              <WifiOff className="w-8 h-8" />
-              <p className="max-w-sm text-white">
-                {explicitEndRef.current
-                  ? "The game has ended."
-                  : "Connection dropped and couldn't be restored."}
-              </p>
-              {!explicitEndRef.current && (
-                <button
-                  onClick={() => window.location.reload()}
-                  className="mt-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
-                >
-                  Refresh and try again
-                </button>
-              )}
-              {explicitEndRef.current && (
-                <button
-                  onClick={shareLink}
-                  className="mt-2 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
-                >
-                  {shareStatus === "copied"
-                    ? <><Check className="w-4 h-4 text-green-400" /> Link copied!</>
-                    : <><Share2 className="w-4 h-4" /> Share this game</>}
-                </button>
-              )}
-            </>
-          )}
+          {state === "ended" && (() => {
+            const summary =
+              finalSummary ??
+              (explicitEndRef.current && scoreboard
+                ? { teamScore: scoreboard.teamScore, opponentScore: scoreboard.opponentScore, events: statEvents }
+                : null);
+            return (
+              <>
+                {summary ? (
+                  <div className="flex flex-col items-center gap-4 w-full max-w-sm">
+                    <span className="text-xs font-bold uppercase tracking-widest text-white/50">Final Score</span>
+                    <div className="flex items-center gap-4 rounded-xl border border-white/15 bg-white/5 px-6 py-4 backdrop-blur-md">
+                      <span className="font-display font-bold uppercase tracking-wide text-white text-sm md:text-base truncate max-w-[26vw] text-right leading-none">
+                        {status?.teamName ?? "Team"}
+                      </span>
+                      <span className="font-display font-bold text-4xl md:text-5xl tabular-nums shrink-0 text-primary leading-none drop-shadow-[0_0_10px_hsl(var(--primary)/0.6)]">
+                        {summary.teamScore}<span className="mx-1.5 text-white/40">-</span>{summary.opponentScore}
+                      </span>
+                      <span className="font-display font-bold uppercase tracking-wide text-white text-sm md:text-base truncate max-w-[26vw] text-left leading-none">
+                        {status?.opponent ?? "Opp"}
+                      </span>
+                    </div>
+                    {summary.events.length > 0 && (
+                      <div className="w-full">
+                        <p className="text-xs font-bold uppercase tracking-widest text-white/50 mb-2">Last Plays</p>
+                        <ul className="flex flex-col gap-1.5">
+                          {summary.events.slice(-5).reverse().map((ev) => (
+                            <li
+                              key={ev.id}
+                              className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 text-white text-xs font-semibold"
+                            >
+                              <span className="text-primary font-bold shrink-0">{ev.label}</span>
+                              <span className="truncate">{ev.playerName}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <p className="text-sm text-white/60">The game has ended.</p>
+                    <button
+                      onClick={shareLink}
+                      className="mt-2 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+                    >
+                      {shareStatus === "copied"
+                        ? <><Check className="w-4 h-4 text-green-400" /> Link copied!</>
+                        : <><Share2 className="w-4 h-4" /> Share this game</>}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <WifiOff className="w-8 h-8" />
+                    <p className="max-w-sm text-white">
+                      {explicitEndRef.current
+                        ? "The game has ended."
+                        : "Connection dropped and couldn't be restored."}
+                    </p>
+                    {!explicitEndRef.current && (
+                      <button
+                        onClick={() => window.location.reload()}
+                        className="mt-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+                      >
+                        Refresh and try again
+                      </button>
+                    )}
+                    {explicitEndRef.current && (
+                      <button
+                        onClick={shareLink}
+                        className="mt-2 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+                      >
+                        {shareStatus === "copied"
+                          ? <><Check className="w-4 h-4 text-green-400" /> Link copied!</>
+                          : <><Share2 className="w-4 h-4" /> Share this game</>}
+                      </button>
+                    )}
+                  </>
+                )}
+              </>
+            );
+          })()}
           {state === "not-found" && (
             <>
               <WifiOff className="w-8 h-8" />

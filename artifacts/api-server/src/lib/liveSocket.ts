@@ -177,8 +177,15 @@ export function attachLiveSocketServer(upgradeEmitter: {
 
       if (role === "broadcaster" && session.broadcaster === ws) {
         session.broadcaster = null;
+        // Include the final scoreboard and recent stat events so the watch
+        // page can show a final-score summary on its "ended" screen.
         for (const viewerWs of session.viewers.values()) {
-          safeSend(viewerWs, { type: "broadcaster-left" });
+          safeSend(viewerWs, {
+            type: "broadcaster-left",
+            teamScore: session.scoreboard.teamScore,
+            opponentScore: session.scoreboard.opponentScore,
+            events: session.recentEvents,
+          });
         }
         logger.info({ code: sessionCode }, "Broadcaster disconnected from live session");
       } else if (role === "viewer" && viewerId) {

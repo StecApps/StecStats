@@ -182,6 +182,13 @@ class LiveStreamRegistry {
     const row = rows[0];
     if (!row || !row.active) return undefined;
 
+    // Re-check after the async DB read: two clients (e.g. broadcaster and a
+    // viewer) can race into this resume path concurrently, and each would
+    // otherwise create its own separate in-memory session object — leaving
+    // the broadcaster and viewers attached to different sessions.
+    const raced = this.sessions.get(upper);
+    if (raced) return raced;
+
     const resumed: LiveSession = {
       code: row.code,
       meta: { opponent: row.opponent, teamName: row.teamName },
@@ -208,8 +215,20 @@ class LiveStreamRegistry {
     const upper = code.toUpperCase();
     const session = this.sessions.get(upper);
     if (session) {
+      // Tell viewers the stream ended (with the final score and recent
+      // stat events) BEFORE closing their sockets, so the watch page can
+      // show a final-score summary instead of a bare "stream ended" note.
+      const endedPayload = JSON.stringify({
+        type: "stream-ended",
+        teamScore: session.scoreboard.teamScore,
+        opponentScore: session.scoreboard.opponentScore,
+        events: session.recentEvents,
+      });
       for (const viewerWs of session.viewers.values()) {
         try {
+          if (viewerWs.readyState === viewerWs.OPEN) {
+            viewerWs.send(endedPayload);
+          }
           viewerWs.close();
         } catch {
           // ignore
