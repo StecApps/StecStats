@@ -106,7 +106,7 @@ export default function Billing() {
                   : "You're on the Free plan. Upgrade to unlock the full app.";
 
   return (
-    <div className="flex flex-col space-y-6 max-w-4xl mx-auto w-full">
+    <div className="flex flex-col space-y-6 max-w-4xl mx-auto w-full pb-20 md:pb-0">
       <div>
         <h1 className="text-4xl font-display font-bold uppercase tracking-tight text-secondary">Billing</h1>
         <p className="text-muted-foreground">Manage your plan and subscription.</p>

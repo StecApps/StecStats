@@ -105,7 +105,7 @@ export default function Dashboard() {
   const activePlayerId = selectedPlayerId || (players && players.length > 0 ? players[0].id : null);
 
   return (
-    <div className="flex flex-col space-y-6">
+    <div className="flex flex-col space-y-6 pb-20 md:pb-0">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-4xl font-display font-bold uppercase tracking-tight text-secondary">Dashboard</h1>

@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -71,7 +72,7 @@ function formatMs(ms: number): string {
   return `${min}:${sec.toString().padStart(2, "0")}`;
 }
 
-async function uploadVideoBlob(blob: Blob): Promise<string> {
+async function uploadVideoBlob(blob: Blob, onProgress?: (pct: number) => void): Promise<string> {
   const requestRes = await fetch("/api/storage/uploads/request-url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -84,18 +85,32 @@ async function uploadVideoBlob(blob: Blob): Promise<string> {
   if (!requestRes.ok) throw new Error("Failed to request upload URL");
   const { uploadURL, objectPath } = await requestRes.json();
 
-  const putRes = await fetch(uploadURL, {
-    method: "PUT",
-    headers: { "Content-Type": blob.type || "video/webm" },
-    body: blob,
+  // Use XHR (not fetch) so we get real upload progress events — large game
+  // recordings can take a while on mobile connections, and a bare spinner
+  // with no feedback looks identical to a hang.
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadURL);
+    xhr.setRequestHeader("Content-Type", blob.type || "video/webm");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error("Failed to upload video"));
+    };
+    xhr.onerror = () => reject(new Error("Failed to upload video"));
+    xhr.send(blob);
   });
-  if (!putRes.ok) throw new Error("Failed to upload video");
 
   return objectPath as string;
 }
 
-function videoObjectSrc(objectPath: string): string {
-  return `/api/storage/objects/${objectPath.replace(/^\/objects\//, "")}`;
+function videoObjectSrc(objectPath: string, downloadFilename?: string): string {
+  const base = `/api/storage/objects/${objectPath.replace(/^\/objects\//, "")}`;
+  return downloadFilename ? `${base}?download=${encodeURIComponent(downloadFilename)}` : base;
 }
 
 export default function RecordGame() {
@@ -140,8 +155,28 @@ export default function RecordGame() {
     return `stec-highlights-${opp || "game"}.mp4`;
   };
 
+  // Prefetch the highlight video into memory as soon as it's ready, so Share
+  // has zero network delay between the tap and calling navigator.share().
+  // iOS Safari revokes the "user activation" needed for share() if too much
+  // time passes after the tap — awaiting a fetch first was silently breaking
+  // Share on iPhone/iPad, where it looked like the button did nothing.
+  useEffect(() => {
+    if (highlight?.status !== "ready" || !highlight.highlightObjectPath) return;
+    const path = highlight.highlightObjectPath;
+    if (highlightBlobCacheRef.current?.path === path) return;
+    let cancelled = false;
+    fetch(videoObjectSrc(path))
+      .then((res) => (res.ok ? res.blob() : null))
+      .then((blob) => {
+        if (!cancelled && blob) highlightBlobCacheRef.current = { path, blob };
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [highlight?.status, highlight?.highlightObjectPath]);
+
   const handleGenerateHighlight = async () => {
     if (!gameId) return;
+    highlightBlobCacheRef.current = null;
     try {
       await generateHighlight.mutateAsync({ gameId });
       await queryClient.invalidateQueries({ queryKey: getGetGameHighlightQueryKey(gameId) });
@@ -152,28 +187,50 @@ export default function RecordGame() {
 
   const handleDownloadHighlight = () => {
     if (!highlight?.highlightObjectPath) return;
+    const cached = highlightBlobCacheRef.current;
     const a = document.createElement("a");
-    a.href = videoObjectSrc(highlight.highlightObjectPath);
+    if (cached && cached.path === highlight.highlightObjectPath) {
+      a.href = URL.createObjectURL(cached.blob);
+    } else {
+      // Ask the server to send Content-Disposition: attachment so browsers
+      // that ignore the `download` attribute (notably iOS Safari) still
+      // offer to save the file instead of just playing it inline.
+      a.href = videoObjectSrc(highlight.highlightObjectPath, highlightFileName());
+    }
     a.download = highlightFileName();
     document.body.appendChild(a);
     a.click();
     a.remove();
+    if (cached) setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   };
 
   const handleShareHighlight = async () => {
     if (!highlight?.highlightObjectPath) return;
+    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
     try {
-      const res = await fetch(videoObjectSrc(highlight.highlightObjectPath));
-      const blob = await res.blob();
+      let blob = highlightBlobCacheRef.current?.path === highlight.highlightObjectPath
+        ? highlightBlobCacheRef.current.blob
+        : null;
+      if (!blob) {
+        // Not yet prefetched (e.g. reel just finished) — fall back to
+        // fetching now. This can lose iOS's share-gesture window on a slow
+        // connection, so we still try, but fall through to Download below.
+        setIsPreparingShare(true);
+        const res = await fetch(videoObjectSrc(highlight.highlightObjectPath));
+        blob = await res.blob();
+        setIsPreparingShare(false);
+      }
       const file = new File([blob], highlightFileName(), { type: "video/mp4" });
-      const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
       if (nav.canShare && nav.canShare({ files: [file] })) {
         await nav.share({ files: [file], title: "Game Highlights" });
       } else {
         handleDownloadHighlight();
       }
-    } catch {
-      toast({ title: "Couldn't share the highlight reel", variant: "destructive" });
+    } catch (err) {
+      setIsPreparingShare(false);
+      // AbortError just means the user dismissed the native share sheet.
+      if (err instanceof Error && err.name === "AbortError") return;
+      handleDownloadHighlight();
     }
   };
 
@@ -198,7 +255,10 @@ export default function RecordGame() {
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedPreviewUrl, setRecordedPreviewUrl] = useState<string | null>(null);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const highlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
+  const [isPreparingShare, setIsPreparingShare] = useState(false);
 
   const [isLive, setIsLive] = useState(false);
   const [liveCode, setLiveCode] = useState<string | null>(null);
@@ -1457,8 +1517,9 @@ export default function RecordGame() {
     let videoObjectPath = existingVideoObjectPath;
     if (blobToUpload) {
       setIsUploadingVideo(true);
+      setUploadProgress(0);
       try {
-        videoObjectPath = await uploadVideoBlob(blobToUpload);
+        videoObjectPath = await uploadVideoBlob(blobToUpload, setUploadProgress);
       } catch (err) {
         setIsUploadingVideo(false);
         toast({ title: "Error uploading video", description: "The game was not saved. Try again.", variant: "destructive" });
@@ -1777,7 +1838,12 @@ export default function RecordGame() {
           )}
 
           {isUploadingVideo && (
-            <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Uploading video...</p>
+            <div className="max-w-md space-y-1.5">
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Uploading video… {uploadProgress}%
+              </p>
+              <Progress value={uploadProgress} />
+            </div>
           )}
 
           {isEditing && existingVideoObjectPath && !recordedPreviewUrl && (
@@ -1805,8 +1871,8 @@ export default function RecordGame() {
                     className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
                   />
                   <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" onClick={handleShareHighlight}>
-                      <Share2 className="w-4 h-4 mr-2" /> Share
+                    <Button type="button" onClick={handleShareHighlight} disabled={isPreparingShare}>
+                      {isPreparingShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
                     </Button>
                     <Button type="button" variant="outline" onClick={handleDownloadHighlight}>
                       <Download className="w-4 h-4 mr-2" /> Download

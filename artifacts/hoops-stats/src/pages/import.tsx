@@ -340,7 +340,7 @@ export default function ImportData() {
   };
 
   return (
-    <div className="flex flex-col space-y-6 max-w-5xl mx-auto w-full">
+    <div className="flex flex-col space-y-6 max-w-5xl mx-auto w-full pb-20 md:pb-0">
       <div>
         <h1 className="text-4xl font-display font-bold uppercase tracking-tight text-secondary">Import Data</h1>
         <p className="text-muted-foreground">Upload your Monday.com CSV or Excel export, map the columns, then preview before committing.</p>

@@ -136,6 +136,15 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
 
+    // When explicitly requested (e.g. the "Download" button), force a
+    // Content-Disposition: attachment header. The HTML `download` anchor
+    // attribute alone is unreliable — iOS Safari in particular ignores it
+    // for video content and just opens/plays the file instead of saving it.
+    const downloadName = typeof req.query.download === "string" ? req.query.download : null;
+    if (downloadName) {
+      res.setHeader("Content-Disposition", `attachment; filename="${downloadName.replace(/"/g, "")}"`);
+    }
+
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
       nodeStream.pipe(res);
