@@ -56,11 +56,14 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
   → canvas records sideways video. Fix: `detectVideoRotation(vw, vh)` compares
   `window.innerHeight > innerWidth` (device portrait) vs `videoWidth > videoHeight`
   (landscape frame). If mismatch, apply `-90` (or `+90` for upside-down portrait)
-  via `screen.orientation.angle` / `window.orientation`. Canvas gets swapped
-  dimensions (`vh × vw`), draw loop does `ctx.save/translate/rotate(angleRad)/
-  drawImage(v, sx,sy,sw,sh, -vw/2,-vh/2, vw,vh)/ctx.restore`. The destination
-  `(-vw/2,-vh/2,vw,vh)` fills the rotated canvas correctly at any zoom level.
+  via `screen.orientation.angle` / `window.orientation`. Draw loop does
+  `ctx.save/translate(cw/2,ch/2)/scale(containScale)/rotate(angleRad)/
+  drawImage(v, sx,sy,sw,sh, -vw/2,-vh/2, vw,vh)/ctx.restore`.
   Recalculate rotation in `switchCamera` + `cycleLens` after new stream plays.
+  **The canvas itself is always created landscape-shaped** (`width =
+  max(trackW,trackH)`, `height = min(...)`) regardless of `rot` at record
+  start — see the fixed-canvas-dims entry below for why a rot-dependent
+  (sometimes portrait) canvas shape is the wrong call for this app.
 - **Preview black bars on tablet**: `<video class="w-full h-full object-cover">`
   inside a flex child doesn't always get a definite height. Fix: add
   `absolute inset-0` so the video always fills its `relative` container.
@@ -113,3 +116,26 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
     formulas as-is inside this wrapper rather than re-deriving rotation
     signs from scratch — canvas `rotate()`'s effective sign/axis convention
     is easy to get backwards.
+  - **Pick the FIXED canvas shape from product intent, not from the
+    orientation at the instant recording starts (2026-07-10):** initially the
+    canvas was created portrait-vs-landscape based on `rot` at that moment
+    (`canvas.width = rot!==0 ? trackH : trackW`). On a real phone this meant:
+    user taps Record while holding the phone naturally (portrait) → canvas
+    locks portrait-shaped → user then raises the phone to landscape to
+    actually film (the app's own encouraged workflow, with a "rotate to
+    landscape" tip) → draw()'s contain-fit now has to shrink the landscape
+    content to fit a portrait canvas (inner letterbox), and that
+    portrait-shaped canvas then ALSO gets object-contain-letterboxed inside
+    the now-landscape preview container (outer letterbox) — the two compound
+    into a video reduced to a tiny centered box with black bars on all four
+    sides, not just normal pillarboxing. Fix: always create the canvas
+    landscape-shaped (`width = Math.max(trackW,trackH)`, `height =
+    Math.min(...)`), independent of `rot` at start, because this app is
+    landscape-first by design. Now the common/nudged case (phone ends up
+    landscape) fits with scale exactly 1 and zero letterboxing; only a
+    genuinely portrait recording gets ordinary left/right pillarboxing.
+    General lesson: when a fixed resource's shape can't be renegotiated later
+    (like a locked `MediaRecorder` resolution), derive that shape from what
+    the product actually wants as the end state, not from whatever transient
+    device/sensor state happens to be true at the instant the resource is
+    created.

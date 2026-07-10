@@ -1005,9 +1005,23 @@ export default function RecordGame() {
         const rot = detectVideoRotation(trackW, trackH);
         videoRotationRef.current = rot;
 
+        // The recording canvas is ALWAYS landscape-shaped (long edge = width),
+        // regardless of whatever orientation the phone happens to be in the
+        // instant "Record" is tapped. This app is landscape-first for sports
+        // coverage (see the "rotate to landscape" tip below); if the canvas
+        // shape instead followed the transient rot at start, a user who taps
+        // Record while holding the phone naturally (portrait) and then raises
+        // it to landscape to actually film would lock in a portrait canvas —
+        // draw()'s contain-fit would then have to squeeze the landscape
+        // content down to fit both dimensions of a portrait frame AND get
+        // object-contain-letterboxed again on screen, shrinking the video to
+        // a tiny centered box. With an always-landscape canvas, the common
+        // (and encouraged) case — phone in landscape — fits with zero
+        // letterboxing; only a portrait phone gets reasonable left/right
+        // pillarboxing, never a double-shrunk box.
         const canvas = document.createElement("canvas");
-        canvas.width = rot !== 0 ? trackH : trackW;
-        canvas.height = rot !== 0 ? trackW : trackH;
+        canvas.width = Math.max(trackW, trackH);
+        canvas.height = Math.min(trackW, trackH);
         canvasRef.current = canvas;
         setZoom(1);
         zoomRef.current = 1;
