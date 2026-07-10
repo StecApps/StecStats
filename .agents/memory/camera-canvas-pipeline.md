@@ -116,26 +116,32 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
     formulas as-is inside this wrapper rather than re-deriving rotation
     signs from scratch — canvas `rotate()`'s effective sign/axis convention
     is easy to get backwards.
-  - **Pick the FIXED canvas shape from product intent, not from the
-    orientation at the instant recording starts (2026-07-10):** initially the
-    canvas was created portrait-vs-landscape based on `rot` at that moment
-    (`canvas.width = rot!==0 ? trackH : trackW`). On a real phone this meant:
-    user taps Record while holding the phone naturally (portrait) → canvas
-    locks portrait-shaped → user then raises the phone to landscape to
-    actually film (the app's own encouraged workflow, with a "rotate to
-    landscape" tip) → draw()'s contain-fit now has to shrink the landscape
-    content to fit a portrait canvas (inner letterbox), and that
-    portrait-shaped canvas then ALSO gets object-contain-letterboxed inside
-    the now-landscape preview container (outer letterbox) — the two compound
-    into a video reduced to a tiny centered box with black bars on all four
-    sides, not just normal pillarboxing. Fix: always create the canvas
-    landscape-shaped (`width = Math.max(trackW,trackH)`, `height =
-    Math.min(...)`), independent of `rot` at start, because this app is
-    landscape-first by design. Now the common/nudged case (phone ends up
-    landscape) fits with scale exactly 1 and zero letterboxing; only a
-    genuinely portrait recording gets ordinary left/right pillarboxing.
-    General lesson: when a fixed resource's shape can't be renegotiated later
-    (like a locked `MediaRecorder` resolution), derive that shape from what
-    the product actually wants as the end state, not from whatever transient
-    device/sensor state happens to be true at the instant the resource is
-    created.
+  - **Canvas-shape decision, settled after 3 iterations (2026-07-10) — lock
+    it to `rot` at the instant recording starts, don't hardcode a shape:**
+    v1 used `rot`-at-start (`canvas.width = rot!==0 ? trackH : trackW`), which
+    broke the specific flow of tapping Record while holding the phone
+    naturally (portrait) then raising it to landscape to film — the
+    landscape content got inner-letterboxed into a portrait canvas AND that
+    canvas got outer-object-contain-letterboxed inside the now-landscape
+    preview container, compounding into a tiny centered box. v2 "fixed" this
+    by hardcoding the canvas ALWAYS landscape-shaped — which fixed that flow
+    but broke the equally-real opposite case: a deliberate, dedicated
+    portrait recording (phone never rotated) now got the same double-compound
+    shrink in reverse (portrait content forced into a landscape canvas,
+    inside a portrait container). v3 (final): revert to `rot`-at-start
+    (`canvas.width = rot!==0 ? trackH : trackW`), because BOTH
+    dedicated-portrait and dedicated-landscape sessions (the common cases)
+    then get a canvas that exactly matches their content with zero
+    letterboxing; only an actual mid-recording orientation flip pays the
+    (accepted, industry-standard — native camera apps behave the same way)
+    letterboxing cost. Do NOT try to special-case one orientation as the
+    "default" shape — any such hardcoding just moves the double-letterbox bug
+    onto whichever orientation you didn't privilege. Mitigate the
+    flip-mid-recording case with UX copy (tell users to pick their final
+    orientation before tapping Record) rather than more canvas-shape cleverness.
+    A tried-and-rejected alternative: binding the live-preview container's
+    CSS `aspect-ratio` to the canvas's fixed dimensions to eliminate the
+    *outer* letterbox — rejected on architect review because `object-contain`
+    already renders at the max contain-fit size for any container shape, so
+    this changes nothing visually while risking `aspect-ratio` vs. flex-grow
+    interaction bugs and shrinking the pointer hit-test area for tap-to-lock.

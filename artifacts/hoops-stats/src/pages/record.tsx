@@ -1005,23 +1005,28 @@ export default function RecordGame() {
         const rot = detectVideoRotation(trackW, trackH);
         videoRotationRef.current = rot;
 
-        // The recording canvas is ALWAYS landscape-shaped (long edge = width),
-        // regardless of whatever orientation the phone happens to be in the
-        // instant "Record" is tapped. This app is landscape-first for sports
-        // coverage (see the "rotate to landscape" tip below); if the canvas
-        // shape instead followed the transient rot at start, a user who taps
-        // Record while holding the phone naturally (portrait) and then raises
-        // it to landscape to actually film would lock in a portrait canvas —
-        // draw()'s contain-fit would then have to squeeze the landscape
-        // content down to fit both dimensions of a portrait frame AND get
-        // object-contain-letterboxed again on screen, shrinking the video to
-        // a tiny centered box. With an always-landscape canvas, the common
-        // (and encouraged) case — phone in landscape — fits with zero
-        // letterboxing; only a portrait phone gets reasonable left/right
-        // pillarboxing, never a double-shrunk box.
+        // The recording canvas shape is locked to whatever orientation the
+        // phone is in AT THE INSTANT "Record" is tapped (iteration 3 of this
+        // decision — see .agents/memory/camera-canvas-pipeline.md). A prior
+        // version always forced a landscape canvas to fix a bug where
+        // starting portrait-then-rotating-to-landscape produced a tiny
+        // double-letterboxed box, but that broke the equally-real case of a
+        // deliberate, dedicated portrait recording (never rotated), which
+        // then got the exact same double-letterbox treatment in reverse:
+        // landscape canvas content genuinely portrait, forced into a
+        // portrait-shaped preview container. Locking canvas shape to
+        // rot-at-start makes BOTH dedicated-portrait and dedicated-landscape
+        // sessions fit their canvas with zero letterboxing (the common
+        // case). The only remaining tradeoff (same as every native camera
+        // app) is a mid-recording orientation flip: the canvas keeps its
+        // starting shape and the new content gets ordinary, non-distorting
+        // pillarboxing/letterboxing (see draw()'s contain-fit) instead of a
+        // seamless resize — acceptable since MediaRecorder can't renegotiate
+        // resolution mid-stream. We mitigate this with UX (the rotate tip
+        // below tells users to pick their orientation BEFORE recording).
         const canvas = document.createElement("canvas");
-        canvas.width = Math.max(trackW, trackH);
-        canvas.height = Math.min(trackW, trackH);
+        canvas.width = rot !== 0 ? trackH : trackW;
+        canvas.height = rot !== 0 ? trackW : trackH;
         canvasRef.current = canvas;
         setZoom(1);
         zoomRef.current = 1;
@@ -1548,12 +1553,12 @@ export default function RecordGame() {
     const pts = (s.twoMade * 2) + (s.threeMade * 3) + s.ftMade;
 
     return (
-      <Card key={pid} className="border-secondary/20 shadow-md overflow-hidden">
+      <Card key={pid} className="border-secondary/20 shadow-md overflow-hidden @container">
         <div className="bg-muted/60 border-b border-border/60 px-4 py-2 flex justify-between items-center">
           <h3 className="font-display font-bold text-xl uppercase tracking-wide text-foreground">{player?.name}</h3>
           <div className="font-display font-bold text-2xl text-primary">{pts} PTS</div>
         </div>
-        <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 bg-card">
+        <CardContent className="p-4 grid grid-cols-2 @lg:grid-cols-4 @4xl:grid-cols-8 gap-4 bg-card">
           <StatCounter label="2PT" made={s.twoMade} attempt={s.twoAttempted}
             onMake={() => updateStat(pid, 'twoMade', 1)} onMiss={() => updateStat(pid, 'twoAttempted', 1)}
             onUndoMake={() => updateStat(pid, 'twoMade', -1)} onUndoMiss={() => updateStat(pid, 'twoAttempted', -1)} />
@@ -1761,9 +1766,14 @@ export default function RecordGame() {
           )}
 
           {!isRecording && !recordedPreviewUrl && !existingVideoObjectPath && (
-            <Button variant="outline" onClick={startRecording}>
-              <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
-            </Button>
+            <div className="space-y-1.5">
+              <Button variant="outline" onClick={startRecording}>
+                <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Tip: hold your phone in the orientation you plan to film in (landscape is recommended) before you tap Start — rotating mid-recording will letterbox the video instead of filling the frame.
+              </p>
+            </div>
           )}
 
           {isUploadingVideo && (
@@ -1901,7 +1911,9 @@ export default function RecordGame() {
             {showRotateTip && (
               <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-3 rounded-lg bg-black/70 px-3 py-2 text-white backdrop-blur-sm phone-landscape:hidden">
                 <span className="text-xs font-medium">
-                  Tip: rotate your phone to landscape so this video fills the screen when you watch it back.
+                  {canvasRef.current && canvasRef.current.width < canvasRef.current.height
+                    ? "Heads up: this clip started in portrait, so it's locked to a portrait frame — rotating now won't make it fill the screen. Stop and restart in landscape if you want a full-screen video."
+                    : "Tip: rotate your phone to landscape so this video fills the screen when you watch it back."}
                 </span>
                 <button
                   type="button"
@@ -2098,24 +2110,24 @@ function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoM
           <span className="text-primary">{made}</span><span className="text-muted-foreground/50">/</span><span>{attempt}</span>
         </div>
       </div>
-      <div className="grid grid-cols-2 divide-x border-t">
+      <div className="grid grid-cols-2 divide-x divide-black/20 border-t">
         <Button
           variant="ghost"
-          className="rounded-none h-14 flex flex-col items-center justify-center gap-0.5 bg-green-500/15 text-green-500 hover:bg-green-500/25 hover:text-green-400 active:bg-green-500/35"
+          className="rounded-none h-14 min-w-0 flex flex-col items-center justify-center gap-0.5 bg-green-600 text-white hover:bg-green-500 active:bg-green-700"
           onClick={onMake}
           onContextMenu={(e) => { e.preventDefault(); onUndoMake(); }}
         >
-          <Check className="w-4 h-4" />
-          <span className="text-[10px] font-bold tracking-wide">MAKE</span>
+          <Check className="w-4 h-4 shrink-0" />
+          <span className="text-[9px] font-bold leading-none whitespace-nowrap">MAKE</span>
         </Button>
         <Button
           variant="ghost"
-          className="rounded-none h-14 flex flex-col items-center justify-center gap-0.5 bg-red-500/15 text-red-500 hover:bg-red-500/25 hover:text-red-400 active:bg-red-500/35"
+          className="rounded-none h-14 min-w-0 flex flex-col items-center justify-center gap-0.5 bg-red-600 text-white hover:bg-red-500 active:bg-red-700"
           onClick={onMiss}
           onContextMenu={(e) => { e.preventDefault(); onUndoMiss(); }}
         >
-          <X className="w-4 h-4" />
-          <span className="text-[10px] font-bold tracking-wide">MISS</span>
+          <X className="w-4 h-4 shrink-0" />
+          <span className="text-[9px] font-bold leading-none whitespace-nowrap">MISS</span>
         </Button>
       </div>
     </div>
