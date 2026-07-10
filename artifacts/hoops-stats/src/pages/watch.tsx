@@ -362,11 +362,20 @@ export default function WatchStream() {
       )}
 
       {state === "live" && scoreboard && (
+        // Deliberately NOT a full-width gradient wash behind this pill. That
+        // used to paint a large dark band across the top of the frame
+        // regardless of whether the video was letterboxed there or not — on
+        // a viewer whose phone orientation matched the stream (no letterbox),
+        // the band sat directly on top of real court action (e.g. the hoop),
+        // which read as "the scoreboard is on top of the video" and was
+        // distracting. The compact pill below carries its own opaque
+        // background + blur, so it stays legible without darkening anything
+        // beyond its own small footprint.
         <div
-          className="absolute top-0 left-0 right-0 flex justify-center bg-gradient-to-b from-black/80 via-black/40 to-transparent px-3 pb-10 pointer-events-none"
+          className="absolute top-0 left-0 right-0 flex justify-center px-3 pointer-events-none"
           style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
         >
-          <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-black/60 px-4 py-2 backdrop-blur-md shadow-[0_0_28px_rgba(0,0,0,0.55)]">
+          <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-black/80 px-4 py-2 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.65)]">
             <span className="font-display font-bold uppercase tracking-wide text-white text-sm md:text-base truncate max-w-[26vw] text-right leading-none">
               {status?.teamName ?? "Team"}
             </span>

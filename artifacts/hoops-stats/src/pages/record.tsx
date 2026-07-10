@@ -16,7 +16,7 @@ import {
   getListPlayerTeamGroupsQueryKey,
   getListTeamGamesQueryKey
 } from "@workspace/api-client-react";
-import { getObjectDetector, detectPersonNear, getPoseLandmarker, detectShotPose, blendColor, type PersonColor } from "@/lib/playerTracking";
+import { getObjectDetector, detectPersonNear, getPoseLandmarker, detectShotPose, createTrackerState, updateTracker, type TrackerState } from "@/lib/playerTracking";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -355,17 +355,34 @@ export default function RecordGame() {
   const [showShotUpgradeNudge, setShowShotUpgradeNudge] = useState(false);
   const [poseModelReady, setPoseModelReady] = useState(false);
   const autoFollowRef = useRef(false);
+  // trackCenterXRef/YRef + trackZoomRef are the SMOOTHED, actually-rendered
+  // pan/zoom — only ever written by the draw loop below, at 60fps. The
+  // detection tick (below, ~3fps) never writes them directly; it only
+  // updates desiredXRef/YRef/ZoomRef, which the draw loop eases toward every
+  // frame. This decouples what's visually on screen from the raw/noisy
+  // per-tick detections, which used to make the camera visibly jump 333ms
+  // worth of error in a single step.
   const trackCenterXRef = useRef(0.5);
   const trackCenterYRef = useRef(0.5);
-  // Raw-video-normalised coords of the player the user tapped to lock onto.
-  const lockTargetRef = useRef<{ x: number; y: number } | null>(null);
-  const lockColorRef = useRef<PersonColor | null>(null);
+  const trackZoomRef = useRef(1);
+  const desiredXRef = useRef(0.5);
+  const desiredYRef = useRef(0.5);
+  const desiredZoomRef = useRef(1);
+  const lastDrawTimeRef = useRef<number | null>(null);
+  const lastTickTimeRef = useRef<number | null>(null);
+  // Persistent identity/motion tracker for the locked player (position,
+  // velocity, jersey-colour signature, miss streak) — see updateTracker().
+  const trackerStateRef = useRef<TrackerState | null>(null);
+  // Timestamp (ms) since the tracker first reported the lock as fully lost
+  // (coast budget exhausted); null while locked/coasting. Used to hold the
+  // last framing for a few seconds and prompt a re-lock before easing back
+  // to the saved court view, instead of immediately panning away.
+  const lostSinceRef = useRef<number | null>(null);
+  const LOST_HOME_DELAY_MS = 5000;
   // CSS % position within the preview container div (including letterbox) for the ring overlay.
   const [lockedDisplayTarget, setLockedDisplayTarget] = useState<{ leftPct: number; topPct: number } | null>(null);
+  const [lockLost, setLockLost] = useState(false);
   const courtViewRef = useRef({ x: 0.5, y: 0.5, zoom: 1 });
-  const trackZoomRef = useRef(1);
-  const detectionMissCountRef = useRef(0);
-  const MISS_THRESHOLD = 6;
   const poseLandmarkerRef = useRef<Awaited<ReturnType<typeof getPoseLandmarker>> | null>(null);
   const poseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastShotPromptRef = useRef(0);
@@ -464,8 +481,13 @@ export default function RecordGame() {
     setIsTracking(false);
     trackCenterXRef.current = 0.5;
     trackCenterYRef.current = 0.5;
-    lockTargetRef.current = null;
-    lockColorRef.current = null;
+    trackZoomRef.current = 1;
+    desiredXRef.current = 0.5;
+    desiredYRef.current = 0.5;
+    desiredZoomRef.current = 1;
+    trackerStateRef.current = null;
+    lostSinceRef.current = null;
+    setLockLost(false);
     setLockedDisplayTarget(null);
     const src = sourceVideoRef.current;
     const srcStream = src?.srcObject as MediaStream | null;
@@ -786,85 +808,60 @@ export default function RecordGame() {
       const det = objectDetectorRef.current;
       const v = sourceVideoRef.current;
       if (!det || !v || v.videoWidth === 0 || v.videoHeight === 0) return;
+      // Before an explicit tap-to-lock, don't auto-pan to "whichever person
+      // is biggest" — in a gym that's just as likely to be a parent/spectator
+      // standing closer to the sideline camera as it is the player on the
+      // court, since the detector has no idea who's actually playing. The
+      // camera holds its current (desired*) framing (see the "Tap your
+      // player to lock focus" prompt) until the tracker is created by a tap.
+      const tracker = trackerStateRef.current;
+      if (!tracker) return;
+
+      const now = performance.now();
+      const dt = lastTickTimeRef.current !== null ? (now - lastTickTimeRef.current) / 1000 : 0.333;
+      lastTickTimeRef.current = now;
+
       try {
-        const locked = lockTargetRef.current;
-        // Search radius grows with consecutive misses so a briefly-occluded
-        // player can be re-acquired nearby, but a single miss won't let the
-        // tracker snap onto a completely different (merely closer) person.
-        // Base widened from 0.1 -> 0.14 (and the per-miss growth from 0.03 ->
-        // 0.04) because a player sprinting between two 333ms detection ticks
-        // can cover more ground than the old tight radius allowed, which was
-        // spuriously counting fast movement as "lost lock" and drifting the
-        // camera back toward the court-view home position instead of just
-        // continuing to follow her.
-        const SEARCH_RADIUS_BASE = 0.14;
-        const SEARCH_RADIUS_MAX = 0.32;
-        const searchRadius = Math.min(SEARCH_RADIUS_MAX, SEARCH_RADIUS_BASE + detectionMissCountRef.current * 0.04);
-        // Before an explicit tap-to-lock, don't auto-pan to "whichever person
-        // is biggest" — in a gym that's just as likely to be a parent/spectator
-        // standing closer to the sideline camera as it is the player on the
-        // court, since the detector has no idea who's actually playing. The
-        // camera now holds its current framing (see the "Tap your player to
-        // lock focus" prompt) until the user taps their player to lock on,
-        // at which point position+colour re-identification takes over.
-        const center = locked
-          ? detectPersonNear(det, v, locked.x, locked.y, searchRadius, lockColorRef.current)
-          : null;
-        if (center) {
-          // Update the raw-video lock position to follow the player.
-          if (locked) {
-            lockTargetRef.current = { x: center.x, y: center.y };
-            const pct = rawToDisplayPct(center.x, center.y);
-            if (pct) setLockedDisplayTarget(pct);
-            if ("color" in center) {
-              const observedColor = (center as { color: PersonColor | null }).color;
-              lockColorRef.current = blendColor(lockColorRef.current, observedColor);
-            }
-          }
-          detectionMissCountRef.current = 0;
-          // Pan faster at higher zoom — the same normalised movement covers a
-          // much bigger fraction of the (smaller) visible crop window once
-          // zoomed in, so a fixed alpha would let a fast player outrun the pan
-          // and escape the visible crop before the camera catches up.
-          const zoomAlpha0 = Math.min(0.45, 0.2 + (Math.max(1, zoomRef.current) - 1) * 0.08);
-          // Additionally catch up faster the further the pan has fallen
-          // behind the freshly detected position. A fixed alpha made the
-          // camera visibly lag several ticks behind a player breaking into a
-          // sprint (each tick only closing 20-45% of the gap); scaling alpha
-          // with the actual positional error lets a big jump snap most of
-          // the way there within a tick or two, while small frame-to-frame
-          // jitter still gets the old smooth, low-alpha treatment.
-          const posErr = Math.hypot(center.x - trackCenterXRef.current, center.y - trackCenterYRef.current);
-          const catchUpAlpha = Math.min(0.7, posErr * 2.2);
-          const panAlpha = Math.max(zoomAlpha0, catchUpAlpha);
-          trackCenterXRef.current = (1 - panAlpha) * trackCenterXRef.current + panAlpha * center.x;
-          trackCenterYRef.current = (1 - panAlpha) * trackCenterYRef.current + panAlpha * center.y;
-          // Adaptive zoom: target zoom so the player fills ~40% of frame height
-          const TARGET_FILL = 0.40;
-          const rawZoom = TARGET_FILL / Math.max(0.04, center.normHeight);
-          const targetZoom = Math.min(MAX_ZOOM, Math.max(1.4, rawZoom));
-          const zoomAlpha = 0.06;
-          trackZoomRef.current = (1 - zoomAlpha) * trackZoomRef.current + zoomAlpha * targetZoom;
-          zoomRef.current = trackZoomRef.current;
-          setIsTracking(true);
-        } else {
-          detectionMissCountRef.current += 1;
-          // Small hysteresis: don't flash "Searching…" for a single dropped
-          // frame — only report a loss of lock after a couple of consecutive
-          // misses, since the object detector naturally drops frames.
-          if (detectionMissCountRef.current >= 2) setIsTracking(false);
-          if (detectionMissCountRef.current > MISS_THRESHOLD) {
+        const result = updateTracker(det, v, tracker, dt);
+        if (!result) return;
+
+        if (result.lost) {
+          // Coast budget exhausted — hold the last known framing (don't touch
+          // desired*) and let the UI prompt a re-lock, instead of guessing at
+          // a nearby player the way the old ever-widening search radius did.
+          setIsTracking(false);
+          if (lostSinceRef.current === null) lostSinceRef.current = now;
+          setLockLost(true);
+          if (now - lostSinceRef.current > LOST_HOME_DELAY_MS) {
+            // Give up waiting for a re-lock tap and ease back to the saved
+            // court view instead (draw loop performs the actual easing).
             const home = courtViewRef.current;
-            const alpha = 0.08;
-            trackCenterXRef.current = (1 - alpha) * trackCenterXRef.current + alpha * home.x;
-            trackCenterYRef.current = (1 - alpha) * trackCenterYRef.current + alpha * home.y;
-            // Smooth zoom back to court view
-            trackZoomRef.current = (1 - alpha) * trackZoomRef.current + alpha * home.zoom;
-            zoomRef.current = trackZoomRef.current;
+            desiredXRef.current = home.x;
+            desiredYRef.current = home.y;
+            desiredZoomRef.current = home.zoom;
           }
+          return;
         }
+
+        lostSinceRef.current = null;
+        setLockLost(false);
+        // Small hysteresis: don't flash "Searching…" for a single dropped
+        // frame — the tracker is still coasting on predicted motion for a
+        // few ticks before it ever reports `lost`.
+        setIsTracking(result.matched || tracker.missCount < 2);
+
+        desiredXRef.current = result.x;
+        desiredYRef.current = result.y;
+        const pct = rawToDisplayPct(result.x, result.y);
+        if (pct) setLockedDisplayTarget(pct);
+
+        // Adaptive zoom target so the player fills ~40% of frame height —
+        // the draw loop eases toward this, it's never applied directly.
+        const TARGET_FILL = 0.40;
+        const rawZoom = TARGET_FILL / Math.max(0.04, result.normHeight);
+        desiredZoomRef.current = Math.min(MAX_ZOOM, Math.max(1.4, rawZoom));
       } catch (err) {
-        // detection failed this frame — keep current pan position
+        // detection failed this frame — keep current desired target
         console.error("auto-follow detection error", err);
       }
     }, 333);
@@ -950,6 +947,57 @@ export default function RecordGame() {
           const dispW = rot !== 0 ? vh : vw;
           const dispH = rot !== 0 ? vw : vh;
           const scale = Math.min(cw / dispW, ch / dispH);
+
+          if (autoFollowRef.current) {
+            // Ease trackCenter*/trackZoom (what's actually drawn) toward
+            // desired*/ (what the ~3fps detection tick last reported) every
+            // frame, at a rate independent of frame timing. This is the only
+            // place visible camera motion is produced — the detection tick
+            // never writes trackCenter*/trackZoom directly — so a single
+            // noisy or wrong-ish detection sample can only ever nudge the
+            // camera a little, not snap it, and motion stays smooth even if
+            // a frame is dropped or the tab briefly stalls.
+            const nowMs = performance.now();
+            const dt = lastDrawTimeRef.current !== null
+              ? Math.min(0.25, (nowMs - lastDrawTimeRef.current) / 1000)
+              : 1 / 60;
+            lastDrawTimeRef.current = nowMs;
+
+            const PAN_TAU = 0.35; // seconds — smaller = snappier, larger = smoother/laggier
+            const PAN_DEAD_ZONE = 0.015; // normalised raw-video units — ignore movement smaller than this (pure jitter)
+            const PAN_MAX_SLEW = 0.9; // normalised raw-video units/sec at zoom 1, scales with zoom below
+            const ZOOM_TAU = 0.5;
+
+            const dx = desiredXRef.current - trackCenterXRef.current;
+            const dy = desiredYRef.current - trackCenterYRef.current;
+            const dist = Math.hypot(dx, dy);
+            if (dist > PAN_DEAD_ZONE) {
+              const k = 1 - Math.exp(-dt / PAN_TAU);
+              let stepX = dx * k;
+              let stepY = dy * k;
+              const stepDist = Math.hypot(stepX, stepY);
+              // Pan faster at higher zoom — the same normalised movement
+              // covers a much bigger fraction of the (smaller) visible crop
+              // window once zoomed in — but always CLAMP the per-frame step
+              // rather than reactively boosting alpha from positional error,
+              // so even a bad detection sample only ever produces a bounded,
+              // smooth pan rather than a snap.
+              const maxStep = PAN_MAX_SLEW * Math.max(1, trackZoomRef.current) * dt;
+              if (stepDist > maxStep && stepDist > 0) {
+                const scale = maxStep / stepDist;
+                stepX *= scale;
+                stepY *= scale;
+              }
+              trackCenterXRef.current += stepX;
+              trackCenterYRef.current += stepY;
+            }
+
+            const zk = 1 - Math.exp(-dt / ZOOM_TAU);
+            trackZoomRef.current += (desiredZoomRef.current - trackZoomRef.current) * zk;
+            zoomRef.current = trackZoomRef.current;
+          } else {
+            lastDrawTimeRef.current = null;
+          }
 
           const z = Math.max(1, zoomRef.current);
           const sw = vw / z;
@@ -1148,21 +1196,26 @@ export default function RecordGame() {
 
     // Snap to the nearest detected person; fall back to the raw tap point.
     const found = detectPersonNear(det, v, rawX, rawY);
-    const target = found ?? { x: rawX, y: rawY };
-    lockTargetRef.current = { x: target.x, y: target.y };
-    // Capture this player's jersey-colour signature so the tracker can tell
-    // them apart from other similar-sized players standing nearby.
-    lockColorRef.current = found?.color ?? null;
+    // If no person was detected right at the tap point, fall back to the raw
+    // tap coordinates but with normHeight 0 (not a guessed value) — updateTracker
+    // skips its height-consistency gate while normHeight is 0, so the very
+    // first real detection tick isn't rejected for "wrong size" against a
+    // guess that was never actually measured from a bounding box.
+    const target = found ?? { x: rawX, y: rawY, normHeight: 0, color: null };
+    // Fresh tracker each tap: brand-new position/velocity/colour state, no
+    // carry-over from whatever was locked (or mis-locked) before.
+    trackerStateRef.current = createTrackerState(target.x, target.y, target.normHeight, found?.color ?? null);
+    lostSinceRef.current = null;
+    setLockLost(false);
     // Snap the camera pan itself immediately instead of leaving it to the
-    // next (up to 333ms away) detection tick's smoothed alpha blend — a
-    // manual re-lock is meant to feel instant, and waiting on the interval
-    // made it look sluggish right when the user was actively trying to fix
-    // a bad lock. Also clear any accumulated miss count / "Searching…"
-    // state from before the tap so the tracker doesn't keep treating this
-    // as a lost lock.
+    // draw loop's easing (which would look sluggish right when the user is
+    // actively trying to fix a bad lock) — a manual re-lock is meant to feel
+    // instant. Set both the smoothed AND desired refs so the very next draw
+    // frame doesn't immediately start "catching up" from the old position.
     trackCenterXRef.current = target.x;
     trackCenterYRef.current = target.y;
-    detectionMissCountRef.current = 0;
+    desiredXRef.current = target.x;
+    desiredYRef.current = target.y;
     setIsTracking(true);
 
     const pct = rawToDisplayPct(target.x, target.y);
@@ -1175,13 +1228,16 @@ export default function RecordGame() {
       setAutoFollowEnabled(false);
       setIsTracking(false);
       setCourtViewSet(false);
-      detectionMissCountRef.current = 0;
       courtViewRef.current = { x: 0.5, y: 0.5, zoom: 1 };
       trackCenterXRef.current = 0.5;
       trackCenterYRef.current = 0.5;
       trackZoomRef.current = 1;
-      lockTargetRef.current = null;
-      lockColorRef.current = null;
+      desiredXRef.current = 0.5;
+      desiredYRef.current = 0.5;
+      desiredZoomRef.current = 1;
+      trackerStateRef.current = null;
+      lostSinceRef.current = null;
+      setLockLost(false);
       setLockedDisplayTarget(null);
       return;
     }
@@ -1195,8 +1251,16 @@ export default function RecordGame() {
       return;
     }
     setIsTrackingLoading(false);
-    // Seed trackZoomRef from whatever the user's current zoom is
+    // Seed trackZoomRef from whatever the user's current zoom is, and mirror
+    // it into desiredZoomRef (and desiredX/YRef into the current pan) so the
+    // draw loop's easing has nothing to correct toward yet — otherwise it
+    // would immediately glide zoom back to the desiredZoomRef reset value of
+    // 1 before the user has even tapped a player, contradicting "hold
+    // current framing until tap."
     trackZoomRef.current = Math.max(1, zoomRef.current);
+    desiredZoomRef.current = trackZoomRef.current;
+    desiredXRef.current = trackCenterXRef.current;
+    desiredYRef.current = trackCenterYRef.current;
     autoFollowRef.current = true;
     setAutoFollowEnabled(true);
   };
@@ -2198,9 +2262,9 @@ export default function RecordGame() {
                   transform: "translate(-50%, -50%)",
                 }}
               >
-                <div className="w-24 h-24 rounded-full border-[3px] border-primary animate-pulse ring-2 ring-white/40 shadow-lg" />
-                <span className="text-[10px] font-bold text-primary bg-black/70 rounded-full px-2 py-0.5 whitespace-nowrap backdrop-blur-sm">
-                  Locked
+                <div className={`w-24 h-24 rounded-full border-[3px] ring-2 shadow-lg ${lockLost ? "border-white/50 ring-white/20" : "border-primary animate-pulse ring-white/40"}`} />
+                <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 whitespace-nowrap backdrop-blur-sm ${lockLost ? "text-white bg-black/70" : "text-primary bg-black/70"}`}>
+                  {lockLost ? "Lost lock — tap to re-lock" : "Locked"}
                 </span>
               </div>
             )}

@@ -229,6 +229,200 @@ export function disposeObjectDetector() {
   _loadPromise = null;
 }
 
+/**
+ * Persistent state for `updateTracker` below. Deliberately mutated in place
+ * by the caller's detection-tick loop (not re-created each tick) so velocity
+ * carries over between ticks.
+ */
+export interface TrackerState {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  normHeight: number;
+  color: PersonColor | null;
+  missCount: number;
+}
+
+export function createTrackerState(
+  x: number,
+  y: number,
+  normHeight: number,
+  color: PersonColor | null,
+): TrackerState {
+  return { x, y, vx: 0, vy: 0, normHeight, color, missCount: 0 };
+}
+
+export interface TrackResult {
+  x: number;
+  y: number;
+  normHeight: number;
+  /** False when this tick had no confident fresh detection and the position is coasting on predicted motion instead. */
+  matched: boolean;
+  /** True once the coast budget is exhausted — caller should treat the lock as lost (hold framing / prompt re-lock) rather than keep guessing. */
+  lost: boolean;
+}
+
+// Gate candidates against the PREDICTED position (last position + velocity *
+// dt), not the last raw observation, so a player who is genuinely moving
+// doesn't need an ever-widening radius to stay "found." The radius here is
+// intentionally much tighter than the old position-only gate (which grew up
+// to 0.32 — nearly a third of the frame — and would happily accept a
+// completely different, merely-nearby player once widened).
+const TRACK_RADIUS_BASE = 0.10;
+const TRACK_RADIUS_GROWTH = 0.02;
+const TRACK_RADIUS_MAX = 0.18;
+
+// Reject candidates whose bounding-box height differs too much from the
+// locked player's last known height — a same-spot detection that's suddenly
+// much bigger/smaller is more likely a different person (or a partial/false
+// detection) than the same player changing size within one ~333ms tick.
+const TRACK_HEIGHT_TOLERANCE = 0.35;
+
+// Colour is now a tie-breaker, not the primary identity signal — 8x8
+// downsampled average RGB from a 3fps sample can never reliably separate two
+// teammates in matching jerseys. Position/motion continuity does the heavy
+// lifting; colour only nudges the decision when candidates are otherwise close.
+const TRACK_COLOR_WEIGHT = 0.5;
+
+// If the best and second-best candidates score too close together, guessing
+// is more likely to be wrong than right — treat the tick as ambiguous (a
+// miss) instead of confidently locking onto a coin flip.
+const TRACK_MIN_SCORE_MARGIN = 0.15;
+
+// How many consecutive ticks (~333ms each, so ~1.3s total) to coast on
+// decaying predicted velocity through an occlusion/miss before giving up and
+// reporting the lock as lost, rather than keep expanding the search radius
+// until it accepts the wrong player.
+const TRACK_MAX_COAST_TICKS = 4;
+const TRACK_VELOCITY_DECAY = 0.8;
+
+// Sanity ceiling (of ~441 max possible Euclidean RGB distance) beyond which a
+// matched candidate's colour is too different from the running signature to
+// trust — the position/motion gate can still accept the match (it's the
+// player, just under different lighting/motion blur), but we won't blend a
+// clearly-wrong sample into the long-lived colour signature, which is what
+// previously let one bad frame permanently corrupt future re-identification.
+const TRACK_COLOR_SANITY_MAX = 90;
+
+/**
+ * Advances the locked-player tracker by one detection tick. Unlike
+ * `detectPersonNear`, this owns persistent velocity state so it can predict
+ * where the player should be (rather than assuming they're stationary since
+ * the last tick), coast smoothly through brief occlusion/misses instead of
+ * widening the acceptance radius until it finds ANY nearby person, and
+ * requires a confident margin over the next-best candidate before accepting
+ * a match. The caller is expected to feed the returned `x`/`y`/`normHeight`
+ * into its own frame-rate-independent smoothing (e.g. in a rAF draw loop) —
+ * this function does not do any visual smoothing itself, only identity/motion
+ * tracking.
+ */
+export function updateTracker(
+  det: ObjectDetector,
+  videoEl: HTMLVideoElement,
+  state: TrackerState,
+  dtSeconds: number,
+): TrackResult | null {
+  const vw = videoEl.videoWidth;
+  const vh = videoEl.videoHeight;
+  if (vw === 0 || vh === 0) return null;
+
+  const dt = Math.max(0.05, Math.min(1, dtSeconds));
+  const predX = state.x + state.vx * dt;
+  const predY = state.y + state.vy * dt;
+
+  const handleMiss = (): TrackResult => {
+    state.missCount += 1;
+    if (state.missCount > TRACK_MAX_COAST_TICKS) {
+      state.vx = 0;
+      state.vy = 0;
+      return { x: state.x, y: state.y, normHeight: state.normHeight, matched: false, lost: true };
+    }
+    // Coast on decaying velocity — keeps reading as "still following, just
+    // briefly blind" rather than snapping to whatever's nearest once found.
+    state.vx *= TRACK_VELOCITY_DECAY;
+    state.vy *= TRACK_VELOCITY_DECAY;
+    state.x = predX;
+    state.y = predY;
+    return { x: state.x, y: state.y, normHeight: state.normHeight, matched: false, lost: false };
+  };
+
+  const results = det.detectForVideo(videoEl, performance.now());
+  const persons = results.detections;
+  if (persons.length === 0) return handleMiss();
+
+  const radius = Math.min(TRACK_RADIUS_MAX, TRACK_RADIUS_BASE + state.missCount * TRACK_RADIUS_GROWTH);
+
+  type Candidate = {
+    bb: { originX: number; originY: number; width: number; height: number };
+    cx: number;
+    cy: number;
+    normHeight: number;
+    dist: number;
+    color: PersonColor | null;
+  };
+  const candidates: Candidate[] = [];
+  for (const p of persons) {
+    const bb = p.boundingBox;
+    if (!bb) continue;
+    const cx = (bb.originX + bb.width / 2) / vw;
+    const cy = (bb.originY + bb.height / 2) / vh;
+    const normHeight = bb.height / vh;
+    const dist = Math.hypot(cx - predX, cy - predY);
+    if (dist > radius) continue;
+    if (state.normHeight > 0) {
+      const ratio = normHeight / state.normHeight;
+      if (ratio < 1 - TRACK_HEIGHT_TOLERANCE || ratio > 1 + TRACK_HEIGHT_TOLERANCE) continue;
+    }
+    candidates.push({ bb, cx, cy, normHeight, dist, color: null });
+  }
+  if (candidates.length === 0) return handleMiss();
+
+  let best: Candidate = candidates[0];
+  let bestScore = candidates[0].dist / radius;
+  let secondScore = Infinity;
+  if (candidates.length > 1) {
+    bestScore = Infinity;
+    for (const c of candidates) {
+      c.color = sampleTorsoColor(videoEl, c.bb);
+      const distNorm = c.dist / radius;
+      const colorNorm = state.color && c.color ? colorDistance(c.color, state.color) / 255 : 0.5;
+      const score = distNorm + colorNorm * TRACK_COLOR_WEIGHT;
+      if (score < bestScore) {
+        secondScore = bestScore;
+        bestScore = score;
+        best = c;
+      } else if (score < secondScore) {
+        secondScore = score;
+      }
+    }
+    if (secondScore - bestScore < TRACK_MIN_SCORE_MARGIN) {
+      // Too close to call — don't guess between two plausible players.
+      return handleMiss();
+    }
+  }
+
+  const color = best.color ?? sampleTorsoColor(videoEl, best.bb);
+  const colorDist = state.color && color ? colorDistance(color, state.color) : null;
+
+  const vx = (best.cx - state.x) / dt;
+  const vy = (best.cy - state.y) / dt;
+  // EMA the velocity estimate itself — a single tick's positional noise
+  // shouldn't fully overwrite the motion model used to predict next tick's
+  // search position.
+  state.vx = state.vx * 0.5 + vx * 0.5;
+  state.vy = state.vy * 0.5 + vy * 0.5;
+  state.x = best.cx;
+  state.y = best.cy;
+  state.normHeight = best.normHeight;
+  state.missCount = 0;
+  if (color && (colorDist === null || colorDist < TRACK_COLOR_SANITY_MAX)) {
+    state.color = blendColor(state.color, color);
+  }
+
+  return { x: state.x, y: state.y, normHeight: state.normHeight, matched: true, lost: false };
+}
+
 let _poseLandmarker: PoseLandmarker | null = null;
 let _poseLoadPromise: Promise<PoseLandmarker> | null = null;
 
