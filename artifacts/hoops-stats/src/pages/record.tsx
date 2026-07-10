@@ -1615,11 +1615,11 @@ export default function RecordGame() {
 
     return (
       <Card key={pid} className="border-secondary/20 shadow-md overflow-hidden @container">
-        <div className="bg-muted/60 border-b border-border/60 px-4 py-2 flex justify-between items-center">
-          <h3 className="font-display font-bold text-xl uppercase tracking-wide text-foreground">{player?.name}</h3>
-          <div className="font-display font-bold text-2xl text-primary">{pts} PTS</div>
+        <div className="bg-muted/60 border-b border-border/60 px-4 py-2 tablet-landscape-lg:px-3 tablet-landscape-lg:py-1.5 flex justify-between items-center">
+          <h3 className="font-display font-bold text-xl tablet-landscape-lg:text-base uppercase tracking-wide text-foreground">{player?.name}</h3>
+          <div className="font-display font-bold text-2xl tablet-landscape-lg:text-lg text-primary">{pts} PTS</div>
         </div>
-        <CardContent className="p-4 grid grid-cols-2 @lg:grid-cols-4 @4xl:grid-cols-8 gap-4 bg-card">
+        <CardContent className="p-4 tablet-landscape-lg:p-2.5 grid grid-cols-2 @lg:grid-cols-4 @4xl:grid-cols-8 gap-4 tablet-landscape-lg:gap-2 bg-card">
           <StatCounter label="2PT" made={s.twoMade} attempt={s.twoAttempted}
             onMake={() => updateStat(pid, 'twoMade', 1)} onMiss={() => updateStat(pid, 'twoAttempted', 1)}
             onUndoMake={() => updateStat(pid, 'twoMade', -1)} onUndoMiss={() => updateStat(pid, 'twoAttempted', -1)} />
@@ -2082,7 +2082,7 @@ export default function RecordGame() {
             </div>
           </div>
 
-          <div className="flex-[2] md:flex-1 min-h-0 tablet-landscape:min-w-0 tablet-landscape:w-[35%] tablet-landscape:flex-none overflow-y-auto bg-background p-3 space-y-4">
+          <div className="flex-[2] md:flex-1 min-h-0 tablet-landscape:min-w-0 tablet-landscape:w-[35%] tablet-landscape:flex-none tablet-landscape-lg:w-[300px] overflow-y-auto bg-background p-3 space-y-4 tablet-landscape-lg:p-2.5 tablet-landscape-lg:space-y-3">
             {liveScoreboardHud}
             {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
 
@@ -2171,28 +2171,28 @@ function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoM
   return (
     <div className="flex flex-col border rounded-lg overflow-hidden bg-muted/20">
       <div className="bg-muted text-center py-1 text-xs font-bold tracking-widest text-muted-foreground">{label}</div>
-      <div className="flex-1 flex flex-col items-center justify-center p-2 gap-1">
-        <div className="font-mono text-xl font-bold tracking-tighter">
+      <div className="flex-1 flex flex-col items-center justify-center p-2 gap-1 tablet-landscape-lg:p-1.5">
+        <div className="font-mono text-xl font-bold tracking-tighter tablet-landscape-lg:text-base">
           <span className="text-primary">{made}</span><span className="text-muted-foreground/50">/</span><span>{attempt}</span>
         </div>
       </div>
       <div className="grid grid-cols-2 divide-x divide-black/20 border-t">
         <Button
           variant="ghost"
-          className="rounded-none h-14 min-w-0 flex flex-col items-center justify-center gap-0.5 bg-green-600 text-white hover:bg-green-500 active:bg-green-700"
+          className="rounded-none h-14 tablet-landscape-lg:h-10 min-w-0 flex flex-col items-center justify-center gap-0.5 bg-green-600 text-white hover:bg-green-500 active:bg-green-700"
           onClick={onMake}
           onContextMenu={(e) => { e.preventDefault(); onUndoMake(); }}
         >
-          <Check className="w-4 h-4 shrink-0" />
+          <Check className="w-4 h-4 tablet-landscape-lg:w-3.5 tablet-landscape-lg:h-3.5 shrink-0" />
           <span className="text-[9px] font-bold leading-none whitespace-nowrap">MAKE</span>
         </Button>
         <Button
           variant="ghost"
-          className="rounded-none h-14 min-w-0 flex flex-col items-center justify-center gap-0.5 bg-red-600 text-white hover:bg-red-500 active:bg-red-700"
+          className="rounded-none h-14 tablet-landscape-lg:h-10 min-w-0 flex flex-col items-center justify-center gap-0.5 bg-red-600 text-white hover:bg-red-500 active:bg-red-700"
           onClick={onMiss}
           onContextMenu={(e) => { e.preventDefault(); onUndoMiss(); }}
         >
-          <X className="w-4 h-4 shrink-0" />
+          <X className="w-4 h-4 tablet-landscape-lg:w-3.5 tablet-landscape-lg:h-3.5 shrink-0" />
           <span className="text-[9px] font-bold leading-none whitespace-nowrap">MISS</span>
         </Button>
       </div>
@@ -2202,18 +2202,18 @@ function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoM
 
 function ScoreControl({ label, score, onAdd, accent }: { label: string; score: number; onAdd: (n: number) => void; accent?: boolean }) {
   return (
-    <div className={`flex-1 min-w-0 flex items-center gap-2 rounded-lg border px-2 py-1.5 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
+    <div className={`flex-1 min-w-0 flex items-center gap-2 rounded-lg border px-2 py-1.5 tablet-landscape-lg:px-1.5 tablet-landscape-lg:py-1 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
       <div className="min-w-0">
         <div className="text-[10px] font-bold uppercase tracking-wide truncate text-muted-foreground leading-none">{label}</div>
-        <div className={`font-mono font-bold text-2xl leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
+        <div className={`font-mono font-bold text-2xl tablet-landscape-lg:text-lg leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
       </div>
       <div className="flex items-center gap-0.5 ml-auto shrink-0">
-        <Button variant="ghost" size="sm" className="h-7 w-6 p-0" onClick={() => onAdd(-1)}>
-          <Minus className="w-3.5 h-3.5" />
+        <Button variant="ghost" size="sm" className="h-7 w-6 tablet-landscape-lg:h-6 tablet-landscape-lg:w-5 p-0" onClick={() => onAdd(-1)}>
+          <Minus className="w-3.5 h-3.5 tablet-landscape-lg:w-3 tablet-landscape-lg:h-3" />
         </Button>
-        <Button variant="secondary" size="sm" className="h-7 w-7 p-0 text-xs font-bold" onClick={() => onAdd(1)}>+1</Button>
-        <Button variant="secondary" size="sm" className="h-7 w-7 p-0 text-xs font-bold" onClick={() => onAdd(2)}>+2</Button>
-        <Button variant="secondary" size="sm" className="h-7 w-7 p-0 text-xs font-bold" onClick={() => onAdd(3)}>+3</Button>
+        <Button variant="secondary" size="sm" className="h-7 w-7 tablet-landscape-lg:h-6 tablet-landscape-lg:w-6 p-0 text-xs tablet-landscape-lg:text-[10px] font-bold" onClick={() => onAdd(1)}>+1</Button>
+        <Button variant="secondary" size="sm" className="h-7 w-7 tablet-landscape-lg:h-6 tablet-landscape-lg:w-6 p-0 text-xs tablet-landscape-lg:text-[10px] font-bold" onClick={() => onAdd(2)}>+2</Button>
+        <Button variant="secondary" size="sm" className="h-7 w-7 tablet-landscape-lg:h-6 tablet-landscape-lg:w-6 p-0 text-xs tablet-landscape-lg:text-[10px] font-bold" onClick={() => onAdd(3)}>+3</Button>
       </div>
     </div>
   );
@@ -2223,12 +2223,12 @@ function SingleStatCounter({ label, value, onInc, onDec }: any) {
   return (
     <div className="flex flex-col border rounded-lg overflow-hidden bg-muted/20">
       <div className="bg-muted text-center py-1 text-xs font-bold tracking-widest text-muted-foreground">{label}</div>
-      <div className="flex-1 flex items-center justify-center p-2">
-        <div className="font-mono text-2xl font-bold">{value}</div>
+      <div className="flex-1 flex items-center justify-center p-2 tablet-landscape-lg:p-1">
+        <div className="font-mono text-2xl tablet-landscape-lg:text-lg font-bold">{value}</div>
       </div>
       <div className="grid grid-cols-2 divide-x border-t">
-        <Button variant="ghost" className="rounded-none h-12 active:bg-muted" onClick={onDec}>-</Button>
-        <Button variant="ghost" className="rounded-none h-12 active:bg-muted" onClick={onInc}>+</Button>
+        <Button variant="ghost" className="rounded-none h-12 tablet-landscape-lg:h-9 active:bg-muted" onClick={onDec}>-</Button>
+        <Button variant="ghost" className="rounded-none h-12 tablet-landscape-lg:h-9 active:bg-muted" onClick={onInc}>+</Button>
       </div>
     </div>
   );

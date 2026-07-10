@@ -19,6 +19,16 @@
  */
 @custom-variant tablet-landscape (@media (orientation: landscape) and (pointer: coarse));
 
+/*
+ * Large-tablet override: same touch+landscape gate as `tablet-landscape`,
+ * plus a min-width that only real tablets clear (largest phone landscape
+ * width is ~926px on an iPhone Pro Max; smallest tablet landscape width is
+ * ~1024px on an iPad mini), so this never matches a phone. Used to give the
+ * camera preview more room and shrink the stat-tracking controls on big
+ * tablets like the 12.9" iPad, without changing the phone layout.
+ */
+@custom-variant tablet-landscape-lg (@media (orientation: landscape) and (pointer: coarse) and (min-width: 1000px));
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
