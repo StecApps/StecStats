@@ -16,7 +16,7 @@ import {
   getListPlayerTeamGroupsQueryKey,
   getListTeamGamesQueryKey
 } from "@workspace/api-client-react";
-import { getObjectDetector, detectPersonCenter, detectPersonNear, getPoseLandmarker, detectShotPose, blendColor, type PersonColor } from "@/lib/playerTracking";
+import { getObjectDetector, detectPersonNear, getPoseLandmarker, detectShotPose, blendColor, type PersonColor } from "@/lib/playerTracking";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -661,9 +661,16 @@ export default function RecordGame() {
         const SEARCH_RADIUS_BASE = 0.14;
         const SEARCH_RADIUS_MAX = 0.32;
         const searchRadius = Math.min(SEARCH_RADIUS_MAX, SEARCH_RADIUS_BASE + detectionMissCountRef.current * 0.04);
+        // Before an explicit tap-to-lock, don't auto-pan to "whichever person
+        // is biggest" — in a gym that's just as likely to be a parent/spectator
+        // standing closer to the sideline camera as it is the player on the
+        // court, since the detector has no idea who's actually playing. The
+        // camera now holds its current framing (see the "Tap your player to
+        // lock focus" prompt) until the user taps their player to lock on,
+        // at which point position+colour re-identification takes over.
         const center = locked
           ? detectPersonNear(det, v, locked.x, locked.y, searchRadius, lockColorRef.current)
-          : detectPersonCenter(det, v);
+          : null;
         if (center) {
           // Update the raw-video lock position to follow the player.
           if (locked) {

@@ -59,9 +59,31 @@ The detection interval useEffect also cleans up on `[autoFollowEnabled, isRecord
 - Enabling at zoom=1 auto-bumps to 1.5×
 
 ## Limitations / Phase 3 notes
-- Picks the **largest** person bounding box — assumes the parent is aiming at their player (most of frame)
 - No person re-identification: doesn't use the player's reference photo yet (stored as `photoObjectPath`)
 - Phase 3: use the reference photo to build a feature embedding and match the closest detected person
+
+## Never auto-pan to "biggest detected person" before an explicit tap-to-lock
+Early version picked the **largest** person bounding box to auto-pan/zoom the instant
+Auto-Follow was toggled on, before the user tapped a specific player — on the theory
+that "biggest = closest = the parent's own kid." In a real gym this is false at least
+as often as it's true: spectators/other parents standing near the sideline camera are
+frequently bigger in frame than the players on the court, so the camera would visibly
+snap to the crowd instead of holding steady, which read as "auto-follow is just
+grabbing crowd noise."
+
+**Fix:** removed the pre-lock `detectPersonCenter` (biggest-bbox) call entirely —
+`center` is `null` whenever `lockTargetRef` isn't set, so the camera now holds its
+current framing and does nothing until the user taps their player. Position+colour
+re-identification (`detectPersonNear`) only starts once that explicit tap has set the
+lock. This matches the existing on-screen prompt ("Tap your player to lock focus"),
+which was already telling the user to tap first — the pre-lock auto-pan was actively
+contradicting its own UI copy.
+
+**Why this over a smarter pre-lock heuristic:** "closest to frame center" or similar
+was considered but rejected — no reliable signal distinguishes a parent standing
+courtside-center from a player without an actual appearance model, and a *wrong*
+guess is worse than *no* guess when the alternative (explicit tap) is already the
+primary, always-on-screen call to action.
 
 ## Tap-to-lock re-identification is nearest-distance only — needs gating
 `detectPersonNear(det, video, targetX, targetY)` (used once a player is locked) has no
