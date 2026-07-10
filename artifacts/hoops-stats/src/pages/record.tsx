@@ -1931,7 +1931,16 @@ export default function RecordGame() {
 
   const liveScoreboardHud = (
     <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-1 border-b bg-background/95 backdrop-blur-md p-2 tablet-landscape-lg:p-3 space-y-2">
-      <div className="flex items-stretch gap-2 tablet-landscape-lg:gap-3">
+      {/* Side-by-side on the full-width layouts (portrait phone, desktop),
+          where the panel spans the whole screen and there's ample horizontal
+          room for two label+3-button rows. Stacked at tablet-landscape,
+          where this panel narrows to a 35%/300px side column next to the
+          video — two side-by-side boxes there don't just look cramped, the
+          fixed-size buttons (3 x 44px per team) literally don't fit the
+          column width and get clipped off the edge of the screen. The
+          column scrolls vertically, so stacking trades unused vertical room
+          for the horizontal room the buttons actually need. */}
+      <div className="flex flex-row tablet-landscape:flex-col items-stretch gap-2">
         <ScoreControl label={teamName} score={teamScore} accent
           onAdd={(n: number) => setTeamScore(s => Math.max(0, s + n))} />
         <ScoreControl label={opponent || "Opponent"} score={opponentScore}
