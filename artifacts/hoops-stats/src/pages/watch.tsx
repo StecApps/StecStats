@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check } from "lucide-react";
+import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
@@ -27,6 +27,53 @@ export default function WatchStream() {
   const [muted, setMuted] = useState(true);
   const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
 
+  // The broadcaster's video keeps whatever orientation their phone/tablet was
+  // in when they hit Record (see camera-canvas-pipeline notes in record.tsx)
+  // — it can be portrait OR landscape. A viewer's phone orientation has
+  // nothing to do with that; if the two don't match, `object-contain`
+  // pillar/letterboxes the video down to a small strip (e.g. a portrait
+  // stream viewed on a landscape phone renders as a narrow vertical sliver
+  // with huge black bars, and the top scoreboard overlay ends up looking
+  // like it's sitting directly on top of what little video is visible).
+  // Tracking both the actual stream's native shape and the viewer's current
+  // screen orientation lets us tell them exactly which way to turn their
+  // phone to see the full picture, instead of leaving them to guess.
+  const [videoNativeSize, setVideoNativeSize] = useState<{ width: number; height: number } | null>(null);
+  const [screenIsPortrait, setScreenIsPortrait] = useState<boolean | null>(null);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [rotateTipDismissed, setRotateTipDismissed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    // Only a touch device can actually act on "rotate your phone" — a
+    // desktop viewer has no phone to turn, so we gate the tip on
+    // pointer:coarse separately from the orientation query itself (which
+    // must reflect the real screen orientation regardless of pointer type).
+    const mqPortrait = window.matchMedia("(orientation: portrait)");
+    const mqCoarse = window.matchMedia("(pointer: coarse)");
+    setScreenIsPortrait(mqPortrait.matches);
+    setIsTouchDevice(mqCoarse.matches);
+    const onPortraitChange = (e: MediaQueryListEvent) => {
+      setScreenIsPortrait(e.matches);
+      setRotateTipDismissed(false);
+    };
+    const onCoarseChange = (e: MediaQueryListEvent) => setIsTouchDevice(e.matches);
+    mqPortrait.addEventListener?.("change", onPortraitChange);
+    mqCoarse.addEventListener?.("change", onCoarseChange);
+    return () => {
+      mqPortrait.removeEventListener?.("change", onPortraitChange);
+      mqCoarse.removeEventListener?.("change", onCoarseChange);
+    };
+  }, []);
+
+  const isVideoPortrait = videoNativeSize ? videoNativeSize.height >= videoNativeSize.width : null;
+  const orientationMismatch =
+    isTouchDevice &&
+    screenIsPortrait !== null &&
+    isVideoPortrait !== null &&
+    screenIsPortrait !== isVideoPortrait;
+  const showRotateTip = orientationMismatch && !rotateTipDismissed;
+
   const shareLink = async () => {
     const url = window.location.href;
     const title = status ? `Watch ${status.teamName} vs ${status.opponent} — Live` : "Watch Live Game";
@@ -47,6 +94,15 @@ export default function WatchStream() {
       v.play().catch(() => {});
     }
   };
+
+  const handleLoadedMetadata = () => {
+    const v = videoRef.current;
+    if (v && v.videoWidth > 0 && v.videoHeight > 0) {
+      setVideoNativeSize({ width: v.videoWidth, height: v.videoHeight });
+    }
+  };
+
+  const dismissRotateTip = () => setRotateTipDismissed(true);
 
   const unmute = () => {
     const v = videoRef.current;
@@ -281,8 +337,29 @@ export default function WatchStream() {
         autoPlay
         playsInline
         muted={muted}
+        onLoadedMetadata={handleLoadedMetadata}
         className={`w-full h-full object-contain ${state === "live" ? "" : "invisible"}`}
       />
+
+      {state === "live" && showRotateTip && (
+        <div
+          className="absolute inset-x-3 z-10 flex items-center justify-between gap-3 rounded-lg bg-black/70 px-3 py-2 text-white backdrop-blur-sm"
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 4rem)" }}
+        >
+          <span className="flex items-center gap-2 text-xs font-medium">
+            <RotateCw className="w-4 h-4 shrink-0" />
+            Turn your phone to {isVideoPortrait ? "portrait" : "landscape"} to see the full video.
+          </span>
+          <button
+            type="button"
+            onClick={dismissRotateTip}
+            className="shrink-0 rounded-full p-1 hover:bg-white/20"
+            aria-label="Dismiss tip"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {state === "live" && scoreboard && (
         <div
