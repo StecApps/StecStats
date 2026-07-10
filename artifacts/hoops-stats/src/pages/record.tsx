@@ -690,12 +690,23 @@ export default function RecordGame() {
           const vw = v.videoWidth;
           const vh = v.videoHeight;
           const rot = videoRotationRef.current;
-          const cw = rot !== 0 ? vh : vw;
-          const ch = rot !== 0 ? vw : vh;
-          if (c.width !== cw || c.height !== ch) {
-            c.width = cw;
-            c.height = ch;
-          }
+          // IMPORTANT: the canvas's own width/height are the encoded recording
+          // resolution and must stay FIXED for the entire recording — they are
+          // set once in startRecording() and never mutated here. MediaRecorder
+          // (via canvas.captureStream) locks its encoder to the first frame's
+          // resolution; resizing the canvas mid-recording doesn't reflow the
+          // encoder, it just squishes/stretches subsequent frames into the
+          // original dimensions. If the phone is rotated mid-recording (which
+          // flips `rot`), we instead letterbox/pillarbox the now
+          // differently-shaped content into the fixed canvas — same
+          // "contain" behaviour as the live preview's object-contain video —
+          // so the recorded file is never distorted, only black-bar padded.
+          const cw = c.width;
+          const ch = c.height;
+          const dispW = rot !== 0 ? vh : vw;
+          const dispH = rot !== 0 ? vw : vh;
+          const scale = Math.min(cw / dispW, ch / dispH);
+
           const z = Math.max(1, zoomRef.current);
           const sw = vw / z;
           const sh = vh / z;
@@ -703,15 +714,15 @@ export default function RecordGame() {
           const cy = autoFollowRef.current ? trackCenterYRef.current : 0.5;
           const sx = Math.max(0, Math.min(vw - sw, cx * vw - sw / 2));
           const sy = Math.max(0, Math.min(vh - sh, cy * vh - sh / 2));
-          if (rot !== 0) {
-            ctx.save();
-            ctx.translate(cw / 2, ch / 2);
-            ctx.rotate((rot * Math.PI) / 180);
-            ctx.drawImage(v, sx, sy, sw, sh, -vw / 2, -vh / 2, vw, vh);
-            ctx.restore();
-          } else {
-            ctx.drawImage(v, sx, sy, sw, sh, 0, 0, vw, vh);
-          }
+
+          ctx.fillStyle = "black";
+          ctx.fillRect(0, 0, cw, ch);
+          ctx.save();
+          ctx.translate(cw / 2, ch / 2);
+          ctx.scale(scale, scale);
+          if (rot !== 0) ctx.rotate((rot * Math.PI) / 180);
+          ctx.drawImage(v, sx, sy, sw, sh, -vw / 2, -vh / 2, vw, vh);
+          ctx.restore();
         }
       }
       rafRef.current = requestAnimationFrame(draw);
@@ -775,7 +786,8 @@ export default function RecordGame() {
   const rawToDisplayPct = (rx: number, ry: number): { leftPct: number; topPct: number } | null => {
     const container = previewContainerRef.current;
     const v = sourceVideoRef.current;
-    if (!container || !v || v.videoWidth === 0) return null;
+    const canvas = canvasRef.current;
+    if (!container || !v || !canvas || v.videoWidth === 0) return null;
     const rect = container.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return null;
 
@@ -790,7 +802,8 @@ export default function RecordGame() {
     const cropLeft = Math.max(0, Math.min(1 - 1 / z, cx - 0.5 / z));
     const cropTop  = Math.max(0, Math.min(1 - 1 / z, cy - 0.5 / z));
 
-    // raw → canvas-normalised (ndx ∈ [0,1], ndy ∈ [0,1]).
+    // raw → rotated-content-normalised (ndx ∈ [0,1], ndy ∈ [0,1]), against
+    // the natural (unclamped) rotated content size (displayW x displayH).
     let ndx: number, ndy: number;
     if      (rot === -90) { ndx = 1 - (ry - cropTop) * z;  ndy = (rx - cropLeft) * z; }
     else if (rot ===  90) { ndx = (ry - cropTop) * z;       ndy = 1 - (rx - cropLeft) * z; }
@@ -798,18 +811,31 @@ export default function RecordGame() {
     ndx = Math.max(0, Math.min(1, ndx));
     ndy = Math.max(0, Math.min(1, ndy));
 
-    // Letterbox within container.
+    // Inner letterbox: the rotated content is "contain"-fit into the FIXED
+    // recording canvas (see startDrawLoop) — it may not fill the canvas
+    // after a mid-recording orientation change, so map ndx/ndy into
+    // canvas-pixel space accounting for that.
     const displayW = rot !== 0 ? vh : vw;
     const displayH = rot !== 0 ? vw : vh;
-    const scale    = Math.min(rect.width / displayW, rect.height / displayH);
-    const contentW = scale * displayW;
-    const contentH = scale * displayH;
-    const offX     = (rect.width  - contentW) / 2;
-    const offY     = (rect.height - contentH) / 2;
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const innerScale = Math.min(cw / displayW, ch / displayH);
+    const innerW = displayW * innerScale;
+    const innerH = displayH * innerScale;
+    const innerOffX = (cw - innerW) / 2;
+    const innerOffY = (ch - innerH) / 2;
+    const canvasPxX = innerOffX + ndx * innerW;
+    const canvasPxY = innerOffY + ndy * innerH;
+
+    // Outer letterbox: the canvas is shown via object-contain inside the
+    // preview container.
+    const outerScale = Math.min(rect.width / cw, rect.height / ch);
+    const outerOffX  = (rect.width  - cw * outerScale) / 2;
+    const outerOffY  = (rect.height - ch * outerScale) / 2;
 
     return {
-      leftPct: ((offX + ndx * contentW) / rect.width)  * 100,
-      topPct:  ((offY + ndy * contentH) / rect.height) * 100,
+      leftPct: ((outerOffX + canvasPxX * outerScale) / rect.width)  * 100,
+      topPct:  ((outerOffY + canvasPxY * outerScale) / rect.height) * 100,
     };
   };
 
@@ -823,7 +849,8 @@ export default function RecordGame() {
     const container = previewContainerRef.current;
     const v = sourceVideoRef.current;
     const det = objectDetectorRef.current;
-    if (!container || !v || !det || v.videoWidth === 0) return;
+    const canvas = canvasRef.current;
+    if (!container || !v || !det || !canvas || v.videoWidth === 0) return;
 
     const rect = container.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
@@ -833,24 +860,35 @@ export default function RecordGame() {
     const cx  = trackCenterXRef.current;
     const cy  = trackCenterYRef.current;
 
-    // Post-rotation canvas dimensions (what object-contain sees).
+    // Natural (unclamped) rotated content dimensions.
     const vw = v.videoWidth;
     const vh = v.videoHeight;
     const displayW = rot !== 0 ? vh : vw;
     const displayH = rot !== 0 ? vw : vh;
+    const cw = canvas.width;
+    const ch = canvas.height;
 
-    // Letterbox offset.
-    const scale    = Math.min(rect.width / displayW, rect.height / displayH);
-    const contentW = scale * displayW;
-    const contentH = scale * displayH;
-    const offX     = (rect.width  - contentW) / 2;
-    const offY     = (rect.height - contentH) / 2;
+    // Outer letterbox: the FIXED recording canvas is shown via
+    // object-contain inside the preview container.
+    const outerScale = Math.min(rect.width / cw, rect.height / ch);
+    const outerOffX  = (rect.width  - cw * outerScale) / 2;
+    const outerOffY  = (rect.height - ch * outerScale) / 2;
 
-    // Normalised canvas coords (0-1) for the tap.
     const tapX = e.clientX - rect.left;
     const tapY = e.clientY - rect.top;
-    const ndx = Math.max(0, Math.min(1, (tapX - offX) / contentW));
-    const ndy = Math.max(0, Math.min(1, (tapY - offY) / contentH));
+    const canvasPxX = (tapX - outerOffX) / outerScale;
+    const canvasPxY = (tapY - outerOffY) / outerScale;
+
+    // Inner letterbox: the rotated content is "contain"-fit into the fixed
+    // canvas (see startDrawLoop) — it may not fill the canvas after a
+    // mid-recording orientation change.
+    const innerScale = Math.min(cw / displayW, ch / displayH);
+    const innerW = displayW * innerScale;
+    const innerH = displayH * innerScale;
+    const innerOffX = (cw - innerW) / 2;
+    const innerOffY = (ch - innerH) / 2;
+    const ndx = Math.max(0, Math.min(1, (canvasPxX - innerOffX) / innerW));
+    const ndy = Math.max(0, Math.min(1, (canvasPxY - innerOffY) / innerH));
 
     // Crop top-left (accounts for current pan + zoom).
     const cropLeft = Math.max(0, Math.min(1 - 1 / z, cx - 0.5 / z));

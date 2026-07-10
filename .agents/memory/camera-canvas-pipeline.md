@@ -86,3 +86,30 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
   Only the multi-lens control (`cycleLens`, wide/normal/tele on the back camera)
   remains. If a front-camera use case comes back, re-add it as an explicit opt-in
   rather than a toggle a user could hit accidentally mid-game.
+- **Canvas dimensions must stay FIXED for the life of a `MediaRecorder`
+  capture (2026-07-10):** the draw loop used to resize `canvas.width/height`
+  every frame to match `videoRotationRef` (recalculated on device rotation
+  mid-recording). `MediaRecorder` (via `canvas.captureStream`) locks its
+  encoder resolution to the first frame — resizing the canvas later doesn't
+  renegotiate the encoder, it bakes real pixel distortion into the file
+  (worst on iOS Safari, whose only recording mimeType is H.264-in-MP4, which
+  cannot change resolution mid-stream). This is why a `<video>`-element CSS
+  aspect-ratio fix did NOT resolve a user report of "recorded clip looks
+  squished after rotating phone" — the distortion was already baked into the
+  pixels, not a playback layout bug. Fix: read `cw/ch` once in
+  `startRecording`, never mutate them in `draw()`; when rotation changes
+  mid-recording, letterbox/pillarbox the rotated source into the fixed
+  canvas (`translate(cw/2,ch/2) → scale(contain-scale) → rotate → drawImage`)
+  instead of resizing.
+  - **Ripple effect:** any UI math that maps between raw video coordinates
+    and on-screen position (e.g. auto-follow tap-to-lock, lock-ring overlay)
+    and that assumes "canvas dims == rotated content dims" breaks the moment
+    canvas dims are fixed — a mid-recording rotation now produces a SECOND,
+    inner letterbox (source-into-canvas) on top of the outer one
+    (canvas-into-preview-container via `object-contain`). Such math needs two
+    explicit stages: inner letterbox (natural rotated size → fixed canvas
+    pixels) then outer letterbox (canvas → container rect), and the inverse
+    for hit-testing. Reuse any existing validated rotation/crop-inversion
+    formulas as-is inside this wrapper rather than re-deriving rotation
+    signs from scratch — canvas `rotate()`'s effective sign/axis convention
+    is easy to get backwards.
