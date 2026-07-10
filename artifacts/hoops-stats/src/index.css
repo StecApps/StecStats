@@ -6,7 +6,18 @@
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
-@custom-variant phone-landscape (@media (orientation: landscape) and (max-height: 600px) and (pointer: coarse));
+/*
+ * Recording-overlay split layout: camera + stat panel side-by-side instead of
+ * stacked. Originally gated on `max-height: 600px` (phone-only), which is why
+ * it was named `phone-landscape`. On an iPad-class tablet in landscape
+ * (height ~1024px+) that cap never matched, so the overlay fell back to the
+ * stacked layout and the stat panel -- squeezed to a small flex share of the
+ * remaining height -- required scrolling to see MAKE/MISS controls. Tablets
+ * in landscape have plenty of width for a side column just like phones do,
+ * so the height cap was dropped; `pointer: coarse` alone still excludes
+ * desktop/mouse recording (which keeps the stacked layout).
+ */
+@custom-variant tablet-landscape (@media (orientation: landscape) and (pointer: coarse));
 
 @theme inline {
   --color-background: hsl(var(--background));

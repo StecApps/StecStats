@@ -23,3 +23,4 @@
 - [requireAuth in-memory user must be updated after email backfill](requireauth-email-backfill.md) — after `db.update(email)` do `user = {...user, email}` or req.appUser.email stays null and owner/premium checks fail.
 - [runTest needs testClerkAuth flag](clerk-testclerkauth-flag-required.md) — `[Clerk Auth]` test steps without `testClerkAuth: true` hit real Clerk UI and get Cloudflare-blocked, looking like an app bug.
 - [iOS camera always reports portrait dimensions](ios-camera-portrait-quirk.md) — getUserMedia on iOS always reports videoWidth/videoHeight as portrait (sensor native) even in landscape; also don't force aspectRatio CSS on video elements — let the browser size naturally.
+- [Pose-based shot-detection false positives](pose-shot-detection-heuristic.md) — raised-arm heuristic needs a per-landmark visibility gate (not just overall pose confidence) and a torso-upright plausibility gate, or it fires on camera-panned-away clutter and on reclining subjects.

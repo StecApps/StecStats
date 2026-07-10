@@ -1873,8 +1873,8 @@ export default function RecordGame() {
       </div>
 
       {isRecording && (
-        <div className="fixed inset-0 z-[9999] flex flex-col phone-landscape:flex-row bg-black">
-          <div ref={previewContainerRef} className="relative flex-[3] phone-landscape:flex-1 min-h-0 phone-landscape:min-w-0 bg-black" style={{ touchAction: "none" }} onPointerUp={handlePreviewTap}>
+        <div className="fixed inset-0 z-[9999] flex flex-col tablet-landscape:flex-row bg-black">
+          <div ref={previewContainerRef} className="relative flex-[3] tablet-landscape:flex-1 min-h-0 tablet-landscape:min-w-0 bg-black" style={{ touchAction: "none" }} onPointerUp={handlePreviewTap}>
             <video
               ref={livePreviewRef}
               muted
@@ -1901,7 +1901,7 @@ export default function RecordGame() {
 
             {/* Instruction shown before user taps a player */}
             {autoFollowEnabled && !lockedDisplayTarget && (
-              <div className="absolute inset-x-0 bottom-20 flex justify-center pointer-events-none z-20 phone-landscape:bottom-4">
+              <div className="absolute inset-x-0 bottom-20 flex justify-center pointer-events-none z-20 tablet-landscape:bottom-4">
                 <span className="text-xs font-semibold text-white bg-black/65 rounded-full px-4 py-2 backdrop-blur-sm">
                   Tap your player to lock focus
                 </span>
@@ -1909,7 +1909,7 @@ export default function RecordGame() {
             )}
 
             {showRotateTip && (
-              <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-3 rounded-lg bg-black/70 px-3 py-2 text-white backdrop-blur-sm phone-landscape:hidden">
+              <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-3 rounded-lg bg-black/70 px-3 py-2 text-white backdrop-blur-sm tablet-landscape:hidden">
                 <span className="text-xs font-medium">
                   {canvasRef.current && canvasRef.current.width < canvasRef.current.height
                     ? "Heads up: this clip started in portrait, so it's locked to a portrait frame — rotating now won't make it fill the screen. Stop and restart in landscape if you want a full-screen video."
@@ -2016,7 +2016,7 @@ export default function RecordGame() {
             </div>
           </div>
 
-          <div className="flex-[2] md:flex-1 min-h-0 phone-landscape:min-w-0 phone-landscape:w-[35%] phone-landscape:flex-none overflow-y-auto bg-background p-3 space-y-4">
+          <div className="flex-[2] md:flex-1 min-h-0 tablet-landscape:min-w-0 tablet-landscape:w-[35%] tablet-landscape:flex-none overflow-y-auto bg-background p-3 space-y-4">
             {liveScoreboardHud}
             {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
 

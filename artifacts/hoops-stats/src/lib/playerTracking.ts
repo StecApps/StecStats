@@ -263,6 +263,19 @@ export async function getPoseLandmarker(): Promise<PoseLandmarker> {
   }
 }
 
+// Minimum per-landmark visibility score (MediaPipe's own confidence that a
+// given joint is actually present/visible at its reported coordinates, 0-1)
+// required before trusting that joint for the raise heuristic below.
+const MIN_LANDMARK_VISIBILITY = 0.6;
+
+// How aligned the hip->shoulder vector must be with the assumed "up" axis
+// (dot product of unit vectors) before we even consider evaluating an arm
+// raise. 0.5 ~= torso within ~60 degrees of upright. This is what stops the
+// heuristic from firing on someone lying down, sitting reclined, etc., where
+// "wrist above shoulder" in raw frame coordinates no longer means "arm raised
+// relative to the body."
+const MIN_TORSO_UPRIGHTNESS = 0.5;
+
 export function detectShotPose(
   landmarker: PoseLandmarker,
   videoEl: HTMLVideoElement
@@ -281,8 +294,39 @@ export function detectShotPose(
   const rElbow = lm[14];
   const lWrist = lm[15];
   const rWrist = lm[16];
+  const lHip = lm[23];
+  const rHip = lm[24];
 
-  if (!lShoulder || !rShoulder || !lElbow || !rElbow || !lWrist || !rWrist) return false;
+  if (!lShoulder || !rShoulder || !lElbow || !rElbow || !lWrist || !rWrist || !lHip || !rHip) {
+    return false;
+  }
+
+  // The lite pose model still returns 33 landmarks even when it isn't
+  // actually looking at a person (e.g. the camera panned off the subject
+  // onto furniture/background clutter during auto-follow) -- overall pose
+  // presence can clear the model's default 0.5 threshold on a plausible-ish
+  // blob while individual joints are still near-zero confidence. Reject the
+  // frame outright if any of the joints we depend on aren't trustworthy,
+  // rather than letting noisy coordinates satisfy the raise geometry below.
+  const joints = [lShoulder, rShoulder, lElbow, rElbow, lWrist, rWrist, lHip, rHip];
+  if (joints.some(j => (j.visibility ?? 0) < MIN_LANDMARK_VISIBILITY)) return false;
+
+  // The raise heuristic below only makes sense for someone in a roughly
+  // upright stance (standing, jumping, driving to the hoop) -- it compares
+  // wrist position to shoulder position along the device's physical "up"
+  // axis, which silently breaks down for anyone lying/reclining in frame
+  // (e.g. resting on a bed): normal resting arm positions near the head can
+  // register as "wrist above shoulder" even though nothing basketball-like
+  // is happening. Guard against this by requiring the hip->shoulder vector
+  // to actually point toward the assumed "up" direction before proceeding.
+  const shoulderMidX = (lShoulder.x + rShoulder.x) / 2;
+  const shoulderMidY = (lShoulder.y + rShoulder.y) / 2;
+  const hipMidX = (lHip.x + rHip.x) / 2;
+  const hipMidY = (lHip.y + rHip.y) / 2;
+  const torsoX = shoulderMidX - hipMidX;
+  const torsoY = shoulderMidY - hipMidY;
+  const torsoLen = Math.hypot(torsoX, torsoY);
+  if (torsoLen < 1e-4) return false;
 
   // The pose landmarker always runs on the raw camera video element, which iOS
   // reports in portrait orientation (videoWidth < videoHeight) regardless of
@@ -308,6 +352,12 @@ export function detectShotPose(
       upIsPortraitRight = (window as any).orientation !== 90;
     }
 
+    // Up = portrait +x or -x depending on orientation; check the torso is
+    // actually aligned with that axis (not lying across the frame) before
+    // trusting the raise geometry below.
+    const upDotTorso = upIsPortraitRight ? torsoX / torsoLen : -torsoX / torsoLen;
+    if (upDotTorso < MIN_TORSO_UPRIGHTNESS) return false;
+
     // Use a higher threshold for the x-axis — casual sideways movement is more
     // common than raising an arm vertically, so we need a bigger margin.
     const LANDSCAPE_RAISE = 0.12;
@@ -325,6 +375,10 @@ export function detectShotPose(
       return rightArmRaised || leftArmRaised;
     }
   }
+
+  // Portrait mode: up = -y. Same torso-alignment guard as the landscape branch.
+  const upDotTorsoPortrait = -torsoY / torsoLen;
+  if (upDotTorsoPortrait < MIN_TORSO_UPRIGHTNESS) return false;
 
   // Portrait mode: y=0 is top; "arm raised" = wrist clearly above shoulder.
   const RAISE = 0.07;
