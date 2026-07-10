@@ -32,6 +32,7 @@ import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { getIceServers, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
+import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
 
 type StatCounters = {
   playerId: number;
@@ -54,6 +55,30 @@ type GameEventEntry = {
   delta: number;
   videoTimestampMs: number;
 };
+
+// Lightweight snapshot of an in-progress (unsaved) game, autosaved to
+// localStorage so a crashed tab or accidental close doesn't lose the team,
+// roster, score, and stat history someone was tracking live. `sessionId`
+// (when present) points at the matching IndexedDB recording session so the
+// video itself can also be recovered — see recordingStore.ts.
+type RecordDraft = {
+  version: 1;
+  savedAt: number;
+  sessionId: string | null;
+  mimeType: string | null;
+  teamId: string;
+  opponent: string;
+  date: string;
+  teamScore: number;
+  opponentScore: number;
+  selectedPlayerIds: number[];
+  stats: Record<number, StatCounters>;
+  events: GameEventEntry[];
+  elapsedMs: number;
+};
+
+const DRAFT_STORAGE_KEY = "stec:record-draft";
+const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const initialStats = (playerId: number): StatCounters => ({
   playerId, ftMade: 0, ftAttempted: 0, twoMade: 0, twoAttempted: 0, threeMade: 0, threeAttempted: 0, assists: 0, rebounds: 0, steals: 0, turnovers: 0, blocks: 0
@@ -297,12 +322,17 @@ export default function RecordGame() {
   const [liveInterrupted, setLiveInterrupted] = useState(false);
   const [showRotateTip, setShowRotateTip] = useState(false);
   const [reviewIsPortrait, setReviewIsPortrait] = useState(false);
+  const [showRecoveryPrompt, setShowRecoveryPrompt] = useState(false);
+  const [recoveryOpponent, setRecoveryOpponent] = useState("");
+  const [recoveryResolved, setRecoveryResolved] = useState(false);
+  const recoveryDraftRef = useRef<RecordDraft | null>(null);
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const chunkSeqRef = useRef(0);
+  const recordingSessionIdRef = useRef<string | null>(null);
   const recordingStartRef = useRef<number>(0);
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -502,6 +532,115 @@ export default function RecordGame() {
       setEvents(gameToEdit.events ?? []);
     }
   }, [isEditing, gameToEdit]);
+
+  // Check once, on mount, for a draft left behind by a crash/close during a
+  // previous unsaved recording session. Editing an existing game never has a
+  // draft of its own, so autosave/recovery is scoped to new games only.
+  useEffect(() => {
+    if (isEditing) {
+      setRecoveryResolved(true);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (raw) {
+        const draft: RecordDraft = JSON.parse(raw);
+        const isFresh = Date.now() - draft.savedAt <= DRAFT_MAX_AGE_MS;
+        const hasContent = (draft.selectedPlayerIds?.length ?? 0) > 0 || (draft.events?.length ?? 0) > 0;
+        if (isFresh && hasContent) {
+          recoveryDraftRef.current = draft;
+          setRecoveryOpponent(draft.opponent || "");
+          setShowRecoveryPrompt(true);
+          return;
+        }
+      }
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+    }
+    setRecoveryResolved(true);
+    // Only ever run this check once, right after mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Debounced autosave of the lightweight, cheap-to-persist parts of an
+  // in-progress game (team, roster, score, stat counters, event log). This
+  // is what lets someone recover "my team and stats" after a crash even when
+  // the video itself can't be reassembled for some reason.
+  useEffect(() => {
+    if (isEditing || !recoveryResolved || showRecoveryPrompt) return;
+    if (selectedPlayerIds.length === 0 && events.length === 0) return;
+    const timeout = setTimeout(() => {
+      const draft: RecordDraft = {
+        version: 1,
+        savedAt: Date.now(),
+        sessionId: recordingSessionIdRef.current,
+        mimeType: mediaRecorderRef.current?.mimeType ?? null,
+        teamId,
+        opponent,
+        date: date.toISOString(),
+        teamScore,
+        opponentScore,
+        selectedPlayerIds,
+        stats,
+        events,
+        elapsedMs,
+      };
+      try {
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      } catch {
+        // Storage full/unavailable — autosave is best-effort, not critical path.
+      }
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [isEditing, recoveryResolved, showRecoveryPrompt, teamId, opponent, date, teamScore, opponentScore, selectedPlayerIds, stats, events, elapsedMs]);
+
+  const handleResumeDraft = async () => {
+    const draft = recoveryDraftRef.current;
+    setShowRecoveryPrompt(false);
+    if (!draft) {
+      setRecoveryResolved(true);
+      return;
+    }
+    setTeamId(draft.teamId);
+    setOpponent(draft.opponent);
+    setDate(draft.date ? new Date(draft.date) : new Date());
+    setTeamScore(draft.teamScore);
+    setOpponentScore(draft.opponentScore);
+    setSelectedPlayerIds(draft.selectedPlayerIds);
+    setStats(draft.stats);
+    setEvents(draft.events);
+    setElapsedMs(draft.elapsedMs);
+
+    if (draft.sessionId) {
+      try {
+        const chunks = await getOrderedChunks(draft.sessionId);
+        if (chunks.length > 0) {
+          const blob = new Blob(chunks, { type: draft.mimeType || "video/webm" });
+          recordingSessionIdRef.current = draft.sessionId;
+          setRecordedBlob(blob);
+          setRecordedPreviewUrl(URL.createObjectURL(blob));
+          toast({ title: "Game recovered", description: "Your team, stats, and video from before the crash are restored." });
+        } else {
+          toast({ title: "Stats recovered", description: "The video wasn't recoverable, but your team and stats are back." });
+        }
+      } catch {
+        toast({ title: "Stats recovered", description: "The video wasn't recoverable, but your team and stats are back." });
+      }
+    } else {
+      toast({ title: "Stats recovered", description: "Your team and stats from before are restored." });
+    }
+    setRecoveryResolved(true);
+  };
+
+  const handleDiscardDraft = () => {
+    const draft = recoveryDraftRef.current;
+    setShowRecoveryPrompt(false);
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
+    if (draft?.sessionId) deleteSession(draft.sessionId).catch(() => {});
+    recoveryDraftRef.current = null;
+    setRecoveryResolved(true);
+  };
 
   useEffect(() => {
     return () => {
@@ -1164,7 +1303,9 @@ export default function RecordGame() {
 
       streamRef.current = recordStream;
 
-      chunksRef.current = [];
+      chunkSeqRef.current = 0;
+      const sessionId = createRecordingSessionId();
+      recordingSessionIdRef.current = sessionId;
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus"
         : MediaRecorder.isTypeSupported("video/webm")
@@ -1172,22 +1313,32 @@ export default function RecordGame() {
           : "video/mp4";
       const recorder = new MediaRecorder(recordStream, {
         mimeType,
-        videoBitsPerSecond: 10_000_000,
+        videoBitsPerSecond: 4_000_000,
         audioBitsPerSecond: 128_000,
       });
+      // Chunks are written straight to IndexedDB (disk-backed) instead of
+      // an in-memory array — a long game otherwise accumulates gigabytes of
+      // Blob data on the JS heap and reliably OOM-crashes the tab (see
+      // recordingStore.ts header comment / .agents/memory for details).
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (e.data.size > 0) {
+          const seq = chunkSeqRef.current++;
+          saveChunk(sessionId, seq, e.data).catch(() => {});
+        }
       };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        setRecordedBlob(blob);
-        setRecordedPreviewUrl(URL.createObjectURL(blob));
-        stopMediaPipeline();
+        getOrderedChunks(sessionId)
+          .then((chunks) => {
+            const blob = new Blob(chunks, { type: mimeType });
+            setRecordedBlob(blob);
+            setRecordedPreviewUrl(URL.createObjectURL(blob));
+          })
+          .finally(() => stopMediaPipeline());
       };
 
       mediaRecorderRef.current = recorder;
       recordingStartRef.current = Date.now();
-      recorder.start();
+      recorder.start(3000);
       setIsRecording(true);
       shotDetectionUsageRef.current = 0;
       shotDetectionLimitNudgedRef.current = false;
@@ -1223,12 +1374,16 @@ export default function RecordGame() {
         return;
       }
       const mimeType = recorder.mimeType;
+      const sessionId = recordingSessionIdRef.current;
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
-        setRecordedBlob(blob);
-        setRecordedPreviewUrl(URL.createObjectURL(blob));
-        stopMediaPipeline();
-        resolve(blob);
+        getOrderedChunks(sessionId ?? "")
+          .then((chunks) => {
+            const blob = new Blob(chunks, { type: mimeType });
+            setRecordedBlob(blob);
+            setRecordedPreviewUrl(URL.createObjectURL(blob));
+            resolve(blob);
+          })
+          .finally(() => stopMediaPipeline());
       };
       recorder.stop();
       setIsRecording(false);
@@ -1242,6 +1397,10 @@ export default function RecordGame() {
     setRecordedBlob(null);
     setExistingVideoObjectPath(null);
     setEvents([]);
+    if (recordingSessionIdRef.current) {
+      deleteSession(recordingSessionIdRef.current).catch(() => {});
+      recordingSessionIdRef.current = null;
+    }
     toast({ title: "Video discarded", description: "Your stats are kept — the game will save without a video." });
   };
 
@@ -1610,7 +1769,13 @@ export default function RecordGame() {
         queryClient.invalidateQueries({ queryKey: getListPlayerTeamGroupsQueryKey(pid) });
       });
       queryClient.invalidateQueries({ queryKey: getListTeamGamesQueryKey(parseInt(teamId, 10)) });
-      
+
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      if (recordingSessionIdRef.current) {
+        deleteSession(recordingSessionIdRef.current).catch(() => {});
+        recordingSessionIdRef.current = null;
+      }
+
       navigate("/dashboard");
     } catch(err) {
       savingRef.current = false;
@@ -1746,6 +1911,21 @@ export default function RecordGame() {
 
   return (
     <div className="flex flex-col space-y-6 pb-40 md:pb-24">
+      <Dialog open={showRecoveryPrompt} onOpenChange={(open) => { if (!open) handleDiscardDraft(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resume unsaved game?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            We found stats{recoveryDraftRef.current?.sessionId ? " and video" : ""} from an interrupted session
+            {recoveryOpponent ? ` vs ${recoveryOpponent}` : ""} that never got saved. Resume it, or discard and start fresh.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={handleDiscardDraft}>Discard</Button>
+            <Button onClick={handleResumeDraft}>Resume game</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/dashboard")}><ArrowLeft className="w-5 h-5" /></Button>
         <h1 className="flex items-center gap-3 text-4xl font-display font-bold uppercase tracking-tight text-foreground">
@@ -2265,19 +2445,33 @@ function ScoreControl({ label, score, onAdd, accent }: { label: string; score: n
   // BIGGER (not smaller) on larger tablets: it's what gets read at a glance
   // while live-streaming and manually calling the score for viewers, so
   // legibility matters more here than reclaiming screen space.
+  //
+  // On phones these buttons used to be the hardest thing to tap on the whole
+  // recording screen — a dedicated "-1" button plus +1/+2/+3 were squeezed
+  // into a ~32px row inside a narrow flex-1 box (worst for the opponent's
+  // box, which sits top-right). We drop the separate "-1" button and reuse
+  // the app's existing long-press-to-undo convention (see StatCounter's
+  // onContextMenu) on "+1" instead, which frees enough width to make the
+  // three remaining buttons meaningfully bigger on mobile, not just at the
+  // tablet-landscape-lg breakpoint.
   return (
-    <div className={`flex-1 min-w-0 flex items-center gap-2 tablet-landscape-lg:gap-3 rounded-lg border px-2 py-1.5 tablet-landscape-lg:px-3 tablet-landscape-lg:py-2 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
+    <div className={`flex-1 min-w-0 flex items-center gap-1.5 tablet-landscape-lg:gap-3 rounded-lg border px-2 py-1.5 tablet-landscape-lg:px-3 tablet-landscape-lg:py-2 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
       <div className="min-w-0">
         <div className="text-[10px] tablet-landscape-lg:text-sm font-bold uppercase tracking-wide truncate text-muted-foreground leading-none">{label}</div>
-        <div className={`font-mono font-bold text-3xl tablet-landscape-lg:text-5xl leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
+        <div className={`font-mono font-bold text-2xl tablet-landscape-lg:text-5xl leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
       </div>
-      <div className="flex items-center gap-0.5 tablet-landscape-lg:gap-1.5 ml-auto shrink-0">
-        <Button variant="ghost" size="sm" className="h-8 w-7 tablet-landscape-lg:h-11 tablet-landscape-lg:w-10 p-0" onClick={() => onAdd(-1)}>
-          <Minus className="w-4 h-4 tablet-landscape-lg:w-5 tablet-landscape-lg:h-5" />
+      <div className="flex items-center gap-1 tablet-landscape-lg:gap-1.5 ml-auto shrink-0">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="h-11 w-11 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-base tablet-landscape-lg:text-base font-bold"
+          onClick={() => onAdd(1)}
+          onContextMenu={(e) => { e.preventDefault(); onAdd(-1); }}
+        >
+          +1
         </Button>
-        <Button variant="secondary" size="sm" className="h-8 w-8 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-sm tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(1)}>+1</Button>
-        <Button variant="secondary" size="sm" className="h-8 w-8 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-sm tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(2)}>+2</Button>
-        <Button variant="secondary" size="sm" className="h-8 w-8 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-sm tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(3)}>+3</Button>
+        <Button variant="secondary" size="sm" className="h-11 w-11 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-base tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(2)}>+2</Button>
+        <Button variant="secondary" size="sm" className="h-11 w-11 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-base tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(3)}>+3</Button>
       </div>
     </div>
   );
