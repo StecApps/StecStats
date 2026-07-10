@@ -145,3 +145,22 @@ the mic audio track added into a combined output MediaStream (`streamRef`).
     already renders at the max contain-fit size for any container shape, so
     this changes nothing visually while risking `aspect-ratio` vs. flex-grow
     interaction bugs and shrinking the pointer hit-test area for tap-to-lock.
+- **Outer letterbox eventually eliminated via `object-cover`, not container
+  resizing (2026-07-10):** on a tablet, the side-panel-narrowed preview
+  column's aspect ratio was so far from the landscape camera feed's that
+  `object-contain` letterboxed roughly a third of the screen top+bottom (see
+  rejected `aspect-ratio` alternative above — resizing the container can't
+  fix this because contain always renders max-fit regardless of container
+  shape). Switched only the **live monitor `<video>`** (`livePreviewRef`)
+  from `object-contain` to `object-cover` — this crops the sides of what the
+  camera operator *sees* live, but does NOT affect the actual recording,
+  which is a fully separate pipeline (`sourceVideoRef` → offscreen canvas →
+  `captureStream`) untouched by this change. **Ripple effect:** the
+  tap-to-lock / lock-ring coordinate math (`rawToDisplayPct`,
+  `handlePreviewTap`) has an "outer letterbox" stage that maps
+  container-rect ↔ canvas-pixel space; its centering formula is identical
+  for contain vs. cover, only the scale direction flips
+  (`Math.min(rect/canvas)` → `Math.max(rect/canvas)`, offsets can go
+  negative for the cropped edges). Any future change to the live preview's
+  `object-fit` must flip this scale direction in both functions in lockstep,
+  or tap-to-lock targets the wrong point on screen.

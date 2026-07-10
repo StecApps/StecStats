@@ -939,9 +939,10 @@ export default function RecordGame() {
           // encoder, it just squishes/stretches subsequent frames into the
           // original dimensions. If the phone is rotated mid-recording (which
           // flips `rot`), we instead letterbox/pillarbox the now
-          // differently-shaped content into the fixed canvas — same
-          // "contain" behaviour as the live preview's object-contain video —
-          // so the recorded file is never distorted, only black-bar padded.
+          // differently-shaped content into the fixed canvas ("contain"
+          // fit, independent of how the live preview <video> is displayed
+          // on screen — see the object-cover note on livePreviewRef) — so
+          // the recorded file is never distorted, only black-bar padded.
           const cw = c.width;
           const ch = c.height;
           const dispW = rot !== 0 ? vh : vw;
@@ -1119,9 +1120,12 @@ export default function RecordGame() {
     const canvasPxX = innerOffX + ndx * innerW;
     const canvasPxY = innerOffY + ndy * innerH;
 
-    // Outer letterbox: the canvas is shown via object-contain inside the
-    // preview container.
-    const outerScale = Math.min(rect.width / cw, rect.height / ch);
+    // Outer crop: the live preview video is shown via object-cover inside
+    // the preview container (fills the screen, cropping overflow) rather
+    // than object-contain — same centered-scale formula as letterboxing,
+    // just Math.max instead of Math.min, so offsets go negative for the
+    // cropped-off edges instead of positive for letterbox bars.
+    const outerScale = Math.max(rect.width / cw, rect.height / ch);
     const outerOffX  = (rect.width  - cw * outerScale) / 2;
     const outerOffY  = (rect.height - ch * outerScale) / 2;
 
@@ -1160,9 +1164,10 @@ export default function RecordGame() {
     const cw = canvas.width;
     const ch = canvas.height;
 
-    // Outer letterbox: the FIXED recording canvas is shown via
-    // object-contain inside the preview container.
-    const outerScale = Math.min(rect.width / cw, rect.height / ch);
+    // Outer crop: the live preview video is shown via object-cover inside
+    // the preview container — same centered-scale formula as letterboxing,
+    // just Math.max instead of Math.min (see rawToDisplayPct).
+    const outerScale = Math.max(rect.width / cw, rect.height / ch);
     const outerOffX  = (rect.width  - cw * outerScale) / 2;
     const outerOffY  = (rect.height - ch * outerScale) / 2;
 
@@ -2258,7 +2263,7 @@ export default function RecordGame() {
               ref={livePreviewRef}
               muted
               playsInline
-              className="absolute inset-0 w-full h-full object-contain"
+              className="absolute inset-0 w-full h-full object-cover"
             />
 
             {/* Tap-to-follow ring: tracks across the preview as the player moves */}
