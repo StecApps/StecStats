@@ -568,6 +568,7 @@ export const GetTeamHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
+  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
 })
 
@@ -586,6 +587,7 @@ export const GenerateTeamHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
+  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
 })
 
@@ -601,6 +603,7 @@ export const GetGameHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
+  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
 })
 
@@ -619,6 +622,7 @@ export const GenerateGameHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
+  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
 })
 

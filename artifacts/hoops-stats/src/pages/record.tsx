@@ -174,6 +174,30 @@ export default function RecordGame() {
     return () => { cancelled = true; };
   }, [highlight?.status, highlight?.highlightObjectPath]);
 
+  // The server only reports processing/ready/failed — not a real completion
+  // percentage, since duration depends on video length and how many
+  // highlight-worthy moments were tagged. Ticking a clock while "processing"
+  // lets us show a genuinely moving status bar (elapsed-time based, capped
+  // short of 100%) instead of a bare spinner, without pretending to know
+  // exactly how much longer it'll take. The actual "ready" transition
+  // (polled every 3s above) is what snaps the bar to completion.
+  const [highlightNow, setHighlightNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (highlight?.status !== "processing") return;
+    setHighlightNow(Date.now());
+    const id = setInterval(() => setHighlightNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [highlight?.status, highlight?.startedAt]);
+
+  const highlightElapsedSec = highlight?.startedAt
+    ? Math.max(0, (highlightNow - new Date(highlight.startedAt).getTime()) / 1000)
+    : 0;
+  const highlightProgressPct = Math.min(92, Math.round(100 * (1 - Math.exp(-highlightElapsedSec / 22))));
+  const highlightStageText =
+    highlightElapsedSec < 8 ? "Finding your best plays…" :
+    highlightElapsedSec < 25 ? "Rendering highlight clips…" :
+    "Almost done — finalizing your reel…";
+
   const handleGenerateHighlight = async () => {
     if (!gameId) return;
     highlightBlobCacheRef.current = null;
@@ -628,11 +652,15 @@ export default function RecordGame() {
         // Search radius grows with consecutive misses so a briefly-occluded
         // player can be re-acquired nearby, but a single miss won't let the
         // tracker snap onto a completely different (merely closer) person.
-        // Kept intentionally tight so the tracker prefers losing lock (and
-        // recentering on the court) over jumping to a farther-away player.
-        const SEARCH_RADIUS_BASE = 0.1;
-        const SEARCH_RADIUS_MAX = 0.3;
-        const searchRadius = Math.min(SEARCH_RADIUS_MAX, SEARCH_RADIUS_BASE + detectionMissCountRef.current * 0.03);
+        // Base widened from 0.1 -> 0.14 (and the per-miss growth from 0.03 ->
+        // 0.04) because a player sprinting between two 333ms detection ticks
+        // can cover more ground than the old tight radius allowed, which was
+        // spuriously counting fast movement as "lost lock" and drifting the
+        // camera back toward the court-view home position instead of just
+        // continuing to follow her.
+        const SEARCH_RADIUS_BASE = 0.14;
+        const SEARCH_RADIUS_MAX = 0.32;
+        const searchRadius = Math.min(SEARCH_RADIUS_MAX, SEARCH_RADIUS_BASE + detectionMissCountRef.current * 0.04);
         const center = locked
           ? detectPersonNear(det, v, locked.x, locked.y, searchRadius, lockColorRef.current)
           : detectPersonCenter(det, v);
@@ -652,7 +680,17 @@ export default function RecordGame() {
           // much bigger fraction of the (smaller) visible crop window once
           // zoomed in, so a fixed alpha would let a fast player outrun the pan
           // and escape the visible crop before the camera catches up.
-          const panAlpha = Math.min(0.45, 0.2 + (Math.max(1, zoomRef.current) - 1) * 0.08);
+          const zoomAlpha0 = Math.min(0.45, 0.2 + (Math.max(1, zoomRef.current) - 1) * 0.08);
+          // Additionally catch up faster the further the pan has fallen
+          // behind the freshly detected position. A fixed alpha made the
+          // camera visibly lag several ticks behind a player breaking into a
+          // sprint (each tick only closing 20-45% of the gap); scaling alpha
+          // with the actual positional error lets a big jump snap most of
+          // the way there within a tick or two, while small frame-to-frame
+          // jitter still gets the old smooth, low-alpha treatment.
+          const posErr = Math.hypot(center.x - trackCenterXRef.current, center.y - trackCenterYRef.current);
+          const catchUpAlpha = Math.min(0.7, posErr * 2.2);
+          const panAlpha = Math.max(zoomAlpha0, catchUpAlpha);
           trackCenterXRef.current = (1 - panAlpha) * trackCenterXRef.current + panAlpha * center.x;
           trackCenterYRef.current = (1 - panAlpha) * trackCenterYRef.current + panAlpha * center.y;
           // Adaptive zoom: target zoom so the player fills ~40% of frame height
@@ -969,6 +1007,17 @@ export default function RecordGame() {
     // Capture this player's jersey-colour signature so the tracker can tell
     // them apart from other similar-sized players standing nearby.
     lockColorRef.current = found?.color ?? null;
+    // Snap the camera pan itself immediately instead of leaving it to the
+    // next (up to 333ms away) detection tick's smoothed alpha blend — a
+    // manual re-lock is meant to feel instant, and waiting on the interval
+    // made it look sluggish right when the user was actively trying to fix
+    // a bad lock. Also clear any accumulated miss count / "Searching…"
+    // state from before the tap so the tracker doesn't keep treating this
+    // as a lost lock.
+    trackCenterXRef.current = target.x;
+    trackCenterYRef.current = target.y;
+    detectionMissCountRef.current = 0;
+    setIsTracking(true);
 
     const pct = rawToDisplayPct(target.x, target.y);
     if (pct) setLockedDisplayTarget(pct);
@@ -1645,8 +1694,8 @@ export default function RecordGame() {
   const focusPts = focusStats ? (focusStats.twoMade * 2) + (focusStats.threeMade * 3) + focusStats.ftMade : 0;
 
   const liveScoreboardHud = (
-    <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-1 border-b bg-background/95 backdrop-blur-md p-2 space-y-2">
-      <div className="flex items-stretch gap-2">
+    <div className="sticky top-0 z-10 -mx-3 -mt-3 mb-1 border-b bg-background/95 backdrop-blur-md p-2 tablet-landscape-lg:p-3 space-y-2">
+      <div className="flex items-stretch gap-2 tablet-landscape-lg:gap-3">
         <ScoreControl label={teamName} score={teamScore} accent
           onAdd={(n: number) => setTeamScore(s => Math.max(0, s + n))} />
         <ScoreControl label={opponent || "Opponent"} score={opponentScore}
@@ -1858,9 +1907,13 @@ export default function RecordGame() {
                   Tag some made shots, rebounds, assists, steals or blocks during the game to build a highlight reel.
                 </p>
               ) : highlight?.status === "processing" ? (
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Building your highlight reel… this can take a minute.
-                </p>
+                <div className="space-y-1.5">
+                  <p className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> {highlightStageText}
+                  </p>
+                  <Progress value={highlightProgressPct} />
+                  <p className="text-xs text-muted-foreground">This can take a minute — feel free to keep tapping stats while it builds.</p>
+                </div>
               ) : highlight?.status === "ready" && highlight.highlightObjectPath ? (
                 <div className="space-y-3">
                   <video
@@ -2201,19 +2254,23 @@ function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoM
 }
 
 function ScoreControl({ label, score, onAdd, accent }: { label: string; score: number; onAdd: (n: number) => void; accent?: boolean }) {
+  // Unlike the other in-game controls, this scoreboard is deliberately made
+  // BIGGER (not smaller) on larger tablets: it's what gets read at a glance
+  // while live-streaming and manually calling the score for viewers, so
+  // legibility matters more here than reclaiming screen space.
   return (
-    <div className={`flex-1 min-w-0 flex items-center gap-2 rounded-lg border px-2 py-1.5 tablet-landscape-lg:px-1.5 tablet-landscape-lg:py-1 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
+    <div className={`flex-1 min-w-0 flex items-center gap-2 tablet-landscape-lg:gap-3 rounded-lg border px-2 py-1.5 tablet-landscape-lg:px-3 tablet-landscape-lg:py-2 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
       <div className="min-w-0">
-        <div className="text-[10px] font-bold uppercase tracking-wide truncate text-muted-foreground leading-none">{label}</div>
-        <div className={`font-mono font-bold text-2xl tablet-landscape-lg:text-lg leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
+        <div className="text-[10px] tablet-landscape-lg:text-sm font-bold uppercase tracking-wide truncate text-muted-foreground leading-none">{label}</div>
+        <div className={`font-mono font-bold text-3xl tablet-landscape-lg:text-5xl leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
       </div>
-      <div className="flex items-center gap-0.5 ml-auto shrink-0">
-        <Button variant="ghost" size="sm" className="h-7 w-6 tablet-landscape-lg:h-6 tablet-landscape-lg:w-5 p-0" onClick={() => onAdd(-1)}>
-          <Minus className="w-3.5 h-3.5 tablet-landscape-lg:w-3 tablet-landscape-lg:h-3" />
+      <div className="flex items-center gap-0.5 tablet-landscape-lg:gap-1.5 ml-auto shrink-0">
+        <Button variant="ghost" size="sm" className="h-8 w-7 tablet-landscape-lg:h-11 tablet-landscape-lg:w-10 p-0" onClick={() => onAdd(-1)}>
+          <Minus className="w-4 h-4 tablet-landscape-lg:w-5 tablet-landscape-lg:h-5" />
         </Button>
-        <Button variant="secondary" size="sm" className="h-7 w-7 tablet-landscape-lg:h-6 tablet-landscape-lg:w-6 p-0 text-xs tablet-landscape-lg:text-[10px] font-bold" onClick={() => onAdd(1)}>+1</Button>
-        <Button variant="secondary" size="sm" className="h-7 w-7 tablet-landscape-lg:h-6 tablet-landscape-lg:w-6 p-0 text-xs tablet-landscape-lg:text-[10px] font-bold" onClick={() => onAdd(2)}>+2</Button>
-        <Button variant="secondary" size="sm" className="h-7 w-7 tablet-landscape-lg:h-6 tablet-landscape-lg:w-6 p-0 text-xs tablet-landscape-lg:text-[10px] font-bold" onClick={() => onAdd(3)}>+3</Button>
+        <Button variant="secondary" size="sm" className="h-8 w-8 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-sm tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(1)}>+1</Button>
+        <Button variant="secondary" size="sm" className="h-8 w-8 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-sm tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(2)}>+2</Button>
+        <Button variant="secondary" size="sm" className="h-8 w-8 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-sm tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(3)}>+3</Button>
       </div>
     </div>
   );

@@ -1004,6 +1004,11 @@ components:
           enum: [idle, processing, ready, failed]
         highlightObjectPath: { type: string, nullable: true }
         error: { type: string, nullable: true }
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the current/most-recent generation run started — used by the client to estimate progress while status is "processing".
         eligibleMoments:
           type: integer
           description: Number of qualifying moments (made shots, rebounds, assists, steals, blocks).

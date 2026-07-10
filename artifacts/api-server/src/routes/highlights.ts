@@ -58,6 +58,7 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       status: normalizeStatus(highlightStatus),
       highlightObjectPath: game.highlightObjectPath ?? null,
       error: highlightError ?? null,
+      startedAt: isStale ? null : (game.highlightStartedAt?.toISOString() ?? null),
       eligibleMoments,
     }),
   );
@@ -99,14 +100,16 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
     game.highlightStatus === "processing" && Date.now() - startedAtMs > STALE_PROCESSING_MS;
   const alreadyRunning =
     inFlight.has(gameId) || (game.highlightStatus === "processing" && !staleProcessing);
+  let startedAt = game.highlightStartedAt;
   if (!alreadyRunning) {
     inFlight.add(gameId);
+    startedAt = new Date();
     await db
       .update(gamesTable)
       .set({
         highlightStatus: "processing",
         highlightError: null,
-        highlightStartedAt: new Date(),
+        highlightStartedAt: startedAt,
       })
       .where(eq(gamesTable.id, gameId));
 
@@ -121,6 +124,7 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       status: "processing",
       highlightObjectPath: game.highlightObjectPath ?? null,
       error: null,
+      startedAt: startedAt?.toISOString() ?? null,
       eligibleMoments,
     }),
   );

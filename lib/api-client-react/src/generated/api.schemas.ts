@@ -378,6 +378,8 @@ export interface HighlightStatus {
   status: HighlightStatusStatus;
   highlightObjectPath?: string | null;
   error?: string | null;
+  /** When the current/most-recent generation run started — used by the client to estimate progress while status is "processing". */
+  startedAt?: string | null;
   /** Number of qualifying moments (made shots, rebounds, assists, steals, blocks). */
   eligibleMoments: number;
 }
