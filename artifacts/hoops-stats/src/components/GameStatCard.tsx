@@ -135,18 +135,20 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
           </span>
         </div>
 
-        {/* Player + Game info — centered */}
+        {/* Player + Game info — 3-column: [spacer][center][badge] */}
         <div
           style={{
-            position: "relative",
             padding: "14px 20px 12px",
             borderBottom: `1px solid ${BORDER}`,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
             flexShrink: 0,
           }}
         >
+          {/* Left spacer — mirrors badge width so center column stays truly centered */}
+          <div style={{ width: 72, flexShrink: 0 }} />
+
+          {/* Center: player name + game info */}
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
             <div
               style={{
@@ -170,6 +172,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 justifyContent: "center",
                 gap: 6,
                 flexWrap: "wrap",
+                textAlign: "center",
               }}
             >
               <span>{teamName}</span>
@@ -179,11 +182,12 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
               <span>{dateStr}</span>
             </div>
           </div>
-          {/* Result badge */}
+
+          {/* Right: result badge — normal flow, no absolute */}
           <div
             style={{
-              position: "absolute",
-              right: 20,
+              width: 72,
+              flexShrink: 0,
               display: "flex",
               flexDirection: "column",
               alignItems: "flex-end",
@@ -196,15 +200,15 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 border: `1px solid ${isWin ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
                 color: isWin ? GREEN : RED,
                 fontWeight: 800,
-                fontSize: 15,
+                fontSize: 14,
                 borderRadius: 8,
-                padding: "4px 12px",
+                padding: "4px 10px",
                 letterSpacing: 0.5,
               }}
             >
               {isWin ? "WIN" : "LOSS"}
             </div>
-            <div style={{ color: TEXT_DIM, fontSize: 12, fontWeight: 600 }}>
+            <div style={{ color: TEXT_DIM, fontSize: 11, fontWeight: 600 }}>
               {teamScore}–{opponentScore}
             </div>
           </div>
@@ -235,7 +239,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 color: ORANGE,
                 fontSize: 64,
                 fontWeight: 900,
-                lineHeight: 1,
+                lineHeight: 1.15,
                 letterSpacing: -3,
               }}
             >
@@ -248,7 +252,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 700,
                 letterSpacing: 2,
                 textTransform: "uppercase",
-                marginTop: 8,
+                marginTop: 16,
               }}
             >
               POINTS
