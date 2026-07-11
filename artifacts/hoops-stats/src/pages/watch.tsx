@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw } from "lucide-react";
+import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2 } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
@@ -104,6 +104,27 @@ export default function WatchStream() {
   const [screenIsPortrait, setScreenIsPortrait] = useState<boolean | null>(null);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [rotateTipDismissed, setRotateTipDismissed] = useState(false);
+  const [fillMode, setFillMode] = useState(false);
+  const [viewportSize, setViewportSize] = useState<{ w: number; h: number }>({
+    w: typeof window !== "undefined" ? window.innerWidth : 375,
+    h: typeof window !== "undefined" ? window.innerHeight : 812,
+  });
+
+  useEffect(() => {
+    const onResize = () => setViewportSize({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Pixels of black letterbox at the top when video is object-contain.
+  // Used to push the scoreboard pill into the black area so it doesn't
+  // sit on top of actual court content.
+  const letterboxTopPx = videoNativeSize && !fillMode
+    ? (() => {
+        const scale = Math.min(viewportSize.w / videoNativeSize.width, viewportSize.h / videoNativeSize.height);
+        return Math.max(0, (viewportSize.h - videoNativeSize.height * scale) / 2);
+      })()
+    : 0;
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -419,7 +440,7 @@ export default function WatchStream() {
           playsInline
           muted={muted}
           onLoadedMetadata={handleLoadedMetadata}
-          className={`w-full h-full object-contain ${state === "live" ? "" : "invisible"}`}
+          className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${state === "live" ? "" : "invisible"}`}
         />
       </div>
 
@@ -455,7 +476,7 @@ export default function WatchStream() {
         // beyond its own small footprint.
         <div
           className="absolute top-0 left-0 right-0 flex justify-center px-3 pointer-events-none"
-          style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+          style={{ paddingTop: `calc(max(${Math.round(letterboxTopPx)}px, env(safe-area-inset-top)) + 0.75rem)` }}
         >
           <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-black/80 px-4 py-2 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.65)]">
             <span className="font-display font-bold uppercase tracking-wide text-white text-sm md:text-base truncate max-w-[26vw] text-right leading-none">
@@ -490,7 +511,7 @@ export default function WatchStream() {
 
       {state === "live" && (
         <div
-          className="absolute left-3 flex items-center gap-2"
+          className="absolute left-3 right-3 flex items-center gap-2"
           style={{ bottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
         >
           <button
@@ -500,6 +521,20 @@ export default function WatchStream() {
             {shareStatus === "copied"
               ? <><Check className="w-4 h-4 text-green-400" /> Copied!</>
               : <><Share2 className="w-4 h-4" /> Share</>}
+          </button>
+          <button
+            onClick={() => {
+              setFillMode(prev => {
+                if (!prev) resetZoom();
+                return !prev;
+              });
+            }}
+            className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors"
+            title={fillMode ? "Show full frame" : "Fill screen"}
+          >
+            {fillMode
+              ? <><Minimize2 className="w-4 h-4" /> Fit</>
+              : <><Maximize2 className="w-4 h-4" /> Fill</>}
           </button>
         </div>
       )}

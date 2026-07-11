@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home, BarChart2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -333,6 +333,7 @@ export default function RecordGame() {
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
   const audiencePreviewRef = useRef<HTMLVideoElement | null>(null);
   const [showAudiencePip, setShowAudiencePip] = useState(true);
+  const [showQuickStats, setShowQuickStats] = useState(false);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -2495,6 +2496,34 @@ export default function RecordGame() {
               </button>
             )}
 
+            {/* Quick stats overlay — compact per-player totals visible during recording */}
+            {showQuickStats && selectedPlayerIds.length > 0 && (
+              <div className="absolute top-3 left-3 z-20 bg-black/80 backdrop-blur-sm rounded-xl p-2.5 text-white min-w-[170px] max-w-[220px]">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-white/50">Live Stats</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickStats(false)}
+                    className="text-white/40 hover:text-white/80 text-xs leading-none ml-2"
+                    aria-label="Close stats"
+                  >✕</button>
+                </div>
+                {selectedPlayerIds.map(pid => {
+                  const player = players?.find(p => p.id === pid);
+                  const s = stats[pid];
+                  if (!player || !s) return null;
+                  const pts = s.ftMade + 2 * s.twoMade + 3 * s.threeMade;
+                  return (
+                    <div key={pid} className="flex items-center gap-2 py-1 border-b border-white/10 last:border-0">
+                      <span className="text-xs font-semibold flex-1 truncate">{player.name}</span>
+                      <span className="text-primary font-bold text-sm tabular-nums">{pts}<span className="text-[10px] font-normal text-white/40">p</span></span>
+                      <span className="text-[10px] text-white/55 tabular-nums">{s.rebounds}r {s.assists}a {s.steals}s</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="absolute bottom-0 left-0 right-0 flex flex-wrap items-center justify-center gap-2 p-3">
               <Button variant="destructive" onClick={stopRecording}>
                 <Square className="w-4 h-4 mr-2" /> Stop
@@ -2518,6 +2547,18 @@ export default function RecordGame() {
               {(isLive || isReconnectingLive) && (
                 <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={stopGoingLive}>
                   <Radio className="w-4 h-4 mr-2 text-red-500 animate-pulse" /> End Live
+                </Button>
+              )}
+              {selectedPlayerIds.length > 0 && (
+                <Button
+                  variant="secondary"
+                  className={showQuickStats
+                    ? "bg-primary/20 text-primary hover:bg-primary/30 border border-primary/40"
+                    : "bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0"}
+                  onClick={() => setShowQuickStats(prev => !prev)}
+                >
+                  <BarChart2 className="w-4 h-4 mr-2" />
+                  Stats
                 </Button>
               )}
             </div>
