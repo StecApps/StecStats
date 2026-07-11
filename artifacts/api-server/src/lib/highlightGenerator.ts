@@ -18,8 +18,8 @@ const objectStorageService = new ObjectStorageService();
 const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 
 // Seconds of footage kept before and after each qualifying moment.
-const PRE_SECONDS = 10;
-const POST_SECONDS = 10;
+const PRE_SECONDS = 20;
+const POST_SECONDS = 20;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
 
