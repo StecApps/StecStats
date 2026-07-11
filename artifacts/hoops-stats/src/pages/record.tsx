@@ -2447,9 +2447,15 @@ export default function RecordGame() {
               <Button variant="destructive" onClick={stopRecording}>
                 <Square className="w-4 h-4 mr-2" /> Stop
               </Button>
-              <Button variant="secondary" className={`bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0 ${micMuted ? "ring-1 ring-red-500/70" : ""}`} onClick={toggleMic}>
-                {micMuted ? <MicOff className="w-4 h-4 mr-2 text-red-400" /> : <Mic className="w-4 h-4 mr-2" />}
-                {micMuted ? "Muted" : "Mic"}
+              <Button
+                variant="secondary"
+                className={micMuted
+                  ? "bg-red-600 text-white hover:bg-red-700 border-0 font-bold"
+                  : "bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0"}
+                onClick={toggleMic}
+              >
+                {micMuted ? <MicOff className="w-4 h-4 mr-2" /> : <Mic className="w-4 h-4 mr-2" />}
+                {micMuted ? "Mic Off" : "Mic"}
               </Button>
               {!isLive && !isReconnectingLive && (
                 <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive}>

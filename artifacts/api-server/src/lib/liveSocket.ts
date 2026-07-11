@@ -39,6 +39,26 @@ export function attachLiveSocketServer(upgradeEmitter: {
   });
 
   wss.on("connection", (ws: WebSocket) => {
+    // Keep the signaling socket alive through idle periods (e.g. no stat taps,
+    // no new viewers). Mobile networks and reverse-proxy idle-timeouts typically
+    // kill TCP connections after 60-90 s of silence. Sending a WebSocket-level
+    // ping every 25 s ensures continuous traffic; browsers respond with a pong
+    // frame automatically (no client code required). If a pong is not received
+    // before the next ping, the socket is already dead and gets terminated so
+    // the server can clean up its viewer/broadcaster slot promptly.
+    let isAlive = true;
+    ws.on("pong", () => { isAlive = true; });
+    const pingInterval = setInterval(() => {
+      if (!isAlive) {
+        ws.terminate();
+        clearInterval(pingInterval);
+        return;
+      }
+      isAlive = false;
+      try { ws.ping(); } catch { /* socket already closing */ }
+    }, 25_000);
+    ws.on("close", () => clearInterval(pingInterval));
+
     let role: "broadcaster" | "viewer" | null = null;
     let sessionCode: string | null = null;
     let viewerId: string | null = null;

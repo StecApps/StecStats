@@ -89,10 +89,17 @@ export default function WatchStream() {
   const attachStream = () => {
     const v = videoRef.current;
     const stream = remoteStreamRef.current;
-    if (v && stream && v.srcObject !== stream) {
-      v.srcObject = stream;
+    if (!v || !stream || v.srcObject === stream) return;
+    v.srcObject = stream;
+    v.play().catch(() => {
+      // Play was rejected — most commonly iOS Safari blocking unmuted
+      // autoplay on a programmatic call after a stream reconnect. Fall back
+      // to muted play so the video keeps running, then restore the "Tap for
+      // sound" overlay so the viewer has a clear path back to audio.
+      v.muted = true;
+      setMuted(true);
       v.play().catch(() => {});
-    }
+    });
   };
 
   const handleLoadedMetadata = () => {
