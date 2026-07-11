@@ -1,11 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { useListPlayers, useCreateCheckoutSession } from "@workspace/api-client-react";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,100 @@ import WatchStream from "@/pages/watch";
 import Layout from "@/components/layout";
 
 const queryClient = new QueryClient();
+
+// Shown while we're doing the initial connectivity check
+function AppLoadingScreen() {
+  return (
+    <div style={{
+      minHeight: "100dvh", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      background: "hsl(20,12%,7%)", gap: 16,
+    }}>
+      <div style={{
+        width: 48, height: 48, background: "hsl(15,100%,55%)", borderRadius: 12,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontWeight: 900, fontSize: 24, color: "#fff",
+      }}>S</div>
+      <Loader2 style={{ width: 24, height: 24, color: "hsl(15,100%,55%)", animation: "spin 1s linear infinite" }} />
+    </div>
+  );
+}
+
+// Shown when the API is unreachable (server restarting after a deploy, etc.)
+function ReconnectScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      style={{
+        minHeight: "100dvh", display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        background: "hsl(20,12%,7%)", gap: 20, padding: "0 24px",
+        textAlign: "center",
+      }}
+      onClick={onRetry}
+    >
+      <div style={{
+        width: 56, height: 56, background: "hsl(15,100%,55%)", borderRadius: 14,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontWeight: 900, fontSize: 28, color: "#fff",
+      }}>S</div>
+      <div>
+        <p style={{ color: "hsl(0,0%,98%)", fontWeight: 700, fontSize: 18, margin: "0 0 6px" }}>
+          STEC STATS
+        </p>
+        <p style={{ color: "hsl(24,6%,70%)", fontSize: 14, margin: 0 }}>
+          Reconnecting…
+        </p>
+      </div>
+      <Loader2 style={{ width: 28, height: 28, color: "hsl(15,100%,55%)", animation: "spin 1s linear infinite" }} />
+      <button
+        onClick={(e) => { e.stopPropagation(); onRetry(); }}
+        style={{
+          marginTop: 8, display: "flex", alignItems: "center", gap: 8,
+          background: "hsl(15,100%,55%)", color: "#fff",
+          border: "none", borderRadius: 10, padding: "12px 28px",
+          fontWeight: 700, fontSize: 16, cursor: "pointer",
+        }}
+      >
+        <RefreshCw style={{ width: 18, height: 18 }} />
+        Tap to reload
+      </button>
+      <p style={{ color: "hsl(24,6%,50%)", fontSize: 12, margin: 0 }}>
+        Also retrying automatically…
+      </p>
+    </div>
+  );
+}
+
+function ServerReadinessGate({ children }: { children: React.ReactNode }) {
+  const [status, setStatus] = useState<"checking" | "ready" | "unreachable">("checking");
+
+  const check = useCallback(async () => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5000);
+    try {
+      await fetch("/api", { signal: ctrl.signal });
+      setStatus("ready");
+    } catch {
+      setStatus("unreachable");
+    } finally {
+      clearTimeout(timer);
+    }
+  }, []);
+
+  // Initial check on mount
+  useEffect(() => { check(); }, [check]);
+
+  // Auto-retry every 4 s while unreachable
+  useEffect(() => {
+    if (status !== "unreachable") return;
+    const t = setInterval(check, 4000);
+    return () => clearInterval(t);
+  }, [status, check]);
+
+  if (status === "checking") return <AppLoadingScreen />;
+  if (status === "unreachable") return <ReconnectScreen onRetry={() => window.location.reload()} />;
+  return <>{children}</>;
+}
 
 // REQUIRED — copy verbatim. Resolves the key from window.location.hostname so the
 // same build serves multiple Clerk custom domains. Do not inline the env var, leave
@@ -275,9 +369,11 @@ function ClerkProviderWithRoutes() {
 
 function App() {
   return (
-    <WouterRouter base={basePath}>
-      <ClerkProviderWithRoutes />
-    </WouterRouter>
+    <ServerReadinessGate>
+      <WouterRouter base={basePath}>
+        <ClerkProviderWithRoutes />
+      </WouterRouter>
+    </ServerReadinessGate>
   );
 }
 
