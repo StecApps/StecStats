@@ -191,6 +191,9 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 borderRadius: 8,
                 padding: "4px 14px",
                 letterSpacing: 0.5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
               {isWin ? "WIN" : "LOSS"}
@@ -234,6 +237,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 letterSpacing: 2,
                 textTransform: "uppercase",
                 marginTop: 4,
+                paddingLeft: 2,
               }}
             >
               POINTS
