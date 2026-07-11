@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2 } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
@@ -105,26 +105,34 @@ export default function WatchStream() {
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [rotateTipDismissed, setRotateTipDismissed] = useState(false);
   const [fillMode, setFillMode] = useState(false);
-  const [viewportSize, setViewportSize] = useState<{ w: number; h: number }>({
-    w: typeof window !== "undefined" ? window.innerWidth : 375,
-    h: typeof window !== "undefined" ? window.innerHeight : 812,
-  });
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 375, h: 812 });
 
+  // Use ResizeObserver on the actual container so the measurement is
+  // accurate on iOS Safari where window.innerHeight doesn't match the
+  // visible area due to browser chrome (URL bar, tab bar, etc.).
   useEffect(() => {
-    const onResize = () => setViewportSize({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      setContainerSize({ w: width, h: height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
-  // Pixels of black letterbox at the top when video is object-contain.
-  // Used to push the scoreboard pill into the black area so it doesn't
-  // sit on top of actual court content.
-  const letterboxTopPx = videoNativeSize && !fillMode
-    ? (() => {
-        const scale = Math.min(viewportSize.w / videoNativeSize.width, viewportSize.h / videoNativeSize.height);
-        return Math.max(0, (viewportSize.h - videoNativeSize.height * scale) / 2);
-      })()
-    : 0;
+  // Compute how many px of black bar sit on each axis when the video is
+  // object-contain inside the container. Both values are 0 when the video
+  // aspect ratio matches the container (one axis will always be 0).
+  const { letterboxTop, letterboxLeft } = useMemo(() => {
+    if (!videoNativeSize || fillMode) return { letterboxTop: 0, letterboxLeft: 0 };
+    const scale = Math.min(containerSize.w / videoNativeSize.width, containerSize.h / videoNativeSize.height);
+    return {
+      letterboxTop: Math.max(0, (containerSize.h - videoNativeSize.height * scale) / 2),
+      letterboxLeft: Math.max(0, (containerSize.w - videoNativeSize.width * scale) / 2),
+    };
+  }, [videoNativeSize, containerSize, fillMode]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -422,6 +430,7 @@ export default function WatchStream() {
 
   return (
     <div
+      ref={containerRef}
       className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden"
       style={{ touchAction: "none" }}
       onTouchStart={handleTouchStart}
@@ -464,50 +473,112 @@ export default function WatchStream() {
         </div>
       )}
 
-      {state === "live" && scoreboard && (
-        // Deliberately NOT a full-width gradient wash behind this pill. That
-        // used to paint a large dark band across the top of the frame
-        // regardless of whether the video was letterboxed there or not — on
-        // a viewer whose phone orientation matched the stream (no letterbox),
-        // the band sat directly on top of real court action (e.g. the hoop),
-        // which read as "the scoreboard is on top of the video" and was
-        // distracting. The compact pill below carries its own opaque
-        // background + blur, so it stays legible without darkening anything
-        // beyond its own small footprint.
-        <div
-          className="absolute top-0 left-0 right-0 flex justify-center px-3 pointer-events-none"
-          style={{ paddingTop: `calc(max(${Math.round(letterboxTopPx)}px, env(safe-area-inset-top)) + 0.75rem)` }}
-        >
-          <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-black/80 px-4 py-2 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.65)]">
-            <span className="font-display font-bold uppercase tracking-wide text-white text-sm md:text-base truncate max-w-[26vw] text-right leading-none">
-              {status?.teamName ?? "Team"}
-            </span>
-            <span className="font-display font-bold text-3xl md:text-4xl tabular-nums shrink-0 text-primary leading-none drop-shadow-[0_0_10px_hsl(var(--primary)/0.6)]">
-              {scoreboard.teamScore}<span className="mx-1.5 text-white/40">-</span>{scoreboard.opponentScore}
-            </span>
-            <span className="font-display font-bold uppercase tracking-wide text-white text-sm md:text-base truncate max-w-[26vw] text-left leading-none">
-              {status?.opponent ?? "Opp"}
-            </span>
-            <span className="flex items-center gap-1 rounded-full bg-red-600/90 px-2 py-0.5 text-[10px] font-bold text-white shrink-0 ml-1">
-              <Radio className="w-3 h-3" /> LIVE
-            </span>
-          </div>
-        </div>
-      )}
+      {state === "live" && scoreboard && (() => {
+        // Decide which black bar to anchor the scoreboard in.
+        // Priority: top bar (most legible) → left bar → minimal safe-area strip.
+        // The container div is sized to exactly the available black space so
+        // items-center vertically centers the pill within it.
+        const MIN_BAR = 32; // px — minimum bar size worth using
+        const useTopBar = letterboxTop >= MIN_BAR;
+        const useLeftBar = !useTopBar && letterboxLeft >= 80;
 
-      {state === "live" && statEvents.length > 0 && (
-        <div className="absolute left-2 top-24 flex flex-col gap-1.5 pointer-events-none max-w-[75%]">
-          {statEvents.slice(-4).map((ev) => (
+        if (useLeftBar) {
+          // Portrait video on landscape device: side bars only.
+          // Stack score vertically in the left black bar.
+          return (
             <div
-              key={ev.id}
-              className="flex items-center gap-1.5 rounded-full bg-black/60 backdrop-blur-sm px-3 py-1.5 text-white text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-left-2"
+              className="absolute top-0 bottom-0 left-0 flex flex-col items-center justify-center gap-1 pointer-events-none py-4"
+              style={{ width: `${Math.round(letterboxLeft)}px` }}
             >
-              <span className="text-primary font-bold">{ev.label}</span>
-              <span className="truncate">{ev.playerName}</span>
+              <span className="font-display font-bold text-2xl tabular-nums text-primary leading-none drop-shadow-[0_0_8px_hsl(var(--primary)/0.7)]">
+                {scoreboard.teamScore}
+              </span>
+              <span className="text-white/40 text-xs font-bold leading-none">vs</span>
+              <span className="font-display font-bold text-2xl tabular-nums text-white leading-none">
+                {scoreboard.opponentScore}
+              </span>
+              <span className="mt-1 flex items-center gap-0.5 rounded-full bg-red-600/90 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                <Radio className="w-2.5 h-2.5" /> LIVE
+              </span>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        }
+
+        // Top bar (or minimal strip when no bar at all).
+        const barHeight = useTopBar
+          ? Math.round(letterboxTop)
+          : 0; // 0 → wrapper uses safe-area padding only
+        return (
+          <div
+            className="absolute top-0 left-0 right-0 flex justify-center items-center pointer-events-none"
+            style={useTopBar
+              ? { height: `${barHeight}px` }
+              : { paddingTop: "env(safe-area-inset-top)", paddingBottom: "0.5rem" }}
+          >
+            {/* Compact score pill — deliberately smaller than the old design
+                so it never crowds the actual video content. */}
+            <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-black/85 px-3 py-1.5 backdrop-blur-md shadow-[0_4px_20px_rgba(0,0,0,0.65)]">
+              <span className="font-display font-bold uppercase tracking-wide text-white/90 text-xs truncate max-w-[22vw] text-right leading-none">
+                {(status?.teamName ?? "Team").slice(0, 12)}
+              </span>
+              <span className="font-display font-bold text-xl tabular-nums shrink-0 text-primary leading-none drop-shadow-[0_0_8px_hsl(var(--primary)/0.6)]">
+                {scoreboard.teamScore}<span className="mx-1 text-white/35 text-base">-</span>{scoreboard.opponentScore}
+              </span>
+              <span className="font-display font-bold uppercase tracking-wide text-white/90 text-xs truncate max-w-[22vw] text-left leading-none">
+                {(status?.opponent ?? "Opp").slice(0, 12)}
+              </span>
+              <span className="flex items-center gap-0.5 rounded-full bg-red-600/90 px-1.5 py-0.5 text-[9px] font-bold text-white shrink-0 ml-0.5">
+                <Radio className="w-2.5 h-2.5" /> LIVE
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {state === "live" && statEvents.length > 0 && (() => {
+        // Mirror the scoreboard logic: put stat pills in whichever black bar
+        // is available so they never land on top of court action.
+        const MIN_LEFT_BAR = 80;
+        const inLeftBar = letterboxLeft >= MIN_LEFT_BAR;
+        const inTopBar = !inLeftBar && letterboxTop >= 32;
+
+        const style: React.CSSProperties = inLeftBar
+          ? {
+              // Stack inside the left side bar, below any overlapping controls
+              left: 4,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: Math.round(letterboxLeft) - 8,
+              maxWidth: Math.round(letterboxLeft) - 8,
+            }
+          : inTopBar
+          ? {
+              // Below the scoreboard in the top bar
+              left: 8,
+              top: Math.round(letterboxTop) + 4,
+              maxWidth: "90%",
+            }
+          : {
+              // No good black space — float just inside the top of the video
+              left: 8,
+              top: 64,
+              maxWidth: "75%",
+            };
+
+        return (
+          <div className="absolute flex flex-col gap-1 pointer-events-none" style={style}>
+            {statEvents.slice(-4).map((ev) => (
+              <div
+                key={ev.id}
+                className="flex items-center gap-1 rounded-full bg-black/70 backdrop-blur-sm px-2.5 py-1 text-white text-[11px] font-semibold shadow-md animate-in fade-in slide-in-from-left-2"
+              >
+                <span className="text-primary font-bold">{ev.label}</span>
+                <span className="truncate">{ev.playerName}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {state === "live" && (
         <div
