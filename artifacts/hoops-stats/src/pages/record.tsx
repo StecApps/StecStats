@@ -117,6 +117,7 @@ async function uploadVideoBlob(blob: Blob, onProgress?: (pct: number) => void): 
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", uploadURL);
     xhr.setRequestHeader("Content-Type", blob.type || "video/webm");
+    xhr.timeout = 90 * 60 * 1000; // 90-minute ceiling — enough for any game recording
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) {
         onProgress(Math.round((e.loaded / e.total) * 100));
@@ -124,9 +125,10 @@ async function uploadVideoBlob(blob: Blob, onProgress?: (pct: number) => void): 
     };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error("Failed to upload video"));
+      else reject(new Error(`Upload failed (${xhr.status})`));
     };
-    xhr.onerror = () => reject(new Error("Failed to upload video"));
+    xhr.onerror = () => reject(new Error("Network error during upload — check your connection and try again"));
+    xhr.ontimeout = () => reject(new Error("Upload timed out — video may be too large for your current connection"));
     xhr.send(blob);
   });
 
@@ -303,6 +305,7 @@ export default function RecordGame() {
   const [isRecording, setIsRecording] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedPreviewUrl, setRecordedPreviewUrl] = useState<string | null>(null);
+  const [isAssemblingBlob, setIsAssemblingBlob] = useState(false);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -1821,12 +1824,16 @@ export default function RecordGame() {
 
     let blobToUpload = recordedBlob;
     if (isRecording) {
+      setIsAssemblingBlob(true);
       blobToUpload = await stopRecordingAsync();
+      setIsAssemblingBlob(false);
     } else if (!blobToUpload && blobAssemblyPromiseRef.current) {
       // The user pressed Stop then Save quickly — the onstop callback
       // is still assembling chunks from IndexedDB.  Await its promise so
       // we don't save the game with a null videoObjectPath.
+      setIsAssemblingBlob(true);
       blobToUpload = await blobAssemblyPromiseRef.current;
+      setIsAssemblingBlob(false);
     }
 
     const isWin = teamScore > opponentScore;
@@ -1841,6 +1848,7 @@ export default function RecordGame() {
         videoObjectPath = await uploadVideoBlob(blobToUpload, setUploadProgress);
       } catch (err) {
         setIsUploadingVideo(false);
+        savingRef.current = false;
         toast({ title: "Error uploading video", description: "The game was not saved. Try again.", variant: "destructive" });
         return;
       }
@@ -2200,6 +2208,14 @@ export default function RecordGame() {
             </div>
           )}
 
+          {isAssemblingBlob && (
+            <div className="max-w-md space-y-1.5">
+              <p className="text-sm text-muted-foreground flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Preparing video…
+              </p>
+            </div>
+          )}
+
           {isUploadingVideo && (
             <div className="max-w-md space-y-1.5">
               <p className="text-sm text-muted-foreground flex items-center gap-2">
@@ -2298,7 +2314,7 @@ export default function RecordGame() {
             <span className="mx-2 text-muted-foreground">-</span>
             <span>{opponentScore}</span>
           </div>
-          <Button size="lg" className="font-display text-xl uppercase tracking-wider px-12 h-14" onClick={handleSave} disabled={createGame.isPending || updateGame.isPending}>
+          <Button size="lg" className="font-display text-xl uppercase tracking-wider px-12 h-14" onClick={handleSave} disabled={createGame.isPending || updateGame.isPending || isAssemblingBlob || isUploadingVideo}>
             {(createGame.isPending || updateGame.isPending) && <Loader2 className="w-5 h-5 mr-2 animate-spin" />}
             Save Game
           </Button>
