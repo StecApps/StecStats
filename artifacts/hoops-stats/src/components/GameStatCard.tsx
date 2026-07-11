@@ -189,11 +189,9 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 800,
                 fontSize: 14,
                 borderRadius: 8,
-                padding: "4px 14px",
+                padding: "6px 14px 4px",
                 letterSpacing: 0.5,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                lineHeight: 1,
               }}
             >
               {isWin ? "WIN" : "LOSS"}
@@ -216,8 +214,10 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
             gap: 12,
           }}
         >
-          {/* Points */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          {/* Points — use textAlign:center on a fixed-width block so that
+              letter-spacing on both the number and the label don't skew
+              the flex-column bounding-box calculations against each other */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", width: "100%" }}>
             <div
               style={{
                 color: ORANGE,
@@ -225,6 +225,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 900,
                 lineHeight: 1.15,
                 letterSpacing: -3,
+                textAlign: "center",
               }}
             >
               {stat.points}
@@ -237,7 +238,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 letterSpacing: 2,
                 textTransform: "uppercase",
                 marginTop: 4,
-                paddingLeft: 2,
+                textAlign: "center",
               }}
             >
               POINTS
