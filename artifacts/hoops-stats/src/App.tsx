@@ -23,25 +23,15 @@ import Layout from "@/components/layout";
 
 const queryClient = new QueryClient();
 
-// Catches any unhandled React render error and shows the reload screen
-// instead of leaving the user on a blank page (critical for PWA users who
-// have no browser refresh button).
-class AppErrorBoundary extends Component<
-  { children: ReactNode },
-  { crashed: boolean }
-> {
-  constructor(props: { children: ReactNode }) {
-    super(props);
-    this.state = { crashed: false };
-  }
-  static getDerivedStateFromError() { return { crashed: true }; }
-  componentDidCatch(_err: Error, _info: ErrorInfo) {}
-  render() {
-    if (this.state.crashed) {
-      return <ReconnectScreen onRetry={() => window.location.reload()} />;
-    }
-    return this.props.children;
-  }
+// Shared logo mark used by all full-screen fallback screens
+function LogoMark() {
+  return (
+    <div style={{
+      width: 56, height: 56, background: "hsl(15,100%,55%)", borderRadius: 14,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontWeight: 900, fontSize: 28, color: "#fff",
+    }}>S</div>
+  );
 }
 
 // Shown while we're doing the initial connectivity check
@@ -52,44 +42,33 @@ function AppLoadingScreen() {
       alignItems: "center", justifyContent: "center",
       background: "hsl(20,12%,7%)", gap: 16,
     }}>
-      <div style={{
-        width: 48, height: 48, background: "hsl(15,100%,55%)", borderRadius: 12,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontWeight: 900, fontSize: 24, color: "#fff",
-      }}>S</div>
+      <LogoMark />
       <Loader2 style={{ width: 24, height: 24, color: "hsl(15,100%,55%)", animation: "spin 1s linear infinite" }} />
     </div>
   );
 }
 
-// Shown when the API is unreachable (server restarting after a deploy, etc.)
-function ReconnectScreen({ onRetry }: { onRetry: () => void }) {
+// Shown when the API is unreachable — gate screen (server not ready yet)
+function ServerWaitScreen({ onRetry }: { onRetry: () => void }) {
   return (
-    <div
-      style={{
-        minHeight: "100dvh", display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        background: "hsl(20,12%,7%)", gap: 20, padding: "0 24px",
-        textAlign: "center",
-      }}
-      onClick={onRetry}
-    >
-      <div style={{
-        width: 56, height: 56, background: "hsl(15,100%,55%)", borderRadius: 14,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontWeight: 900, fontSize: 28, color: "#fff",
-      }}>S</div>
+    <div style={{
+      minHeight: "100dvh", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      background: "hsl(20,12%,7%)", gap: 20, padding: "0 24px",
+      textAlign: "center",
+    }}>
+      <LogoMark />
       <div>
         <p style={{ color: "hsl(0,0%,98%)", fontWeight: 700, fontSize: 18, margin: "0 0 6px" }}>
           STEC STATS
         </p>
         <p style={{ color: "hsl(24,6%,70%)", fontSize: 14, margin: 0 }}>
-          Reconnecting…
+          Server starting up…
         </p>
       </div>
       <Loader2 style={{ width: 28, height: 28, color: "hsl(15,100%,55%)", animation: "spin 1s linear infinite" }} />
       <button
-        onClick={(e) => { e.stopPropagation(); onRetry(); }}
+        onClick={onRetry}
         style={{
           marginTop: 8, display: "flex", alignItems: "center", gap: 8,
           background: "hsl(15,100%,55%)", color: "#fff",
@@ -98,13 +77,77 @@ function ReconnectScreen({ onRetry }: { onRetry: () => void }) {
         }}
       >
         <RefreshCw style={{ width: 18, height: 18 }} />
-        Tap to reload
+        Try again
       </button>
       <p style={{ color: "hsl(24,6%,50%)", fontSize: 12, margin: 0 }}>
-        Also retrying automatically…
+        Retrying automatically every few seconds…
       </p>
     </div>
   );
+}
+
+// Shown when the React tree crashes — error boundary screen
+function AppCrashScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div style={{
+      minHeight: "100dvh", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      background: "hsl(20,12%,7%)", gap: 20, padding: "0 24px",
+      textAlign: "center",
+    }}>
+      <LogoMark />
+      <div>
+        <p style={{ color: "hsl(0,0%,98%)", fontWeight: 700, fontSize: 18, margin: "0 0 6px" }}>
+          Something went wrong
+        </p>
+        <p style={{ color: "hsl(24,6%,70%)", fontSize: 14, margin: 0 }}>
+          Tap below to try again
+        </p>
+      </div>
+      <button
+        onClick={onRetry}
+        style={{
+          marginTop: 8, display: "flex", alignItems: "center", gap: 8,
+          background: "hsl(15,100%,55%)", color: "#fff",
+          border: "none", borderRadius: 10, padding: "12px 28px",
+          fontWeight: 700, fontSize: 16, cursor: "pointer",
+        }}
+      >
+        <RefreshCw style={{ width: 18, height: 18 }} />
+        Try again
+      </button>
+    </div>
+  );
+}
+
+class AppErrorBoundary extends Component<
+  { children: ReactNode },
+  { crashed: boolean; attempts: number }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { crashed: false, attempts: 0 };
+  }
+  static getDerivedStateFromError() { return { crashed: true }; }
+  componentDidCatch(err: Error, _info: ErrorInfo) {
+    // Persist the last crash message so we can diagnose it remotely
+    try {
+      localStorage.setItem("__stec_last_crash", `${err.name}: ${err.message}`);
+    } catch {}
+  }
+  handleRetry = () => {
+    // Reset the boundary WITHOUT a hard page reload.
+    // Incrementing `attempts` changes the key on the children wrapper,
+    // which forces React to fully remount the subtree cleanly.
+    this.setState(s => ({ crashed: false, attempts: s.attempts + 1 }));
+  };
+  render() {
+    if (this.state.crashed) {
+      return <AppCrashScreen onRetry={this.handleRetry} />;
+    }
+    // key forces a full remount of children after each retry
+    return <div key={this.state.attempts} style={{ display: "contents" }}>{this.props.children}</div>;
+  }
 }
 
 function ServerReadinessGate({ children }: { children: React.ReactNode }) {
@@ -149,7 +192,7 @@ function ServerReadinessGate({ children }: { children: React.ReactNode }) {
   }, [check]);
 
   if (status === "checking") return <AppLoadingScreen />;
-  if (status === "unreachable") return <ReconnectScreen onRetry={softRetry} />;
+  if (status === "unreachable") return <ServerWaitScreen onRetry={softRetry} />;
   return <>{children}</>;
 }
 
