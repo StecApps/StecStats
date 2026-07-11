@@ -140,8 +140,16 @@ function ServerReadinessGate({ children }: { children: React.ReactNode }) {
     return () => clearInterval(t);
   }, [status, check]);
 
+  // Soft retry: reset to "checking" and immediately re-ping.
+  // Do NOT hard-reload (window.location.reload) — that replays the full
+  // cold-start race and keeps the user stuck in a loop.
+  const softRetry = useCallback(() => {
+    setStatus("checking");
+    check();
+  }, [check]);
+
   if (status === "checking") return <AppLoadingScreen />;
-  if (status === "unreachable") return <ReconnectScreen onRetry={() => window.location.reload()} />;
+  if (status === "unreachable") return <ReconnectScreen onRetry={softRetry} />;
   return <>{children}</>;
 }
 
