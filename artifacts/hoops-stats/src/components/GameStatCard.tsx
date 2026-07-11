@@ -138,11 +138,12 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
         {/* Player + Game info — centered */}
         <div
           style={{
-            padding: "14px 72px 12px",
+            position: "relative",
+            padding: "14px 20px 12px",
             borderBottom: `1px solid ${BORDER}`,
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "center",
             flexShrink: 0,
           }}
         >
@@ -247,7 +248,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 700,
                 letterSpacing: 2,
                 textTransform: "uppercase",
-                marginTop: 2,
+                marginTop: 8,
               }}
             >
               POINTS
