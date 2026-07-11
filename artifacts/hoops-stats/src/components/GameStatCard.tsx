@@ -70,7 +70,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
         ref={ref}
         style={{
           width: 600,
-          height: 400,
+          height: 420,
           background: BG,
           fontFamily: "system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif",
           display: "flex",
@@ -80,7 +80,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
           border: `1px solid ${BORDER}`,
         }}
       >
-        {/* Header */}
+        {/* Header — fully centered */}
         <div
           style={{
             background: SURFACE,
@@ -88,7 +88,8 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
             padding: "12px 20px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "center",
+            gap: 16,
             flexShrink: 0,
           }}
         >
@@ -122,6 +123,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
               STEC STATS
             </span>
           </div>
+          <span style={{ color: BORDER, fontSize: 14 }}>·</span>
           <span
             style={{
               color: TEXT_DIM,
@@ -135,65 +137,50 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
           </span>
         </div>
 
-        {/* Player + Game info — 3-column: [spacer][center][badge] */}
+        {/* Player + Game info + Result — all centered */}
         <div
           style={{
-            padding: "14px 20px 12px",
+            padding: "16px 20px 14px",
             borderBottom: `1px solid ${BORDER}`,
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
+            gap: 6,
             flexShrink: 0,
           }}
         >
-          {/* Left spacer — mirrors badge width so center column stays truly centered */}
-          <div style={{ width: 72, flexShrink: 0 }} />
-
-          {/* Center: player name + game info */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div
-              style={{
-                color: TEXT_MAIN,
-                fontSize: 22,
-                fontWeight: 800,
-                letterSpacing: -0.5,
-                lineHeight: 1.1,
-                textAlign: "center",
-              }}
-            >
-              {playerName}
-            </div>
-            <div
-              style={{
-                color: TEXT_MID,
-                fontSize: 12,
-                marginTop: 5,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                flexWrap: "wrap",
-                textAlign: "center",
-              }}
-            >
-              <span>{teamName}</span>
-              <span style={{ color: BORDER }}>·</span>
-              <span>vs {opponent}</span>
-              <span style={{ color: BORDER }}>·</span>
-              <span>{dateStr}</span>
-            </div>
-          </div>
-
-          {/* Right: result badge — normal flow, no absolute */}
           <div
             style={{
-              width: 72,
-              flexShrink: 0,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: 2,
+              color: TEXT_MAIN,
+              fontSize: 22,
+              fontWeight: 800,
+              letterSpacing: -0.5,
+              lineHeight: 1.1,
+              textAlign: "center",
             }}
           >
+            {playerName}
+          </div>
+          <div
+            style={{
+              color: TEXT_MID,
+              fontSize: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              flexWrap: "wrap",
+              textAlign: "center",
+            }}
+          >
+            <span>{teamName}</span>
+            <span style={{ color: BORDER }}>·</span>
+            <span>vs {opponent}</span>
+            <span style={{ color: BORDER }}>·</span>
+            <span>{dateStr}</span>
+          </div>
+          {/* Result badge — centered */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
             <div
               style={{
                 background: isWin ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
@@ -202,15 +189,15 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 800,
                 fontSize: 14,
                 borderRadius: 8,
-                padding: "4px 10px",
+                padding: "4px 14px",
                 letterSpacing: 0.5,
               }}
             >
               {isWin ? "WIN" : "LOSS"}
             </div>
-            <div style={{ color: TEXT_DIM, fontSize: 11, fontWeight: 600 }}>
+            <span style={{ color: TEXT_DIM, fontSize: 12, fontWeight: 600 }}>
               {teamScore}–{opponentScore}
-            </div>
+            </span>
           </div>
         </div>
 
@@ -222,18 +209,12 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            padding: "12px 20px 0",
-            gap: 14,
+            padding: "10px 20px 0",
+            gap: 12,
           }}
         >
-          {/* Points — centered */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-            }}
-          >
+          {/* Points */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
             <div
               style={{
                 color: ORANGE,
@@ -252,7 +233,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 700,
                 letterSpacing: 2,
                 textTransform: "uppercase",
-                marginTop: 16,
+                marginTop: 4,
               }}
             >
               POINTS
@@ -262,23 +243,12 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
           {/* Divider */}
           <div style={{ width: "100%", height: 1, background: BORDER }} />
 
-          {/* Secondary stats — centered row */}
-          <div
-            style={{
-              display: "flex",
-              width: "100%",
-              justifyContent: "center",
-            }}
-          >
+          {/* Secondary stats */}
+          <div style={{ display: "flex", width: "100%" }}>
             {secondaryStats.map(({ value, label }) => (
               <div
                 key={label}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                }}
+                style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}
               >
                 <div
                   style={{
@@ -307,7 +277,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
             ))}
           </div>
 
-          {/* Shooting stats — centered row */}
+          {/* Shooting stats */}
           <div
             style={{
               display: "flex",
@@ -342,7 +312,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
           </div>
         </div>
 
-        {/* Footer — centered */}
+        {/* Footer */}
         <div
           style={{
             padding: "10px 20px",
