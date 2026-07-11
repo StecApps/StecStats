@@ -333,6 +333,11 @@ export default function RecordGame() {
   const streamRef = useRef<MediaStream | null>(null);
   const chunkSeqRef = useRef(0);
   const recordingSessionIdRef = useRef<string | null>(null);
+  // Captures the async blob-assembly promise started by stopRecording() so
+  // that handleSave() can await it if the user taps Save before onstop has
+  // finished reading chunks out of IndexedDB.  Without this, recordedBlob
+  // is still null when handleSave runs and the game is saved without video.
+  const blobAssemblyPromiseRef = useRef<Promise<Blob | null> | null>(null);
   const recordingStartRef = useRef<number>(0);
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -1428,7 +1433,27 @@ export default function RecordGame() {
   };
 
   const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      const mimeType = recorder.mimeType;
+      const sessionId = recordingSessionIdRef.current;
+      // Store the assembly promise so handleSave() can await it when the
+      // user taps Save before onstop has finished reading from IndexedDB.
+      blobAssemblyPromiseRef.current = new Promise<Blob | null>((resolve) => {
+        recorder.onstop = () => {
+          getOrderedChunks(sessionId ?? "")
+            .then((chunks) => {
+              const blob = new Blob(chunks, { type: mimeType });
+              setRecordedBlob(blob);
+              setRecordedPreviewUrl(URL.createObjectURL(blob));
+              resolve(blob);
+            })
+            .catch(() => resolve(null))
+            .finally(() => stopMediaPipeline());
+        };
+      });
+      recorder.stop();
+    }
     setIsRecording(false);
     if (isLive) {
       stopGoingLive();
@@ -1792,6 +1817,11 @@ export default function RecordGame() {
     let blobToUpload = recordedBlob;
     if (isRecording) {
       blobToUpload = await stopRecordingAsync();
+    } else if (!blobToUpload && blobAssemblyPromiseRef.current) {
+      // The user pressed Stop then Save quickly — the onstop callback
+      // is still assembling chunks from IndexedDB.  Await its promise so
+      // we don't save the game with a null videoObjectPath.
+      blobToUpload = await blobAssemblyPromiseRef.current;
     }
 
     const isWin = teamScore > opponentScore;
@@ -2524,32 +2554,37 @@ function ScoreControl({ label, score, onAdd, accent }: { label: string; score: n
   // while live-streaming and manually calling the score for viewers, so
   // legibility matters more here than reclaiming screen space.
   //
-  // On phones these buttons used to be the hardest thing to tap on the whole
-  // recording screen — a dedicated "-1" button plus +1/+2/+3 were squeezed
-  // into a ~32px row inside a narrow flex-1 box (worst for the opponent's
-  // box, which sits top-right). We drop the separate "-1" button and reuse
-  // the app's existing long-press-to-undo convention (see StatCounter's
-  // onContextMenu) on "+1" instead, which frees enough width to make the
-  // three remaining buttons meaningfully bigger on mobile, not just at the
-  // tablet-landscape-lg breakpoint.
+  // Now that the score boxes are stacked vertically (one per row) in the
+  // tablet-landscape panel, each box has the full column width — enough room
+  // to bring back a visible −1 correction button without squeezing the +1/+2/+3
+  // targets.  The −1 button is styled ghost/muted so it reads as secondary to
+  // the add buttons, making it clear it's a correction, not a scoring action.
   return (
-    <div className={`flex-1 min-w-0 flex items-center gap-1.5 tablet-landscape-lg:gap-3 rounded-lg border px-2 py-1.5 tablet-landscape-lg:px-3 tablet-landscape-lg:py-2 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
+    <div className={`flex-1 min-w-0 flex items-center gap-1.5 tablet-landscape-lg:gap-2 rounded-lg border px-2 py-1.5 tablet-landscape-lg:px-3 tablet-landscape-lg:py-2 ${accent ? "bg-primary/5 border-primary/20" : "bg-muted/20"}`}>
       <div className="min-w-0">
         <div className="text-[10px] tablet-landscape-lg:text-sm font-bold uppercase tracking-wide truncate text-muted-foreground leading-none">{label}</div>
         <div className={`font-mono font-bold text-2xl tablet-landscape-lg:text-5xl leading-tight ${accent ? "text-primary" : ""}`}>{score}</div>
       </div>
       <div className="flex items-center gap-1 tablet-landscape-lg:gap-1.5 ml-auto shrink-0">
         <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 w-9 p-0 text-sm font-bold text-muted-foreground border border-dashed border-muted-foreground/30 hover:text-destructive hover:border-destructive/40"
+          onClick={() => onAdd(-1)}
+          title="Subtract 1 (correct a mistake)"
+        >
+          −1
+        </Button>
+        <Button
           variant="secondary"
           size="sm"
-          className="h-11 w-11 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-base tablet-landscape-lg:text-base font-bold"
+          className="h-11 w-11 p-0 text-base font-bold"
           onClick={() => onAdd(1)}
-          onContextMenu={(e) => { e.preventDefault(); onAdd(-1); }}
         >
           +1
         </Button>
-        <Button variant="secondary" size="sm" className="h-11 w-11 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-base tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(2)}>+2</Button>
-        <Button variant="secondary" size="sm" className="h-11 w-11 tablet-landscape-lg:h-11 tablet-landscape-lg:w-11 p-0 text-base tablet-landscape-lg:text-base font-bold" onClick={() => onAdd(3)}>+3</Button>
+        <Button variant="secondary" size="sm" className="h-11 w-11 p-0 text-base font-bold" onClick={() => onAdd(2)}>+2</Button>
+        <Button variant="secondary" size="sm" className="h-11 w-11 p-0 text-base font-bold" onClick={() => onAdd(3)}>+3</Button>
       </div>
     </div>
   );

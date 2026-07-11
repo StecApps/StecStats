@@ -425,10 +425,14 @@ export default function WatchStream() {
       {state === "live" && muted && (
         <button
           onClick={unmute}
-          className="absolute right-3 flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80"
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
+          className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40 backdrop-blur-sm z-10"
+          aria-label="Tap to unmute"
         >
-          <VolumeX className="w-4 h-4" /> Tap for sound
+          <div className="flex flex-col items-center gap-3 rounded-2xl bg-black/70 px-8 py-6 text-white backdrop-blur-md">
+            <VolumeX className="w-10 h-10 text-white/80" />
+            <span className="text-xl font-bold">Tap for sound</span>
+            <span className="text-sm text-white/60">Browsers mute live video by default</span>
+          </div>
         </button>
       )}
 
