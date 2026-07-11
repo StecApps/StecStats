@@ -74,7 +74,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center">
               <Link href="/dashboard" className="mr-6 flex items-center space-x-2">
                 <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-display text-2xl">
-                  <span style={{ marginTop: 4 }}>S</span>
+                  <span style={{ marginTop: 2 }}>S</span>
                 </div>
                 <span className="hidden sm:flex flex-col leading-none">
                   <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
@@ -106,7 +106,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="md:hidden flex w-full justify-between items-center">
             <Link href="/dashboard" className="flex items-center space-x-2">
               <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-display text-2xl">
-                <span style={{ marginTop: 4 }}>S</span>
+                <span style={{ marginTop: 2 }}>S</span>
               </div>
               <span className="flex flex-col leading-none">
                 <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
