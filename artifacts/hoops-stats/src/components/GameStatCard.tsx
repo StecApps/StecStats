@@ -59,10 +59,10 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
     ];
 
     const shootingStats = [
-      { label: "FT", value: `${stat.ftMade}/${stat.ftAttempted}`, pct: pct(stat.ftMade, stat.ftAttempted) },
-      { label: "2PT", value: `${stat.twoMade}/${stat.twoAttempted}`, pct: null },
-      { label: "3PT", value: `${stat.threeMade}/${stat.threeAttempted}`, pct: pct(stat.threeMade, stat.threeAttempted) },
-      { label: "FG%", value: pct(fgMade, fgAttempted), pct: null },
+      { label: "FT", value: `${stat.ftMade}/${stat.ftAttempted}`, sub: pct(stat.ftMade, stat.ftAttempted) },
+      { label: "2PT", value: `${stat.twoMade}/${stat.twoAttempted}`, sub: null },
+      { label: "3PT", value: `${stat.threeMade}/${stat.threeAttempted}`, sub: pct(stat.threeMade, stat.threeAttempted) },
+      { label: "FG%", value: pct(fgMade, fgAttempted), sub: null },
     ];
 
     return (
@@ -70,7 +70,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
         ref={ref}
         style={{
           width: 600,
-          height: 360,
+          height: 400,
           background: BG,
           fontFamily: "system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif",
           display: "flex",
@@ -89,6 +89,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
+            flexShrink: 0,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -134,17 +135,18 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
           </span>
         </div>
 
-        {/* Player + Game info */}
+        {/* Player + Game info — centered */}
         <div
           style={{
-            padding: "16px 20px 12px",
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
+            padding: "14px 72px 12px",
             borderBottom: `1px solid ${BORDER}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexShrink: 0,
           }}
         >
-          <div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
             <div
               style={{
                 color: TEXT_MAIN,
@@ -152,6 +154,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 800,
                 letterSpacing: -0.5,
                 lineHeight: 1.1,
+                textAlign: "center",
               }}
             >
               {playerName}
@@ -160,10 +163,12 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
               style={{
                 color: TEXT_MID,
                 fontSize: 12,
-                marginTop: 4,
+                marginTop: 5,
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: 6,
+                flexWrap: "wrap",
               }}
             >
               <span>{teamName}</span>
@@ -176,6 +181,8 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
           {/* Result badge */}
           <div
             style={{
+              position: "absolute",
+              right: 20,
               display: "flex",
               flexDirection: "column",
               alignItems: "flex-end",
@@ -202,26 +209,24 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
           </div>
         </div>
 
-        {/* Stats body */}
+        {/* Stats body — fully centered */}
         <div
           style={{
             flex: 1,
             display: "flex",
-            padding: "14px 20px 0",
-            gap: 0,
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "12px 20px 0",
+            gap: 14,
           }}
         >
-          {/* Points hero */}
+          {/* Points — centered */}
           <div
             style={{
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              paddingRight: 24,
-              marginRight: 24,
-              borderRight: `1px solid ${BORDER}`,
-              minWidth: 100,
             }}
           >
             <div
@@ -242,109 +247,104 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 700,
                 letterSpacing: 2,
                 textTransform: "uppercase",
-                marginTop: 4,
+                marginTop: 2,
               }}
             >
               POINTS
             </div>
           </div>
 
-          {/* Secondary stats */}
+          {/* Divider */}
+          <div style={{ width: "100%", height: 1, background: BORDER }} />
+
+          {/* Secondary stats — centered row */}
           <div
             style={{
-              flex: 1,
               display: "flex",
-              flexDirection: "column",
+              width: "100%",
               justifyContent: "center",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                gap: 0,
-                marginBottom: 16,
-              }}
-            >
-              {secondaryStats.map(({ value, label }) => (
+            {secondaryStats.map(({ value, label }) => (
+              <div
+                key={label}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                }}
+              >
                 <div
-                  key={label}
                   style={{
-                    flex: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
+                    color: TEXT_MAIN,
+                    fontSize: 28,
+                    fontWeight: 800,
+                    lineHeight: 1,
+                    letterSpacing: -1,
                   }}
                 >
-                  <div
-                    style={{
-                      color: TEXT_MAIN,
-                      fontSize: 28,
-                      fontWeight: 800,
-                      lineHeight: 1,
-                      letterSpacing: -1,
-                    }}
-                  >
-                    {value}
-                  </div>
-                  <div
-                    style={{
-                      color: TEXT_DIM,
-                      fontSize: 10,
-                      fontWeight: 700,
-                      letterSpacing: 1.5,
-                      textTransform: "uppercase",
-                      marginTop: 3,
-                    }}
-                  >
-                    {label}
-                  </div>
+                  {value}
                 </div>
-              ))}
-            </div>
+                <div
+                  style={{
+                    color: TEXT_DIM,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: 1.5,
+                    textTransform: "uppercase",
+                    marginTop: 3,
+                  }}
+                >
+                  {label}
+                </div>
+              </div>
+            ))}
+          </div>
 
-            {/* Shooting line */}
-            <div
-              style={{
-                display: "flex",
-                gap: 0,
-                background: SURFACE,
-                borderRadius: 8,
-                padding: "8px 4px",
-              }}
-            >
-              {shootingStats.map(({ label, value, pct: pctVal }, i) => (
-                <div
-                  key={label}
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    borderRight: i < shootingStats.length - 1 ? `1px solid ${BORDER}` : "none",
-                  }}
-                >
-                  <div style={{ color: TEXT_DIM, fontSize: 9, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase" }}>
-                    {label}
-                  </div>
-                  <div style={{ color: TEXT_MAIN, fontSize: 13, fontWeight: 700, marginTop: 2 }}>
-                    {value}
-                  </div>
-                  {pctVal && (
-                    <div style={{ color: TEXT_MID, fontSize: 10, marginTop: 1 }}>{pctVal}</div>
-                  )}
+          {/* Shooting stats — centered row */}
+          <div
+            style={{
+              display: "flex",
+              width: "100%",
+              background: SURFACE,
+              borderRadius: 8,
+              padding: "8px 4px",
+            }}
+          >
+            {shootingStats.map(({ label, value, sub }, i) => (
+              <div
+                key={label}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  borderRight: i < shootingStats.length - 1 ? `1px solid ${BORDER}` : "none",
+                }}
+              >
+                <div style={{ color: TEXT_DIM, fontSize: 9, fontWeight: 700, letterSpacing: 1.2, textTransform: "uppercase" }}>
+                  {label}
                 </div>
-              ))}
-            </div>
+                <div style={{ color: TEXT_MAIN, fontSize: 13, fontWeight: 700, marginTop: 2 }}>
+                  {value}
+                </div>
+                {sub && (
+                  <div style={{ color: TEXT_MID, fontSize: 10, marginTop: 1 }}>{sub}</div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer — centered */}
         <div
           style={{
             padding: "10px 20px",
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "center",
             alignItems: "center",
+            flexShrink: 0,
           }}
         >
           <span style={{ color: TEXT_DIM, fontSize: 10, letterSpacing: 1, textTransform: "uppercase" }}>
