@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, Component } from "react";
+import type { ReactNode, ErrorInfo } from "react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
@@ -21,6 +22,27 @@ import WatchStream from "@/pages/watch";
 import Layout from "@/components/layout";
 
 const queryClient = new QueryClient();
+
+// Catches any unhandled React render error and shows the reload screen
+// instead of leaving the user on a blank page (critical for PWA users who
+// have no browser refresh button).
+class AppErrorBoundary extends Component<
+  { children: ReactNode },
+  { crashed: boolean }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { crashed: false };
+  }
+  static getDerivedStateFromError() { return { crashed: true }; }
+  componentDidCatch(_err: Error, _info: ErrorInfo) {}
+  render() {
+    if (this.state.crashed) {
+      return <ReconnectScreen onRetry={() => window.location.reload()} />;
+    }
+    return this.props.children;
+  }
+}
 
 // Shown while we're doing the initial connectivity check
 function AppLoadingScreen() {
@@ -92,8 +114,15 @@ function ServerReadinessGate({ children }: { children: React.ReactNode }) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 5000);
     try {
-      await fetch("/api", { signal: ctrl.signal });
-      setStatus("ready");
+      const res = await fetch("/api", { signal: ctrl.signal });
+      // Treat 5xx as not-yet-ready (server booting / migration race).
+      // fetch() only throws on network errors, NOT on HTTP errors, so we
+      // must check the status manually. 404 from Fastify = server is up.
+      if (res.status < 500) {
+        setStatus("ready");
+      } else {
+        setStatus("unreachable");
+      }
     } catch {
       setStatus("unreachable");
     } finally {
@@ -369,11 +398,13 @@ function ClerkProviderWithRoutes() {
 
 function App() {
   return (
-    <ServerReadinessGate>
-      <WouterRouter base={basePath}>
-        <ClerkProviderWithRoutes />
-      </WouterRouter>
-    </ServerReadinessGate>
+    <AppErrorBoundary>
+      <ServerReadinessGate>
+        <WouterRouter base={basePath}>
+          <ClerkProviderWithRoutes />
+        </WouterRouter>
+      </ServerReadinessGate>
+    </AppErrorBoundary>
   );
 }
 
