@@ -201,56 +201,6 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
   const [editName, setEditName] = useState(player?.name || "");
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const statCardRef = useRef<HTMLDivElement>(null);
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportGame, setExportGame] = useState<{
-    gameId: number;
-    playerName: string;
-    teamName: string;
-    opponent: string;
-    date: string;
-    result: string;
-    teamScore: number;
-    opponentScore: number;
-    stat: {
-      points: number; rebounds: number; assists: number; steals: number;
-      blocks: number; turnovers: number; ftMade: number; ftAttempted: number;
-      twoMade: number; twoAttempted: number; threeMade: number; threeAttempted: number;
-    };
-  } | null>(null);
-
-  useEffect(() => {
-    if (!exportGame || !statCardRef.current) return;
-    let cancelled = false;
-    const run = async () => {
-      setIsExporting(true);
-      try {
-        const { default: html2canvas } = await import("html2canvas");
-        const canvas = await html2canvas(statCardRef.current!, {
-          scale: 2, useCORS: true, backgroundColor: null, logging: false,
-        });
-        const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
-        if (!blob || cancelled) return;
-        const safeName = (s: string) => s.replace(/[^a-z0-9]/gi, "-").toLowerCase();
-        const filename = `${safeName(exportGame.playerName)}-vs-${safeName(exportGame.opponent)}.png`;
-        const file = new File([blob], filename, { type: "image/png" });
-        if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: `${exportGame.playerName} – Game Stats` });
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url; a.download = filename; a.click();
-          URL.revokeObjectURL(url);
-        }
-      } catch {
-        toast({ title: "Export failed", description: "Could not generate the stat card.", variant: "destructive" });
-      } finally {
-        if (!cancelled) { setIsExporting(false); setExportGame(null); }
-      }
-    };
-    run();
-    return () => { cancelled = true; };
-  }, [exportGame]);
 
   const photoStale = isPhotoStale(player?.photoUpdatedAt);
 
@@ -318,23 +268,6 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Hidden stat card rendered off-screen for html2canvas capture */}
-      <div style={{ position: "fixed", top: -20000, left: -20000, pointerEvents: "none", opacity: 0 }}>
-        {exportGame && (
-          <GameStatCard
-            ref={statCardRef}
-            playerName={exportGame.playerName}
-            teamName={exportGame.teamName}
-            opponent={exportGame.opponent}
-            date={exportGame.date}
-            result={exportGame.result}
-            teamScore={exportGame.teamScore}
-            opponentScore={exportGame.opponentScore}
-            stat={exportGame.stat}
-          />
-        )}
-      </div>
-
       {/* JUMBOTRON HERO */}
       <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/40 px-4 py-10 md:py-14 text-center">
         <div className="pointer-events-none absolute inset-0 [background:radial-gradient(ellipse_55%_75%_at_50%_25%,hsl(var(--primary)/0.28),transparent_70%)]" />
@@ -853,6 +786,57 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
     }
   };
 
+  const statCardRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportGame, setExportGame] = useState<{
+    gameId: number;
+    playerName: string;
+    teamName: string;
+    opponent: string;
+    date: string;
+    result: string;
+    teamScore: number;
+    opponentScore: number;
+    stat: {
+      points: number; rebounds: number; assists: number; steals: number;
+      blocks: number; turnovers: number; ftMade: number; ftAttempted: number;
+      twoMade: number; twoAttempted: number; threeMade: number; threeAttempted: number;
+    };
+  } | null>(null);
+
+  useEffect(() => {
+    if (!exportGame || !statCardRef.current) return;
+    let cancelled = false;
+    const run = async () => {
+      setIsExporting(true);
+      try {
+        const { default: html2canvas } = await import("html2canvas");
+        const canvas = await html2canvas(statCardRef.current!, {
+          scale: 2, useCORS: true, backgroundColor: null, logging: false,
+        });
+        const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
+        if (!blob || cancelled) return;
+        const safeName = (s: string) => s.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+        const filename = `${safeName(exportGame.playerName)}-vs-${safeName(exportGame.opponent)}.png`;
+        const file = new File([blob], filename, { type: "image/png" });
+        if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: `${exportGame.playerName} – Game Stats` });
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = filename; a.click();
+          URL.revokeObjectURL(url);
+        }
+      } catch {
+        toast({ title: "Export failed", description: "Could not generate the stat card.", variant: "destructive" });
+      } finally {
+        if (!cancelled) { setIsExporting(false); setExportGame(null); }
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [exportGame]);
+
   const playerGames = games?.filter(g => g.stats.some(s => s.playerId === playerId)) || [];
 
   const { data: seasonHighlight } = useGetTeamHighlight(team.teamId, {
@@ -898,6 +882,22 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
 
   return (
     <AccordionItem value={team.teamId.toString()} className="border rounded-lg bg-card overflow-hidden">
+      {/* Hidden stat card rendered off-screen for html2canvas capture */}
+      <div style={{ position: "fixed", top: -20000, left: -20000, pointerEvents: "none", opacity: 0 }}>
+        {exportGame && (
+          <GameStatCard
+            ref={statCardRef}
+            playerName={exportGame.playerName}
+            teamName={exportGame.teamName}
+            opponent={exportGame.opponent}
+            date={exportGame.date}
+            result={exportGame.result}
+            teamScore={exportGame.teamScore}
+            opponentScore={exportGame.opponentScore}
+            stat={exportGame.stat}
+          />
+        )}
+      </div>
       <div className="flex items-center justify-between px-4 hover:bg-muted/50 data-[state=open]:bg-muted/50 transition-colors">
         <AccordionTrigger className="py-3 hover:no-underline flex-1">
           <div className="flex items-center gap-4">

@@ -1,7 +1,6 @@
 import { forwardRef } from "react";
 
 interface StatLine {
-  playerName: string;
   points: number;
   rebounds: number;
   assists: number;
