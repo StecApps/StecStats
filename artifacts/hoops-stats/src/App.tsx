@@ -87,7 +87,7 @@ function ServerWaitScreen({ onRetry }: { onRetry: () => void }) {
 }
 
 // Shown when the React tree crashes — error boundary screen
-function AppCrashScreen({ onRetry }: { onRetry: () => void }) {
+function AppCrashScreen({ onRetry, errorMsg }: { onRetry: () => void; errorMsg?: string | null }) {
   return (
     <div style={{
       minHeight: "100dvh", display: "flex", flexDirection: "column",
@@ -103,6 +103,14 @@ function AppCrashScreen({ onRetry }: { onRetry: () => void }) {
         <p style={{ color: "hsl(24,6%,70%)", fontSize: 14, margin: 0 }}>
           Tap below to try again
         </p>
+        {errorMsg && (
+          <p style={{
+            color: "hsl(24,6%,45%)", fontSize: 11, margin: "10px 0 0",
+            fontFamily: "monospace", wordBreak: "break-all", maxWidth: 300,
+          }}>
+            {errorMsg}
+          </p>
+        )}
       </div>
       <button
         onClick={onRetry}
@@ -122,31 +130,26 @@ function AppCrashScreen({ onRetry }: { onRetry: () => void }) {
 
 class AppErrorBoundary extends Component<
   { children: ReactNode },
-  { crashed: boolean; attempts: number }
+  { crashMsg: string | null }
 > {
   constructor(props: { children: ReactNode }) {
     super(props);
-    this.state = { crashed: false, attempts: 0 };
+    this.state = { crashMsg: null };
   }
-  static getDerivedStateFromError() { return { crashed: true }; }
+  static getDerivedStateFromError(err: Error) {
+    return { crashMsg: `${err.name}: ${err.message}` };
+  }
   componentDidCatch(err: Error, _info: ErrorInfo) {
-    // Persist the last crash message so we can diagnose it remotely
-    try {
-      localStorage.setItem("__stec_last_crash", `${err.name}: ${err.message}`);
-    } catch {}
+    try { localStorage.setItem("__stec_last_crash", `${err.name}: ${err.message}`); } catch {}
   }
   handleRetry = () => {
-    // Reset the boundary WITHOUT a hard page reload.
-    // Incrementing `attempts` changes the key on the children wrapper,
-    // which forces React to fully remount the subtree cleanly.
-    this.setState(s => ({ crashed: false, attempts: s.attempts + 1 }));
+    this.setState({ crashMsg: null });
   };
   render() {
-    if (this.state.crashed) {
-      return <AppCrashScreen onRetry={this.handleRetry} />;
+    if (this.state.crashMsg) {
+      return <AppCrashScreen onRetry={this.handleRetry} errorMsg={this.state.crashMsg} />;
     }
-    // key forces a full remount of children after each retry
-    return <div key={this.state.attempts} style={{ display: "contents" }}>{this.props.children}</div>;
+    return this.props.children;
   }
 }
 
