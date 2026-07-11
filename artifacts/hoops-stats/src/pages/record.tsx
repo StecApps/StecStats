@@ -307,6 +307,11 @@ export default function RecordGame() {
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedPreviewUrl, setRecordedPreviewUrl] = useState<string | null>(null);
   const [isAssemblingBlob, setIsAssemblingBlob] = useState(false);
+  const [assemblyStuckSec, setAssemblyStuckSec] = useState(0);
+  const assemblyStuckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Calling this forces the pending assembly race to resolve with null so
+  // handleSave can continue saving stats without waiting for the video blob.
+  const assemblyCancelRef = useRef<(() => void) | null>(null);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -1888,18 +1893,51 @@ export default function RecordGame() {
     }
     savingRef.current = true;
 
+    const startAssembly = () => {
+      setIsAssemblingBlob(true);
+      setAssemblyStuckSec(0);
+      if (assemblyStuckIntervalRef.current) clearInterval(assemblyStuckIntervalRef.current);
+      assemblyStuckIntervalRef.current = setInterval(() => {
+        setAssemblyStuckSec(s => s + 1);
+      }, 1000);
+    };
+    const finishAssembly = () => {
+      setIsAssemblingBlob(false);
+      setAssemblyStuckSec(0);
+      if (assemblyStuckIntervalRef.current) {
+        clearInterval(assemblyStuckIntervalRef.current);
+        assemblyStuckIntervalRef.current = null;
+      }
+    };
+    // Hard 30-second cap: if the MediaRecorder's onstop never fires (e.g.
+    // the browser silently dropped the recording), resolve with null so the
+    // game saves with stats-only rather than hanging forever.
+    // assemblyCancelRef also lets the UI "Skip video" button trigger this early.
+    const assemblyTimeout = <T,>(p: Promise<T>) => {
+      let cancelFn!: () => void;
+      const escape = new Promise<null>(res => {
+        const id = setTimeout(() => res(null), 30_000);
+        cancelFn = () => { clearTimeout(id); res(null); };
+      });
+      assemblyCancelRef.current = cancelFn;
+      return Promise.race([p, escape]).then(r => {
+        assemblyCancelRef.current = null;
+        return r;
+      });
+    };
+
     let blobToUpload = recordedBlob;
     if (isRecording) {
-      setIsAssemblingBlob(true);
-      blobToUpload = await stopRecordingAsync();
-      setIsAssemblingBlob(false);
+      startAssembly();
+      blobToUpload = await assemblyTimeout(stopRecordingAsync());
+      finishAssembly();
     } else if (!blobToUpload && blobAssemblyPromiseRef.current) {
       // The user pressed Stop then Save quickly — the onstop callback
       // is still assembling chunks from IndexedDB.  Await its promise so
       // we don't save the game with a null videoObjectPath.
-      setIsAssemblingBlob(true);
-      blobToUpload = await blobAssemblyPromiseRef.current;
-      setIsAssemblingBlob(false);
+      startAssembly();
+      blobToUpload = await assemblyTimeout(blobAssemblyPromiseRef.current);
+      finishAssembly();
     }
 
     // If the user recorded in multiple segments (halves), concatenate them
@@ -2286,10 +2324,27 @@ export default function RecordGame() {
           )}
 
           {isAssemblingBlob && (
-            <div className="max-w-md space-y-1.5">
+            <div className="max-w-md space-y-2">
               <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Preparing video…
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Preparing video…{assemblyStuckSec > 0 ? ` (${assemblyStuckSec}s)` : ""}
               </p>
+              {assemblyStuckSec >= 10 && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/8 px-3 py-2 space-y-1.5">
+                  <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                    Taking longer than expected. Your stats are safe.
+                  </p>
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-primary underline underline-offset-2 hover:opacity-80"
+                    onClick={() => {
+                      assemblyCancelRef.current?.();
+                    }}
+                  >
+                    Skip video — save stats only
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
