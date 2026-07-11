@@ -27,6 +27,68 @@ export default function WatchStream() {
   const [muted, setMuted] = useState(true);
   const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
 
+  // Pinch-to-zoom / pan / double-tap-reset — all via refs so gesture
+  // handling never triggers a React re-render.
+  const videoWrapRef = useRef<HTMLDivElement | null>(null);
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const pinchStartDistRef = useRef<number | null>(null);
+  const panStartRef = useRef<{ x: number; y: number } | null>(null);
+  const lastTapRef = useRef(0);
+
+  const applyTransform = () => {
+    const el = videoWrapRef.current;
+    if (!el) return;
+    const z = zoomRef.current;
+    const { x, y } = panRef.current;
+    el.style.transform = z === 1 ? "" : `scale(${z}) translate(${x}px,${y}px)`;
+  };
+
+  const resetZoom = () => {
+    zoomRef.current = 1;
+    panRef.current = { x: 0, y: 0 };
+    applyTransform();
+  };
+
+  const pinchDist = (t: React.TouchList) =>
+    Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      pinchStartDistRef.current = pinchDist(e.touches);
+      panStartRef.current = null;
+    } else if (e.touches.length === 1) {
+      pinchStartDistRef.current = null;
+      panStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      const now = Date.now();
+      if (now - lastTapRef.current < 300) resetZoom();
+      lastTapRef.current = now;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchStartDistRef.current !== null) {
+      const newDist = pinchDist(e.touches);
+      const ratio = newDist / pinchStartDistRef.current;
+      zoomRef.current = Math.min(5, Math.max(1, zoomRef.current * ratio));
+      pinchStartDistRef.current = newDist;
+      if (zoomRef.current <= 1) panRef.current = { x: 0, y: 0 };
+      applyTransform();
+    } else if (e.touches.length === 1 && zoomRef.current > 1 && panStartRef.current) {
+      const dx = (e.touches[0].clientX - panStartRef.current.x) / zoomRef.current;
+      const dy = (e.touches[0].clientY - panStartRef.current.y) / zoomRef.current;
+      panRef.current = { x: panRef.current.x + dx, y: panRef.current.y + dy };
+      panStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      applyTransform();
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) pinchStartDistRef.current = null;
+    if (e.touches.length === 0) panStartRef.current = null;
+    if (zoomRef.current <= 1) { zoomRef.current = 1; panRef.current = { x: 0, y: 0 }; applyTransform(); }
+  };
+
   // The broadcaster's video keeps whatever orientation their phone/tablet was
   // in when they hit Record (see camera-canvas-pipeline notes in record.tsx)
   // — it can be portrait OR landscape. A viewer's phone orientation has
@@ -338,15 +400,28 @@ export default function WatchStream() {
   }, [state]);
 
   return (
-    <div className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted={muted}
-        onLoadedMetadata={handleLoadedMetadata}
-        className={`w-full h-full object-contain ${state === "live" ? "" : "invisible"}`}
-      />
+    <div
+      className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden"
+      style={{ touchAction: "none" }}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Zoom wrapper — only this element scales; all overlays stay fixed above it */}
+      <div
+        ref={videoWrapRef}
+        className="w-full h-full flex items-center justify-center will-change-transform"
+        style={{ transformOrigin: "center center" }}
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted={muted}
+          onLoadedMetadata={handleLoadedMetadata}
+          className={`w-full h-full object-contain ${state === "live" ? "" : "invisible"}`}
+        />
+      </div>
 
       {state === "live" && showRotateTip && (
         <div
