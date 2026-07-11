@@ -331,6 +331,8 @@ export default function RecordGame() {
   const recoveryDraftRef = useRef<RecordDraft | null>(null);
 
   const livePreviewRef = useRef<HTMLVideoElement | null>(null);
+  const audiencePreviewRef = useRef<HTMLVideoElement | null>(null);
+  const [showAudiencePip, setShowAudiencePip] = useState(true);
   const playbackRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -705,6 +707,20 @@ export default function RecordGame() {
       livePreviewRef.current.play().catch(() => {});
     }
   }, [isRecording]);
+
+  // Audience PIP: when going live, attach the outgoing stream to the small
+  // picture-in-picture element so the broadcaster sees the same framing
+  // (object-contain, exact aspect ratio) that viewers get.
+  useEffect(() => {
+    const v = audiencePreviewRef.current;
+    if (!v) return;
+    if (isLive && streamRef.current) {
+      if (v.srcObject !== streamRef.current) v.srcObject = streamRef.current;
+      v.play().catch(() => {});
+    } else {
+      v.srcObject = null;
+    }
+  }, [isLive]);
 
   useEffect(() => {
     if (!isRecording) return;
@@ -2442,6 +2458,42 @@ export default function RecordGame() {
                 </div>
               )}
             </div>
+
+            {/* Audience-view PIP: shows the outgoing stream with object-contain
+                (the same framing viewers see) so the broadcaster knows exactly
+                how their shot is cropped on the other side. */}
+            {isLive && showAudiencePip && (
+              <div className="absolute bottom-16 right-3 z-20 flex flex-col gap-0.5">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[10px] font-bold text-white/70 uppercase tracking-widest">Audience view</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAudiencePip(false)}
+                    className="text-white/50 hover:text-white/90 text-base leading-none px-1"
+                    aria-label="Hide audience view"
+                  >✕</button>
+                </div>
+                <div className="w-32 aspect-video rounded-md overflow-hidden border border-white/20 bg-black shadow-lg">
+                  <video
+                    ref={audiencePreviewRef}
+                    muted
+                    playsInline
+                    autoPlay
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              </div>
+            )}
+
+            {isLive && !showAudiencePip && (
+              <button
+                type="button"
+                onClick={() => setShowAudiencePip(true)}
+                className="absolute bottom-16 right-3 z-20 text-[10px] font-semibold text-white/60 bg-black/50 rounded px-2 py-1 backdrop-blur-sm hover:text-white/90"
+              >
+                Audience view
+              </button>
+            )}
 
             <div className="absolute bottom-0 left-0 right-0 flex flex-wrap items-center justify-center gap-2 p-3">
               <Button variant="destructive" onClick={stopRecording}>
