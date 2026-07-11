@@ -1527,6 +1527,13 @@ export default function RecordGame() {
     const mimeType = recorder.mimeType;
     const sessionId = recordingSessionIdRef.current ?? "";
 
+    // Remember the wall-clock time just before we stop the recorder.
+    // The gap (splitStart → newRecorder.start) is dead time that must NOT
+    // appear as video time in the concatenated clip; we compensate by
+    // advancing recordingStartRef so `Date.now() - recordingStartRef.current`
+    // equals the actual playback position in the final concatenated video.
+    const splitStart = Date.now();
+
     // Flush this segment — custom onstop so we skip stopMediaPipeline
     const blob = await new Promise<Blob | null>((resolve) => {
       recorder.onstop = () => {
@@ -1559,6 +1566,13 @@ export default function RecordGame() {
     };
     mediaRecorderRef.current = newRecorder;
     newRecorder.start(3000);
+
+    // Advance the recording reference clock by the gap consumed by the split
+    // so that timestamps for 2nd-half stats map to the correct position in
+    // the concatenated video (1st half + 2nd half with no dead-time gap).
+    const gapMs = Date.now() - splitStart;
+    recordingStartRef.current += gapMs;
+
     // Camera stays alive; isRecording stays true; stats/score preserved
   };
 

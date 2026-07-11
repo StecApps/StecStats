@@ -122,7 +122,13 @@ function buildSegments(
 ): Segment[] {
   const segments: Segment[] = [];
   for (const e of eligible) {
-    const t = Math.min(Math.max(e.videoTimestampMs / 1000, 0), duration);
+    const tSec = e.videoTimestampMs / 1000;
+    // Skip events beyond the video's duration — the recording ended before
+    // this play happened (e.g. the browser stopped writing chunks early).
+    // Clamping to `duration` would silently map every out-of-range event to
+    // the last frame and produce a garbage highlight of pre-game footage.
+    if (tSec <= 0 || tSec >= duration) continue;
+    const t = tSec;
     const start = Math.max(0, t - PRE_SECONDS);
     const end = Math.min(duration, t + POST_SECONDS);
     if (end - start < 0.5) continue;
