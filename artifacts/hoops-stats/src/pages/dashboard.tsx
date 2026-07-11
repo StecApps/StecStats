@@ -27,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -932,6 +932,15 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
                       <TableCell className="text-right">{stat.blocks}</TableCell>
                       <TableCell className="text-right opacity-100 md:opacity-60 md:group-hover:opacity-100 transition-opacity">
                         <div className="flex items-center justify-end gap-1">
+                          {game.videoObjectPath ? (
+                            <span title="Footage saved" className="inline-flex items-center justify-center h-8 w-8 text-green-500">
+                              <Video className="h-4 w-4" />
+                            </span>
+                          ) : (
+                            <span title="No footage" className="inline-flex items-center justify-center h-8 w-8 text-muted-foreground/30">
+                              <Video className="h-4 w-4" />
+                            </span>
+                          )}
                           {isPro ? (
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-primary" title="Game Highlight Reel" asChild>
                               <Link href={`/record/${game.id}`}><Film className="h-4 w-4" /></Link>

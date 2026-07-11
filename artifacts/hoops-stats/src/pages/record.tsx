@@ -338,6 +338,8 @@ export default function RecordGame() {
   // finished reading chunks out of IndexedDB.  Without this, recordedBlob
   // is still null when handleSave runs and the game is saved without video.
   const blobAssemblyPromiseRef = useRef<Promise<Blob | null> | null>(null);
+  const didAttemptRecordingRef = useRef(false);
+  const didDiscardVideoRef = useRef(false);
   const recordingStartRef = useRef<number>(0);
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -1282,6 +1284,8 @@ export default function RecordGame() {
   };
 
   const startRecording = async () => {
+    didAttemptRecordingRef.current = true;
+    didDiscardVideoRef.current = false;
     setCameraError(null);
     try {
       let rawStream = await navigator.mediaDevices.getUserMedia({
@@ -1486,6 +1490,7 @@ export default function RecordGame() {
   };
 
   const discardVideo = () => {
+    didDiscardVideoRef.current = true;
     if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
     setRecordedPreviewUrl(null);
     setRecordedBlob(null);
@@ -1857,10 +1862,24 @@ export default function RecordGame() {
     try {
       if (isEditing) {
         await updateGame.mutateAsync({ gameId: gameId as number, data: payload });
-        toast({ title: "Game updated" });
       } else {
         await createGame.mutateAsync({ data: payload });
-        toast({ title: "Game recorded" });
+      }
+
+      const videoWasExpectedButMissing =
+        didAttemptRecordingRef.current &&
+        !didDiscardVideoRef.current &&
+        !videoObjectPath;
+
+      if (videoWasExpectedButMissing) {
+        toast({
+          title: isEditing ? "Game updated — no video saved" : "Game saved — no video",
+          description: "Your stats were saved, but the recording wasn't captured. Open this game to try uploading it again.",
+          variant: "destructive",
+          duration: 8000,
+        });
+      } else {
+        toast({ title: isEditing ? "Game updated" : "Game recorded" });
       }
       
       selectedPlayerIds.forEach(pid => {
