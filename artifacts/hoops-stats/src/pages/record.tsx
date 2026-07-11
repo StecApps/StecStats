@@ -303,6 +303,7 @@ export default function RecordGame() {
   const [existingVideoObjectPath, setExistingVideoObjectPath] = useState<string | null>(null);
   const [events, setEvents] = useState<GameEventEntry[]>([]);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordedSegments, setRecordedSegments] = useState<Blob[]>([]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedPreviewUrl, setRecordedPreviewUrl] = useState<string | null>(null);
   const [isAssemblingBlob, setIsAssemblingBlob] = useState(false);
@@ -1509,11 +1510,59 @@ export default function RecordGame() {
     });
   };
 
+  // Split the current recording into a new segment WITHOUT stopping the
+  // camera. The MediaRecorder is stopped (so its chunks are flushed to
+  // IndexedDB and assembled into a Blob), then a fresh MediaRecorder is
+  // started on the same live stream. Score, stats, and events are preserved.
+  const splitRecording = async () => {
+    const recorder = mediaRecorderRef.current;
+    const stream = streamRef.current;
+    if (!recorder || recorder.state !== "recording" || !stream) return;
+
+    const mimeType = recorder.mimeType;
+    const sessionId = recordingSessionIdRef.current ?? "";
+
+    // Flush this segment — custom onstop so we skip stopMediaPipeline
+    const blob = await new Promise<Blob | null>((resolve) => {
+      recorder.onstop = () => {
+        getOrderedChunks(sessionId)
+          .then(chunks => {
+            const b = new Blob(chunks, { type: mimeType });
+            deleteSession(sessionId).catch(() => {});
+            resolve(b);
+          })
+          .catch(() => resolve(null));
+      };
+      recorder.stop();
+    });
+
+    if (blob) setRecordedSegments(prev => [...prev, blob]);
+
+    // Fresh recorder session on the same (still-live) camera stream
+    chunkSeqRef.current = 0;
+    const newSessionId = createRecordingSessionId();
+    recordingSessionIdRef.current = newSessionId;
+    blobAssemblyPromiseRef.current = null;
+
+    const newRecorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 4_000_000,
+      audioBitsPerSecond: 128_000,
+    });
+    newRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) saveChunk(newSessionId, chunkSeqRef.current++, e.data).catch(() => {});
+    };
+    mediaRecorderRef.current = newRecorder;
+    newRecorder.start(3000);
+    // Camera stays alive; isRecording stays true; stats/score preserved
+  };
+
   const discardVideo = () => {
     didDiscardVideoRef.current = true;
     if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
     setRecordedPreviewUrl(null);
     setRecordedBlob(null);
+    setRecordedSegments([]);
     setExistingVideoObjectPath(null);
     setEvents([]);
     if (recordingSessionIdRef.current) {
@@ -1851,6 +1900,17 @@ export default function RecordGame() {
       setIsAssemblingBlob(true);
       blobToUpload = await blobAssemblyPromiseRef.current;
       setIsAssemblingBlob(false);
+    }
+
+    // If the user recorded in multiple segments (halves), concatenate them
+    // all into one blob before uploading. WebM blobs concatenate cleanly for
+    // playback even though seeking into the second half won't be frame-accurate.
+    if (recordedSegments.length > 0) {
+      const allParts = [...recordedSegments, ...(blobToUpload ? [blobToUpload] : [])];
+      if (allParts.length > 0) {
+        const mimeType = (blobToUpload ?? recordedSegments[0]).type || "video/webm";
+        blobToUpload = new Blob(allParts, { type: mimeType });
+      }
     }
 
     const isWin = teamScore > opponentScore;
@@ -2397,6 +2457,9 @@ export default function RecordGame() {
                 <span className="flex items-center gap-2 text-sm font-semibold text-white bg-black/50 rounded-full px-3 py-1 backdrop-blur-sm">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
                   {formatMs(elapsedMs)}
+                  {recordedSegments.length > 0 && (
+                    <span className="text-primary text-xs font-bold tabular-nums">H{recordedSegments.length + 1}</span>
+                  )}
                 </span>
                 {isLive && liveCode && (
                   <div className="flex flex-col gap-1 rounded-lg bg-black/50 px-3 py-2 backdrop-blur-sm text-white max-w-[70vw]">
@@ -2527,6 +2590,15 @@ export default function RecordGame() {
             <div className="absolute bottom-0 left-0 right-0 flex flex-wrap items-center justify-center gap-2 p-3">
               <Button variant="destructive" onClick={stopRecording}>
                 <Square className="w-4 h-4 mr-2" /> Stop
+              </Button>
+              <Button
+                variant="secondary"
+                className="bg-amber-700/80 text-white hover:bg-amber-800 border-0 font-semibold"
+                onClick={splitRecording}
+                title="Save this half and immediately start recording the next one"
+              >
+                <Circle className="w-3.5 h-3.5 mr-1.5 text-amber-300" />
+                {recordedSegments.length === 0 ? "Start 2nd Half" : `Start Half ${recordedSegments.length + 2}`}
               </Button>
               <Button
                 variant="secondary"

@@ -25,6 +25,7 @@ export default function WatchStream() {
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const [muted, setMuted] = useState(true);
+  const userUnmutedRef = useRef(false); // tracks if the viewer explicitly tapped to unmute
   const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
 
   // Pinch-to-zoom / pan / double-tap-reset — all via refs so gesture
@@ -182,6 +183,12 @@ export default function WatchStream() {
     const stream = remoteStreamRef.current;
     if (!v || !stream || v.srcObject === stream) return;
     v.srcObject = stream;
+    // If the viewer already explicitly tapped to unmute, restore that state
+    // on reconnect — browsers allow unmuted play after a prior user gesture.
+    if (userUnmutedRef.current) {
+      v.muted = false;
+      setMuted(false);
+    }
     v.play().catch(() => {
       // Play was rejected — most commonly iOS Safari blocking unmuted
       // autoplay on a programmatic call after a stream reconnect. Fall back
@@ -203,6 +210,7 @@ export default function WatchStream() {
   const dismissRotateTip = () => setRotateTipDismissed(true);
 
   const unmute = () => {
+    userUnmutedRef.current = true;
     const v = videoRef.current;
     if (v) {
       v.muted = false;
