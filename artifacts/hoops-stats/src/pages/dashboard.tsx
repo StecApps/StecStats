@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { GameStatCard } from "@/components/GameStatCard";
 import { 
   useListPlayers, 
@@ -28,7 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -201,6 +201,12 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
   const [editName, setEditName] = useState(player?.name || "");
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>([]);
+  const toggleTeamSelection = useCallback((teamId: number) => {
+    setSelectedTeamIds(prev =>
+      prev.includes(teamId) ? prev.filter(id => id !== teamId) : [...prev, teamId]
+    );
+  }, []);
 
   const photoStale = isPhotoStale(player?.photoUpdatedAt);
 
@@ -511,11 +517,29 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
             </CardContent>
           </Card>
         ) : (
-          <Accordion type="multiple" className="space-y-4">
-            {teams.map(team => (
-              <TeamGamesAccordionItem key={team.teamId} team={team} playerId={playerId} isPro={isPro} />
-            ))}
-          </Accordion>
+          <>
+            {selectedTeamIds.length > 0 && (
+              <CombinedSeasonsSummary
+                selectedTeamIds={selectedTeamIds}
+                playerId={playerId}
+                allTeams={teams}
+                onClear={() => setSelectedTeamIds([])}
+                isPro={isPro}
+              />
+            )}
+            <Accordion type="multiple" className="space-y-4">
+              {teams.map(team => (
+                <TeamGamesAccordionItem
+                  key={team.teamId}
+                  team={team}
+                  playerId={playerId}
+                  isPro={isPro}
+                  selected={selectedTeamIds.includes(team.teamId)}
+                  onToggleSelect={() => toggleTeamSelection(team.teamId)}
+                />
+              ))}
+            </Accordion>
+          </>
         )}
       </div>
     </div>
@@ -624,6 +648,178 @@ function GaugeCard({ label, value, made, attempted }: { label: string, value: nu
 
 function pct(made: number, attempted: number) {
   return attempted > 0 ? `${((made / attempted) * 100).toFixed(1)}%` : "—";
+}
+
+function computeSeasonStats(games: any[], playerId: number) {
+  let wins = 0, losses = 0, pts = 0, reb = 0, ast = 0, stl = 0, blk = 0, to = 0;
+  let ftM = 0, ftA = 0, twM = 0, twA = 0, thM = 0, thA = 0;
+  for (const game of games) {
+    const stat = game.stats?.find((s: any) => s.playerId === playerId);
+    if (!stat) continue;
+    if (game.result === "W") wins++; else losses++;
+    pts += stat.points ?? 0;
+    reb += stat.rebounds ?? 0; ast += stat.assists ?? 0;
+    stl += stat.steals ?? 0; blk += stat.blocks ?? 0; to += stat.turnovers ?? 0;
+    ftM += stat.ftMade ?? 0; ftA += stat.ftAttempted ?? 0;
+    twM += stat.twoMade ?? 0; twA += stat.twoAttempted ?? 0;
+    thM += stat.threeMade ?? 0; thA += stat.threeAttempted ?? 0;
+  }
+  const gp = wins + losses;
+  const sd = (a: number, b: number) => (b > 0 ? a / b : 0);
+  const fgM = twM + thM, fgA = twA + thA;
+  return {
+    gp, wins, losses, pts, reb, ast, stl, blk, to,
+    ftM, ftA, fgM, fgA, thM, thA,
+    ppg: sd(pts, gp), rpg: sd(reb, gp), apg: sd(ast, gp),
+    spg: sd(stl, gp), bpg: sd(blk, gp), topg: sd(to, gp),
+    fgPct: sd(fgM, fgA), threePct: sd(thM, thA), ftPct: sd(ftM, ftA),
+  };
+}
+
+function SeasonSummaryBand({ playerGames, playerId, isPro }: {
+  playerGames: any[];
+  playerId: number;
+  isPro: boolean;
+}) {
+  if (playerGames.length === 0) return null;
+  const s = computeSeasonStats(playerGames, playerId);
+  const tiles = [
+    { label: "GP", value: String(s.gp), sub: `${s.wins}W-${s.losses}L` },
+    { label: "PPG", value: s.ppg.toFixed(1), sub: `${s.pts} pts` },
+    { label: "RPG", value: s.rpg.toFixed(1), sub: `${s.reb} reb` },
+    { label: "APG", value: s.apg.toFixed(1), sub: `${s.ast} ast` },
+    { label: "SPG", value: s.spg.toFixed(1), sub: `${s.stl} stl` },
+    { label: "BPG", value: s.bpg.toFixed(1), sub: `${s.blk} blk` },
+    { label: "TOPG", value: s.topg.toFixed(1), sub: `${s.to} to` },
+    ...(isPro
+      ? [
+          { label: "FG%", value: pct(s.fgM, s.fgA), sub: `${s.fgM}/${s.fgA}` },
+          { label: "3P%", value: pct(s.thM, s.thA), sub: `${s.thM}/${s.thA}` },
+          { label: "FT%", value: pct(s.ftM, s.ftA), sub: `${s.ftM}/${s.ftA}` },
+        ]
+      : []),
+  ];
+  return (
+    <div className="border-b border-border/60 bg-muted/20">
+      <div className="text-[0.55rem] font-bold uppercase tracking-[0.25em] text-muted-foreground px-4 pt-2 pb-0">
+        Season Totals
+      </div>
+      <div className="overflow-x-auto scrollbar-hide">
+        <div className="flex items-stretch divide-x divide-border/40 min-w-max">
+          {tiles.map(({ label, value, sub }) => (
+            <div key={label} className="px-4 py-2 text-center flex-shrink-0">
+              <div className="text-[0.55rem] font-bold text-muted-foreground uppercase tracking-[0.2em]">{label}</div>
+              <div className="text-base font-display font-bold text-foreground leading-none mt-0.5">{value}</div>
+              <div className="text-[0.6rem] font-mono text-muted-foreground/70 mt-0.5">{sub}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamGamesFetcher({
+  teamId, playerId, onLoad,
+}: {
+  teamId: number;
+  playerId: number;
+  onLoad: (teamId: number, games: any[]) => void;
+}) {
+  const { data: games } = useListTeamGames(teamId, {
+    query: { queryKey: getListTeamGamesQueryKey(teamId) },
+  });
+  useEffect(() => {
+    if (games !== undefined) {
+      const playerGames = games.filter((g: any) => g.stats?.some((s: any) => s.playerId === playerId));
+      onLoad(teamId, playerGames);
+    }
+  }, [games, teamId, playerId, onLoad]);
+  return null;
+}
+
+function CombinedSeasonsSummary({
+  selectedTeamIds, playerId, allTeams, onClear, isPro,
+}: {
+  selectedTeamIds: number[];
+  playerId: number;
+  allTeams: { teamId: number; teamName: string }[];
+  onClear: () => void;
+  isPro: boolean;
+}) {
+  const [gamesData, setGamesData] = useState<Record<number, any[]>>({});
+
+  const handleLoad = useCallback((teamId: number, games: any[]) => {
+    setGamesData(prev => ({ ...prev, [teamId]: games }));
+  }, []);
+
+  const combinedGames = selectedTeamIds.flatMap(id => gamesData[id] ?? []);
+  const stats = combinedGames.length > 0 ? computeSeasonStats(combinedGames, playerId) : null;
+  const loadedCount = selectedTeamIds.filter(id => gamesData[id] !== undefined).length;
+  const isLoading = loadedCount < selectedTeamIds.length;
+
+  const names = selectedTeamIds
+    .map(id => allTeams.find(t => t.teamId === id)?.teamName)
+    .filter(Boolean) as string[];
+
+  return (
+    <div className="mb-4 rounded-xl border border-primary/40 bg-primary/5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
+      {selectedTeamIds.map(teamId => (
+        <TeamGamesFetcher key={teamId} teamId={teamId} playerId={playerId} onLoad={handleLoad} />
+      ))}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-primary/20">
+        <div className="flex items-center gap-2 min-w-0">
+          <Activity className="w-4 h-4 text-primary shrink-0" />
+          <span className="font-display font-bold uppercase text-sm tracking-wide text-foreground truncate">
+            {selectedTeamIds.length === 1 ? names[0] : `${names.join(" + ")} Combined`}
+          </span>
+          {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />}
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClear} className="h-7 text-xs shrink-0 ml-2">
+          Clear
+        </Button>
+      </div>
+
+      {!stats ? (
+        <div className="p-6 flex justify-center">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        </div>
+      ) : (
+        <div>
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-primary/20 border-b border-primary/20">
+            {[
+              { label: "Points / GM", value: stats.ppg.toFixed(1), sub: `${stats.pts} total` },
+              { label: "Games", value: String(stats.gp), sub: `${stats.wins}W · ${stats.losses}L` },
+              { label: "Reb / GM", value: stats.rpg.toFixed(1), sub: `${stats.reb} total` },
+              { label: "Ast / GM", value: stats.apg.toFixed(1), sub: `${stats.ast} total` },
+            ].map(({ label, value, sub }, i) => (
+              <div key={label} className={`px-4 py-4 text-center ${i >= 2 ? "border-t md:border-t-0 border-primary/20" : ""}`}>
+                <div className="text-[0.6rem] font-bold text-muted-foreground uppercase tracking-[0.2em]">{label}</div>
+                <div className="text-3xl font-display font-bold text-primary leading-none mt-1">{value}</div>
+                <div className="text-[0.65rem] font-mono text-muted-foreground mt-1">{sub}</div>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 md:grid-cols-6 divide-x divide-border/40">
+            {[
+              { label: "SPG", value: stats.spg.toFixed(1), sub: `${stats.stl} stl` },
+              { label: "BPG", value: stats.bpg.toFixed(1), sub: `${stats.blk} blk` },
+              { label: "TOPG", value: stats.topg.toFixed(1), sub: `${stats.to} to` },
+              { label: "FG%", value: isPro ? pct(stats.fgM, stats.fgA) : "—", sub: isPro ? `${stats.fgM}/${stats.fgA}` : "Pro" },
+              { label: "3P%", value: isPro ? pct(stats.thM, stats.thA) : "—", sub: isPro ? `${stats.thM}/${stats.thA}` : "Pro" },
+              { label: "FT%", value: isPro ? pct(stats.ftM, stats.ftA) : "—", sub: isPro ? `${stats.ftM}/${stats.ftA}` : "Pro" },
+            ].map(({ label, value, sub }) => (
+              <div key={label} className="px-3 py-3 text-center">
+                <div className="text-[0.55rem] font-bold text-muted-foreground uppercase tracking-[0.2em]">{label}</div>
+                <div className="text-lg font-display font-bold text-foreground leading-none mt-0.5">{value}</div>
+                <div className="text-[0.6rem] font-mono text-muted-foreground/70 mt-0.5">{sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function TeamFormDialog({ trigger, team, onSaved }: { trigger: React.ReactNode, team?: { id: number, name: string }, onSaved: () => void }) {
@@ -747,7 +943,7 @@ function ManageTeamsDialog({ trigger }: { trigger: React.ReactNode }) {
   );
 }
 
-function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId: number, isPro: boolean }) {
+function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelect }: { team: any, playerId: number, isPro: boolean, selected: boolean, onToggleSelect: () => void }) {
   const { data: games, isLoading } = useListTeamGames(team.teamId, {
     query: { enabled: !!team.teamId, queryKey: getListTeamGamesQueryKey(team.teamId) }
   });
@@ -913,6 +1109,16 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
           </div>
         </AccordionTrigger>
         <div className="flex items-center gap-1 pl-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}
+            className={`h-8 w-8 rounded flex items-center justify-center transition-colors ${
+              selected ? "bg-primary text-primary-foreground" : "text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted"
+            }`}
+            title={selected ? "Remove from combined summary" : "Add to combined summary"}
+          >
+            <Check className="h-4 w-4" />
+          </button>
           <Button variant="ghost" size="sm" asChild>
             <Link href={`/record?teamId=${team.teamId}`}><Plus className="w-4 h-4 mr-1" /> Game</Link>
           </Button>
@@ -932,7 +1138,9 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
         ) : playerGames.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">No games found for this player on this team.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+            <SeasonSummaryBand playerGames={playerGames} playerId={playerId} isPro={isPro} />
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
@@ -1059,6 +1267,7 @@ function TeamGamesAccordionItem({ team, playerId, isPro }: { team: any, playerId
               </TableBody>
             </Table>
           </div>
+          </>
         )}
 
         {playerGames.length > 0 && (
