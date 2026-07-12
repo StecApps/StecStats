@@ -175,34 +175,38 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
             <span style={{ color: BORDER }}>·</span>
             <span>{dateStr}</span>
           </div>
-          {/* Result badge — centered */}
+          {/* Result badge — SVG for guaranteed centering on iOS */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-            <div
-              style={{
-                background: isWin ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
-                border: `1px solid ${isWin ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-                borderRadius: 8,
-                paddingLeft: 14,
-                paddingRight: 14,
-                height: 26,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+            <svg
+              width={isWin ? 58 : 70}
+              height="26"
+              viewBox={isWin ? "0 0 58 26" : "0 0 70 26"}
+              style={{ display: "block", overflow: "visible" }}
+              xmlns="http://www.w3.org/2000/svg"
             >
-              <span
-                style={{
-                  color: isWin ? GREEN : RED,
-                  fontWeight: 800,
-                  fontSize: 14,
-                  letterSpacing: 0.5,
-                  lineHeight: 1,
-                  fontFamily: "'Inter', sans-serif",
-                }}
+              <rect
+                x="0.5" y="0.5"
+                width={isWin ? 57 : 69}
+                height="25"
+                rx="7.5"
+                fill={isWin ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)"}
+                stroke={isWin ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}
+                strokeWidth="1"
+              />
+              <text
+                x={isWin ? 29 : 35}
+                y="13"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill={isWin ? GREEN : RED}
+                fontFamily="Inter, system-ui, -apple-system, Helvetica, Arial, sans-serif"
+                fontSize="14"
+                fontWeight="800"
+                letterSpacing="0.5"
               >
                 {isWin ? "WIN" : "LOSS"}
-              </span>
-            </div>
+              </text>
+            </svg>
             <span style={{ color: TEXT_DIM, fontSize: 12, fontWeight: 600 }}>
               {teamScore}–{opponentScore}
             </span>
@@ -246,7 +250,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 textTransform: "uppercase",
                 marginTop: 10,
                 textAlign: "center",
-                paddingLeft: 2,
+                paddingLeft: 6,
               }}
             >
               POINTS
