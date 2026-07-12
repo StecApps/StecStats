@@ -446,6 +446,7 @@ export default function RecordGame() {
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const liveCodeRef = useRef<string | null>(null);
+  const livePregenDoneRef = useRef(false);
   const rawStreamRef = useRef<MediaStream | null>(null);
   const sourceVideoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -487,7 +488,7 @@ export default function RecordGame() {
   // last framing for a few seconds and prompt a re-lock before easing back
   // to the saved court view, instead of immediately panning away.
   const lostSinceRef = useRef<number | null>(null);
-  const LOST_HOME_DELAY_MS = 5000;
+  const LOST_HOME_DELAY_MS = 1500;
   // CSS % position within the preview container div (including letterbox) for the ring overlay.
   const [lockedDisplayTarget, setLockedDisplayTarget] = useState<{ leftPct: number; topPct: number } | null>(null);
   const [lockLost, setLockLost] = useState(false);
@@ -1889,12 +1890,17 @@ export default function RecordGame() {
     liveManualStopRef.current = false;
     liveReconnectAttemptsRef.current = 0;
 
-    // If a previous broadcast was interrupted (e.g. the api-server
-    // restarted mid-game) and gave up retrying, resume the same invite
-    // code rather than minting a new one so any viewers who kept their
-    // watch page open can reconnect without a new link.
+    // If a previous broadcast was interrupted, resume the same invite
+    // code so viewers who kept the watch page open can reconnect.
     if (liveInterrupted && liveCodeRef.current) {
       connectBroadcasterSocket(liveCodeRef.current, true);
+      return;
+    }
+
+    // If the code was already pre-generated (visible before tapping Go Live),
+    // skip the API call and go straight to connecting.
+    if (liveCodeRef.current) {
+      connectBroadcasterSocket(liveCodeRef.current, false);
       return;
     }
 
@@ -1909,6 +1915,21 @@ export default function RecordGame() {
       toast({ title: "Could not start live stream", description, variant: "destructive" });
     }
   };
+
+  // Pre-generate the live invite code as soon as game details are known so
+  // coaches can copy and share the watch link before tapping "Go Live".
+  useEffect(() => {
+    if (!isEditing || !opponent || !teamId || livePregenDoneRef.current) return;
+    livePregenDoneRef.current = true;
+    const teamName = teams?.find(t => t.id.toString() === teamId)?.name || "Team";
+    startLiveSession(opponent, teamName)
+      .then(code => {
+        liveCodeRef.current = code;
+        setLiveCode(code);
+      })
+      .catch(() => { livePregenDoneRef.current = false; });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing, opponent, teamId, !!teams]);
 
   const stopGoingLive = () => {
     liveManualStopRef.current = true;
@@ -2835,10 +2856,17 @@ export default function RecordGame() {
                 {micMuted ? "Mic Off" : "Mic"}
               </Button>
               {!isLive && !isReconnectingLive && (
-                <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive}>
-                  {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
-                  Go Live
-                </Button>
+                <>
+                  {liveCode && (
+                    <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={copyWatchLink}>
+                      <Copy className="w-4 h-4 mr-2" /> Copy Link
+                    </Button>
+                  )}
+                  <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive}>
+                    {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
+                    Go Live
+                  </Button>
+                </>
               )}
               {(isLive || isReconnectingLive) && (
                 <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={stopGoingLive}>
