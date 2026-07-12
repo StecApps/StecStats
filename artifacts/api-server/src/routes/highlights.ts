@@ -114,10 +114,10 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       .where(eq(gamesTable.id, gameId));
 
     // Fire-and-forget: generation continues after the response is sent.
-    // Hard 25-minute timeout so inFlight is always cleared even if the
+    // Hard 90-minute timeout so inFlight is always cleared even if the
     // generator gets stuck on a hanging network call (e.g. object-storage
     // download that never resolves).
-    const MAX_JOB_MS = 25 * 60 * 1000;
+    const MAX_JOB_MS = 90 * 60 * 1000;
     void Promise.race([
       generateHighlight(gameId),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
