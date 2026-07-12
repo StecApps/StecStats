@@ -401,6 +401,7 @@ export default function RecordGame() {
   // handleSave can continue saving stats without waiting for the video blob.
   const assemblyCancelRef = useRef<(() => void) | null>(null);
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const highlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
@@ -2014,8 +2015,9 @@ export default function RecordGame() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async ({ skipVideo = false }: { skipVideo?: boolean } = {}) => {
     if (savingRef.current) return;
+    setUploadFailed(false);
     if (!teamId || !opponent || !date || selectedPlayerIds.length === 0) {
       toast({ title: "Incomplete", description: "Select team, opponent, date, and at least one player.", variant: "destructive" });
       return;
@@ -2085,7 +2087,7 @@ export default function RecordGame() {
     const result = isWin ? 'W' : 'L'; // Backend requires W or L
 
     let videoObjectPath = existingVideoObjectPath;
-    if (blobToUpload) {
+    if (blobToUpload && !skipVideo) {
       setIsUploadingVideo(true);
       setUploadProgress(0);
       try {
@@ -2093,7 +2095,8 @@ export default function RecordGame() {
       } catch (err) {
         setIsUploadingVideo(false);
         savingRef.current = false;
-        toast({ title: "Error uploading video", description: "The game was not saved. Try again.", variant: "destructive" });
+        setUploadFailed(true);
+        toast({ title: "Video upload failed", description: "Tap 'Save stats only' to save your game without the video.", variant: "destructive" });
         return;
       }
       setIsUploadingVideo(false);
@@ -2664,16 +2667,23 @@ export default function RecordGame() {
       </div>
 
       <div className="fixed left-0 right-0 p-4 bg-background/95 backdrop-blur-md border-t z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-0">
-        <div className="container max-w-screen-2xl mx-auto flex justify-between items-center">
-          <div className="font-display font-bold text-2xl uppercase">
+        <div className="container max-w-screen-2xl mx-auto flex justify-between items-center gap-3">
+          <div className="font-display font-bold text-2xl uppercase shrink-0">
             <span className="text-primary">{teamScore}</span>
             <span className="mx-2 text-muted-foreground">-</span>
             <span>{opponentScore}</span>
           </div>
-          <Button size="lg" className="font-display text-xl uppercase tracking-wider px-12 h-14" onClick={handleSave} disabled={createGame.isPending || updateGame.isPending || isAssemblingBlob || isUploadingVideo}>
-            {(createGame.isPending || updateGame.isPending) && <Loader2 className="w-5 h-5 mr-2 animate-spin" />}
-            Save Game
-          </Button>
+          <div className="flex flex-col items-end gap-1.5">
+            {uploadFailed && (
+              <Button size="sm" variant="outline" className="text-xs h-8 px-3" onClick={() => handleSave({ skipVideo: true })} disabled={createGame.isPending || updateGame.isPending}>
+                Save stats only (no video)
+              </Button>
+            )}
+            <Button size="lg" className="font-display text-xl uppercase tracking-wider px-12 h-14" onClick={() => handleSave()} disabled={createGame.isPending || updateGame.isPending || isAssemblingBlob || isUploadingVideo}>
+              {(createGame.isPending || updateGame.isPending) && <Loader2 className="w-5 h-5 mr-2 animate-spin" />}
+              Save Game
+            </Button>
+          </div>
         </div>
       </div>
 
