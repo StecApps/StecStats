@@ -189,12 +189,11 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 800,
                 fontSize: 14,
                 borderRadius: 8,
-                padding: "4px 14px",
+                paddingLeft: 14,
+                paddingRight: 14,
                 letterSpacing: 0.5,
-                lineHeight: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                lineHeight: "24px",
+                textAlign: "center",
                 fontFamily: "'Inter', sans-serif",
               }}
             >
