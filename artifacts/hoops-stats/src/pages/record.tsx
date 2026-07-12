@@ -1919,7 +1919,7 @@ export default function RecordGame() {
   // Pre-generate the live invite code as soon as game details are known so
   // coaches can copy and share the watch link before tapping "Go Live".
   useEffect(() => {
-    if (!isEditing || !opponent || !teamId || livePregenDoneRef.current) return;
+    if (!opponent || !teamId || livePregenDoneRef.current) return;
     livePregenDoneRef.current = true;
     const teamName = teams?.find(t => t.id.toString() === teamId)?.name || "Team";
     startLiveSession(opponent, teamName)
@@ -1929,7 +1929,7 @@ export default function RecordGame() {
       })
       .catch(() => { livePregenDoneRef.current = false; });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing, opponent, teamId, !!teams]);
+  }, [opponent, teamId, !!teams]);
 
   const stopGoingLive = () => {
     liveManualStopRef.current = true;
@@ -2442,13 +2442,27 @@ export default function RecordGame() {
           )}
 
           {!isRecording && !recordedPreviewUrl && !existingVideoObjectPath && (
-            <div className="space-y-1.5">
-              <Button variant="outline" onClick={startRecording}>
-                <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                Tip: hold your phone in the orientation you plan to film in (landscape is recommended) before you tap Start — rotating mid-recording will letterbox the video instead of filling the frame.
-              </p>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Button variant="outline" onClick={startRecording}>
+                  <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Tip: hold your phone in the orientation you plan to film in (landscape is recommended) before you tap Start — rotating mid-recording will letterbox the video instead of filling the frame.
+                </p>
+              </div>
+              {liveCode && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 space-y-1.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-primary flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5" /> Live stream link ready
+                  </p>
+                  <p className="text-xs text-muted-foreground break-all font-mono">{watchUrlForCode(liveCode)}</p>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={copyWatchLink}>
+                    <Copy className="w-3 h-3 mr-1.5" /> Copy link
+                  </Button>
+                  <p className="text-xs text-muted-foreground">Share this before you start — viewers can join as soon as you tap Go Live.</p>
+                </div>
+              )}
             </div>
           )}
 
