@@ -195,6 +195,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                fontFamily: "'Inter', sans-serif",
               }}
             >
               {isWin ? "WIN" : "LOSS"}
