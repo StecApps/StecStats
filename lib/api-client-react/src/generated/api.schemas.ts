@@ -384,3 +384,23 @@ export interface HighlightStatus {
   eligibleMoments: number;
 }
 
+export type LowlightStatusStatus = typeof LowlightStatusStatus[keyof typeof LowlightStatusStatus];
+
+
+export const LowlightStatusStatus = {
+  idle: 'idle',
+  processing: 'processing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
+export interface LowlightStatus {
+  status: LowlightStatusStatus;
+  lowlightObjectPath?: string | null;
+  error?: string | null;
+  /** When the current/most-recent generation run started. */
+  startedAt?: string | null;
+  /** Number of qualifying moments (missed shots and turnovers). */
+  eligibleMoments: number;
+}
+

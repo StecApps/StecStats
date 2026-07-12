@@ -628,6 +628,41 @@ export const GenerateGameHighlightResponse = zod.object({
 
 
 /**
+ * @summary Get the lowlight reel status for a game
+ */
+export const GetGameLowlightParams = zod.object({
+  "gameId": zod.coerce.number()
+})
+
+export const GetGameLowlightResponse = zod.object({
+  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "lowlightObjectPath": zod.string().nullish(),
+  "error": zod.string().nullish(),
+  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started.'),
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (missed shots and turnovers).')
+})
+
+
+/**
+ * Kicks off asynchronous server-side generation of an MP4 lowlight reel
+ * from the game's recorded video, including only missed shots and
+ * turnovers, with an on-screen caption per moment.
+ * @summary Start generating a lowlight reel for a game
+ */
+export const GenerateGameLowlightParams = zod.object({
+  "gameId": zod.coerce.number()
+})
+
+export const GenerateGameLowlightResponse = zod.object({
+  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "lowlightObjectPath": zod.string().nullish(),
+  "error": zod.string().nullish(),
+  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started.'),
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (missed shots and turnovers).')
+})
+
+
+/**
  * @summary Bulk import players, teams, games and stat lines
  */
 export const ImportDataBody = zod.object({

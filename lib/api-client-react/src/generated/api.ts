@@ -31,6 +31,7 @@ import type {
   HighlightStatus,
   ImportInput,
   ImportResult,
+  LowlightStatus,
   Player,
   PlayerInput,
   PlayerSummary,
@@ -1696,6 +1697,156 @@ export const useGenerateGameHighlight = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getGenerateGameHighlightMutationOptions(options));
+    }
+
+export const getGetGameLowlightUrl = (gameId: number,) => {
+
+
+
+
+  return `/api/games/${gameId}/lowlight`
+}
+
+/**
+ * @summary Get the lowlight reel status for a game
+ */
+export const getGameLowlight = async (gameId: number, options?: RequestInit): Promise<LowlightStatus> => {
+
+  return customFetch<LowlightStatus>(getGetGameLowlightUrl(gameId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGameLowlightQueryKey = (gameId: number,) => {
+    return [
+    `/api/games/${gameId}/lowlight`
+    ] as const;
+    }
+
+
+export const getGetGameLowlightQueryOptions = <TData = Awaited<ReturnType<typeof getGameLowlight>>, TError = ErrorType<ErrorEnvelope>>(gameId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameLowlight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGameLowlightQueryKey(gameId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGameLowlight>>> = ({ signal }) => getGameLowlight(gameId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: gameId !== null && gameId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGameLowlight>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGameLowlightQueryResult = NonNullable<Awaited<ReturnType<typeof getGameLowlight>>>
+export type GetGameLowlightQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get the lowlight reel status for a game
+ */
+
+export function useGetGameLowlight<TData = Awaited<ReturnType<typeof getGameLowlight>>, TError = ErrorType<ErrorEnvelope>>(
+ gameId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameLowlight>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGameLowlightQueryOptions(gameId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGenerateGameLowlightUrl = (gameId: number,) => {
+
+
+
+
+  return `/api/games/${gameId}/lowlight`
+}
+
+/**
+ * Kicks off asynchronous server-side generation of an MP4 lowlight reel
+ * from the game's recorded video, including only missed shots and
+ * turnovers, with an on-screen caption per moment.
+ * @summary Start generating a lowlight reel for a game
+ */
+export const generateGameLowlight = async (gameId: number, options?: RequestInit): Promise<LowlightStatus> => {
+
+  return customFetch<LowlightStatus>(getGenerateGameLowlightUrl(gameId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGenerateGameLowlightMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateGameLowlight>>, TError,{gameId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateGameLowlight>>, TError,{gameId: number}, TContext> => {
+
+const mutationKey = ['generateGameLowlight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateGameLowlight>>, {gameId: number}> = (props) => {
+          const {gameId} = props ?? {};
+
+          return  generateGameLowlight(gameId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateGameLowlightMutationResult = NonNullable<Awaited<ReturnType<typeof generateGameLowlight>>>
+
+    export type GenerateGameLowlightMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Start generating a lowlight reel for a game
+ */
+export const useGenerateGameLowlight = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateGameLowlight>>, TError,{gameId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateGameLowlight>>,
+        TError,
+        {gameId: number},
+        TContext
+      > => {
+      return useMutation(getGenerateGameLowlightMutationOptions(options));
     }
 
 export const getImportDataUrl = () => {

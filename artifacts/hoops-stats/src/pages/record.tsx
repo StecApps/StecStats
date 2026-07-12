@@ -9,8 +9,11 @@ import {
   useCreatePlayer,
   useGetGameHighlight,
   useGenerateGameHighlight,
+  useGetGameLowlight,
+  useGenerateGameLowlight,
   useGetBillingStatus,
   getGetGameHighlightQueryKey,
+  getGetGameLowlightQueryKey,
   getGetGameQueryKey,
   getGetPlayerSummaryQueryKey,
   getListPlayerTeamGroupsQueryKey,
@@ -167,11 +170,21 @@ export default function RecordGame() {
   const updateGame = useUpdateGame();
   const savingRef = useRef(false);
   const generateHighlight = useGenerateGameHighlight();
+  const generateLowlight = useGenerateGameLowlight();
 
   const { data: highlight } = useGetGameHighlight(gameId as number, {
     query: {
       enabled: isEditing,
       queryKey: getGetGameHighlightQueryKey(gameId as number),
+      refetchInterval: (query) =>
+        query.state.data?.status === "processing" ? 3000 : false,
+    },
+  });
+
+  const { data: lowlight } = useGetGameLowlight(gameId as number, {
+    query: {
+      enabled: isEditing,
+      queryKey: getGetGameLowlightQueryKey(gameId as number),
       refetchInterval: (query) =>
         query.state.data?.status === "processing" ? 3000 : false,
     },
@@ -285,6 +298,81 @@ export default function RecordGame() {
     }
   };
 
+  const [lowlightNow, setLowlightNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (lowlight?.status !== "processing") return;
+    setLowlightNow(Date.now());
+    const id = setInterval(() => setLowlightNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [lowlight?.status, lowlight?.startedAt]);
+
+  const lowlightElapsedSec = lowlight?.startedAt
+    ? Math.max(0, (lowlightNow - new Date(lowlight.startedAt).getTime()) / 1000)
+    : 0;
+  const lowlightProgressPct = Math.min(92, Math.round(100 * (1 - Math.exp(-lowlightElapsedSec / 22))));
+  const lowlightStageText =
+    lowlightElapsedSec < 8 ? "Finding misses and turnovers…" :
+    lowlightElapsedSec < 25 ? "Rendering lowlight clips…" :
+    "Almost done — finalizing your reel…";
+
+  const lowlightFileName = () => {
+    const opp = (opponent || "game").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
+    return `stec-lowlights-${opp || "game"}.mp4`;
+  };
+
+  const handleGenerateLowlight = async () => {
+    if (!gameId) return;
+    lowlightBlobCacheRef.current = null;
+    try {
+      await generateLowlight.mutateAsync({ gameId });
+      await queryClient.invalidateQueries({ queryKey: getGetGameLowlightQueryKey(gameId) });
+    } catch {
+      toast({ title: "Couldn't start the lowlight reel", variant: "destructive" });
+    }
+  };
+
+  const handleDownloadLowlight = () => {
+    if (!lowlight?.lowlightObjectPath) return;
+    const cached = lowlightBlobCacheRef.current;
+    const a = document.createElement("a");
+    if (cached && cached.path === lowlight.lowlightObjectPath) {
+      a.href = URL.createObjectURL(cached.blob);
+    } else {
+      a.href = videoObjectSrc(lowlight.lowlightObjectPath, lowlightFileName());
+    }
+    a.download = lowlightFileName();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    if (cached) setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  };
+
+  const handleShareLowlight = async () => {
+    if (!lowlight?.lowlightObjectPath) return;
+    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
+    try {
+      let blob = lowlightBlobCacheRef.current?.path === lowlight.lowlightObjectPath
+        ? lowlightBlobCacheRef.current.blob
+        : null;
+      if (!blob) {
+        setIsPreparingLowlightShare(true);
+        const res = await fetch(videoObjectSrc(lowlight.lowlightObjectPath));
+        blob = await res.blob();
+        setIsPreparingLowlightShare(false);
+      }
+      const file = new File([blob], lowlightFileName(), { type: "video/mp4" });
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], title: "Game Lowlights" });
+      } else {
+        handleDownloadLowlight();
+      }
+    } catch (err) {
+      setIsPreparingLowlightShare(false);
+      if (err instanceof Error && err.name === "AbortError") return;
+      handleDownloadLowlight();
+    }
+  };
+
   const [teamId, setTeamId] = useState<string>(preselectedTeamId);
   const [opponent, setOpponent] = useState("");
   const [date, setDate] = useState<Date>(new Date());
@@ -316,7 +404,9 @@ export default function RecordGame() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const highlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
+  const lowlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
   const [isPreparingShare, setIsPreparingShare] = useState(false);
+  const [isPreparingLowlightShare, setIsPreparingLowlightShare] = useState(false);
 
   const [isLive, setIsLive] = useState(false);
   const [liveCode, setLiveCode] = useState<string | null>(null);
@@ -2376,6 +2466,7 @@ export default function RecordGame() {
           )}
 
           {isEditing && existingVideoObjectPath && !recordedPreviewUrl && (
+            <div className="space-y-3">
             <div className="max-w-md rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-primary" />
@@ -2430,6 +2521,66 @@ export default function RecordGame() {
                   </Button>
                 </div>
               )}
+            </div>
+
+            {isPro && (
+              <div className="max-w-md rounded-lg border border-orange-500/30 bg-orange-500/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <BarChart2 className="w-5 h-5 text-orange-400" />
+                  <span className="font-display font-bold uppercase tracking-wide text-foreground">Lowlight Reel</span>
+                  <span className="text-xs text-muted-foreground font-normal normal-case">— misses &amp; turnovers</span>
+                </div>
+
+                {lowlight && lowlight.eligibleMoments === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Tag missed shots or turnovers during the game to build a lowlight reel for review.
+                  </p>
+                ) : lowlight?.status === "processing" ? (
+                  <div className="space-y-1.5">
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> {lowlightStageText}
+                    </p>
+                    <Progress value={lowlightProgressPct} />
+                    <p className="text-xs text-muted-foreground">Building your lowlight reel — this can take a minute.</p>
+                  </div>
+                ) : lowlight?.status === "ready" && lowlight.lowlightObjectPath ? (
+                  <div className="space-y-3">
+                    <video
+                      src={videoObjectSrc(lowlight.lowlightObjectPath)}
+                      controls
+                      playsInline
+                      preload="none"
+                      className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="button" onClick={handleShareLowlight} disabled={isPreparingLowlightShare}>
+                        {isPreparingLowlightShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
+                      </Button>
+                      <Button type="button" variant="outline" onClick={handleDownloadLowlight}>
+                        <Download className="w-4 h-4 mr-2" /> Download
+                      </Button>
+                      <Button type="button" variant="ghost" onClick={handleGenerateLowlight} disabled={generateLowlight.isPending}>
+                        {generateLowlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
+                        Regenerate
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Build a review reel of every miss and turnover from this game{lowlight ? ` — ${lowlight.eligibleMoments} moment${lowlight.eligibleMoments === 1 ? "" : "s"} found` : ""}.
+                    </p>
+                    {lowlight?.status === "failed" && lowlight.error && (
+                      <p className="text-sm text-destructive">{lowlight.error}</p>
+                    )}
+                    <Button type="button" onClick={handleGenerateLowlight} disabled={generateLowlight.isPending}>
+                      {generateLowlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
+                      {lowlight?.status === "failed" ? "Try Again" : "Generate Lowlight Reel"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
             </div>
           )}
         </CardContent>

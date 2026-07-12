@@ -414,6 +414,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /games/{gameId}/lowlight:
+    parameters:
+      - name: gameId
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      operationId: getGameLowlight
+      tags: [games]
+      summary: Get the lowlight reel status for a game
+      responses:
+        "200":
+          description: Lowlight reel status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LowlightStatus"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: generateGameLowlight
+      tags: [games]
+      summary: Start generating a lowlight reel for a game
+      description: |
+        Kicks off asynchronous server-side generation of an MP4 lowlight reel
+        from the game's recorded video, including only missed shots and
+        turnovers, with an on-screen caption per moment.
+      responses:
+        "202":
+          description: Generation started (or already in progress)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LowlightStatus"
+        "400":
+          description: Not eligible (no video or no qualifying moments)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /import:
     post:
       operationId: importData
@@ -1012,6 +1064,24 @@ components:
         eligibleMoments:
           type: integer
           description: Number of qualifying moments (made shots, rebounds, assists, steals, blocks).
+
+    LowlightStatus:
+      type: object
+      required: [status, eligibleMoments]
+      properties:
+        status:
+          type: string
+          enum: [idle, processing, ready, failed]
+        lowlightObjectPath: { type: string, nullable: true }
+        error: { type: string, nullable: true }
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the current/most-recent generation run started.
+        eligibleMoments:
+          type: integer
+          description: Number of qualifying moments (missed shots and turnovers).
 
     GameEvent:
       type: object

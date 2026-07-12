@@ -28,6 +28,8 @@ export * from './importGameRow';
 export * from './importGameRowResult';
 export * from './importInput';
 export * from './importResult';
+export * from './lowlightStatus';
+export * from './lowlightStatusStatus';
 export * from './player';
 export * from './playerGameStatInput';
 export * from './playerGameStatLine';

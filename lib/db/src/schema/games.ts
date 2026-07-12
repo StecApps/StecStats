@@ -31,6 +31,10 @@ export const gamesTable = pgTable("games", {
   highlightStatus: text("highlight_status"),
   highlightError: text("highlight_error"),
   highlightStartedAt: timestamp("highlight_started_at"),
+  lowlightObjectPath: text("lowlight_object_path"),
+  lowlightStatus: text("lowlight_status"),
+  lowlightError: text("lowlight_error"),
+  lowlightStartedAt: timestamp("lowlight_started_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -34,7 +34,16 @@ export const HIGHLIGHT_FIELDS = new Set([
   "blocks",
 ]);
 
+// Stat fields that count as "lowlights" — missed shots and turnovers only.
+export const LOWLIGHT_FIELDS = new Set([
+  "ftAttempted",
+  "twoAttempted",
+  "threeAttempted",
+  "turnovers",
+]);
+
 const STAT_LABELS: Record<string, string> = {
+  // Highlights
   ftMade: "FT Made",
   twoMade: "2PT Made",
   threeMade: "3PT Made",
@@ -42,6 +51,11 @@ const STAT_LABELS: Record<string, string> = {
   rebounds: "Rebound",
   steals: "Steal",
   blocks: "Block",
+  // Lowlights
+  ftAttempted: "FT Miss",
+  twoAttempted: "2PT Miss",
+  threeAttempted: "3PT Miss",
+  turnovers: "Turnover",
 };
 
 export class HighlightError extends Error {}
@@ -79,6 +93,17 @@ async function setGameStatus(
     .where(eq(gamesTable.id, gameId));
 }
 
+async function setGameLowlightStatus(
+  gameId: number,
+  status: "processing" | "ready" | "failed",
+  extra: { lowlightObjectPath?: string | null; lowlightError?: string | null } = {},
+): Promise<void> {
+  await db
+    .update(gamesTable)
+    .set({ lowlightStatus: status, ...extra })
+    .where(eq(gamesTable.id, gameId));
+}
+
 async function setTeamStatus(
   teamId: number,
   status: "processing" | "ready" | "failed",
@@ -88,6 +113,16 @@ async function setTeamStatus(
     .update(teamsTable)
     .set({ highlightStatus: status, ...extra })
     .where(eq(teamsTable.id, teamId));
+}
+
+/**
+ * Count lowlight moments (missed shots + turnovers) for a game.
+ */
+export async function countLowlightMoments(gameId: number): Promise<number> {
+  const events = await db.query.gameEventsTable.findMany({
+    where: eq(gameEventsTable.gameId, gameId),
+  });
+  return events.filter((e) => e.delta > 0 && LOWLIGHT_FIELDS.has(e.statField)).length;
 }
 
 /**
@@ -460,6 +495,89 @@ export async function generateHighlight(gameId: number): Promise<void> {
         : "Highlight generation failed. Please try again.";
     logger.error({ err, gameId }, "Highlight generation failed");
     await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
+    throw err;
+  } finally {
+    if (tmpDir) {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Generate an MP4 lowlight reel for a game (missed shots + turnovers).
+ * Runs fully async (fire-and-forget); progress is tracked via the game's
+ * lowlightStatus column.
+ */
+export async function generateLowlight(gameId: number): Promise<void> {
+  let tmpDir: string | null = null;
+  try {
+    const game = await db.query.gamesTable.findFirst({
+      where: eq(gamesTable.id, gameId),
+    });
+    if (!game) throw new HighlightError("Game not found");
+    if (!game.videoObjectPath) throw new HighlightError("This game has no recorded video");
+    if (game.ownerId == null) throw new HighlightError("This game has no owner account");
+
+    const events = await db.query.gameEventsTable.findMany({
+      where: eq(gameEventsTable.gameId, gameId),
+      orderBy: (e, { asc }) => [asc(e.videoTimestampMs)],
+    });
+    const eligible = events.filter(
+      (e) => e.delta > 0 && LOWLIGHT_FIELDS.has(e.statField),
+    );
+    if (eligible.length === 0) {
+      throw new HighlightError("No lowlight moments tagged in this game");
+    }
+
+    const playerIds = Array.from(new Set(eligible.map((e) => e.playerId)));
+    const players =
+      playerIds.length && game.ownerId != null
+        ? await db.query.playersTable.findMany({
+            where: and(
+              inArray(playersTable.id, playerIds),
+              eq(playersTable.ownerId, game.ownerId),
+            ),
+          })
+        : [];
+    const nameById = new Map(players.map((p) => [p.id, p.name]));
+
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
+    const srcPath = path.join(tmpDir, "source");
+
+    const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
+    await objectFile.download({ destination: srcPath });
+
+    const audioStreams = await ffprobe([
+      "-v", "error",
+      "-select_streams", "a",
+      "-show_entries", "stream=index",
+      "-of", "csv=p=0",
+      srcPath,
+    ]);
+    const hasAudio = audioStreams.length > 0;
+
+    const segPaths = await renderGameSegments(srcPath, tmpDir, "ll", eligible, nameById);
+    if (segPaths.length === 0) {
+      throw new HighlightError("No lowlight moments could be rendered");
+    }
+
+    const outPath = path.join(tmpDir, "lowlight.mp4");
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio);
+
+    const objectPath = await uploadHighlight(outPath, game.ownerId);
+
+    await setGameLowlightStatus(gameId, "ready", {
+      lowlightObjectPath: objectPath,
+      lowlightError: null,
+    });
+    logger.info({ gameId, segments: segPaths.length }, "Lowlight reel generated");
+  } catch (err) {
+    const message =
+      err instanceof HighlightError
+        ? err.message
+        : "Lowlight generation failed. Please try again.";
+    logger.error({ err, gameId }, "Lowlight generation failed");
+    await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
     if (tmpDir) {
