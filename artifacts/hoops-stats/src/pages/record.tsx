@@ -413,7 +413,7 @@ export default function RecordGame() {
   const [viewerCount, setViewerCount] = useState(0);
   const [isStartingLive, setIsStartingLive] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(1.3);
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [focusPlayerId, setFocusPlayerId] = useState<number | null>(null);
@@ -1175,8 +1175,8 @@ export default function RecordGame() {
       videoRotationRef.current = detectVideoRotation(src.videoWidth, src.videoHeight);
       currentDeviceIdRef.current = nextLens.id;
       syncLensLabel(nextLens.id);
-      setZoom(1);
-      zoomRef.current = 1;
+      setZoom(1.3);
+      zoomRef.current = 1.3;
     } catch {
       setCameraError("Could not switch lens on this device.");
     }
@@ -1482,8 +1482,8 @@ export default function RecordGame() {
         canvas.width = rot !== 0 ? trackH : trackW;
         canvas.height = rot !== 0 ? trackW : trackH;
         canvasRef.current = canvas;
-        setZoom(1);
-        zoomRef.current = 1;
+        setZoom(1.3);
+        zoomRef.current = 1.3;
         startDrawLoop();
 
         const canvasStream = canvas.captureStream(30);
@@ -2442,26 +2442,46 @@ export default function RecordGame() {
           )}
 
           {!isRecording && !recordedPreviewUrl && !existingVideoObjectPath && (
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Button variant="outline" onClick={startRecording}>
-                  <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Tip: hold your phone in the orientation you plan to film in (landscape is recommended) before you tap Start — rotating mid-recording will letterbox the video instead of filling the frame.
-                </p>
-              </div>
-              {liveCode && (
-                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 space-y-1.5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-primary flex items-center gap-1.5">
-                    <Radio className="w-3.5 h-3.5" /> Live stream link ready
-                  </p>
+            <div className="space-y-1.5">
+              <Button variant="outline" onClick={startRecording}>
+                <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Tip: hold your phone in the orientation you plan to film in (landscape is recommended) before you tap Start — rotating mid-recording will letterbox the video instead of filling the frame.
+              </p>
+            </div>
+          )}
+
+          {!isRecording && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-primary flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5" /> Live stream link
+              </p>
+              {liveCode ? (
+                <>
                   <p className="text-xs text-muted-foreground break-all font-mono">{watchUrlForCode(liveCode)}</p>
                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={copyWatchLink}>
                     <Copy className="w-3 h-3 mr-1.5" /> Copy link
                   </Button>
-                  <p className="text-xs text-muted-foreground">Share this before you start — viewers can join as soon as you tap Go Live.</p>
-                </div>
+                  <p className="text-xs text-muted-foreground">Share this now — viewers can open it and wait for you to tap Go Live.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">Get a shareable watch link to send before the game starts.</p>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => {
+                    try {
+                      const teamName = teams?.find(t => t.id.toString() === teamId)?.name || "Team";
+                      const code = await startLiveSession(opponent || "Game", teamName);
+                      liveCodeRef.current = code;
+                      setLiveCode(code);
+                      livePregenDoneRef.current = true;
+                    } catch {
+                      toast({ title: "Couldn't generate link", variant: "destructive" });
+                    }
+                  }}>
+                    <Radio className="w-3 h-3 mr-1.5" /> Get Link
+                  </Button>
+                </>
               )}
             </div>
           )}
