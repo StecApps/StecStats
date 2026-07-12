@@ -100,16 +100,12 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 height: 28,
                 background: ORANGE,
                 borderRadius: 6,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 800,
-                fontSize: 14,
-                color: "#fff",
-                letterSpacing: -0.5,
+                overflow: "hidden",
               }}
             >
-              S
+              <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+                <text x="14" y="14" textAnchor="middle" dominantBaseline="middle" fill="white" fontFamily="system-ui, -apple-system, Helvetica, Arial, sans-serif" fontSize="15" fontWeight="800">S</text>
+              </svg>
             </div>
             <span
               style={{
@@ -189,10 +185,9 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 800,
                 fontSize: 14,
                 borderRadius: 8,
-                paddingLeft: 14,
-                paddingRight: 14,
+                padding: "6px 14px",
                 letterSpacing: 0.5,
-                lineHeight: "24px",
+                lineHeight: 1,
                 textAlign: "center",
                 fontFamily: "'Inter', sans-serif",
               }}
@@ -240,7 +235,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 fontWeight: 700,
                 letterSpacing: 2,
                 textTransform: "uppercase",
-                marginTop: 4,
+                marginTop: 10,
                 textAlign: "center",
               }}
             >
