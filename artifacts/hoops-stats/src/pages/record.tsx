@@ -2659,7 +2659,7 @@ export default function RecordGame() {
 
       {isRecording && (
         <div className="fixed inset-0 z-[9999] flex flex-col tablet-landscape:flex-row bg-black">
-          <div ref={previewContainerRef} className="relative flex-[3] tablet-landscape:flex-1 min-h-0 tablet-landscape:min-w-0 bg-black" style={{ touchAction: "none" }} onPointerUp={handlePreviewTap}>
+          <div ref={previewContainerRef} className="relative flex-[5] tablet-landscape:flex-1 min-h-0 tablet-landscape:min-w-0 bg-black" style={{ touchAction: "none" }} onPointerUp={handlePreviewTap}>
             <video
               ref={livePreviewRef}
               muted
@@ -2736,15 +2736,14 @@ export default function RecordGame() {
                 )}
               </div>
 
-              {canSwitchCamera && (
-                <div className="flex flex-col items-end gap-2">
-                  {canCycleLens && (
+              <div className="flex flex-col items-end gap-2">
+                  {canSwitchCamera && canCycleLens && (
                     <Button variant="secondary" size="sm" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={cycleLens}>
                       <Aperture className="w-4 h-4 mr-1" />
                       {lensLabel ? `Lens ${lensLabel}` : "Lens"}
                     </Button>
                   )}
-                  {isPremium && (
+                  {canSwitchCamera && isPremium && (
                     <Button
                       variant="secondary"
                       size="sm"
@@ -2758,7 +2757,7 @@ export default function RecordGame() {
                       {isTrackingLoading ? "Loading…" : autoFollowEnabled ? (isTracking ? "Tracking" : "Searching…") : "Auto-Follow"}
                     </Button>
                   )}
-                  {isPremium && autoFollowEnabled && (
+                  {canSwitchCamera && isPremium && autoFollowEnabled && (
                     <Button
                       variant="secondary"
                       size="sm"
@@ -2779,7 +2778,6 @@ export default function RecordGame() {
                     </Button>
                   </div>
                 </div>
-              )}
             </div>
 
             {/* Audience-view PIP: shows the outgoing stream with object-contain
