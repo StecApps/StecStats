@@ -81,7 +81,21 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     inFlight.add(gameId);
     startedAt = new Date();
     await db.update(gamesTable).set({ lowlightStatus: "processing", lowlightError: null, lowlightStartedAt: startedAt }).where(eq(gamesTable.id, gameId));
-    void generateLowlight(gameId).catch(() => {}).finally(() => inFlight.delete(gameId));
+    // Hard 25-minute timeout so inFlight is always cleared even if the
+    // generator gets stuck on a hanging network call.
+    const MAX_JOB_MS = 25 * 60 * 1000;
+    void Promise.race([
+      generateLowlight(gameId),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
+    ])
+      .catch(async () => {
+        try {
+          await db.update(gamesTable)
+            .set({ lowlightStatus: "failed", lowlightError: "Generation timed out — tap Try Again to rebuild." })
+            .where(eq(gamesTable.id, gameId));
+        } catch { /* best-effort */ }
+      })
+      .finally(() => inFlight.delete(gameId));
   }
 
   res.status(202).json({
