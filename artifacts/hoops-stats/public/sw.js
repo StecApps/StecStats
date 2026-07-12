@@ -1,4 +1,4 @@
-const CACHE = "stec-stats-v1";
+const CACHE = "stec-stats-v2";
 const SHELL = ["/", "/favicon.svg", "/icon-192.png", "/icon-512.png", "/site.webmanifest"];
 
 self.addEventListener("install", (e) => {

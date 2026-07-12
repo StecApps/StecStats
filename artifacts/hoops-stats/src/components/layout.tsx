@@ -73,8 +73,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="mr-4 hidden md:flex flex-1 items-center justify-between">
             <div className="flex items-center">
               <Link href="/dashboard" className="mr-6 flex items-center space-x-2">
-                <div className="w-8 h-8 rounded bg-primary text-primary-foreground relative font-display text-2xl">
-                  <span style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", lineHeight: 1 }}>S</span>
+                <div className="w-8 h-8 rounded bg-primary text-primary-foreground font-display font-semibold" style={{ fontSize: 20, lineHeight: "32px", textAlign: "center" }}>
+                  S
                 </div>
                 <span className="hidden sm:flex flex-col leading-none">
                   <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
@@ -105,8 +105,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {/* Mobile nav */}
           <div className="md:hidden flex w-full justify-between items-center">
             <Link href="/dashboard" className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded bg-primary text-primary-foreground relative font-display text-2xl">
-                <span style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", lineHeight: 1 }}>S</span>
+              <div className="w-8 h-8 rounded bg-primary text-primary-foreground font-display font-semibold" style={{ fontSize: 20, lineHeight: "32px", textAlign: "center" }}>
+                S
               </div>
               <span className="flex flex-col leading-none">
                 <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
