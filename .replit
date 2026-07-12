@@ -27,3 +27,6 @@ channel = "stable-25_05"
 
 [userenv.shared]
 OWNER_CLERK_EMAIL = "sstec@stecco.org"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-f1eb7a0b-6a3e-447a-8144-8ac17c074ecd"
