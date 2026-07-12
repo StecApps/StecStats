@@ -181,18 +181,27 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
               style={{
                 background: isWin ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
                 border: `1px solid ${isWin ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
-                color: isWin ? GREEN : RED,
-                fontWeight: 800,
-                fontSize: 14,
                 borderRadius: 8,
-                padding: "6px 14px",
-                letterSpacing: 0.5,
-                lineHeight: 1,
-                textAlign: "center",
-                fontFamily: "'Inter', sans-serif",
+                paddingLeft: 14,
+                paddingRight: 14,
+                height: 26,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
               }}
             >
-              {isWin ? "WIN" : "LOSS"}
+              <span
+                style={{
+                  color: isWin ? GREEN : RED,
+                  fontWeight: 800,
+                  fontSize: 14,
+                  letterSpacing: 0.5,
+                  lineHeight: 1,
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                {isWin ? "WIN" : "LOSS"}
+              </span>
             </div>
             <span style={{ color: TEXT_DIM, fontSize: 12, fontWeight: 600 }}>
               {teamScore}–{opponentScore}
@@ -237,6 +246,7 @@ export const GameStatCard = forwardRef<HTMLDivElement, GameStatCardProps>(
                 textTransform: "uppercase",
                 marginTop: 10,
                 textAlign: "center",
+                paddingLeft: 2,
               }}
             >
               POINTS
