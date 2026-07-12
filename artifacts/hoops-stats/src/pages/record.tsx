@@ -855,7 +855,11 @@ export default function RecordGame() {
       lastTickTimeRef.current = now;
 
       try {
-        const result = updateTracker(det, v, tracker, dt);
+        const result = updateTracker(det, v, tracker, dt, {
+          cx:   trackCenterXRef.current,
+          cy:   trackCenterYRef.current,
+          zoom: trackZoomRef.current,
+        });
         if (!result) return;
 
         if (result.lost) {

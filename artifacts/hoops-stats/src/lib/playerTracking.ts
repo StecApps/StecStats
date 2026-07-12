@@ -317,11 +317,25 @@ const TRACK_COLOR_SANITY_MAX = 90;
  * this function does not do any visual smoothing itself, only identity/motion
  * tracking.
  */
+/**
+ * The region of the raw video frame that is currently visible on the canvas
+ * (after crop + zoom). Any person whose centre falls outside this window is
+ * not on screen and cannot be the player the user is following — excluding
+ * them prevents the tracker from snapping onto a coach/spectator who is
+ * physically near the player but outside the zoomed view.
+ */
+export interface TrackViewport {
+  cx: number;   // normalised raw-video X of canvas centre
+  cy: number;   // normalised raw-video Y of canvas centre
+  zoom: number; // current canvas zoom (1 = no zoom)
+}
+
 export function updateTracker(
   det: ObjectDetector,
   videoEl: HTMLVideoElement,
   state: TrackerState,
   dtSeconds: number,
+  viewport?: TrackViewport,
 ): TrackResult | null {
   const vw = videoEl.videoWidth;
   const vh = videoEl.videoHeight;
@@ -351,7 +365,26 @@ export function updateTracker(
   const persons = results.detections;
   if (persons.length === 0) return handleMiss();
 
-  const radius = Math.min(TRACK_RADIUS_MAX, TRACK_RADIUS_BASE + state.missCount * TRACK_RADIUS_GROWTH);
+  // Scale the search radius to the player's known size. When the player is
+  // small in the raw frame (zoomed-out wide-court shot, normHeight ~0.03–0.05),
+  // a fixed 10% radius covers far more of the frame than the spacing between
+  // nearby players and coaches — shrinking it proportionally to the player's
+  // bounding-box height keeps the acceptance window just large enough to
+  // catch genuine fast-sprinting motion while rejecting bystanders.
+  const sizeRadius = state.normHeight > 0
+    ? state.normHeight * 1.5
+    : TRACK_RADIUS_BASE;
+  const radius = Math.min(
+    TRACK_RADIUS_MAX,
+    Math.max(sizeRadius, TRACK_RADIUS_BASE * 0.5) + state.missCount * TRACK_RADIUS_GROWTH,
+  );
+
+  // Pre-compute viewport edges once (only meaningful when zoom > 1).
+  const vpActive = viewport && viewport.zoom > 1.2;
+  const vpLeft   = vpActive ? viewport.cx - 0.5 / viewport.zoom : 0;
+  const vpRight  = vpActive ? viewport.cx + 0.5 / viewport.zoom : 1;
+  const vpTop    = vpActive ? viewport.cy - 0.5 / viewport.zoom : 0;
+  const vpBottom = vpActive ? viewport.cy + 0.5 / viewport.zoom : 1;
 
   type Candidate = {
     bb: { originX: number; originY: number; width: number; height: number };
@@ -368,6 +401,12 @@ export function updateTracker(
     const cx = (bb.originX + bb.width / 2) / vw;
     const cy = (bb.originY + bb.height / 2) / vh;
     const normHeight = bb.height / vh;
+    // Viewport gate: when the canvas is zoomed in (zoom > 1.2), anyone whose
+    // centre is outside the visible crop window is definitionally off-screen
+    // and cannot be the tracked player — reject them before distance/colour
+    // scoring so a coach standing just outside the frame edge never steals
+    // the lock from the player who is in frame.
+    if (vpActive && (cx < vpLeft || cx > vpRight || cy < vpTop || cy > vpBottom)) continue;
     const dist = Math.hypot(cx - predX, cy - predY);
     if (dist > radius) continue;
     if (state.normHeight > 0) {
