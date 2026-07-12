@@ -362,12 +362,19 @@ export default function WatchStream() {
           if (pcRef.current && message.candidate) {
             await pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));
           }
-        } else if (message.type === "broadcaster-left" || message.type === "stream-ended") {
-          // The coach explicitly ended the stream (as opposed to the
-          // signaling server itself dropping the connection) — show
-          // "ended" immediately rather than attempting to reconnect.
-          // The server includes the final scoreboard and recent stat
-          // events so we can show a final-score summary.
+        } else if (message.type === "broadcaster-left") {
+          // Broadcaster's WebSocket dropped (network hiccup, server
+          // restart, etc.) — their recording app keeps running and will
+          // reconnect. Drop the dead RTCPeerConnection but stay on this
+          // page in "waiting-for-broadcaster" state so the stream resumes
+          // automatically when they come back, without the viewer having
+          // to reload or re-enter a code.
+          pcRef.current?.close();
+          pcRef.current = null;
+          setState("waiting-for-broadcaster");
+        } else if (message.type === "stream-ended") {
+          // Coach deliberately tapped "Stop Stream" — show the final
+          // score summary and stop trying to reconnect.
           explicitEndRef.current = true;
           setFinalSummary((prev) => {
             const hasScores =
@@ -646,7 +653,7 @@ export default function WatchStream() {
           {state === "waiting-for-broadcaster" && (
             <>
               <Users className="w-8 h-8 text-primary" />
-              <p className="max-w-sm text-white">Game hasn't started yet. You're in the right place — it'll connect automatically when the coach goes live.</p>
+              <p className="max-w-sm text-white">{explicitEndRef.current ? "Game hasn't started yet. You're in the right place — it'll connect automatically when the coach goes live." : "Stream interrupted — staying connected. It'll resume automatically when the coach reconnects."}</p>
               <button
                 onClick={shareLink}
                 className="mt-2 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20 transition-colors"

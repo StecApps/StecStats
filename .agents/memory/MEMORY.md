@@ -9,6 +9,7 @@
 - [Dev vs prod database are separate](dev-vs-prod-db.md) — imports into dev don't reach the published site; POST payload to the production /api/import URL to backfill live data.
 - [Canvas camera pipeline](camera-canvas-pipeline.md) — recording draws camera into an offscreen canvas for iOS digital zoom + camera switch; hardware gimbals (DJI) can't be integrated.
 - [Live stream restart resilience](live-stream-restart-resilience.md) — persisted session codes + client auto-reconnect let a broadcast survive an api-server restart mid-game.
+- [broadcaster-left vs stream-ended are different signals](broadcaster-left-vs-stream-ended.md) — broadcaster-left = transient WS drop (should reconnect), stream-ended = intentional stop (show final score); conflating them permanently kicks viewers.
 - [Drizzle schema not pushed in sandbox](drizzle-schema-not-pushed.md) — a fresh/restarted env can have code referencing DB tables that were never pushed; run `drizzle-kit push` before assuming a query bug.
 - [Stripe connector credential field names](stripe-connector-credentials.md) — Replit's Stripe connection API returns `settings.secret` (string key itself), not `settings.secret_key` as generic templates show.
 - [@workspace/db is a composite emitDeclarationOnly project](db-composite-declarations.md) — after a schema change, consumers read stale `lib/db/dist/*.d.ts`; rebuild with `tsc -b lib/db --force`, not just deleting tsbuildinfo.
