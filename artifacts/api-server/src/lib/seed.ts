@@ -23,9 +23,9 @@ export async function applyVideoOffsetFixes(): Promise<void> {
   try {
     await db
       .update(gamesTable)
-      .set({ videoOffsetMs: 2_205_276 })
-      .where(and(eq(gamesTable.id, 154), isNull(gamesTable.videoOffsetMs)));
-    logger.info({ gameId: 154, videoOffsetMs: 2_205_276 }, "Applied video offset fix for game 154");
+      .set({ videoOffsetMs: 1_809_782 })
+      .where(eq(gamesTable.id, 154));
+    logger.info({ gameId: 154, videoOffsetMs: 1_809_782 }, "Applied video offset fix for game 154");
   } catch (err) {
     logger.warn({ err }, "Could not apply video offset fix for game 154 (may not exist in this env)");
   }
