@@ -582,6 +582,56 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     req.log.info({ gameId, sourceObjectPath }, "repair-video: opening source file");
     const srcFile = await objectStorageService.getObjectEntityFile(sourceObjectPath);
 
+    // Diagnostic probe: log GCS metadata, hex dump of first 64 bytes, and
+    // ffprobe output from the first 8 MB so we know the exact file format
+    // without guessing from box-type bytes alone.
+    try {
+      const [meta] = await (srcFile as any).getMetadata();
+      req.log.info(
+        { size: meta.size, contentType: meta.contentType, contentEncoding: meta.contentEncoding ?? null },
+        "repair-video: source metadata",
+      );
+
+      const firstBytes = await readGCSBytes(srcFile, 0, 64);
+      if (firstBytes) {
+        req.log.info({ hex: firstBytes.toString("hex") }, "repair-video: source hex dump");
+      }
+
+      const probePath = path.join(tmpDir, "probe.bin");
+      await downloadGCSRange(srcFile, probePath, 0, 8 * 1024 * 1024 - 1);
+      await new Promise<void>((resolve) => {
+        execFile(
+          "ffprobe",
+          ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", probePath],
+          { maxBuffer: 2 * 1024 * 1024 },
+          (_err, stdout, stderr) => {
+            try {
+              const parsed = JSON.parse(stdout || "{}");
+              req.log.info(
+                {
+                  format: parsed.format?.format_name,
+                  duration: parsed.format?.duration,
+                  size: parsed.format?.size,
+                  streams: (parsed.streams ?? []).map((s: any) => ({
+                    codec: s.codec_name,
+                    type: s.codec_type,
+                    duration: s.duration,
+                  })),
+                  ffprobeErr: stderr?.slice(0, 300) || null,
+                },
+                "repair-video: ffprobe result",
+              );
+            } catch {
+              req.log.info({ raw: stdout?.slice(0, 500), err: stderr?.slice(0, 300) }, "repair-video: ffprobe raw");
+            }
+            resolve();
+          },
+        );
+      });
+    } catch (diagErr: any) {
+      req.log.warn({ msg: String(diagErr?.message ?? diagErr) }, "repair-video: diagnostic failed");
+    }
+
     // Scan the top-level box structure to detect whether the file contains
     // two raw-concatenated segments.  Handles both layouts:
     //   A) [ftyp1][mdat1][moov1][ftyp2][mdat2][moov2]  – second ftyp present
