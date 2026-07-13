@@ -420,9 +420,9 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       .update(gamesTable)
       .set({
         videoObjectPath: newObjectPath,
-        highlightStatus: "none",
+        highlightStatus: "idle",
         highlightObjectPath: null,
-        lowlightStatus: "none",
+        lowlightStatus: "idle",
         lowlightObjectPath: null,
       })
       .where(eq(gamesTable.id, gameId));
