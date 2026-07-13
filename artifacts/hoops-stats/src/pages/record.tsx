@@ -238,6 +238,26 @@ export default function RecordGame() {
     highlightElapsedSec < 25 ? "Rendering highlight clips…" :
     "Almost done — finalizing your reel…";
 
+  const handleRepairVideo = async () => {
+    if (!gameId) return;
+    setIsRepairing(true);
+    setRepairError(null);
+    try {
+      const res = await fetch(`/api/games/${gameId}/repair-video`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Server error ${res.status}`);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["games", gameId] });
+      setExistingVideoObjectPath(null);
+      setTimeout(() => window.location.reload(), 300);
+    } catch (err) {
+      setRepairError(err instanceof Error ? err.message : "Repair failed");
+    } finally {
+      setIsRepairing(false);
+    }
+  };
+
   const handleGenerateHighlight = async () => {
     if (!gameId) return;
     highlightBlobCacheRef.current = null;
@@ -405,6 +425,8 @@ export default function RecordGame() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState("Uploading video…");
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isRepairing, setIsRepairing] = useState(false);
+  const [repairError, setRepairError] = useState<string | null>(null);
   const highlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
   const lowlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
   const [isPreparingShare, setIsPreparingShare] = useState(false);
@@ -2487,6 +2509,22 @@ export default function RecordGame() {
                   <X className="w-4 h-4 mr-2" /> Discard Video
                 </Button>
               </div>
+              {existingVideoObjectPath && !recordedPreviewUrl && gameId && (
+                <div className="pt-1 space-y-1">
+                  <p className="text-xs text-muted-foreground">
+                    Video not playing in Chrome?{" "}
+                    <button
+                      type="button"
+                      className="underline text-primary disabled:opacity-50"
+                      onClick={handleRepairVideo}
+                      disabled={isRepairing}
+                    >
+                      {isRepairing ? "Repairing… (may take a few minutes)" : "Repair video"}
+                    </button>
+                  </p>
+                  {repairError && <p className="text-xs text-destructive">{repairError}</p>}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">Keep this video to save it with the game, or discard it to save your stats only.</p>
             </div>
           )}

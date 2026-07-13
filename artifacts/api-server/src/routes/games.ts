@@ -1,5 +1,9 @@
 import { Router, type IRouter } from "express";
 import { and, eq, inArray } from "drizzle-orm";
+import { execFile } from "child_process";
+import { promises as fs } from "fs";
+import os from "os";
+import path from "path";
 import {
   db,
   gamesTable,
@@ -354,6 +358,84 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
     .delete(gamesTable)
     .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)));
   res.status(204).send();
+});
+
+/**
+ * POST /games/:gameId/repair-video
+ *
+ * Re-mux a game's recorded video through ffmpeg with -movflags +faststart so
+ * the moov atom lands at the front of the file.  This fixes videos that were
+ * raw-concatenated from multiple segments (broken MP4 container) and videos
+ * where the moov atom is at the end (causes Chrome to fail to play without
+ * multiple round-trip range requests).  A new object is uploaded and the game
+ * record is updated in-place; the old object is left untouched.
+ */
+router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
+  const gameId = Number(req.params.gameId);
+  if (isNaN(gameId)) return void res.status(400).json({ error: "Invalid gameId" });
+
+  const ownerId = req.appUser!.id;
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+  });
+
+  if (!game) return void res.status(404).json({ error: "Game not found" });
+  if (!game.videoObjectPath) return void res.status(400).json({ error: "Game has no video" });
+
+  const tmpDir = os.tmpdir();
+  const tmpIn = path.join(tmpDir, `repair-in-${gameId}-${Date.now()}.mp4`);
+  const tmpOut = path.join(tmpDir, `repair-out-${gameId}-${Date.now()}.mp4`);
+
+  try {
+    req.log.info({ gameId, objectPath: game.videoObjectPath }, "repair-video: downloading");
+    const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
+    await new Promise<void>((resolve, reject) => {
+      const ws = require("fs").createWriteStream(tmpIn);
+      objectFile.createReadStream().pipe(ws);
+      ws.on("finish", resolve);
+      ws.on("error", reject);
+    });
+
+    req.log.info({ gameId, tmpIn }, "repair-video: running ffmpeg");
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        "ffmpeg",
+        ["-y", "-i", tmpIn, "-c", "copy", "-movflags", "+faststart", tmpOut],
+        { maxBuffer: 10 * 1024 * 1024 },
+        (err, _stdout, stderr) => {
+          if (err) {
+            reject(new Error(`ffmpeg error: ${stderr?.slice(-500)}`));
+          } else {
+            resolve();
+          }
+        },
+      );
+    });
+
+    req.log.info({ gameId, tmpOut }, "repair-video: uploading repaired file");
+    const newObjectPath = await objectStorageService.uploadLocalFileAsObjectEntity(
+      tmpOut,
+      ownerId,
+      "video/mp4",
+    );
+
+    await db
+      .update(gamesTable)
+      .set({
+        videoObjectPath: newObjectPath,
+        highlightStatus: "none",
+        highlightObjectPath: null,
+        lowlightStatus: "none",
+        lowlightObjectPath: null,
+      })
+      .where(eq(gamesTable.id, gameId));
+
+    req.log.info({ gameId, newObjectPath }, "repair-video: done");
+    res.json({ success: true, newObjectPath });
+  } finally {
+    await fs.unlink(tmpIn).catch(() => {});
+    await fs.unlink(tmpOut).catch(() => {});
+  }
 });
 
 export default router;
