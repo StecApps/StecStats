@@ -2205,6 +2205,7 @@ export default function RecordGame() {
       teamScore,
       opponentScore,
       videoObjectPath,
+      videoOffsetMs: videoOffsetMs > 0 ? videoOffsetMs : null,
       stats: Object.values(stats),
       events,
     };
@@ -2549,6 +2550,28 @@ export default function RecordGame() {
                         </button>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+              {existingVideoObjectPath && !recordedPreviewUrl && (
+                <div className="max-w-md space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    Video offset <span className="font-normal">(seconds to skip at start of recording clock)</span>
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={videoOffsetMs > 0 ? Math.round(videoOffsetMs / 1000) : ""}
+                      placeholder="0"
+                      onChange={e => {
+                        const secs = parseInt(e.target.value, 10);
+                        setVideoOffsetMs(isNaN(secs) || secs <= 0 ? 0 : secs * 1000);
+                      }}
+                      className="w-28 h-8 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <span className="text-xs text-muted-foreground">sec — use this when the video covers only part of the game</span>
                   </div>
                 </div>
               )}

@@ -162,10 +162,14 @@ function buildSegments(
   eligible: { videoTimestampMs: number; playerId: number; statField: string }[],
   duration: number,
   nameById: Map<number, string>,
+  offsetMs: number = 0,
 ): Segment[] {
   const segments: Segment[] = [];
   for (const e of eligible) {
-    const tSec = e.videoTimestampMs / 1000;
+    const adjustedMs = e.videoTimestampMs - offsetMs;
+    // Skip events that predate the video (before the recording started).
+    if (adjustedMs < 0) continue;
+    const tSec = adjustedMs / 1000;
     // Skip events beyond the video's duration — the recording ended before
     // this play happened (e.g. the browser stopped writing chunks early).
     // Clamping to `duration` would silently map every out-of-range event to
@@ -201,6 +205,7 @@ async function renderGameSegments(
   prefix: string,
   eligible: { videoTimestampMs: number; playerId: number; statField: string }[],
   nameById: Map<number, string>,
+  offsetMs: number = 0,
 ): Promise<string[]> {
   // MediaRecorder WebM files often lack a container-level duration header AND
   // have no seek index (cue points), making -ss seeks extremely slow.
@@ -308,7 +313,7 @@ async function renderGameSegments(
   ]);
   const hasAudio = audioStreams.length > 0;
 
-  const segments = buildSegments(eligible, duration, nameById);
+  const segments = buildSegments(eligible, duration, nameById, offsetMs);
   if (segments.length === 0) return [];
 
   // Base caption sizing on OUTPUT dimensions, not source (source may be 4K+).
@@ -497,7 +502,7 @@ export async function generateHighlight(gameId: number): Promise<void> {
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcUrl, tmpDir, "g", eligible, nameById);
+    const segPaths = await renderGameSegments(srcUrl, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0);
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
@@ -578,7 +583,7 @@ export async function generateLowlight(gameId: number): Promise<void> {
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcUrl, tmpDir, "ll", eligible, nameById);
+    const segPaths = await renderGameSegments(srcUrl, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0);
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
@@ -679,7 +684,7 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
         ]);
         const hasAudio = audioProbe.length > 0;
 
-        const segPaths = await renderGameSegments(srcUrl, tmpDir!, `t${game.id}`, eligible, nameById);
+        const segPaths = await renderGameSegments(srcUrl, tmpDir!, `t${game.id}`, eligible, nameById, game.videoOffsetMs ?? 0);
         return { segPaths, hasAudio };
       }),
     );
