@@ -426,24 +426,42 @@ async function concatSegments(
 }
 
 async function uploadHighlight(outPath: string, ownerId: number): Promise<string> {
-  const uploadURL = await objectStorageService.getObjectEntityUploadURL(ownerId);
   const buffer = await fs.readFile(outPath);
-  const putRes = await fetch(uploadURL, {
-    method: "PUT",
-    headers: { "Content-Type": "video/mp4" },
-    body: buffer,
-  });
-  if (!putRes.ok) {
-    throw new HighlightError(`Failed to upload highlight (${putRes.status})`);
+  const MAX_ATTEMPTS = 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL(ownerId);
+    try {
+      const putRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "video/mp4",
+          "Content-Length": String(buffer.byteLength),
+        },
+        body: buffer,
+      });
+      if (!putRes.ok) {
+        throw new HighlightError(`Failed to upload highlight (${putRes.status})`);
+      }
+      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+      await objectStorageService
+        .trySetObjectEntityAclPolicy(objectPath, {
+          owner: String(ownerId),
+          visibility: "private",
+        })
+        .catch((err) => logger.error({ err, ownerId }, "Failed to set highlight ACL policy"));
+      return objectPath;
+    } catch (err) {
+      lastErr = err;
+      if (err instanceof HighlightError) throw err;
+      if (attempt < MAX_ATTEMPTS) {
+        const delayMs = attempt * 5000;
+        logger.warn({ err, attempt, delayMs, outPath }, "Upload attempt failed, retrying");
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+    }
   }
-  const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
-  await objectStorageService
-    .trySetObjectEntityAclPolicy(objectPath, {
-      owner: String(ownerId),
-      visibility: "private",
-    })
-    .catch((err) => logger.error({ err, ownerId }, "Failed to set highlight ACL policy"));
-  return objectPath;
+  throw lastErr;
 }
 
 /**
