@@ -2532,7 +2532,7 @@ export default function RecordGame() {
                           className={`w-full flex items-center justify-between text-sm px-2 py-1 rounded text-left ${hasVideo ? "hover:bg-muted" : "opacity-40 cursor-not-allowed"}`}
                           onClick={() => {
                             if (hasVideo && playbackRef.current) {
-                              playbackRef.current.currentTime = seekMs / 1000;
+                              playbackRef.current.currentTime = Math.max(0, (seekMs - 10_000) / 1000);
                               playbackRef.current.play().catch(() => {});
                             }
                           }}
