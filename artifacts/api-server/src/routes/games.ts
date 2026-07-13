@@ -234,6 +234,7 @@ async function serializeGame(gameId: number, ownerId: number) {
     teamScore: game.teamScore,
     opponentScore: game.opponentScore,
     videoObjectPath: game.videoObjectPath,
+    videoOffsetMs: game.videoOffsetMs ?? null,
     highlightObjectPath: game.highlightObjectPath ?? null,
     highlightStatus: game.highlightStatus ?? null,
     highlightError: game.highlightError ?? null,

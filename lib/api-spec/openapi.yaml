@@ -860,6 +860,7 @@ components:
         teamScore: { type: integer }
         opponentScore: { type: integer }
         videoObjectPath: { type: string, nullable: true }
+        videoOffsetMs: { type: integer, nullable: true }
         highlightObjectPath: { type: string, nullable: true }
         highlightStatus:
           type: string

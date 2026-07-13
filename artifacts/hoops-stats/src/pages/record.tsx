@@ -420,6 +420,7 @@ export default function RecordGame() {
   const [existingVideoObjectPath, setExistingVideoObjectPath] = useState<string | null>(null);
   const [videoSignedUrl, setVideoSignedUrl] = useState<string | null>(null);
   const [events, setEvents] = useState<GameEventEntry[]>([]);
+  const [videoOffsetMs, setVideoOffsetMs] = useState<number>(0);
   const [isRecording, setIsRecording] = useState(false);
   const [recordedSegments, setRecordedSegments] = useState<Blob[]>([]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
@@ -709,6 +710,7 @@ export default function RecordGame() {
       });
       setStats(statsObj);
       setExistingVideoObjectPath(gameToEdit.videoObjectPath ?? null);
+      setVideoOffsetMs(gameToEdit.videoOffsetMs ?? 0);
       setEvents(gameToEdit.events ?? []);
     }
   }, [isEditing, gameToEdit]);
@@ -2520,23 +2522,30 @@ export default function RecordGame() {
                   <div className="max-h-48 overflow-y-auto space-y-1 border rounded-lg p-2">
                     {events.map((ev, idx) => {
                       const player = players?.find(p => p.id === ev.playerId);
+                      const seekMs = ev.videoTimestampMs - videoOffsetMs;
+                      const hasVideo = seekMs >= 0;
                       return (
                         <button
                           key={idx}
                           type="button"
-                          className="w-full flex items-center justify-between text-sm px-2 py-1 rounded hover:bg-muted text-left"
+                          disabled={!hasVideo}
+                          className={`w-full flex items-center justify-between text-sm px-2 py-1 rounded text-left ${hasVideo ? "hover:bg-muted" : "opacity-40 cursor-not-allowed"}`}
                           onClick={() => {
-                            if (playbackRef.current) {
-                              playbackRef.current.currentTime = ev.videoTimestampMs / 1000;
+                            if (hasVideo && playbackRef.current) {
+                              playbackRef.current.currentTime = seekMs / 1000;
                               playbackRef.current.play().catch(() => {});
                             }
                           }}
                         >
                           <span className="flex items-center gap-2">
-                            <Play className="w-3 h-3 text-primary" />
+                            {hasVideo
+                              ? <Play className="w-3 h-3 text-primary" />
+                              : <span className="w-3 h-3 text-muted-foreground text-xs">—</span>}
                             {player?.name ?? "Player"} — {STAT_LABELS[ev.statField] ?? ev.statField}
                           </span>
-                          <span className="font-mono text-muted-foreground">{formatMs(ev.videoTimestampMs)}</span>
+                          <span className="font-mono text-muted-foreground">
+                            {hasVideo ? formatMs(seekMs) : "no video"}
+                          </span>
                         </button>
                       );
                     })}

@@ -20,6 +20,7 @@ export interface Game {
   teamScore: number;
   opponentScore: number;
   videoObjectPath?: string | null;
+  videoOffsetMs?: number | null;
   highlightObjectPath?: string | null;
   highlightStatus?: GameHighlightStatus;
   highlightError?: string | null;

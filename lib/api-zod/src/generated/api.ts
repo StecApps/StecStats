@@ -249,8 +249,9 @@ export const ListTeamGamesResponseItem = zod.object({
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
+  "videoOffsetMs": zod.number().nullish(),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.preprocess(v => (v === 'none' ? null : v), zod.enum(['idle', 'processing', 'ready', 'failed']).nullish()),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
@@ -357,8 +358,9 @@ export const CreateGameResponse = zod.object({
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
+  "videoOffsetMs": zod.number().nullish(),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.preprocess(v => (v === 'none' ? null : v), zod.enum(['idle', 'processing', 'ready', 'failed']).nullish()),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
@@ -407,8 +409,9 @@ export const GetGameResponse = zod.object({
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
+  "videoOffsetMs": zod.number().nullish(),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.preprocess(v => (v === 'none' ? null : v), zod.enum(['idle', 'processing', 'ready', 'failed']).nullish()),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
@@ -518,8 +521,9 @@ export const UpdateGameResponse = zod.object({
   "teamScore": zod.number(),
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
+  "videoOffsetMs": zod.number().nullish(),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.preprocess(v => (v === 'none' ? null : v), zod.enum(['idle', 'processing', 'ready', 'failed']).nullish()),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({

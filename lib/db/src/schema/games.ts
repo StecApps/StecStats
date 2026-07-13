@@ -35,6 +35,7 @@ export const gamesTable = pgTable("games", {
   lowlightStatus: text("lowlight_status"),
   lowlightError: text("lowlight_error"),
   lowlightStartedAt: timestamp("lowlight_started_at"),
+  videoOffsetMs: integer("video_offset_ms"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
