@@ -382,29 +382,26 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
   if (!game) return void res.status(404).json({ error: "Game not found" });
   if (!game.videoObjectPath) return void res.status(400).json({ error: "Game has no video" });
 
-  const tmpDir = os.tmpdir();
-  const tmpIn = path.join(tmpDir, `repair-in-${gameId}-${Date.now()}.mp4`);
-  const tmpOut = path.join(tmpDir, `repair-out-${gameId}-${Date.now()}.mp4`);
+  const tmpOut = path.join(os.tmpdir(), `repair-out-${gameId}-${Date.now()}.mp4`);
 
   try {
-    req.log.info({ gameId, objectPath: game.videoObjectPath }, "repair-video: downloading");
-    const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
-    await new Promise<void>((resolve, reject) => {
-      const ws = require("fs").createWriteStream(tmpIn);
-      objectFile.createReadStream().pipe(ws);
-      ws.on("finish", resolve);
-      ws.on("error", reject);
-    });
+    // Use a signed URL so ffmpeg reads directly from GCS via HTTP range
+    // requests — no full download needed, much faster and won't time out.
+    req.log.info({ gameId, objectPath: game.videoObjectPath }, "repair-video: signing URL");
+    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
+      game.videoObjectPath,
+      3 * 3600,
+    );
 
-    req.log.info({ gameId, tmpIn }, "repair-video: running ffmpeg");
+    req.log.info({ gameId }, "repair-video: running ffmpeg (faststart remux)");
     await new Promise<void>((resolve, reject) => {
       execFile(
         "ffmpeg",
-        ["-y", "-i", tmpIn, "-c", "copy", "-movflags", "+faststart", tmpOut],
+        ["-y", "-i", srcUrl, "-c", "copy", "-movflags", "+faststart", tmpOut],
         { maxBuffer: 10 * 1024 * 1024 },
         (err, _stdout, stderr) => {
           if (err) {
-            reject(new Error(`ffmpeg error: ${stderr?.slice(-500)}`));
+            reject(new Error(`ffmpeg error: ${stderr?.slice(-800)}`));
           } else {
             resolve();
           }
@@ -433,7 +430,6 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     req.log.info({ gameId, newObjectPath }, "repair-video: done");
     res.json({ success: true, newObjectPath });
   } finally {
-    await fs.unlink(tmpIn).catch(() => {});
     await fs.unlink(tmpOut).catch(() => {});
   }
 });
