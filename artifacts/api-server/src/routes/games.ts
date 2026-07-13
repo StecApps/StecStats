@@ -435,11 +435,15 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
         opponentScore: body.opponentScore,
         videoObjectPath,
         videoOffsetMs: body.videoOffsetMs ?? null,
-        // Editing stats/events/video invalidates any existing highlight reel.
+        // Editing stats/events/video invalidates any existing highlight/lowlight reel.
         highlightObjectPath: null,
         highlightStatus: "idle",
         highlightError: null,
         highlightStartedAt: null,
+        lowlightObjectPath: null,
+        lowlightStatus: "idle",
+        lowlightError: null,
+        lowlightStartedAt: null,
       })
       .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
 
