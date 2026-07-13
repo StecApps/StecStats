@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
 import { and, eq, inArray } from "drizzle-orm";
-import { execFile } from "child_process";
-import { promises as fs } from "fs";
+import { execFile, spawn } from "child_process";
+import { promises as fs, createWriteStream } from "fs";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import os from "os";
 import path from "path";
 import {
@@ -24,12 +26,60 @@ import {
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
 import { ObjectStorageService } from "../lib/objectStorage";
-import { getObjectAclPolicy, setObjectAclPolicy } from "../lib/objectAcl";
+import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib/objectAcl";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements, isPro } from "../lib/entitlements";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+/**
+ * Scan the top-level MP4 box structure of a remote file using HTTP Range
+ * requests and return the byte offsets of every "ftyp" box found AFTER
+ * offset 0.  Each such offset marks the start of a new raw-concatenated
+ * segment (e.g. two iPhone halves stitched together on the client).
+ */
+async function findFtypBoundaries(signedUrl: string): Promise<number[]> {
+  const boundaries: number[] = [];
+  let offset = 0;
+  for (let iter = 0; iter < 60; iter++) {
+    let res: Response;
+    try {
+      res = await fetch(signedUrl, { headers: { Range: `bytes=${offset}-${offset + 15}` } });
+    } catch { break; }
+    if (!res.ok && res.status !== 206) break;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 8) break;
+    const sizeField = buf.readUInt32BE(0);
+    const boxType = buf.slice(4, 8).toString("ascii");
+    let boxSize: number;
+    if (sizeField === 1 && buf.length >= 16) {
+      boxSize = buf.readUInt32BE(8) * 4294967296 + buf.readUInt32BE(12);
+    } else if (sizeField === 0 || sizeField < 8) {
+      break;
+    } else {
+      boxSize = sizeField;
+    }
+    if (boxType === "ftyp" && offset > 0) boundaries.push(offset);
+    offset += boxSize;
+    if (boundaries.length >= 8) break;
+  }
+  return boundaries;
+}
+
+/** Stream a byte range (or the tail from start) from a signed URL to disk. */
+async function downloadRangeToFile(
+  signedUrl: string,
+  destPath: string,
+  start: number,
+  end?: number,
+): Promise<void> {
+  const rangeVal = end !== undefined ? `bytes=${start}-${end}` : `bytes=${start}-`;
+  const res = await fetch(signedUrl, { headers: { Range: rangeVal } });
+  if (!res.ok && res.status !== 206) throw new Error(`Download ${res.status}`);
+  if (!res.body) throw new Error("No response body");
+  await pipeline(Readable.fromWeb(res.body as ReadableStream<Uint8Array>), createWriteStream(destPath));
+}
 
 async function assertPlayersOwned(
   playerIds: number[],
@@ -434,38 +484,111 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
   const game = await db.query.gamesTable.findFirst({
     where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
   });
-
   if (!game) return void res.status(404).json({ error: "Game not found" });
   if (!game.videoObjectPath) return void res.status(400).json({ error: "Game has no video" });
 
-  const tmpOut = path.join(os.tmpdir(), `repair-out-${gameId}-${Date.now()}.mp4`);
+  // Allow re-repair from the original source (e.g. the raw-concatenated file
+  // before a previous single-segment repair extracted the wrong half).
+  let sourceObjectPath = game.videoObjectPath;
+  const bodySource = typeof req.body?.sourceObjectPath === "string" ? req.body.sourceObjectPath.trim() : null;
+  if (bodySource) {
+    if (!bodySource.startsWith("/objects/")) {
+      return void res.status(400).json({ error: "Invalid sourceObjectPath" });
+    }
+    try {
+      const srcFile = await objectStorageService.getObjectEntityFile(bodySource);
+      const ok = await objectStorageService.canAccessObjectEntity({
+        userId: String(ownerId),
+        objectFile: srcFile,
+        requestedPermission: ObjectPermission.READ,
+      });
+      if (!ok) return void res.status(403).json({ error: "No access to source file" });
+      sourceObjectPath = bodySource;
+    } catch {
+      return void res.status(404).json({ error: "Source file not found" });
+    }
+  }
 
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `repair-${gameId}-`));
   try {
-    // Use a signed URL so ffmpeg reads directly from GCS via HTTP range
-    // requests — no full download needed, much faster and won't time out.
-    req.log.info({ gameId, objectPath: game.videoObjectPath }, "repair-video: signing URL");
-    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
-      game.videoObjectPath,
-      3 * 3600,
-    );
+    req.log.info({ gameId, sourceObjectPath }, "repair-video: signing URL");
+    const srcUrl = await objectStorageService.getObjectEntitySignedURL(sourceObjectPath, 3 * 3600);
 
-    req.log.info({ gameId }, "repair-video: running ffmpeg (faststart remux)");
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        "ffmpeg",
-        ["-y", "-i", srcUrl, "-c", "copy", "-movflags", "+faststart", tmpOut],
-        { maxBuffer: 10 * 1024 * 1024 },
-        (err, _stdout, stderr) => {
-          if (err) {
-            reject(new Error(`ffmpeg error: ${stderr?.slice(-800)}`));
-          } else {
-            resolve();
-          }
-        },
-      );
-    });
+    // Find extra segment boundaries — a raw iOS halftime split produces
+    // [ftyp1][mdat1][moov1][ftyp2][mdat2][moov2].  We detect the second ftyp
+    // by scanning the top-level box structure with cheap Range requests.
+    req.log.info({ gameId }, "repair-video: scanning for segment boundaries");
+    const extraBoundaries = await findFtypBoundaries(srcUrl);
+    req.log.info({ gameId, extraBoundaries }, "repair-video: done scanning");
 
-    req.log.info({ gameId, tmpOut }, "repair-video: uploading repaired file");
+    const tmpOut = path.join(tmpDir, "final.mp4");
+
+    if (extraBoundaries.length > 0) {
+      // Multi-segment path: download each byte-range as a standalone MP4,
+      // faststart-remux each one, then concat with timestamp adjustment.
+      const allStarts = [0, ...extraBoundaries];
+      const procPaths: string[] = [];
+
+      for (let i = 0; i < allStarts.length; i++) {
+        const start = allStarts[i];
+        const end = i + 1 < allStarts.length ? allStarts[i + 1] - 1 : undefined;
+        const segUrl = await objectStorageService.getObjectEntitySignedURL(sourceObjectPath, 3 * 3600);
+
+        const rawSeg = path.join(tmpDir, `raw${i}.mp4`);
+        req.log.info({ gameId, i, start, end }, "repair-video: downloading segment");
+        await downloadRangeToFile(segUrl, rawSeg, start, end);
+
+        const procSeg = path.join(tmpDir, `proc${i}.mp4`);
+        req.log.info({ gameId, i }, "repair-video: ffmpeg on segment");
+        await new Promise<void>((resolve, reject) => {
+          execFile(
+            "ffmpeg",
+            ["-y", "-i", rawSeg, "-c", "copy", "-movflags", "+faststart", procSeg],
+            { maxBuffer: 5 * 1024 * 1024 },
+            (err, _stdout, stderr) =>
+              err ? reject(new Error(`ffmpeg seg${i}: ${stderr?.slice(-400)}`)) : resolve(),
+          );
+        });
+        await fs.unlink(rawSeg).catch(() => {});
+        procPaths.push(procSeg);
+      }
+
+      // Concat all segments (adjusts timestamps of subsequent segments)
+      const fileList = path.join(tmpDir, "filelist.txt");
+      await fs.writeFile(fileList, procPaths.map(p => `file '${p}'`).join("\n"), "utf8");
+      req.log.info({ gameId, segments: procPaths.length }, "repair-video: concatenating");
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn("ffmpeg", [
+          "-f", "concat", "-safe", "0",
+          "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+          "-i", fileList,
+          "-c", "copy", "-movflags", "+faststart",
+          "-y", tmpOut,
+        ]);
+        let stderr = "";
+        proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+        proc.on("close", (code) =>
+          code === 0 ? resolve() : reject(new Error(`ffmpeg concat: ${stderr.slice(-400)}`)));
+        proc.on("error", reject);
+      });
+    } else {
+      // Single segment: download then faststart remux
+      req.log.info({ gameId }, "repair-video: single segment, downloading");
+      const rawFull = path.join(tmpDir, "raw.mp4");
+      await downloadRangeToFile(srcUrl, rawFull, 0, undefined);
+      req.log.info({ gameId }, "repair-video: applying faststart");
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          "ffmpeg",
+          ["-y", "-i", rawFull, "-c", "copy", "-movflags", "+faststart", tmpOut],
+          { maxBuffer: 5 * 1024 * 1024 },
+          (err, _stdout, stderr) =>
+            err ? reject(new Error(`ffmpeg: ${stderr?.slice(-600)}`)) : resolve(),
+        );
+      });
+    }
+
+    req.log.info({ gameId }, "repair-video: uploading");
     const newObjectPath = await objectStorageService.uploadLocalFileAsObjectEntity(
       tmpOut,
       ownerId,
@@ -486,7 +609,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     req.log.info({ gameId, newObjectPath }, "repair-video: done");
     res.json({ success: true, newObjectPath });
   } finally {
-    await fs.unlink(tmpOut).catch(() => {});
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 });
 

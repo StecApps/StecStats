@@ -238,18 +238,27 @@ export default function RecordGame() {
     highlightElapsedSec < 25 ? "Rendering highlight clips…" :
     "Almost done — finalizing your reel…";
 
-  const handleRepairVideo = async () => {
+  const [repairSourcePath, setRepairSourcePath] = useState("");
+
+  const handleRepairVideo = async (sourceObjectPath?: string) => {
     if (!gameId) return;
     setIsRepairing(true);
     setRepairError(null);
     try {
-      const res = await fetch(`/api/games/${gameId}/repair-video`, { method: "POST" });
+      const body: Record<string, string> = {};
+      if (sourceObjectPath) body.sourceObjectPath = sourceObjectPath;
+      const res = await fetch(`/api/games/${gameId}/repair-video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `Server error ${res.status}`);
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error ?? `Server error ${res.status}`);
       }
       await queryClient.invalidateQueries({ queryKey: ["games", gameId] });
       setExistingVideoObjectPath(null);
+      setVideoSignedUrl(null);
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
       setRepairError(err instanceof Error ? err.message : "Repair failed");
@@ -2545,16 +2554,36 @@ export default function RecordGame() {
               {existingVideoObjectPath && !recordedPreviewUrl && gameId && (
                 <div className="pt-1 space-y-1">
                   <p className="text-xs text-muted-foreground">
-                    Video not playing in Chrome?{" "}
+                    Video not playing correctly?{" "}
                     <button
                       type="button"
                       className="underline text-primary disabled:opacity-50"
-                      onClick={handleRepairVideo}
+                      onClick={() => handleRepairVideo()}
                       disabled={isRepairing}
                     >
                       {isRepairing ? "Repairing… (may take a few minutes)" : "Repair video"}
                     </button>
                   </p>
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer select-none">Re-repair from original source</summary>
+                    <div className="mt-1 flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={repairSourcePath}
+                        onChange={e => setRepairSourcePath(e.target.value)}
+                        placeholder="/objects/uploads/1/original-uuid"
+                        className="flex-1 border border-border rounded px-2 py-0.5 bg-background text-xs font-mono"
+                      />
+                      <button
+                        type="button"
+                        className="underline text-primary disabled:opacity-50 whitespace-nowrap"
+                        disabled={isRepairing || !repairSourcePath.startsWith("/objects/")}
+                        onClick={() => handleRepairVideo(repairSourcePath)}
+                      >
+                        Re-repair
+                      </button>
+                    </div>
+                  </details>
                   {repairError && <p className="text-xs text-destructive">{repairError}</p>}
                 </div>
               )}
