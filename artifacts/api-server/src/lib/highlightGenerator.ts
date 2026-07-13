@@ -18,9 +18,10 @@ const objectStorageService = new ObjectStorageService();
 const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 
 // Seconds of footage kept before and after each qualifying moment.
-// Kept short so each segment encodes quickly on CPU-constrained servers.
-const PRE_SECONDS = 5;
-const POST_SECONDS = 10;
+// PRE_SECONDS must cover the user's reaction delay (~3-5s after the play)
+// plus enough lead-in to see the play develop.
+const PRE_SECONDS = 12;
+const POST_SECONDS = 8;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
 
@@ -374,10 +375,10 @@ async function renderGameSegments(
       "-profile:v", "baseline",
       "-pix_fmt", "yuv420p",
       "-vsync", "cfr",
-      // Cap bitrate so the output is small and CPU doesn't spike on high-motion frames
-      "-b:v", "1500k",
-      "-maxrate", "2000k",
-      "-bufsize", "4000k",
+      // Cap bitrate — higher than before for better quality, still safe on CPU
+      "-b:v", "2500k",
+      "-maxrate", "3500k",
+      "-bufsize", "7000k",
       // Use all available threads
       "-threads", "0",
     ];
