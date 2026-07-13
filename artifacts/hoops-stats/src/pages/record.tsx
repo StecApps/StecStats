@@ -409,6 +409,7 @@ export default function RecordGame() {
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
 
   const [existingVideoObjectPath, setExistingVideoObjectPath] = useState<string | null>(null);
+  const [videoSignedUrl, setVideoSignedUrl] = useState<string | null>(null);
   const [events, setEvents] = useState<GameEventEntry[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [recordedSegments, setRecordedSegments] = useState<Blob[]>([]);
@@ -488,6 +489,20 @@ export default function RecordGame() {
   const [shotPrompt, setShotPrompt] = useState<{ playerId: number; playerName: string; usageIndex: number } | null>(null);
   const [showShotUpgradeNudge, setShowShotUpgradeNudge] = useState(false);
   const [poseModelReady, setPoseModelReady] = useState(false);
+
+  // Fetch a short-lived signed GCS URL so Chrome can play the saved video
+  // directly from GCS (no proxy hop, proper range-request support).
+  useEffect(() => {
+    if (!gameId || !existingVideoObjectPath) { setVideoSignedUrl(null); return; }
+    let cancelled = false;
+    fetch(`/api/games/${gameId}/video-signed-url`)
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { url: string } | null) => {
+        if (!cancelled && data?.url) setVideoSignedUrl(data.url);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [gameId, existingVideoObjectPath]);
   const autoFollowRef = useRef(false);
   // trackCenterXRef/YRef + trackZoomRef are the SMOOTHED, actually-rendered
   // pan/zoom — only ever written by the draw loop below, at 60fps. The
@@ -2458,12 +2473,30 @@ export default function RecordGame() {
             <div className="space-y-3">
               <video
                 ref={playbackRef}
-                src={recordedPreviewUrl || (existingVideoObjectPath ? videoObjectSrc(existingVideoObjectPath) : undefined)}
+                src={recordedPreviewUrl || videoSignedUrl || undefined}
                 controls
                 playsInline
+                preload="metadata"
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
                   setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
+                }}
+                onError={(e) => {
+                  const v = e.currentTarget;
+                  const err = v.error;
+                  const codes: Record<number, string> = {
+                    1: "MEDIA_ERR_ABORTED", 2: "MEDIA_ERR_NETWORK",
+                    3: "MEDIA_ERR_DECODE", 4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
+                  };
+                  const msg = err ? `${codes[err.code] ?? `code ${err.code}`}: ${err.message || "(no message)"}` : "unknown error";
+                  console.error("[video error]", msg, v.src);
+                  // Show a visible banner if the game video (not a local blob) fails
+                  if (!recordedPreviewUrl) {
+                    const banner = document.createElement("p");
+                    banner.style.cssText = "color:#f87171;font-size:0.8rem;text-align:center;padding:4px";
+                    banner.textContent = `⚠ Video error: ${msg}`;
+                    v.parentElement?.appendChild(banner);
+                  }
                 }}
                 className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
               />

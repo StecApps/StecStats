@@ -150,6 +150,7 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     res.setHeader("Cache-Control", "private, max-age=3600");
 
     const rangeHeader = req.headers["range"];
+    req.log.info({ rangeHeader, fileSize, url: req.url }, "storage: serving object");
     if (rangeHeader && fileSize > 0) {
       // Parse "bytes=start-end" — end is optional (means "to EOF").
       const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);

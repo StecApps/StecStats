@@ -361,6 +361,62 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
 });
 
 /**
+ * GET /games/:gameId/video-signed-url
+ * Returns a short-lived signed URL for the game video so the browser can
+ * play it directly from GCS — no server-side proxy needed.
+ */
+router.get("/games/:gameId/video-signed-url", requireAuth, async (req, res) => {
+  const gameId = Number(req.params.gameId);
+  if (isNaN(gameId)) return void res.status(400).json({ error: "Invalid gameId" });
+  const ownerId = req.appUser!.id;
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+  });
+  if (!game?.videoObjectPath) return void res.status(404).json({ error: "No video" });
+  const url = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3600);
+  res.json({ url, expiresAt: Date.now() + 3600 * 1000 });
+});
+
+/**
+ * GET /games/:gameId/video-probe — run ffprobe on the game video and return
+ * codec/format info so we can diagnose playback issues without downloading.
+ */
+router.get("/games/:gameId/video-probe", requireAuth, async (req, res) => {
+  const gameId = Number(req.params.gameId);
+  if (isNaN(gameId)) return void res.status(400).json({ error: "Invalid gameId" });
+  const ownerId = req.appUser!.id;
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+  });
+  if (!game?.videoObjectPath) return void res.status(404).json({ error: "No video" });
+
+  const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3600);
+  await new Promise<void>((resolve, reject) => {
+    execFile(
+      "ffprobe",
+      ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", srcUrl],
+      { maxBuffer: 5 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) { reject(new Error(stderr.slice(-500))); return; }
+        try {
+          const data = JSON.parse(stdout);
+          res.json({
+            format: data.format?.format_name,
+            duration: data.format?.duration,
+            size: data.format?.size,
+            streams: data.streams?.map((s: Record<string, unknown>) => ({
+              type: s.codec_type, codec: s.codec_name,
+              width: s.width, height: s.height,
+            })),
+          });
+        } catch { res.json({ raw: stdout.slice(0, 2000) }); }
+        resolve();
+      },
+    );
+  });
+});
+
+/**
  * POST /games/:gameId/repair-video
  *
  * Re-mux a game's recorded video through ffmpeg with -movflags +faststart so
