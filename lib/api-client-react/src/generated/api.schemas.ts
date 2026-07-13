@@ -230,6 +230,7 @@ export interface GameUpdate {
   /** @minimum 0 */
   opponentScore: number;
   videoObjectPath?: string | null;
+  videoOffsetMs?: number | null;
   stats: PlayerGameStatInput[];
   events: GameEvent[];
 }

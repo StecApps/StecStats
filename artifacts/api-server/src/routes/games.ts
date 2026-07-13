@@ -434,6 +434,7 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
         teamScore: body.teamScore,
         opponentScore: body.opponentScore,
         videoObjectPath,
+        videoOffsetMs: body.videoOffsetMs ?? null,
         // Editing stats/events/video invalidates any existing highlight reel.
         highlightObjectPath: null,
         highlightStatus: "idle",

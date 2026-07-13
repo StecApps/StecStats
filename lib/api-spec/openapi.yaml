@@ -908,6 +908,7 @@ components:
         teamScore: { type: integer, minimum: 0 }
         opponentScore: { type: integer, minimum: 0 }
         videoObjectPath: { type: string, nullable: true }
+        videoOffsetMs: { type: integer, nullable: true }
         stats:
           type: array
           items:

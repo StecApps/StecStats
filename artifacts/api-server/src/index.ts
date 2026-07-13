@@ -2,7 +2,7 @@ import { runMigrations } from "stripe-replit-sync";
 import { sql } from "drizzle-orm";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedDatabase } from "./lib/seed";
+import { seedDatabase, applyVideoOffsetFixes } from "./lib/seed";
 import { attachLiveSocketServer } from "./lib/liveSocket";
 import { liveStreamRegistry } from "./lib/liveStream";
 import { getStripeSync } from "./lib/stripeClient";
@@ -81,6 +81,9 @@ async function resumeOrphanedJobs(): Promise<void> {
 Promise.all([
   seedDatabase().catch((err) => {
     logger.error({ err }, "Error seeding database");
+  }),
+  applyVideoOffsetFixes().catch((err) => {
+    logger.error({ err }, "Error applying video offset fixes");
   }),
   initStripe().catch((err) => {
     logger.error({ err }, "Error initializing Stripe");

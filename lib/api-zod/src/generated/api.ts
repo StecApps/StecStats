@@ -485,6 +485,7 @@ export const UpdateGameBody = zod.object({
   "teamScore": zod.number().min(updateGameBodyTeamScoreMin),
   "opponentScore": zod.number().min(updateGameBodyOpponentScoreMin),
   "videoObjectPath": zod.string().nullish(),
+  "videoOffsetMs": zod.number().nullish(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
   "ftMade": zod.number().min(updateGameBodyStatsItemFtMadeMin),
