@@ -135,25 +135,44 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
       return;
     }
 
-    const response = await objectStorageService.downloadObject(objectFile);
+    const [metadata] = await objectFile.getMetadata();
+    const contentType: string = (metadata.contentType as string) || "application/octet-stream";
+    const fileSize = Number(metadata.size ?? 0);
 
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    // When explicitly requested (e.g. the "Download" button), force a
-    // Content-Disposition: attachment header. The HTML `download` anchor
-    // attribute alone is unreliable — iOS Safari in particular ignores it
-    // for video content and just opens/plays the file instead of saving it.
     const downloadName = typeof req.query.download === "string" ? req.query.download : null;
     if (downloadName) {
       res.setHeader("Content-Disposition", `attachment; filename="${downloadName.replace(/"/g, "")}"`);
     }
 
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
+    // Always advertise range support so browsers know they can seek video.
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, max-age=3600");
+
+    const rangeHeader = req.headers["range"];
+    if (rangeHeader && fileSize > 0) {
+      // Parse "bytes=start-end" — end is optional (means "to EOF").
+      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+      if (!match) {
+        res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();
+        return;
+      }
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+      if (start > end || end >= fileSize) {
+        res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();
+        return;
+      }
+      const chunkSize = end - start + 1;
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader("Content-Length", chunkSize);
+      objectFile.createReadStream({ start, end }).pipe(res);
     } else {
-      res.end();
+      // Full file — send Content-Length so the browser can show progress.
+      if (fileSize > 0) res.setHeader("Content-Length", fileSize);
+      res.status(200);
+      objectFile.createReadStream().pipe(res);
     }
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
