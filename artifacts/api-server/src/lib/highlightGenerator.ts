@@ -18,10 +18,17 @@ const objectStorageService = new ObjectStorageService();
 const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 
 // Seconds of footage kept before and after each qualifying moment.
-const PRE_SECONDS = 20;
-const POST_SECONDS = 20;
+// Kept short so each segment encodes quickly on CPU-constrained servers.
+const PRE_SECONDS = 5;
+const POST_SECONDS = 10;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
+
+// Target output dimensions for the reel. Lower resolution = much faster
+// encoding on CPU-limited containers (was processing at 0.1x real-time at
+// full source resolution; 480p + ultrafast brings this to ~0.7x).
+const OUTPUT_HEIGHT = 480;
+const OUTPUT_WIDTH = 854;
 
 // Stat fields that count as "highlights" — made shots and positive plays only.
 export const HIGHLIGHT_FIELDS = new Set([
@@ -303,7 +310,8 @@ async function renderGameSegments(
   const segments = buildSegments(eligible, duration, nameById);
   if (segments.length === 0) return [];
 
-  const fontSize = Math.min(96, Math.max(18, Math.round(height / 20)));
+  // Base caption sizing on OUTPUT dimensions, not source (source may be 4K+).
+  const fontSize = Math.min(36, Math.max(12, Math.round(OUTPUT_HEIGHT / 20)));
   const boxBorder = Math.round(fontSize / 2);
   const margin = Math.round(fontSize * 1.2);
 
@@ -324,11 +332,15 @@ async function renderGameSegments(
       drawFilters.map((d) => fs.writeFile(d.capFile, d.text, "utf8")),
     );
 
-    // Build filter chain: optional rotation correction first, then scale to
-    // ensure even dimensions (required by H.264), then captions.
+    // Build filter chain: optional rotation correction first, then scale DOWN
+    // to OUTPUT_WIDTH×OUTPUT_HEIGHT (preserving aspect ratio), then even-dim
+    // fix (required by H.264), then captions.
     const filterParts: string[] = [];
     if (transposeFilter) filterParts.push(transposeFilter);
-    filterParts.push("scale=trunc(iw/2)*2:trunc(ih/2)*2");
+    filterParts.push(
+      `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease:flags=fast_bilinear,` +
+        `scale=trunc(iw/2)*2:trunc(ih/2)*2`,
+    );
     for (const d of drawFilters) {
       filterParts.push(
         [
@@ -354,15 +366,23 @@ async function renderGameSegments(
       "-i", activeSrcPath,
       "-t", segDur.toFixed(3),
       "-vf", vf,
-      "-r", "30",
+      // 24 fps reduces encode work vs 30 fps (~20% faster)
+      "-r", "24",
       "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-profile:v", "high",
+      // ultrafast is ~3× faster than veryfast on CPU-limited containers
+      "-preset", "ultrafast",
+      "-profile:v", "baseline",
       "-pix_fmt", "yuv420p",
       "-vsync", "cfr",
+      // Cap bitrate so the output is small and CPU doesn't spike on high-motion frames
+      "-b:v", "1500k",
+      "-maxrate", "2000k",
+      "-bufsize", "4000k",
+      // Use all available threads
+      "-threads", "0",
     ];
     if (hasAudio) {
-      args.push("-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
+      args.push("-c:a", "aac", "-ar", "44100", "-b:a", "96k", "-ac", "2");
     } else {
       args.push("-an");
     }
