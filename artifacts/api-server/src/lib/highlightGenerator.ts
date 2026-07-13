@@ -459,21 +459,24 @@ export async function generateHighlight(gameId: number): Promise<void> {
     const nameById = new Map(players.map((p) => [p.id, p.name]));
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
-    const srcPath = path.join(tmpDir, "source");
 
-    const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
-    await objectFile.download({ destination: srcPath });
+    // Get a 3-hour signed URL so ffmpeg reads directly from object storage
+    // without downloading the entire video first. For MP4 files ffmpeg uses
+    // HTTP range requests to seek to each timestamp; for WebM it streams
+    // sequentially. Either way Node.js is never blocked waiting for a full
+    // download, so health checks keep responding during generation.
+    const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3 * 3600);
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      srcPath,
+      srcUrl,
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcPath, tmpDir, "g", eligible, nameById);
+    const segPaths = await renderGameSegments(srcUrl, tmpDir, "g", eligible, nameById);
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
@@ -542,21 +545,19 @@ export async function generateLowlight(gameId: number): Promise<void> {
     const nameById = new Map(players.map((p) => [p.id, p.name]));
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
-    const srcPath = path.join(tmpDir, "source");
 
-    const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
-    await objectFile.download({ destination: srcPath });
+    const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3 * 3600);
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      srcPath,
+      srcUrl,
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcPath, tmpDir, "ll", eligible, nameById);
+    const segPaths = await renderGameSegments(srcUrl, tmpDir, "ll", eligible, nameById);
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
@@ -646,20 +647,18 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
         const eligible = eventsByGame.get(game.id);
         if (!eligible || eligible.length === 0) return { segPaths: [], hasAudio: false };
 
-        const srcPath = path.join(tmpDir!, `source_${game.id}`);
-        const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath!);
-        await objectFile.download({ destination: srcPath });
+        const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath!, 3 * 3600);
 
         const audioProbe = await ffprobe([
           "-v", "error",
           "-select_streams", "a",
           "-show_entries", "stream=index",
           "-of", "csv=p=0",
-          srcPath,
+          srcUrl,
         ]);
         const hasAudio = audioProbe.length > 0;
 
-        const segPaths = await renderGameSegments(srcPath, tmpDir!, `t${game.id}`, eligible, nameById);
+        const segPaths = await renderGameSegments(srcUrl, tmpDir!, `t${game.id}`, eligible, nameById);
         return { segPaths, hasAudio };
       }),
     );
