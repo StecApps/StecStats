@@ -33,15 +33,37 @@ import { getEntitlements, isPro } from "../lib/entitlements";
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
+interface SegmentBoundary {
+  /** Byte offset where the second segment starts (inside the combined file). */
+  splitOffset: number;
+  /** True when seg2 has no leading ftyp box; we must prepend ftypData before ffmpeg. */
+  needsFtypPrepend: boolean;
+  /** Raw bytes of the first ftyp box to prepend when needed. */
+  ftypData: Buffer;
+}
+
 /**
- * Scan the top-level MP4 box structure of a remote file using HTTP Range
- * requests and return the byte offsets of every "ftyp" box found AFTER
- * offset 0.  Each such offset marks the start of a new raw-concatenated
- * segment (e.g. two iPhone halves stitched together on the client).
+ * Scan the top-level MP4 box structure using cheap HTTP Range requests and
+ * detect where a second raw-concatenated segment begins.
+ *
+ * Two common layouts produced by client-side Blob.concat on iOS recordings:
+ *   A) [ftyp1][mdat1][moov1][ftyp2][mdat2][moov2]  – second ftyp present
+ *   B) [ftyp][mdat1][moov1][mdat2][moov2]           – shared ftyp, no second ftyp
+ *
+ * In layout B we must prepend a copy of ftyp to the downloaded seg2 bytes
+ * before feeding it to ffmpeg so it has a valid MP4 container header.
+ *
+ * Returns null when no second segment is detected (single-segment file).
  */
-async function findFtypBoundaries(signedUrl: string): Promise<number[]> {
-  const boundaries: number[] = [];
+async function detectSegmentBoundary(
+  signedUrl: string,
+  log: ReturnType<typeof import("pino").default>,
+): Promise<SegmentBoundary | null> {
   let offset = 0;
+  let seenMoov = false;
+  let seenMdatBeforeMoov = false;
+  let ftypData: Buffer | null = null;
+
   for (let iter = 0; iter < 60; iter++) {
     let res: Response;
     try {
@@ -50,8 +72,9 @@ async function findFtypBoundaries(signedUrl: string): Promise<number[]> {
     if (!res.ok && res.status !== 206) break;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 8) break;
+
     const sizeField = buf.readUInt32BE(0);
-    const boxType = buf.slice(4, 8).toString("ascii");
+    const boxType = buf.slice(4, 8).toString("ascii").replace(/[^\x20-\x7e]/g, "?");
     let boxSize: number;
     if (sizeField === 1 && buf.length >= 16) {
       boxSize = buf.readUInt32BE(8) * 4294967296 + buf.readUInt32BE(12);
@@ -60,11 +83,44 @@ async function findFtypBoundaries(signedUrl: string): Promise<number[]> {
     } else {
       boxSize = sizeField;
     }
-    if (boxType === "ftyp" && offset > 0) boundaries.push(offset);
+
+    log.info({ iter, offset, boxType, boxSize }, "repair-video: box scan");
+
+    // After the first moov, any box = start of second segment (non-faststart layout).
+    // Exception: if we've never seen mdat before moov (faststart layout), the mdat
+    // immediately after moov is part of segment 1 — skip it and keep scanning.
+    if (seenMoov) {
+      if (!seenMdatBeforeMoov && boxType === "mdat") {
+        // Faststart: this mdat belongs to seg1; continue past it
+        offset += boxSize;
+        continue;
+      }
+      // Second segment starts here
+      const needsFtypPrepend = boxType !== "ftyp";
+      return {
+        splitOffset: offset,
+        needsFtypPrepend,
+        ftypData: ftypData ?? Buffer.alloc(0),
+      };
+    }
+
+    if (boxType === "ftyp" && !ftypData) {
+      // Download the full ftyp box so we can prepend it to seg2 if needed
+      try {
+        const fr = await fetch(signedUrl, {
+          headers: { Range: `bytes=${offset}-${offset + boxSize - 1}` },
+        });
+        ftypData = Buffer.from(await fr.arrayBuffer());
+        log.info({ ftypSize: ftypData.length }, "repair-video: captured ftyp");
+      } catch { /* non-fatal; worst case seg2 is missing ftyp */ }
+    }
+
+    if (boxType === "mdat" && !seenMoov) seenMdatBeforeMoov = true;
+    if (boxType === "moov") seenMoov = true;
     offset += boxSize;
-    if (boundaries.length >= 8) break;
   }
-  return boundaries;
+
+  return null;
 }
 
 /** Stream a byte range (or the tail from start) from a signed URL to disk. */
@@ -73,12 +129,19 @@ async function downloadRangeToFile(
   destPath: string,
   start: number,
   end?: number,
+  prependData?: Buffer,
 ): Promise<void> {
   const rangeVal = end !== undefined ? `bytes=${start}-${end}` : `bytes=${start}-`;
   const res = await fetch(signedUrl, { headers: { Range: rangeVal } });
   if (!res.ok && res.status !== 206) throw new Error(`Download ${res.status}`);
   if (!res.body) throw new Error("No response body");
-  await pipeline(Readable.fromWeb(res.body as ReadableStream<Uint8Array>), createWriteStream(destPath));
+  const ws = createWriteStream(destPath);
+  if (prependData && prependData.length > 0) {
+    await new Promise<void>((resolve, reject) =>
+      ws.write(prependData, (err) => (err ? reject(err) : resolve())),
+    );
+  }
+  await pipeline(Readable.fromWeb(res.body as ReadableStream<Uint8Array>), ws);
 }
 
 async function assertPlayersOwned(
@@ -514,30 +577,49 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     req.log.info({ gameId, sourceObjectPath }, "repair-video: signing URL");
     const srcUrl = await objectStorageService.getObjectEntitySignedURL(sourceObjectPath, 3 * 3600);
 
-    // Find extra segment boundaries — a raw iOS halftime split produces
-    // [ftyp1][mdat1][moov1][ftyp2][mdat2][moov2].  We detect the second ftyp
-    // by scanning the top-level box structure with cheap Range requests.
-    req.log.info({ gameId }, "repair-video: scanning for segment boundaries");
-    const extraBoundaries = await findFtypBoundaries(srcUrl);
-    req.log.info({ gameId, extraBoundaries }, "repair-video: done scanning");
+    // Scan the top-level box structure to detect whether the file contains
+    // two raw-concatenated segments.  Handles both layouts:
+    //   A) [ftyp1][mdat1][moov1][ftyp2][mdat2][moov2]  – second ftyp present
+    //   B) [ftyp][mdat1][moov1][mdat2][moov2]           – shared ftyp, no second ftyp
+    req.log.info({ gameId }, "repair-video: scanning for segment boundary");
+    const boundary = await detectSegmentBoundary(srcUrl, req.log as any);
+    req.log.info(
+      { gameId, splitOffset: boundary?.splitOffset ?? null, needsFtypPrepend: boundary?.needsFtypPrepend ?? null },
+      "repair-video: scan complete",
+    );
 
     const tmpOut = path.join(tmpDir, "final.mp4");
 
-    if (extraBoundaries.length > 0) {
-      // Multi-segment path: download each byte-range as a standalone MP4,
-      // faststart-remux each one, then concat with timestamp adjustment.
-      const allStarts = [0, ...extraBoundaries];
+    if (boundary) {
+      // Two-segment path: download each half as a standalone MP4 (prepending
+      // the shared ftyp to seg2 when the layout has no second ftyp box), then
+      // faststart-remux each half, then concat-demux with timestamp adjustment.
+      const [url0, url1] = await Promise.all([
+        objectStorageService.getObjectEntitySignedURL(sourceObjectPath, 3 * 3600),
+        objectStorageService.getObjectEntitySignedURL(sourceObjectPath, 3 * 3600),
+      ]);
+
+      const raw0 = path.join(tmpDir, "raw0.mp4");
+      const raw1 = path.join(tmpDir, "raw1.mp4");
+
+      req.log.info({ gameId, end: boundary.splitOffset - 1 }, "repair-video: downloading seg1");
+      await downloadRangeToFile(url0, raw0, 0, boundary.splitOffset - 1);
+
+      req.log.info(
+        { gameId, start: boundary.splitOffset, needsFtypPrepend: boundary.needsFtypPrepend },
+        "repair-video: downloading seg2",
+      );
+      await downloadRangeToFile(
+        url1,
+        raw1,
+        boundary.splitOffset,
+        undefined,
+        boundary.needsFtypPrepend ? boundary.ftypData : undefined,
+      );
+
       const procPaths: string[] = [];
-
-      for (let i = 0; i < allStarts.length; i++) {
-        const start = allStarts[i];
-        const end = i + 1 < allStarts.length ? allStarts[i + 1] - 1 : undefined;
-        const segUrl = await objectStorageService.getObjectEntitySignedURL(sourceObjectPath, 3 * 3600);
-
-        const rawSeg = path.join(tmpDir, `raw${i}.mp4`);
-        req.log.info({ gameId, i, start, end }, "repair-video: downloading segment");
-        await downloadRangeToFile(segUrl, rawSeg, start, end);
-
+      for (let i = 0; i < 2; i++) {
+        const rawSeg = i === 0 ? raw0 : raw1;
         const procSeg = path.join(tmpDir, `proc${i}.mp4`);
         req.log.info({ gameId, i }, "repair-video: ffmpeg on segment");
         await new Promise<void>((resolve, reject) => {
@@ -546,17 +628,17 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
             ["-y", "-i", rawSeg, "-c", "copy", "-movflags", "+faststart", procSeg],
             { maxBuffer: 5 * 1024 * 1024 },
             (err, _stdout, stderr) =>
-              err ? reject(new Error(`ffmpeg seg${i}: ${stderr?.slice(-400)}`)) : resolve(),
+              err ? reject(new Error(`ffmpeg seg${i}: ${stderr?.slice(-500)}`)) : resolve(),
           );
         });
         await fs.unlink(rawSeg).catch(() => {});
         procPaths.push(procSeg);
       }
 
-      // Concat all segments (adjusts timestamps of subsequent segments)
+      // Concat: adjusts timestamps so seg2 follows seg1 seamlessly
       const fileList = path.join(tmpDir, "filelist.txt");
-      await fs.writeFile(fileList, procPaths.map(p => `file '${p}'`).join("\n"), "utf8");
-      req.log.info({ gameId, segments: procPaths.length }, "repair-video: concatenating");
+      await fs.writeFile(fileList, procPaths.map((p) => `file '${p}'`).join("\n"), "utf8");
+      req.log.info({ gameId }, "repair-video: concatenating 2 segments");
       await new Promise<void>((resolve, reject) => {
         const proc = spawn("ffmpeg", [
           "-f", "concat", "-safe", "0",
@@ -568,11 +650,11 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
         let stderr = "";
         proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
         proc.on("close", (code) =>
-          code === 0 ? resolve() : reject(new Error(`ffmpeg concat: ${stderr.slice(-400)}`)));
+          code === 0 ? resolve() : reject(new Error(`ffmpeg concat: ${stderr.slice(-500)}`)));
         proc.on("error", reject);
       });
     } else {
-      // Single segment: download then faststart remux
+      // Single segment: download the whole file then faststart remux
       req.log.info({ gameId }, "repair-video: single segment, downloading");
       const rawFull = path.join(tmpDir, "raw.mp4");
       await downloadRangeToFile(srcUrl, rawFull, 0, undefined);
