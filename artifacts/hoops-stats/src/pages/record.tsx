@@ -403,6 +403,7 @@ export default function RecordGame() {
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
   const [uploadFailed, setUploadFailed] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState("Uploading video…");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const highlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
   const lowlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
@@ -2071,14 +2072,25 @@ export default function RecordGame() {
       finishAssembly();
     }
 
-    // If the user recorded in multiple segments (halves), concatenate them
-    // all into one blob before uploading. WebM blobs concatenate cleanly for
-    // playback even though seeking into the second half won't be frame-accurate.
+    // If the user recorded in multiple segments (halves), either raw-concat
+    // (WebM — works fine) or mark for server-side ffmpeg merge (MP4 — iOS
+    // MediaRecorder format). Raw MP4 concatenation produces an invalid file
+    // because each segment starts a fresh moov atom; ffmpeg's concat demuxer
+    // correctly offsets the second half's timestamps so every event is seekable.
+    let segmentsToMerge: Blob[] | null = null;
+
     if (recordedSegments.length > 0) {
       const allParts = [...recordedSegments, ...(blobToUpload ? [blobToUpload] : [])];
       if (allParts.length > 0) {
         const mimeType = (blobToUpload ?? recordedSegments[0]).type || "video/webm";
-        blobToUpload = new Blob(allParts, { type: mimeType });
+        if (mimeType.includes("mp4") && allParts.length > 1) {
+          // Upload each half individually, then merge server-side
+          segmentsToMerge = allParts;
+          blobToUpload = null;
+        } else {
+          // WebM segments concatenate cleanly as raw blobs
+          blobToUpload = new Blob(allParts, { type: mimeType });
+        }
       }
     }
 
@@ -2087,9 +2099,44 @@ export default function RecordGame() {
     const result = isWin ? 'W' : 'L'; // Backend requires W or L
 
     let videoObjectPath = existingVideoObjectPath;
-    if (blobToUpload && !skipVideo) {
+    if (segmentsToMerge && !skipVideo) {
+      // MP4 multi-half path: upload each segment, then concat server-side
       setIsUploadingVideo(true);
       setUploadProgress(0);
+      try {
+        const segPaths: string[] = [];
+        for (let i = 0; i < segmentsToMerge.length; i++) {
+          setUploadStatusText(`Uploading half ${i + 1} of ${segmentsToMerge.length}…`);
+          const segPath = await uploadVideoBlob(segmentsToMerge[i], (pct) => {
+            const base = (i / segmentsToMerge!.length) * 85;
+            const contrib = (pct / 100) * (85 / segmentsToMerge!.length);
+            setUploadProgress(Math.round(base + contrib));
+          });
+          segPaths.push(segPath);
+        }
+        setUploadStatusText("Merging halves on server…");
+        setUploadProgress(90);
+        const concatRes = await fetch("/api/storage/concat-segments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ segmentPaths: segPaths }),
+        });
+        if (!concatRes.ok) throw new Error("Failed to merge video halves on server");
+        const { videoObjectPath: mergedPath } = await concatRes.json();
+        videoObjectPath = mergedPath;
+        setUploadProgress(100);
+      } catch (err) {
+        setIsUploadingVideo(false);
+        savingRef.current = false;
+        setUploadFailed(true);
+        toast({ title: "Video upload failed", description: "Tap 'Save stats only' to save your game without the video.", variant: "destructive" });
+        return;
+      }
+      setIsUploadingVideo(false);
+    } else if (blobToUpload && !skipVideo) {
+      setIsUploadingVideo(true);
+      setUploadProgress(0);
+      setUploadStatusText("Uploading video…");
       try {
         videoObjectPath = await uploadVideoBlob(blobToUpload, setUploadProgress);
       } catch (err) {
@@ -2517,7 +2564,7 @@ export default function RecordGame() {
           {isUploadingVideo && (
             <div className="max-w-md space-y-1.5">
               <p className="text-sm text-muted-foreground flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Uploading video… {uploadProgress}%
+                <Loader2 className="w-4 h-4 animate-spin" /> {uploadStatusText} {uploadProgress}%
               </p>
               <Progress value={uploadProgress} />
             </div>

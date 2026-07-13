@@ -1,6 +1,9 @@
 import { Storage, File } from "@google-cloud/storage";
-import { Readable } from "stream";
+import { Readable, pipeline as streamPipeline } from "stream";
+import { createReadStream } from "fs";
+import { promisify } from "util";
 import { randomUUID } from "crypto";
+
 import {
   ObjectAclPolicy,
   ObjectPermission,
@@ -8,6 +11,8 @@ import {
   getObjectAclPolicy,
   setObjectAclPolicy,
 } from "./objectAcl";
+
+const pipeline = promisify(streamPipeline);
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
@@ -215,6 +220,31 @@ export class ObjectStorageService {
       objectFile,
       requestedPermission: requestedPermission ?? ObjectPermission.READ,
     });
+  }
+
+  /**
+   * Upload a local file to object storage by streaming it directly through
+   * the GCS SDK (no full-file buffering in memory — safe for large videos).
+   * Returns the normalized /objects/... path.
+   */
+  async uploadLocalFileAsObjectEntity(
+    localPath: string,
+    ownerId: number,
+    contentType: string,
+  ): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectId = randomUUID();
+    const fullPath = `${privateObjectDir}/uploads/${ownerId}/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    await pipeline(
+      createReadStream(localPath),
+      file.createWriteStream({ metadata: { contentType }, resumable: false }),
+    );
+
+    return `/objects/uploads/${ownerId}/${objectId}`;
   }
 }
 

@@ -1,5 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
+import { spawn } from "child_process";
+import { promises as fs } from "fs";
+import os from "os";
+import path from "path";
 import { and, eq, or } from "drizzle-orm";
 import { db, gamesTable, playersTable } from "@workspace/db";
 import {
@@ -159,6 +163,96 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     }
     req.log.error({ err: error }, "Error serving object");
     res.status(500).json({ error: "Failed to serve object" });
+  }
+});
+
+/**
+ * POST /storage/concat-segments
+ *
+ * Accepts an ordered array of object-storage paths for video segments
+ * (e.g. two halves recorded via "Start 2nd Half"), concatenates them into
+ * a single valid MP4 using ffmpeg's concat demuxer (copy mode — no
+ * re-encoding, fast), and stores the result as a new object.
+ *
+ * Raw Blob concatenation on the client produces invalid MP4 when two
+ * separate iOS MediaRecorder sessions are merged; ffmpeg's concat demuxer
+ * correctly adjusts the second segment's timestamps so they follow the
+ * first, making all events seekable in one continuous video.
+ */
+router.post("/storage/concat-segments", requireAuth, async (req: Request, res: Response) => {
+  const { segmentPaths } = req.body;
+
+  if (!Array.isArray(segmentPaths) || segmentPaths.length < 2) {
+    res.status(400).json({ error: "segmentPaths must be an array with at least 2 paths" });
+    return;
+  }
+  if (segmentPaths.length > 6) {
+    res.status(400).json({ error: "Too many segments (max 6)" });
+    return;
+  }
+
+  const ownerId = req.appUser!.id;
+  let tmpDir: string | null = null;
+
+  try {
+    // Get 2-hour signed read URLs so ffmpeg can stream directly from GCS
+    const signedUrls: string[] = await Promise.all(
+      (segmentPaths as string[]).map((p) =>
+        objectStorageService.getObjectEntitySignedURL(p, 7200),
+      ),
+    );
+
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "concat-"));
+    const fileListPath = path.join(tmpDir, "filelist.txt");
+    // Single-quote each URL — GCS signed URLs never contain single quotes
+    const fileListContent = signedUrls.map((u) => `file '${u}'`).join("\n");
+    await fs.writeFile(fileListPath, fileListContent, "utf8");
+
+    const outPath = path.join(tmpDir, "output.mp4");
+
+    // Concat demuxer with -c copy: fast (no re-encoding), adjusts second
+    // segment's timestamps to start at the end of the first segment.
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn("ffmpeg", [
+        "-f", "concat",
+        "-safe", "0",
+        "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+        "-i", fileListPath,
+        "-c", "copy",
+        "-movflags", "+faststart",
+        "-y",
+        outPath,
+      ]);
+      let stderr = "";
+      proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+      proc.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-800)}`));
+      });
+      proc.on("error", reject);
+    });
+
+    const objectPath = await objectStorageService.uploadLocalFileAsObjectEntity(
+      outPath,
+      ownerId,
+      "video/mp4",
+    );
+
+    await objectStorageService
+      .trySetObjectEntityAclPolicy(objectPath, {
+        owner: String(ownerId),
+        visibility: "private",
+      })
+      .catch((err) => req.log.error({ err }, "Failed to set concat video ACL"));
+
+    res.json({ videoObjectPath: objectPath });
+  } catch (err) {
+    req.log.error({ err }, "Failed to concatenate video segments");
+    res.status(500).json({ error: "Failed to concatenate video segments" });
+  } finally {
+    if (tmpDir) {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 });
 
