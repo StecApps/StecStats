@@ -16,8 +16,9 @@ const router: IRouter = Router();
 const inFlight = new Set<number>();
 
 // A DB status of "processing" older than this is considered abandoned (e.g. the
-// server restarted mid-job) and may be retried.
-const STALE_PROCESSING_MS = 10 * 60 * 1000;
+// server restarted mid-job) and may be retried. 60 minutes gives enough runway
+// for multiple server restart cycles before surfacing a failure to the user.
+const STALE_PROCESSING_MS = 60 * 60 * 1000;
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -142,5 +143,29 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
     }),
   );
 });
+
+/**
+ * Re-trigger a highlight job that was orphaned by a server restart.
+ * Called at startup for any game still stuck in "processing".
+ * Safe to call multiple times — is a no-op if already in-flight.
+ */
+export function resumeHighlightJob(gameId: number): void {
+  if (inFlight.has(gameId)) return;
+  inFlight.add(gameId);
+  const MAX_JOB_MS = 90 * 60 * 1000;
+  void Promise.race([
+    generateHighlight(gameId),
+    new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
+  ])
+    .catch(async () => {
+      try {
+        await db
+          .update(gamesTable)
+          .set({ highlightStatus: "failed", highlightError: "Generation timed out — tap Try Again to rebuild." })
+          .where(eq(gamesTable.id, gameId));
+      } catch { /* best-effort */ }
+    })
+    .finally(() => inFlight.delete(gameId));
+}
 
 export default router;

@@ -1,10 +1,14 @@
 import { runMigrations } from "stripe-replit-sync";
+import { sql } from "drizzle-orm";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedDatabase } from "./lib/seed";
 import { attachLiveSocketServer } from "./lib/liveSocket";
 import { liveStreamRegistry } from "./lib/liveStream";
 import { getStripeSync } from "./lib/stripeClient";
+import { db } from "@workspace/db";
+import { resumeHighlightJob } from "./routes/highlights";
+import { resumeLowlightJob } from "./routes/lowlights";
 
 const rawPort = process.env["PORT"];
 
@@ -41,6 +45,39 @@ async function initStripe() {
   await stripeSync.syncBackfill();
 }
 
+/**
+ * On startup, re-trigger any highlight/lowlight jobs that were left in
+ * "processing" by a previous server instance (Replit cycles production
+ * instances every ~8 min). The 60-minute cutoff matches STALE_PROCESSING_MS
+ * so we never pick up jobs that are genuinely too old.
+ */
+async function resumeOrphanedJobs(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+    const rows = await db.execute(sql`
+      SELECT id, highlight_status, highlight_started_at, lowlight_status, lowlight_started_at
+      FROM games
+      WHERE
+        (highlight_status = 'processing' AND highlight_started_at > ${cutoff})
+        OR
+        (lowlight_status  = 'processing' AND lowlight_started_at  > ${cutoff})
+    `);
+    for (const row of rows.rows) {
+      const gameId = Number(row.id);
+      if (row.highlight_status === "processing") {
+        logger.info({ gameId }, "Resuming orphaned highlight job after restart");
+        resumeHighlightJob(gameId);
+      }
+      if (row.lowlight_status === "processing") {
+        logger.info({ gameId }, "Resuming orphaned lowlight job after restart");
+        resumeLowlightJob(gameId);
+      }
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to resume orphaned reel jobs on startup");
+  }
+}
+
 Promise.all([
   seedDatabase().catch((err) => {
     logger.error({ err }, "Error seeding database");
@@ -60,4 +97,7 @@ Promise.all([
 
   attachLiveSocketServer(server);
   liveStreamRegistry.startCleanupTimer();
+
+  // Wait 5 s for the DB pool to settle before querying for orphaned jobs.
+  setTimeout(() => { void resumeOrphanedJobs(); }, 5_000);
 });

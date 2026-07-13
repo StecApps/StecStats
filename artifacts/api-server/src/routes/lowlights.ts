@@ -12,7 +12,10 @@ import { getEntitlements, isPro } from "../lib/entitlements";
 const router: IRouter = Router();
 
 const inFlight = new Set<number>();
-const STALE_PROCESSING_MS = 10 * 60 * 1000;
+// 60-minute stale window — gives enough runway for multiple server restart
+// cycles (Replit cycles production instances every ~8 min) before surfacing
+// a failure to the user.
+const STALE_PROCESSING_MS = 60 * 60 * 1000;
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -106,5 +109,28 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     eligibleMoments,
   });
 });
+
+/**
+ * Re-trigger a lowlight job that was orphaned by a server restart.
+ * Called at startup for any game still stuck in "processing".
+ */
+export function resumeLowlightJob(gameId: number): void {
+  if (inFlight.has(gameId)) return;
+  inFlight.add(gameId);
+  const MAX_JOB_MS = 90 * 60 * 1000;
+  void Promise.race([
+    generateLowlight(gameId),
+    new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
+  ])
+    .catch(async () => {
+      try {
+        await db
+          .update(gamesTable)
+          .set({ lowlightStatus: "failed", lowlightError: "Generation timed out — tap Try Again to rebuild." })
+          .where(eq(gamesTable.id, gameId));
+      } catch { /* best-effort */ }
+    })
+    .finally(() => inFlight.delete(gameId));
+}
 
 export default router;
