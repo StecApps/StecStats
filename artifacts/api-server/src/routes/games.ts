@@ -435,15 +435,20 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
         opponentScore: body.opponentScore,
         videoObjectPath,
         videoOffsetMs: body.videoOffsetMs ?? null,
-        // Editing stats/events/video invalidates any existing highlight/lowlight reel.
-        highlightObjectPath: null,
-        highlightStatus: "idle",
-        highlightError: null,
-        highlightStartedAt: null,
-        lowlightObjectPath: null,
-        lowlightStatus: "idle",
-        lowlightError: null,
-        lowlightStartedAt: null,
+        // Only invalidate the reels when the video file itself changes.
+        // If the video is unchanged, the clips are still valid.
+        ...(videoObjectPath !== existing.videoObjectPath
+          ? {
+              highlightObjectPath: null,
+              highlightStatus: "idle",
+              highlightError: null,
+              highlightStartedAt: null,
+              lowlightObjectPath: null,
+              lowlightStatus: "idle",
+              lowlightError: null,
+              lowlightStartedAt: null,
+            }
+          : {}),
       })
       .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
 
