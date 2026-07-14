@@ -27,9 +27,9 @@ const CAPTION_HALF_SECONDS = 2.5;
 
 // Target output dimensions for the reel. Lower resolution = much faster
 // encoding on CPU-limited containers (was processing at 0.1x real-time at
-// full source resolution; 480p + ultrafast brings this to ~0.7x).
-const OUTPUT_HEIGHT = 480;
-const OUTPUT_WIDTH = 854;
+// full source resolution; 720p + veryfast brings this to ~1.5x).
+const OUTPUT_HEIGHT = 720;
+const OUTPUT_WIDTH = 1280;
 
 // Stat fields that count as "highlights" — made shots and positive plays only.
 export const HIGHLIGHT_FIELDS = new Set([
@@ -402,23 +402,21 @@ async function renderGameSegments(
       "-i", activeSrcPath,
       "-t", segDur.toFixed(3),
       "-vf", vf,
-      // 24 fps reduces encode work vs 30 fps (~20% faster)
-      "-r", "24",
+      "-r", "30",
       "-c:v", "libx264",
-      // ultrafast is ~3× faster than veryfast on CPU-limited containers
-      "-preset", "ultrafast",
-      "-profile:v", "baseline",
+      // veryfast: much better quality than ultrafast with only ~30% slower encode
+      "-preset", "veryfast",
+      "-profile:v", "main",
       "-pix_fmt", "yuv420p",
       "-vsync", "cfr",
-      // Cap bitrate — higher than before for better quality, still safe on CPU
-      "-b:v", "2500k",
-      "-maxrate", "3500k",
-      "-bufsize", "7000k",
+      "-b:v", "4500k",
+      "-maxrate", "6000k",
+      "-bufsize", "12000k",
       // Use all available threads
       "-threads", "0",
     ];
     if (hasAudio) {
-      args.push("-c:a", "aac", "-ar", "44100", "-b:a", "96k", "-ac", "2");
+      args.push("-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
     } else {
       args.push("-an");
     }
