@@ -50,6 +50,36 @@ export const LOWLIGHT_FIELDS = new Set([
   "turnovers",
 ]);
 
+// Maps each "attempted" field to its corresponding "made" field.
+const MAKE_PAIR: Record<string, string> = {
+  ftAttempted: "ftMade",
+  twoAttempted: "twoMade",
+  threeAttempted: "threeMade",
+};
+// How close (in ms) a make event must be to an attempted event to count as the same shot.
+const MAKE_PAIR_WINDOW_MS = 15_000;
+
+/**
+ * Returns true if the event is a genuine lowlight (turnovers always qualify;
+ * "attempted" events only qualify when there is no matching "made" event logged
+ * within MAKE_PAIR_WINDOW_MS — i.e., the shot was actually missed).
+ */
+function isTrueLowlight(
+  e: { statField: string; delta: number; videoTimestampMs: number | null },
+  allEvents: { statField: string; delta: number; videoTimestampMs: number | null }[],
+): boolean {
+  if (!(e.delta > 0 && LOWLIGHT_FIELDS.has(e.statField))) return false;
+  const makeField = MAKE_PAIR[e.statField];
+  if (!makeField) return true; // turnovers — always a lowlight
+  // Exclude if a corresponding make was logged within the window (shot was made)
+  return !allEvents.some(
+    (m) =>
+      m.statField === makeField &&
+      m.delta > 0 &&
+      Math.abs((m.videoTimestampMs ?? 0) - (e.videoTimestampMs ?? 0)) <= MAKE_PAIR_WINDOW_MS,
+  );
+}
+
 const STAT_LABELS: Record<string, string> = {
   // Highlights
   ftMade: "FT Made",
@@ -130,7 +160,7 @@ export async function countLowlightMoments(gameId: number): Promise<number> {
   const events = await db.query.gameEventsTable.findMany({
     where: eq(gameEventsTable.gameId, gameId),
   });
-  return events.filter((e) => e.delta > 0 && LOWLIGHT_FIELDS.has(e.statField)).length;
+  return events.filter((e) => isTrueLowlight(e, events)).length;
 }
 
 /**
@@ -569,9 +599,7 @@ export async function generateLowlight(gameId: number): Promise<void> {
       where: eq(gameEventsTable.gameId, gameId),
       orderBy: (e, { asc }) => [asc(e.videoTimestampMs)],
     });
-    const eligible = events.filter(
-      (e) => e.delta > 0 && LOWLIGHT_FIELDS.has(e.statField),
-    );
+    const eligible = events.filter((e) => isTrueLowlight(e, events));
     if (eligible.length === 0) {
       throw new HighlightError("No lowlight moments tagged in this game");
     }
