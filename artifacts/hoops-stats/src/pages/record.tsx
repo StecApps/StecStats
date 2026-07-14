@@ -1562,7 +1562,7 @@ export default function RecordGame() {
           : "video/mp4";
       const recorder = new MediaRecorder(recordStream, {
         mimeType,
-        videoBitsPerSecond: 8_000_000,
+        videoBitsPerSecond: 12_000_000,
         audioBitsPerSecond: 128_000,
       });
       // Chunks are written straight to IndexedDB (disk-backed) instead of
@@ -1703,7 +1703,7 @@ export default function RecordGame() {
 
     const newRecorder = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: 8_000_000,
+      videoBitsPerSecond: 12_000_000,
       audioBitsPerSecond: 128_000,
     });
     newRecorder.ondataavailable = (e) => {
