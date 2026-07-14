@@ -138,8 +138,25 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     const [metadata] = await objectFile.getMetadata();
     const contentType: string = (metadata.contentType as string) || "application/octet-stream";
     const fileSize = Number(metadata.size ?? 0);
-
     const downloadName = typeof req.query.download === "string" ? req.query.download : null;
+
+    // For video files, redirect to a short-lived signed GCS URL so the client
+    // downloads directly from GCS. This avoids Replit's proxy timeout which
+    // silently drops large streaming responses after ~1-2 seconds.
+    // The auth + ownership check above already ran, so the redirect is safe.
+    if (contentType.startsWith("video/")) {
+      const signedUrl = await objectStorageService.getObjectEntitySignedURL(objectPath, 300);
+      let redirectUrl = signedUrl;
+      if (downloadName) {
+        const sep = signedUrl.includes("?") ? "&" : "?";
+        const disposition = encodeURIComponent(`attachment; filename="${downloadName.replace(/"/g, "")}"`);
+        redirectUrl += `${sep}response-content-disposition=${disposition}&response-content-type=${encodeURIComponent(contentType)}`;
+      }
+      req.log.info({ fileSize, url: req.url }, "storage: redirecting video to signed URL");
+      res.redirect(302, redirectUrl);
+      return;
+    }
+
     if (downloadName) {
       res.setHeader("Content-Disposition", `attachment; filename="${downloadName.replace(/"/g, "")}"`);
     }
