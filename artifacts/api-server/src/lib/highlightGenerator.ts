@@ -422,6 +422,10 @@ async function renderGameSegments(
     } else {
       args.push("-an");
     }
+    // Reset output PTS/DTS to 0 for every segment so they don't inherit the
+    // source stream's absolute timestamp. Without this, iOS Safari sees an MP4
+    // whose first frame PTS is 400+ seconds in and refuses to play it.
+    args.push("-reset_timestamps", "1");
     args.push("-f", "mpegts", segPath);
 
     await run("ffmpeg", args);
