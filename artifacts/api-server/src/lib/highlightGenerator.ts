@@ -21,7 +21,7 @@ const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 // PRE_SECONDS must cover the user's reaction delay (~3-5s after the play)
 // plus enough lead-in to see the play develop.
 const PRE_SECONDS = 12;
-const POST_SECONDS = 8;
+const POST_SECONDS = 3;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
 
