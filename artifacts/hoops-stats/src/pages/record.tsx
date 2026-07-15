@@ -537,7 +537,7 @@ export default function RecordGame() {
   // last framing for a few seconds and prompt a re-lock before easing back
   // to the saved court view, instead of immediately panning away.
   const lostSinceRef = useRef<number | null>(null);
-  const LOST_HOME_DELAY_MS = 1500;
+  const LOST_HOME_DELAY_MS = 5000;
   // CSS % position within the preview container div (including letterbox) for the ring overlay.
   const [lockedDisplayTarget, setLockedDisplayTarget] = useState<{ leftPct: number; topPct: number } | null>(null);
   const [lockLost, setLockLost] = useState(false);
@@ -1033,11 +1033,12 @@ export default function RecordGame() {
         const pct = rawToDisplayPct(result.x, result.y);
         if (pct) setLockedDisplayTarget(pct);
 
-        // Adaptive zoom target so the player fills ~40% of frame height —
-        // the draw loop eases toward this, it's never applied directly.
-        const TARGET_FILL = 0.40;
+        // Adaptive zoom target so the player fills ~25% of frame height —
+        // this leaves enough court context to see shots going up and in.
+        // The draw loop eases toward this, it's never applied directly.
+        const TARGET_FILL = 0.25;
         const rawZoom = TARGET_FILL / Math.max(0.04, result.normHeight);
-        desiredZoomRef.current = Math.min(MAX_ZOOM, Math.max(1.4, rawZoom));
+        desiredZoomRef.current = Math.min(MAX_ZOOM, Math.max(1.1, rawZoom));
       } catch (err) {
         // detection failed this frame — keep current desired target
         console.error("auto-follow detection error", err);

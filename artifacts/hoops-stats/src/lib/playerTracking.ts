@@ -290,11 +290,11 @@ const TRACK_COLOR_WEIGHT = 0.5;
 // miss) instead of confidently locking onto a coin flip.
 const TRACK_MIN_SCORE_MARGIN = 0.15;
 
-// How many consecutive ticks (~333ms each, so ~1.3s total) to coast on
+// How many consecutive ticks (~333ms each, so ~2.7s total) to coast on
 // decaying predicted velocity through an occlusion/miss before giving up and
 // reporting the lock as lost, rather than keep expanding the search radius
 // until it accepts the wrong player.
-const TRACK_MAX_COAST_TICKS = 4;
+const TRACK_MAX_COAST_TICKS = 8;
 const TRACK_VELOCITY_DECAY = 0.8;
 
 // Sanity ceiling (of ~441 max possible Euclidean RGB distance) beyond which a
