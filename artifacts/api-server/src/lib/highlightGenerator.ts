@@ -399,12 +399,12 @@ async function renderGameSegments(
       );
     }
     // Build filter_complex: video transforms + captions on [0:v], then
-    // overlay the logo PNG (input 1, looped still image) in the bottom-right.
+    // overlay the logo PNG (input 1, looped still image) in the top-right.
     const mainFilters = filterParts.join(",");
     const filterComplex = [
       `[0:v]${mainFilters}[main]`,
-      `[1:v]scale=-1:${wmLogoHeight}[logo]`,
-      `[main][logo]overlay=W-w-${wmLogoMargin}:H-h-${wmLogoMargin}:shortest=1[out]`,
+      `[1:v]scale=-1:${wmLogoHeight},format=rgba,colorchannelmixer=aa=0.65[logo]`,
+      `[main][logo]overlay=W-w-${wmLogoMargin}:${wmLogoMargin}:shortest=1[out]`,
     ].join(";");
 
     const segPath = path.join(tmpDir, `seg_${prefix}_${i}.ts`);
