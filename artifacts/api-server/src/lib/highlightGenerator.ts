@@ -350,6 +350,21 @@ async function renderGameSegments(
   const fontSize = Math.min(36, Math.max(12, Math.round(OUTPUT_HEIGHT / 20)));
   const boxBorder = Math.round(fontSize / 2);
   const margin = Math.round(fontSize * 1.2);
+  // Watermark sizing — smaller than captions, fixed in bottom-right corner.
+  const wmFontSize = Math.max(10, Math.round(fontSize * 0.6));
+  const wmBorder = Math.round(wmFontSize * 0.4);
+  const wmMargin = Math.round(wmFontSize * 0.8);
+  const wmFilter = [
+    `drawtext=fontfile=${FONT_FILE}`,
+    `text=STEC STATS`,
+    `fontcolor=white@0.85`,
+    `fontsize=${wmFontSize}`,
+    `box=1`,
+    `boxcolor=black@0.45`,
+    `boxborderw=${wmBorder}`,
+    `x=w-text_w-${wmMargin}`,
+    `y=h-text_h-${wmMargin}`,
+  ].join(":");
 
   const segPaths: string[] = [];
   for (let i = 0; i < segments.length; i++) {
@@ -393,6 +408,8 @@ async function renderGameSegments(
         ].join(":"),
       );
     }
+    // Watermark always on top, every clip.
+    filterParts.push(wmFilter);
     const vf = filterParts.join(",");
 
     const segPath = path.join(tmpDir, `seg_${prefix}_${i}.ts`);
