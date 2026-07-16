@@ -21,7 +21,7 @@ export default function Home() {
             </h1>
 
             <p className="max-w-xl text-lg text-muted-foreground">
-              STEC STATS follows your player across every travel team, school season, and tournament —
+              StecStats follows your player across every travel team, school season, and tournament —
               live box scores, streaming, and highlight reels, all in one private dashboard.
             </p>
 
