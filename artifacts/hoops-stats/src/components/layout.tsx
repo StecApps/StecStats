@@ -69,15 +69,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-[100dvh] flex flex-col w-full">
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 max-w-screen-2xl items-center mx-auto px-4 md:px-8">
+        <div className="container flex h-20 max-w-screen-2xl items-center mx-auto px-4 md:px-8">
           <div className="mr-4 hidden md:flex flex-1 items-center justify-between">
             <div className="flex items-center">
               <Link href="/dashboard" className="mr-6 flex items-center gap-3">
-                <img src="/logo.png" alt="StecStats" className="w-14 h-14 object-contain flex-shrink-0 drop-shadow-[0_0_8px_rgba(249,115,22,0.35)]" />
-                <div className="flex items-baseline gap-2 leading-none">
-                  <span className="font-display font-bold uppercase tracking-wide text-foreground text-xl">StecStats</span>
-                  <span className="hidden lg:block text-[10px] font-medium uppercase tracking-widest text-primary/70">Your all-in-one app</span>
-                </div>
+                <img src="/logo.png" alt="StecStats" className="w-20 h-20 object-contain flex-shrink-0 drop-shadow-[0_0_10px_rgba(249,115,22,0.4)]" />
+                <span className="hidden lg:block text-[9px] font-medium uppercase tracking-widest text-primary/60 leading-none">Your all-in-one app</span>
               </Link>
               <nav className="flex items-center space-x-6 text-sm font-medium">
                 {navItems.map((item) => {
@@ -103,11 +100,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {/* Mobile nav */}
           <div className="md:hidden flex w-full justify-between items-center">
             <Link href="/dashboard" className="flex items-center gap-3">
-              <img src="/logo.png" alt="StecStats" className="w-14 h-14 object-contain flex-shrink-0 drop-shadow-[0_0_8px_rgba(249,115,22,0.35)]" />
-              <div className="flex items-baseline gap-2 leading-none">
-                <span className="font-display font-bold uppercase tracking-wide text-foreground text-xl">StecStats</span>
-                <span className="text-[10px] font-medium uppercase tracking-widest text-primary/70">Your all-in-one app</span>
-              </div>
+              <img src="/logo.png" alt="StecStats" className="w-20 h-20 object-contain flex-shrink-0 drop-shadow-[0_0_10px_rgba(249,115,22,0.4)]" />
+              <span className="text-[9px] font-medium uppercase tracking-widest text-primary/60 leading-none">Your all-in-one app</span>
             </Link>
             <UserMenu />
           </div>

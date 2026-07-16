@@ -4,13 +4,10 @@ import { Show } from "@clerk/react";
 export default function MarketingHeader() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 max-w-screen-xl items-center justify-between mx-auto px-4 md:px-8">
+      <div className="container flex h-20 max-w-screen-xl items-center justify-between mx-auto px-4 md:px-8">
         <Link href="/" className="flex items-center gap-3">
-          <img src="/logo.png" alt="StecStats" className="w-14 h-14 object-contain flex-shrink-0 drop-shadow-[0_0_8px_rgba(249,115,22,0.35)]" />
-          <div className="flex items-baseline gap-2 leading-none">
-            <span className="font-display font-bold uppercase tracking-wide text-foreground text-xl">StecStats</span>
-            <span className="hidden sm:block text-[10px] font-medium uppercase tracking-widest text-primary/70">Your all-in-one app</span>
-          </div>
+          <img src="/logo.png" alt="StecStats" className="w-20 h-20 object-contain flex-shrink-0 drop-shadow-[0_0_10px_rgba(249,115,22,0.4)]" />
+          <span className="hidden sm:block text-[9px] font-medium uppercase tracking-widest text-primary/60 leading-none">Your all-in-one app</span>
         </Link>
 
         <nav className="flex items-center gap-2 sm:gap-4">
