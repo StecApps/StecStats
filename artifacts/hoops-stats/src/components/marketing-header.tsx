@@ -6,14 +6,9 @@ export default function MarketingHeader() {
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-xl items-center justify-between mx-auto px-4 md:px-8">
         <Link href="/" className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-display text-2xl leading-none">
-            S
-          </div>
-          <span className="flex flex-col leading-none">
-            <span className="font-display text-2xl font-bold leading-none mt-1">STEC STATS</span>
-            <span className="hidden sm:block text-[9px] font-medium uppercase tracking-widest text-primary/80 leading-none mt-0.5">
-              Your all-in-one basketball app
-            </span>
+          <img src="/logo.png" alt="StecStats" className="w-10 h-10 rounded object-contain" />
+          <span className="hidden sm:block text-[9px] font-medium uppercase tracking-widest text-primary/80 leading-none">
+            Your all-in-one basketball app
           </span>
         </Link>
 

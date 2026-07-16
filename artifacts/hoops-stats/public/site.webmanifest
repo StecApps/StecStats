@@ -1,6 +1,6 @@
 {
-  "name": "Stec Stats",
-  "short_name": "Stec Stats",
+  "name": "StecStats",
+  "short_name": "StecStats",
   "description": "Basketball stats, video recording & live streaming for coaches",
   "start_url": "/",
   "scope": "/",
