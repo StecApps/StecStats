@@ -352,8 +352,8 @@ async function renderGameSegments(
   const fontSize = Math.min(36, Math.max(12, Math.round(OUTPUT_HEIGHT / 20)));
   const boxBorder = Math.round(fontSize / 2);
   const margin = Math.round(fontSize * 1.2);
-  // Logo watermark size: ~10% of output height, with a small margin.
-  const wmLogoHeight = Math.max(40, Math.round(OUTPUT_HEIGHT * 0.10));
+  // Logo watermark size: ~6% of output height, with a small margin.
+  const wmLogoHeight = Math.max(28, Math.round(OUTPUT_HEIGHT * 0.06));
   const wmLogoMargin = Math.max(8, Math.round(OUTPUT_HEIGHT * 0.018));
 
   const segPaths: string[] = [];
