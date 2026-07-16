@@ -2737,9 +2737,10 @@ export default function RecordGame() {
                       href="https://stecstats.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="absolute bottom-10 right-2 opacity-80 hover:opacity-100 transition-opacity"
+                      className="absolute top-2 right-2 flex items-center gap-0.5 opacity-75 hover:opacity-100 transition-opacity drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
                     >
-                      <img src="/logo.png" alt="StecStats" className="h-7 w-7 rounded object-contain" />
+                      <img src="/logo.png" alt="StecStats" className="h-6 w-auto object-contain" />
+                      <span className="text-white font-bold text-[11px] leading-none">.com</span>
                     </a>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -2805,9 +2806,10 @@ export default function RecordGame() {
                         href="https://stecstats.com"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="absolute bottom-10 right-2 opacity-80 hover:opacity-100 transition-opacity"
+                        className="absolute top-2 right-2 flex items-center gap-0.5 opacity-75 hover:opacity-100 transition-opacity drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
                       >
-                        <img src="/logo.png" alt="StecStats" className="h-7 w-7 rounded object-contain" />
+                        <img src="/logo.png" alt="StecStats" className="h-6 w-auto object-contain" />
+                        <span className="text-white font-bold text-[11px] leading-none">.com</span>
                       </a>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">

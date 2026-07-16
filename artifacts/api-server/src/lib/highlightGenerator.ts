@@ -16,8 +16,8 @@ import { logger } from "./logger";
 const objectStorageService = new ObjectStorageService();
 
 const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
-// Transparent logo PNG placed in assets/ alongside the compiled bundle.
-const LOGO_FILE = path.resolve(__dirname, "..", "assets", "logo.png");
+// Watermark PNG: wordmark with boosted orange + ".com" appended.
+const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 
 // Seconds of footage kept before and after each qualifying moment.
 // PRE_SECONDS must cover the user's reaction delay (~3-5s after the play)
