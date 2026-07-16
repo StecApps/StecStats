@@ -639,6 +639,21 @@ export default function WatchStream() {
         </button>
       )}
 
+      {/* Branding watermark — always visible in corner */}
+      <a
+        href="https://stecstats.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute top-3 right-3 z-20 pointer-events-auto"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+        <img
+          src="/logo.png"
+          alt="StecStats"
+          className="h-7 w-auto object-contain opacity-60 hover:opacity-90 transition-opacity drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)]"
+        />
+      </a>
+
       {state !== "live" && (
         <div className="absolute inset-0 text-center text-white/80 flex flex-col items-center justify-center gap-3 p-6">
           <h1 className="text-xl font-display font-bold uppercase tracking-tight mb-2">

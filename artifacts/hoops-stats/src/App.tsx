@@ -26,11 +26,11 @@ const queryClient = new QueryClient();
 // Shared logo mark used by all full-screen fallback screens
 function LogoMark() {
   return (
-    <div style={{
-      width: 56, height: 56, background: "hsl(15,100%,55%)", borderRadius: 14,
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontWeight: 900, fontSize: 28, color: "#fff",
-    }}>S</div>
+    <img
+      src="/logo.png"
+      alt="StecStats"
+      style={{ height: 52, width: "auto", objectFit: "contain" }}
+    />
   );
 }
 
@@ -232,7 +232,7 @@ const clerkAppearance = {
   options: {
     logoPlacement: "inside" as const,
     logoLinkUrl: basePath || "/",
-    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+    logoImageUrl: `${window.location.origin}${basePath}/logo.png`,
   },
   variables: {
     colorPrimary: "hsl(15, 100%, 55%)",
@@ -261,8 +261,8 @@ const clerkAppearance = {
     identityPreviewEditButton: "text-primary",
     formFieldSuccessText: "text-foreground",
     alertText: "text-foreground",
-    logoBox: "flex justify-center py-2",
-    logoImage: "h-10 w-10",
+    logoBox: "flex justify-center py-4",
+    logoImage: "h-10 w-auto max-w-[200px] object-contain",
     socialButtonsBlockButton: "border-border hover:bg-accent",
     formButtonPrimary: "bg-primary hover:bg-primary/90 text-primary-foreground",
     formFieldInput: "bg-input text-foreground border-border",
@@ -371,7 +371,8 @@ function ProtectedApp() {
 
 function SignInPage() {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-background px-4 gap-6">
+      <img src="/logo.png" alt="StecStats" className="h-12 w-auto object-contain drop-shadow-[0_0_12px_rgba(249,115,22,0.5)]" />
       <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} />
     </div>
   );
@@ -379,7 +380,8 @@ function SignInPage() {
 
 function SignUpPage() {
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-background px-4">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-background px-4 gap-6">
+      <img src="/logo.png" alt="StecStats" className="h-12 w-auto object-contain drop-shadow-[0_0_12px_rgba(249,115,22,0.5)]" />
       <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} />
     </div>
   );
