@@ -35,7 +35,7 @@ function UserMenu() {
   const label = user.primaryEmailAddress?.emailAddress ?? user.username ?? "Account";
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 md:gap-3">
       <PlanBadge />
       <span
         data-testid="user-email-display"
@@ -43,13 +43,15 @@ function UserMenu() {
       >
         {label}
       </span>
+      {/* Desktop: full "Log out" button; Mobile: icon only */}
       <button
         type="button"
         onClick={() => signOut({ redirectUrl: basePath || "/" })}
-        className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/70 hover:text-foreground hover:bg-accent transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 md:px-3 py-1.5 text-xs font-medium text-foreground/70 hover:text-foreground hover:bg-accent transition-colors"
+        aria-label="Log out"
       >
         <LogOut className="w-3.5 h-3.5" />
-        Log out
+        <span className="hidden md:inline">Log out</span>
       </button>
     </div>
   );
@@ -69,7 +71,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-[100dvh] flex flex-col w-full">
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-24 max-w-screen-2xl items-center mx-auto px-4 md:px-8">
+        <div className="container flex h-14 md:h-24 max-w-screen-2xl items-center mx-auto px-4 md:px-8">
+          {/* Desktop nav */}
           <div className="mr-4 hidden md:flex flex-1 items-center justify-between">
             <div className="flex items-center">
               <Link href="/dashboard" className="mr-6 flex items-center gap-3">
@@ -97,23 +100,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <UserMenu />
           </div>
-          {/* Mobile nav */}
+
+          {/* Mobile nav — logo left, plan badge + icon-only log out right */}
           <div className="md:hidden flex w-full justify-between items-center">
-            <Link href="/dashboard" className="flex items-center gap-3">
-              <img src="/logo.png" alt="StecStats" className="h-14 w-auto object-contain flex-shrink-0 drop-shadow-[0_0_12px_rgba(249,115,22,0.5)]" />
-              <span className="text-xs font-medium uppercase tracking-widest text-primary/70 leading-none">Your all-in-one app</span>
+            <Link href="/dashboard">
+              <img
+                src="/logo.png"
+                alt="StecStats"
+                className="h-8 w-auto object-contain flex-shrink-0 drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]"
+              />
             </Link>
             <UserMenu />
           </div>
         </div>
       </header>
-      <main className="flex-1 flex flex-col container max-w-screen-2xl mx-auto px-4 md:px-8 py-6">
+
+      <main className="flex-1 flex flex-col container max-w-screen-2xl mx-auto px-4 md:px-8 py-4 md:py-6 pb-24 md:pb-6">
         {children}
       </main>
-      
+
       {/* Mobile bottom nav */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 border-t border-border bg-background z-50" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-        <nav className="flex h-16 items-center justify-around px-6">
+        <nav className="flex h-16 items-center justify-around px-2">
           {navItems.map((item) => {
             const isActive = location === item.href;
             return (
@@ -121,7 +129,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 w-full h-full",
+                  "flex flex-col items-center justify-center gap-1 flex-1 h-full",
                   isActive ? "text-primary" : "text-muted-foreground"
                 )}
               >
