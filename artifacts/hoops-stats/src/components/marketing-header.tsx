@@ -7,7 +7,7 @@ export default function MarketingHeader() {
       <div className="container flex h-24 max-w-screen-xl items-center justify-between mx-auto px-4 md:px-8">
         <Link href="/" className="flex items-center gap-3">
           <img src="/logo.png" alt="StecStats" className="h-16 w-auto object-contain flex-shrink-0 drop-shadow-[0_0_12px_rgba(249,115,22,0.5)]" />
-          <span className="hidden sm:block text-[9px] font-medium uppercase tracking-widest text-primary/60 leading-none">Your all-in-one app</span>
+          <span className="hidden sm:block text-xs font-medium uppercase tracking-widest text-primary/70 leading-none">Your all-in-one app</span>
         </Link>
 
         <nav className="flex items-center gap-2 sm:gap-4">

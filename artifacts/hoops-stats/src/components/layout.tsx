@@ -74,7 +74,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center">
               <Link href="/dashboard" className="mr-6 flex items-center gap-3">
                 <img src="/logo.png" alt="StecStats" className="h-16 w-auto object-contain flex-shrink-0 drop-shadow-[0_0_12px_rgba(249,115,22,0.5)]" />
-                <span className="hidden lg:block text-[9px] font-medium uppercase tracking-widest text-primary/60 leading-none">Your all-in-one app</span>
+                <span className="hidden lg:block text-xs font-medium uppercase tracking-widest text-primary/70 leading-none">Your all-in-one app</span>
               </Link>
               <nav className="flex items-center space-x-6 text-sm font-medium">
                 {navItems.map((item) => {
@@ -101,7 +101,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="md:hidden flex w-full justify-between items-center">
             <Link href="/dashboard" className="flex items-center gap-3">
               <img src="/logo.png" alt="StecStats" className="h-14 w-auto object-contain flex-shrink-0 drop-shadow-[0_0_12px_rgba(249,115,22,0.5)]" />
-              <span className="text-[9px] font-medium uppercase tracking-widest text-primary/60 leading-none">Your all-in-one app</span>
+              <span className="text-xs font-medium uppercase tracking-widest text-primary/70 leading-none">Your all-in-one app</span>
             </Link>
             <UserMenu />
           </div>
