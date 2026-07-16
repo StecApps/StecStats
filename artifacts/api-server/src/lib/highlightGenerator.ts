@@ -16,6 +16,8 @@ import { logger } from "./logger";
 const objectStorageService = new ObjectStorageService();
 
 const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+// Transparent logo PNG placed in assets/ alongside the compiled bundle.
+const LOGO_FILE = path.resolve(__dirname, "..", "assets", "logo.png");
 
 // Seconds of footage kept before and after each qualifying moment.
 // PRE_SECONDS must cover the user's reaction delay (~3-5s after the play)
@@ -350,21 +352,9 @@ async function renderGameSegments(
   const fontSize = Math.min(36, Math.max(12, Math.round(OUTPUT_HEIGHT / 20)));
   const boxBorder = Math.round(fontSize / 2);
   const margin = Math.round(fontSize * 1.2);
-  // Watermark sizing — smaller than captions, fixed in bottom-right corner.
-  const wmFontSize = Math.max(10, Math.round(fontSize * 0.6));
-  const wmBorder = Math.round(wmFontSize * 0.4);
-  const wmMargin = Math.round(wmFontSize * 0.8);
-  const wmFilter = [
-    `drawtext=fontfile=${FONT_FILE}`,
-    `text=StecStats.com`,
-    `fontcolor=white@0.85`,
-    `fontsize=${wmFontSize}`,
-    `box=1`,
-    `boxcolor=black@0.45`,
-    `boxborderw=${wmBorder}`,
-    `x=w-text_w-${wmMargin}`,
-    `y=h-text_h-${wmMargin}`,
-  ].join(":");
+  // Logo watermark size: ~10% of output height, with a small margin.
+  const wmLogoHeight = Math.max(40, Math.round(OUTPUT_HEIGHT * 0.10));
+  const wmLogoMargin = Math.max(8, Math.round(OUTPUT_HEIGHT * 0.018));
 
   const segPaths: string[] = [];
   for (let i = 0; i < segments.length; i++) {
@@ -408,17 +398,25 @@ async function renderGameSegments(
         ].join(":"),
       );
     }
-    // Watermark always on top, every clip.
-    filterParts.push(wmFilter);
-    const vf = filterParts.join(",");
+    // Build filter_complex: video transforms + captions on [0:v], then
+    // overlay the logo PNG (input 1, looped still image) in the bottom-right.
+    const mainFilters = filterParts.join(",");
+    const filterComplex = [
+      `[0:v]${mainFilters}[main]`,
+      `[1:v]scale=-1:${wmLogoHeight}[logo]`,
+      `[main][logo]overlay=W-w-${wmLogoMargin}:H-h-${wmLogoMargin}:shortest=1[out]`,
+    ].join(";");
 
     const segPath = path.join(tmpDir, `seg_${prefix}_${i}.ts`);
     const args = [
       "-y",
       "-ss", seg.start.toFixed(3),
       "-i", activeSrcPath,
+      // Logo PNG as a looped still image (input 1).
+      "-loop", "1", "-i", LOGO_FILE,
       "-t", segDur.toFixed(3),
-      "-vf", vf,
+      "-filter_complex", filterComplex,
+      "-map", "[out]",
       "-r", "30",
       "-c:v", "libx264",
       // veryfast: much better quality than ultrafast with only ~30% slower encode
@@ -433,7 +431,7 @@ async function renderGameSegments(
       "-threads", "0",
     ];
     if (hasAudio) {
-      args.push("-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
+      args.push("-map", "0:a?", "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
     } else {
       args.push("-an");
     }

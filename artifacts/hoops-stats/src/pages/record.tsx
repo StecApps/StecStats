@@ -2725,13 +2725,23 @@ export default function RecordGame() {
                 </div>
               ) : highlight?.status === "ready" && highlight.highlightObjectPath ? (
                 <div className="space-y-3">
-                  <video
-                    src={videoObjectSrc(highlight.highlightObjectPath)}
-                    controls
-                    playsInline
-                    preload="none"
-                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
-                  />
+                  <div className="relative inline-block w-auto max-w-full mx-auto">
+                    <video
+                      src={videoObjectSrc(highlight.highlightObjectPath)}
+                      controls
+                      playsInline
+                      preload="none"
+                      className="block w-auto max-w-full max-h-[70vh] rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
+                    />
+                    <a
+                      href="https://stecstats.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="absolute bottom-10 right-2 opacity-80 hover:opacity-100 transition-opacity"
+                    >
+                      <img src="/logo.png" alt="StecStats" className="h-7 w-7 rounded object-contain" />
+                    </a>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareHighlight} disabled={isPreparingShare}>
                       {isPreparingShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
@@ -2783,13 +2793,23 @@ export default function RecordGame() {
                   </div>
                 ) : lowlight?.status === "ready" && lowlight.lowlightObjectPath ? (
                   <div className="space-y-3">
-                    <video
-                      src={videoObjectSrc(lowlight.lowlightObjectPath)}
-                      controls
-                      playsInline
-                      preload="none"
-                      className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
-                    />
+                    <div className="relative inline-block w-auto max-w-full mx-auto">
+                      <video
+                        src={videoObjectSrc(lowlight.lowlightObjectPath)}
+                        controls
+                        playsInline
+                        preload="none"
+                        className="block w-auto max-w-full max-h-[70vh] rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
+                      />
+                      <a
+                        href="https://stecstats.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="absolute bottom-10 right-2 opacity-80 hover:opacity-100 transition-opacity"
+                      >
+                        <img src="/logo.png" alt="StecStats" className="h-7 w-7 rounded object-contain" />
+                      </a>
+                    </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button type="button" onClick={handleShareLowlight} disabled={isPreparingLowlightShare}>
                         {isPreparingLowlightShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
