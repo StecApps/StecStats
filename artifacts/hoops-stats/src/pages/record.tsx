@@ -28,7 +28,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home, BarChart2 } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Pause, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home, BarChart2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -422,6 +422,7 @@ export default function RecordGame() {
   const [events, setEvents] = useState<GameEventEntry[]>([]);
   const [videoOffsetMs, setVideoOffsetMs] = useState<number>(0);
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [recordedSegments, setRecordedSegments] = useState<Blob[]>([]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedPreviewUrl, setRecordedPreviewUrl] = useState<string | null>(null);
@@ -478,6 +479,7 @@ export default function RecordGame() {
   const didAttemptRecordingRef = useRef(false);
   const didDiscardVideoRef = useRef(false);
   const recordingStartRef = useRef<number>(0);
+  const pauseStartTimeRef = useRef<number | null>(null);
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const liveCodeRef = useRef<string | null>(null);
@@ -840,12 +842,12 @@ export default function RecordGame() {
   }, [recordedPreviewUrl]);
 
   useEffect(() => {
-    if (!isRecording) return;
+    if (!isRecording || isRecordingPaused) return;
     const interval = setInterval(() => {
       setElapsedMs(Date.now() - recordingStartRef.current);
     }, 500);
     return () => clearInterval(interval);
-  }, [isRecording]);
+  }, [isRecording, isRecordingPaused]);
 
   useEffect(() => {
     if (isRecording && livePreviewRef.current && streamRef.current) {
@@ -1629,8 +1631,14 @@ export default function RecordGame() {
         };
       });
       recorder.stop();
+    } else {
+      // Recorder already stopped (was paused) — just clean up the camera.
+      // All segments are already in recordedSegments; handleSave will pick them up.
+      stopMediaPipeline();
     }
     setIsRecording(false);
+    setIsRecordingPaused(false);
+    pauseStartTimeRef.current = null;
     if (isLive) {
       stopGoingLive();
     }
@@ -1720,6 +1728,79 @@ export default function RecordGame() {
     recordingStartRef.current += gapMs;
 
     // Camera stays alive; isRecording stays true; stats/score preserved
+  };
+
+  // Pause recording: flush the current segment and stop the encoder, but keep
+  // the camera stream alive so Resume can start a new segment instantly.
+  // `recordingStartRef` is NOT advanced yet — that happens on resume when we
+  // know exactly how long the pause was.
+  const pauseRecording = async () => {
+    const recorder = mediaRecorderRef.current;
+    const stream = streamRef.current;
+    if (!recorder || recorder.state !== "recording" || !stream) return;
+
+    const mimeType = recorder.mimeType;
+    const sessionId = recordingSessionIdRef.current ?? "";
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      recorder.onstop = () => {
+        getOrderedChunks(sessionId)
+          .then(chunks => {
+            const b = new Blob(chunks, { type: mimeType });
+            deleteSession(sessionId).catch(() => {});
+            resolve(b);
+          })
+          .catch(() => resolve(null));
+      };
+      recorder.stop();
+    });
+
+    if (blob) setRecordedSegments(prev => [...prev, blob]);
+
+    pauseStartTimeRef.current = Date.now();
+    setIsRecordingPaused(true);
+    // isRecording stays true — camera stays alive, stats still tracked
+  };
+
+  // Resume recording: start a fresh encoder on the same camera stream and
+  // advance the reference clock by exactly how long we were paused so that
+  // stat videoTimestampMs values stay aligned with the concatenated video.
+  const resumeRecording = () => {
+    const stream = streamRef.current;
+    if (!stream || !isRecordingPaused) return;
+
+    // Reuse the mimeType from the last recorder so all segments match
+    const mimeType = mediaRecorderRef.current?.mimeType
+      ?? (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : "video/webm");
+
+    chunkSeqRef.current = 0;
+    const newSessionId = createRecordingSessionId();
+    recordingSessionIdRef.current = newSessionId;
+    blobAssemblyPromiseRef.current = null;
+
+    const newRecorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 12_000_000,
+      audioBitsPerSecond: 128_000,
+    });
+    newRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) saveChunk(newSessionId, chunkSeqRef.current++, e.data).catch(() => {});
+    };
+    mediaRecorderRef.current = newRecorder;
+    newRecorder.start(3000);
+
+    // Advance the reference clock by the full paused gap so timestamps for
+    // stats logged after resume map to the correct position in the final
+    // concatenated video (same mechanism as splitRecording).
+    if (pauseStartTimeRef.current !== null) {
+      const gapMs = Date.now() - pauseStartTimeRef.current;
+      recordingStartRef.current += gapMs;
+      pauseStartTimeRef.current = null;
+    }
+
+    setIsRecordingPaused(false);
   };
 
   const discardVideo = () => {
@@ -2046,7 +2127,7 @@ export default function RecordGame() {
       return { ...prev, [pid]: { ...pStats, ...updates } };
     });
 
-    if (isRecording) {
+    if (isRecording && !isRecordingPaused) {
       const videoTimestampMs = Math.max(0, Date.now() - recordingStartRef.current);
       setEvents(prev => [...prev, { playerId: pid, statField: field, delta: increment, videoTimestampMs }]);
     }
@@ -2108,10 +2189,17 @@ export default function RecordGame() {
     };
 
     let blobToUpload = recordedBlob;
-    if (isRecording) {
+    if (isRecording && !isRecordingPaused) {
       startAssembly();
       blobToUpload = await assemblyTimeout(stopRecordingAsync());
       finishAssembly();
+    } else if (isRecordingPaused) {
+      // Was paused when user saved — all segments are already in recordedSegments.
+      // Just shut down the camera; no active recorder to drain.
+      stopMediaPipeline();
+      setIsRecording(false);
+      setIsRecordingPaused(false);
+      pauseStartTimeRef.current = null;
     } else if (!blobToUpload && blobAssemblyPromiseRef.current) {
       // The user pressed Stop then Save quickly — the onstop callback
       // is still assembling chunks from IndexedDB.  Await its promise so
@@ -2476,9 +2564,11 @@ export default function RecordGame() {
           {cameraError && <p className="text-sm text-destructive">{cameraError}</p>}
 
           {isRecording && (
-            <div className="flex items-center gap-2 text-sm font-semibold text-red-600">
-              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-              Recording in progress — {formatMs(elapsedMs)}
+            <div className={`flex items-center gap-2 text-sm font-semibold ${isRecordingPaused ? "text-amber-400" : "text-red-600"}`}>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isRecordingPaused ? "bg-amber-400" : "bg-red-500 animate-pulse"}`} />
+              {isRecordingPaused
+                ? "Paused — tap Resume when she's back in"
+                : `Recording — ${formatMs(elapsedMs)}`}
             </div>
           )}
 
@@ -3077,6 +3167,23 @@ export default function RecordGame() {
             )}
 
             <div className="absolute bottom-0 left-0 right-0 flex flex-wrap items-center justify-center gap-2 p-3">
+              {isRecordingPaused ? (
+                <Button
+                  variant="secondary"
+                  className="bg-green-600/90 text-white hover:bg-green-700 border-0 font-bold"
+                  onClick={resumeRecording}
+                >
+                  <Play className="w-4 h-4 mr-2" /> Resume
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  className="bg-amber-500/80 text-white hover:bg-amber-600 border-0 font-semibold"
+                  onClick={pauseRecording}
+                >
+                  <Pause className="w-4 h-4 mr-2" /> Pause
+                </Button>
+              )}
               <Button variant="destructive" onClick={stopRecording}>
                 <Square className="w-4 h-4 mr-2" /> Stop
               </Button>
@@ -3084,6 +3191,7 @@ export default function RecordGame() {
                 variant="secondary"
                 className="bg-amber-700/80 text-white hover:bg-amber-800 border-0 font-semibold"
                 onClick={splitRecording}
+                disabled={isRecordingPaused}
                 title="Save this half and immediately start recording the next one"
               >
                 <Circle className="w-3.5 h-3.5 mr-1.5 text-amber-300" />
