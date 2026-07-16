@@ -6,8 +6,8 @@ export default function MarketingHeader() {
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 max-w-screen-xl items-center justify-between mx-auto px-4 md:px-8">
         <Link href="/" className="flex items-center gap-2.5">
-          <img src="/logo.png" alt="StecStats" className="w-11 h-11 rounded-lg object-contain flex-shrink-0 ring-1 ring-primary/40" />
-          <span className="font-display font-bold uppercase tracking-wide text-foreground text-base leading-none">StecStats</span>
+          <img src="/logo.png" alt="StecStats" className="w-14 h-14 rounded-xl object-contain flex-shrink-0 ring-1 ring-primary/40" />
+          <span className="font-display font-bold uppercase tracking-wide text-foreground text-xl leading-none">StecStats</span>
         </Link>
 
         <nav className="flex items-center gap-2 sm:gap-4">

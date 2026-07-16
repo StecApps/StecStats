@@ -73,8 +73,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="mr-4 hidden md:flex flex-1 items-center justify-between">
             <div className="flex items-center">
               <Link href="/dashboard" className="mr-6 flex items-center gap-2.5">
-                <img src="/logo.png" alt="StecStats" className="w-10 h-10 rounded-lg object-contain flex-shrink-0 ring-1 ring-primary/40" />
-                <span className="font-display font-bold uppercase tracking-wide text-foreground text-base leading-none">StecStats</span>
+                <img src="/logo.png" alt="StecStats" className="w-14 h-14 rounded-xl object-contain flex-shrink-0 ring-1 ring-primary/40" />
+                <span className="font-display font-bold uppercase tracking-wide text-foreground text-xl leading-none">StecStats</span>
               </Link>
               <nav className="flex items-center space-x-6 text-sm font-medium">
                 {navItems.map((item) => {
@@ -100,8 +100,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {/* Mobile nav */}
           <div className="md:hidden flex w-full justify-between items-center">
             <Link href="/dashboard" className="flex items-center gap-2">
-              <img src="/logo.png" alt="StecStats" className="w-10 h-10 rounded-lg object-contain flex-shrink-0 ring-1 ring-primary/40" />
-              <span className="font-display font-bold uppercase tracking-wide text-foreground text-base leading-none">StecStats</span>
+              <img src="/logo.png" alt="StecStats" className="w-14 h-14 rounded-xl object-contain flex-shrink-0 ring-1 ring-primary/40" />
+              <span className="font-display font-bold uppercase tracking-wide text-foreground text-xl leading-none">StecStats</span>
             </Link>
             <UserMenu />
           </div>
