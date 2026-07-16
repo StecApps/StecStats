@@ -356,7 +356,7 @@ async function renderGameSegments(
   const wmMargin = Math.round(wmFontSize * 0.8);
   const wmFilter = [
     `drawtext=fontfile=${FONT_FILE}`,
-    `text=STEC STATS`,
+    `text=StecStats.com`,
     `fontcolor=white@0.85`,
     `fontsize=${wmFontSize}`,
     `box=1`,

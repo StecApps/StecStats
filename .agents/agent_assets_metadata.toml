@@ -1,0 +1,37 @@
+uploads = []
+
+[[generated]]
+id = "nBU4z0jOnKq06rTjx8rYP"
+uri = "file://attached_assets/logo_option_1.png"
+type = "image"
+title = "StecStats logo basketball minimal"
+
+[[generated]]
+id = "_5z0lP4qOWMlPuhYzPc1r"
+uri = "file://attached_assets/logo_option_2.png"
+type = "image"
+title = "StecStats icon mark basketball data"
+
+[[generated]]
+id = "OJWzYpWB1RQyH-mzZDY4B"
+uri = "file://attached_assets/logo_option_3.png"
+type = "image"
+title = "StecStats wordmark horizontal"
+
+[[outputs]]
+id = "FZj9W2EktEJeb43lNxG9Q"
+uri = "file://attached_assets/logo_option_1.png"
+type = "image"
+title = "Option 1 — Icon + Text integrated"
+
+[[outputs]]
+id = "zESyqc1LfiSMLOOsHOYUv"
+uri = "file://attached_assets/logo_option_2.png"
+type = "image"
+title = "Option 2 — Icon mark only"
+
+[[outputs]]
+id = "vE4VlKutPOc80ACGcnskE"
+uri = "file://attached_assets/logo_option_3.png"
+type = "image"
+title = "Option 3 — Horizontal wordmark"
