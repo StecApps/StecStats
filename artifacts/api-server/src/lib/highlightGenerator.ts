@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
-import { promises as fs } from "fs";
+import { promises as fs, createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
 import os from "os";
 import path from "path";
 import { and, eq, inArray } from "drizzle-orm";
@@ -99,6 +100,16 @@ const STAT_LABELS: Record<string, string> = {
 };
 
 export class HighlightError extends Error {}
+
+/**
+ * Download a source video from object storage to a local temp file using the
+ * GCS SDK streaming API (file.createReadStream). This avoids signed URLs,
+ * which fail on range requests in production (IO error: End of file).
+ */
+async function downloadSourceVideo(objectPath: string, destPath: string): Promise<void> {
+  const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+  await pipeline(objectFile.createReadStream(), createWriteStream(destPath));
+}
 
 type Moment = { timeSec: number; caption: string };
 type Segment = { start: number; end: number; moments: Moment[] };
@@ -553,23 +564,24 @@ export async function generateHighlight(gameId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
 
-    // Get a 3-hour signed URL so ffmpeg reads directly from object storage
-    // without downloading the entire video first. For MP4 files ffmpeg uses
-    // HTTP range requests to seek to each timestamp; for WebM it streams
-    // sequentially. Either way Node.js is never blocked waiting for a full
-    // download, so health checks keep responding during generation.
-    const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3 * 3600);
+    // Download to a local temp file first. Signed URLs fail on GCS range
+    // requests in production (IO error: End of file), so we use the GCS SDK
+    // streaming API instead and let ffmpeg/ffprobe work from local disk.
+    const srcPath = path.join(tmpDir, "source_video");
+    logger.info({ gameId }, "Downloading source video for highlight generation");
+    await downloadSourceVideo(game.videoObjectPath, srcPath);
+    logger.info({ gameId }, "Source video download complete");
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      srcUrl,
+      srcPath,
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcUrl, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0);
+    const segPaths = await renderGameSegments(srcPath, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0);
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
@@ -637,18 +649,21 @@ export async function generateLowlight(gameId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
 
-    const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3 * 3600);
+    const srcPath = path.join(tmpDir, "source_video");
+    logger.info({ gameId }, "Downloading source video for lowlight generation");
+    await downloadSourceVideo(game.videoObjectPath, srcPath);
+    logger.info({ gameId }, "Source video download complete");
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      srcUrl,
+      srcPath,
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcUrl, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0);
+    const segPaths = await renderGameSegments(srcPath, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0);
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
@@ -738,18 +753,20 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
         const eligible = eventsByGame.get(game.id);
         if (!eligible || eligible.length === 0) return { segPaths: [], hasAudio: false };
 
-        const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath!, 3 * 3600);
+        const srcPath = path.join(tmpDir!, `src_${game.id}`);
+        logger.info({ gameId: game.id }, "Downloading source video for team highlight");
+        await downloadSourceVideo(game.videoObjectPath!, srcPath);
 
         const audioProbe = await ffprobe([
           "-v", "error",
           "-select_streams", "a",
           "-show_entries", "stream=index",
           "-of", "csv=p=0",
-          srcUrl,
+          srcPath,
         ]);
         const hasAudio = audioProbe.length > 0;
 
-        const segPaths = await renderGameSegments(srcUrl, tmpDir!, `t${game.id}`, eligible, nameById, game.videoOffsetMs ?? 0);
+        const segPaths = await renderGameSegments(srcPath, tmpDir!, `t${game.id}`, eligible, nameById, game.videoOffsetMs ?? 0);
         return { segPaths, hasAudio };
       }),
     );
