@@ -1,5 +1,8 @@
 import { runMigrations } from "stripe-replit-sync";
 import { sql } from "drizzle-orm";
+import { promises as fs } from "fs";
+import os from "os";
+import path from "path";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { seedDatabase, applyVideoOffsetFixes } from "./lib/seed";
@@ -43,6 +46,30 @@ async function initStripe() {
   await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
 
   await stripeSync.syncBackfill();
+}
+
+/**
+ * Delete orphaned video temp dirs left behind when a previous server instance
+ * was OOM-killed mid-download (SIGKILL skips finally-blocks, so cleanup code
+ * never ran). Without this, each OOM cycle accumulates GB of abandoned files
+ * and the disk fills up progressively faster with every restart.
+ */
+async function cleanupOrphanedTempDirs(): Promise<void> {
+  const tmpDir = os.tmpdir();
+  try {
+    const entries = await fs.readdir(tmpDir);
+    const orphaned = entries.filter(
+      (e) => e.startsWith("hl-") || e.startsWith("ll-") || e.startsWith("video-src-"),
+    );
+    for (const dir of orphaned) {
+      await fs.rm(path.join(tmpDir, dir), { recursive: true, force: true }).catch(() => {});
+    }
+    if (orphaned.length > 0) {
+      logger.info({ count: orphaned.length }, "Cleaned up orphaned video temp dirs");
+    }
+  } catch (err) {
+    logger.warn({ err }, "Could not clean up orphaned video temp dirs");
+  }
 }
 
 /**
@@ -101,6 +128,8 @@ Promise.all([
   attachLiveSocketServer(server);
   liveStreamRegistry.startCleanupTimer();
 
-  // Wait 5 s for the DB pool to settle before querying for orphaned jobs.
-  setTimeout(() => { void resumeOrphanedJobs(); }, 5_000);
+  // Clean up temp dirs orphaned by previous OOM kills, then resume jobs.
+  setTimeout(() => {
+    void cleanupOrphanedTempDirs().finally(() => resumeOrphanedJobs());
+  }, 5_000);
 });

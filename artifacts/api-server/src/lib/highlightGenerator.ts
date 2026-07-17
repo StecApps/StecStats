@@ -104,14 +104,14 @@ export class HighlightError extends Error {}
 // Maximum time allowed for a single ffmpeg/ffprobe process before SIGKILL.
 const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per segment
 // Stall detection: if no bytes arrive within this window, abort the download.
-const DOWNLOAD_STALL_MS = 30 * 1000; // 30 seconds of no data = stalled
+const DOWNLOAD_STALL_MS = 60 * 1000; // 60 seconds of no data = stalled
 
 /**
  * Download a source video from object storage to a local temp file using the
  * GCS SDK streaming API (file.createReadStream). This avoids signed URLs,
  * which fail on range requests in production (IO error: End of file).
  *
- * Uses a rolling stall-detector (30s with no new bytes = abort) rather than a
+ * Uses a rolling stall-detector (60s with no new bytes = abort) rather than a
  * fixed wall-clock timeout, so large-but-healthy files download fully while
  * truly stalled/truncated GCS objects fail quickly.
  */
@@ -129,7 +129,7 @@ async function downloadSourceVideo(objectPath: string, destPath: string): Promis
   const ac = new AbortController();
 
   // Rolling stall timer: reset every time a data chunk arrives.
-  // If 30s pass with no data, abort.
+  // If 60s pass with no data, abort.
   let stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
   const resetStall = () => {
     clearTimeout(stallTimer);
@@ -166,6 +166,71 @@ async function downloadSourceVideo(objectPath: string, destPath: string): Promis
     clearTimeout(stallTimer);
     clearInterval(progressInterval);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shared source-video download cache.
+//
+// Highlight and lowlight jobs for the same game need the same source file.
+// Downloading a 2+ GB video twice simultaneously causes OOM kills and fills
+// the container's temp disk. This cache ensures only ONE download runs per
+// objectPath; subsequent callers wait on the same Promise and share the file.
+// Callers must call release() when done so the temp dir can be cleaned up.
+// ---------------------------------------------------------------------------
+interface SourceVideoEntry {
+  promise: Promise<string>; // resolves to local srcPath
+  tmpDir: string;
+  refs: number;
+}
+const sourceVideoCache = new Map<string, SourceVideoEntry>();
+
+export async function acquireSourceVideo(
+  objectPath: string,
+): Promise<{ srcPath: string; release: () => void }> {
+  // Check synchronously before any await to be race-condition-safe in Node.js.
+  if (!sourceVideoCache.has(objectPath)) {
+    const tmpDir = path.join(
+      os.tmpdir(),
+      `video-src-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const destPath = path.join(tmpDir, "source_video");
+    const entry: SourceVideoEntry = {
+      promise: fs.mkdir(tmpDir, { recursive: true })
+        .then(() => downloadSourceVideo(objectPath, destPath))
+        .then(() => destPath)
+        .catch((err) => {
+          sourceVideoCache.delete(objectPath);
+          fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+          throw err;
+        }),
+      tmpDir,
+      refs: 0,
+    };
+    sourceVideoCache.set(objectPath, entry);
+  }
+
+  const entry = sourceVideoCache.get(objectPath)!;
+  entry.refs++;
+
+  let srcPath: string;
+  try {
+    srcPath = await entry.promise;
+  } catch (err) {
+    entry.refs--;
+    throw err;
+  }
+
+  const capturedEntry = entry;
+  return {
+    srcPath,
+    release: () => {
+      capturedEntry.refs--;
+      if (capturedEntry.refs <= 0) {
+        sourceVideoCache.delete(objectPath);
+        fs.rm(capturedEntry.tmpDir, { recursive: true, force: true }).catch(() => {});
+      }
+    },
+  };
 }
 
 type Moment = { timeSec: number; caption: string };
@@ -626,13 +691,13 @@ export async function generateHighlight(gameId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
 
-    // Download to a local temp file first. Signed URLs fail on GCS range
-    // requests in production (IO error: End of file), so we use the GCS SDK
-    // streaming API instead and let ffmpeg/ffprobe work from local disk.
-    const srcPath = path.join(tmpDir, "source_video");
+    // Shared download: highlight + lowlight for the same game share one copy.
+    // Avoids the OOM/disk-full crash caused by two simultaneous 2+ GB downloads.
     logger.info({ gameId }, "Downloading source video for highlight generation");
-    await downloadSourceVideo(game.videoObjectPath, srcPath);
-    logger.info({ gameId }, "Source video download complete");
+    let releaseSourceVideo: (() => void) | null = null;
+    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath);
+    releaseSourceVideo = release;
+    logger.info({ gameId }, "Source video ready for highlight generation");
 
     const audioStreams = await ffprobe([
       "-v", "error",
@@ -667,6 +732,7 @@ export async function generateHighlight(gameId: number): Promise<void> {
     await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
+    releaseSourceVideo?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -711,10 +777,13 @@ export async function generateLowlight(gameId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
 
-    const srcPath = path.join(tmpDir, "source_video");
+    // Shared download: reuses the same source file if highlight is already
+    // downloading or has downloaded it — avoids the double 2+ GB OOM crash.
     logger.info({ gameId }, "Downloading source video for lowlight generation");
-    await downloadSourceVideo(game.videoObjectPath, srcPath);
-    logger.info({ gameId }, "Source video download complete");
+    let releaseSourceVideo: (() => void) | null = null;
+    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath);
+    releaseSourceVideo = release;
+    logger.info({ gameId }, "Source video ready for lowlight generation");
 
     const audioStreams = await ffprobe([
       "-v", "error",
@@ -749,6 +818,7 @@ export async function generateLowlight(gameId: number): Promise<void> {
     await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
+    releaseSourceVideo?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
