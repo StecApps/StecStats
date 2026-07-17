@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { useImportData } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -197,10 +197,15 @@ export default function ImportData() {
         allRows = parseCsvText(text);
       } else {
         const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, { type: "array" });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const json: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" });
-        allRows = json.map(r => r.map(c => (c === undefined || c === null ? "" : String(c)))).filter(r => r.some(c => c.trim() !== ""));
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(buf);
+        const sheet = wb.worksheets[0];
+        const json: any[][] = [];
+        sheet.eachRow({ includeEmpty: true }, (row) => {
+          const values = (row.values as any[]).slice(1);
+          json.push(values);
+        });
+        allRows = json.map(r => r.map((c: any) => (c === undefined || c === null ? "" : typeof c === "object" && c.text ? String(c.text) : String(c)))).filter(r => r.some(c => c.trim() !== ""));
       }
     } catch (err) {
       toast({ title: "Could not read file", description: "Make sure it's a valid CSV or Excel file.", variant: "destructive" });
