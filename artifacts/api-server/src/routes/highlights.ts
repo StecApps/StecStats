@@ -146,10 +146,17 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
  * Re-trigger a highlight job that was orphaned by a server restart.
  * Called at startup for any game still stuck in "processing".
  * Safe to call multiple times — is a no-op if already in-flight.
+ * Resets highlightStartedAt so the stale window is measured from this resume.
  */
 export function resumeHighlightJob(gameId: number): void {
   if (inFlight.has(gameId)) return;
   inFlight.add(gameId);
+  const startedAt = new Date();
+  // Best-effort: reset startedAt so the stale window is accurate after restart.
+  void db.update(gamesTable)
+    .set({ highlightStartedAt: startedAt })
+    .where(eq(gamesTable.id, gameId))
+    .catch(() => {});
   const MAX_JOB_MS = 20 * 60 * 1000;
   void Promise.race([
     generateHighlight(gameId),

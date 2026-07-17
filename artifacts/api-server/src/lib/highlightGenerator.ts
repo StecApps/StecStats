@@ -101,28 +101,50 @@ const STAT_LABELS: Record<string, string> = {
 
 export class HighlightError extends Error {}
 
+// Maximum time to wait for the full source video to download from GCS.
+const DOWNLOAD_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
+// Maximum time allowed for a single ffmpeg/ffprobe process before SIGKILL.
+const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per segment
+
 /**
  * Download a source video from object storage to a local temp file using the
  * GCS SDK streaming API (file.createReadStream). This avoids signed URLs,
  * which fail on range requests in production (IO error: End of file).
+ * A hard AbortController timeout prevents the stream from hanging forever.
  */
 async function downloadSourceVideo(objectPath: string, destPath: string): Promise<void> {
   const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-  await pipeline(objectFile.createReadStream(), createWriteStream(destPath));
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), DOWNLOAD_TIMEOUT_MS);
+  try {
+    await pipeline(objectFile.createReadStream(), createWriteStream(destPath), { signal: ac.signal });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new HighlightError(`Source video download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s — the file may be too large or the connection stalled.`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 type Moment = { timeSec: number; caption: string };
 type Segment = { start: number; end: number; moments: Moment[] };
 
-function run(cmd: string, args: string[]): Promise<string> {
+function run(cmd: string, args: string[], timeoutMs: number = PROCESS_TIMEOUT_MS): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args);
     let stderr = "";
     let stdout = "";
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      reject(new Error(`${cmd} process timed out after ${timeoutMs / 1000}s`));
+    }, timeoutMs);
     child.stdout.on("data", (d) => (stdout += d.toString()));
     child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("error", reject);
+    child.on("error", (err) => { clearTimeout(timer); reject(err); });
     child.on("close", (code) => {
+      clearTimeout(timer);
       if (code === 0) resolve(stdout);
       else reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-2000)}`));
     });

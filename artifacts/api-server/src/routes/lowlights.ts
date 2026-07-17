@@ -111,10 +111,16 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
 /**
  * Re-trigger a lowlight job that was orphaned by a server restart.
  * Called at startup for any game still stuck in "processing".
+ * Resets lowlightStartedAt so the stale window is measured from this resume.
  */
 export function resumeLowlightJob(gameId: number): void {
   if (inFlight.has(gameId)) return;
   inFlight.add(gameId);
+  const startedAt = new Date();
+  void db.update(gamesTable)
+    .set({ lowlightStartedAt: startedAt })
+    .where(eq(gamesTable.id, gameId))
+    .catch(() => {});
   const MAX_JOB_MS = 20 * 60 * 1000;
   void Promise.race([
     generateLowlight(gameId),
