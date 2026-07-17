@@ -367,10 +367,10 @@ async function renderGameSegments(
   const wmLogoHeight = Math.max(24, Math.round(OUTPUT_HEIGHT * 0.05));
   const wmLogoMargin = Math.max(8, Math.round(OUTPUT_HEIGHT * 0.018));
 
-  // Run up to RENDER_CONCURRENCY clip encodes in parallel — each clip reads a
-  // different time window from the same (read-only) source and writes to its
-  // own temp file, so there is no shared mutable state between renders.
-  const RENDER_CONCURRENCY = 4;
+  // Run one clip encode at a time. Running parallel ffmpeg processes in
+  // production causes OOM kills because the container has limited memory and
+  // two jobs (highlight + lowlight) are often running simultaneously.
+  const RENDER_CONCURRENCY = 1;
 
   const renderOne = async (seg: Segment, i: number): Promise<string> => {
     const segDur = seg.end - seg.start;
@@ -434,8 +434,8 @@ async function renderGameSegments(
       "-b:v", "4500k",
       "-maxrate", "6000k",
       "-bufsize", "12000k",
-      // Limit threads per process so parallel renders share the CPU fairly.
-      "-threads", "2",
+      // One thread per encode to keep memory/CPU low in the container.
+      "-threads", "1",
     ];
     if (hasAudio) {
       args.push("-map", "0:a?", "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");

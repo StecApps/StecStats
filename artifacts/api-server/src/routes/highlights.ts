@@ -16,9 +16,8 @@ const router: IRouter = Router();
 const inFlight = new Set<number>();
 
 // A DB status of "processing" older than this is considered abandoned (e.g. the
-// server restarted mid-job) and may be retried. 60 minutes gives enough runway
-// for multiple server restart cycles before surfacing a failure to the user.
-const STALE_PROCESSING_MS = 60 * 60 * 1000;
+// server restarted mid-job) and may be retried.
+const STALE_PROCESSING_MS = 10 * 60 * 1000; // 10 minutes
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -115,10 +114,9 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       .where(eq(gamesTable.id, gameId));
 
     // Fire-and-forget: generation continues after the response is sent.
-    // Hard 90-minute timeout so inFlight is always cleared even if the
-    // generator gets stuck on a hanging network call (e.g. object-storage
-    // download that never resolves).
-    const MAX_JOB_MS = 90 * 60 * 1000;
+    // Hard 12-minute timeout so inFlight is always cleared even if the
+    // generator gets stuck on a hanging network call.
+    const MAX_JOB_MS = 20 * 60 * 1000;
     void Promise.race([
       generateHighlight(gameId),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
@@ -152,7 +150,7 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
 export function resumeHighlightJob(gameId: number): void {
   if (inFlight.has(gameId)) return;
   inFlight.add(gameId);
-  const MAX_JOB_MS = 90 * 60 * 1000;
+  const MAX_JOB_MS = 20 * 60 * 1000;
   void Promise.race([
     generateHighlight(gameId),
     new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
