@@ -441,6 +441,9 @@ export default function RecordGame() {
   const [videoSignedUrl, setVideoSignedUrl] = useState<string | null>(null);
   const [events, setEvents] = useState<GameEventEntry[]>([]);
   const [videoOffsetMs, setVideoOffsetMs] = useState<number>(0);
+  const [recordingQuality, setRecordingQuality] = useState<"standard" | "high">(
+    () => (localStorage.getItem("recordingQuality") as "standard" | "high" | null) ?? "standard",
+  );
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [recordedSegments, setRecordedSegments] = useState<Blob[]>([]);
@@ -579,7 +582,10 @@ export default function RecordGame() {
   const pinchStartZoomRef = useRef(1);
   const videoRotationRef = useRef<-90 | 0 | 90>(0);
   const MAX_ZOOM = 5;
-  const IDEAL_VIDEO_CONSTRAINTS = { width: { ideal: 1920 }, height: { ideal: 1080 }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } };
+  const IDEAL_VIDEO_CONSTRAINTS = recordingQuality === "high"
+    ? { width: { ideal: 1920 }, height: { ideal: 1080 }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } }
+    : { width: { ideal: 1280 }, height: { ideal: 720  }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } };
+  const VIDEO_BITS_PER_SECOND = recordingQuality === "high" ? 12_000_000 : 4_000_000;
 
   const lensLabelFromDeviceLabel = (label: string): string => {
     if (/ultra.?wide|0\.5/i.test(label)) return "0.5×";
@@ -1585,7 +1591,7 @@ export default function RecordGame() {
           : "video/mp4";
       const recorder = new MediaRecorder(recordStream, {
         mimeType,
-        videoBitsPerSecond: 12_000_000,
+        videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
         audioBitsPerSecond: 128_000,
       });
       // Chunks are written straight to IndexedDB (disk-backed) instead of
@@ -1732,7 +1738,7 @@ export default function RecordGame() {
 
     const newRecorder = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: 12_000_000,
+      videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
       audioBitsPerSecond: 128_000,
     });
     newRecorder.ondataavailable = (e) => {
@@ -1802,7 +1808,7 @@ export default function RecordGame() {
 
     const newRecorder = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: 12_000_000,
+      videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
       audioBitsPerSecond: 128_000,
     });
     newRecorder.ondataavailable = (e) => {
@@ -2826,7 +2832,31 @@ export default function RecordGame() {
           )}
 
           {!isRecording && !recordedPreviewUrl && !existingVideoObjectPath && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Recording quality:</span>
+                <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
+                  <button
+                    type="button"
+                    onClick={() => { setRecordingQuality("standard"); localStorage.setItem("recordingQuality", "standard"); }}
+                    className={`px-3 py-1 transition-colors ${recordingQuality === "standard" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+                  >
+                    Standard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setRecordingQuality("high"); localStorage.setItem("recordingQuality", "high"); }}
+                    className={`px-3 py-1 transition-colors ${recordingQuality === "high" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground"}`}
+                  >
+                    High (1080p)
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {recordingQuality === "standard"
+                  ? "720p · ~30 MB/min · highlight reels generate ~3× faster"
+                  : "1080p · ~85 MB/min · larger file, slower reel generation"}
+              </p>
               <Button variant="outline" onClick={startRecording}>
                 <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
               </Button>
