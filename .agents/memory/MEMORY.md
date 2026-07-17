@@ -15,6 +15,7 @@
 - [Stripe connector credential field names](stripe-connector-credentials.md) — Replit's Stripe connection API returns `settings.secret` (string key itself), not `settings.secret_key` as generic templates show.
 - [@workspace/db is a composite emitDeclarationOnly project](db-composite-declarations.md) — after a schema change, consumers read stale `lib/db/dist/*.d.ts`; rebuild with `tsc -b lib/db --force`, not just deleting tsbuildinfo.
 - [Highlight reel pipeline](highlight-reel.md) — fire-and-forget MP4 of good plays; `processing` must be timeout-recoverable and a game edit must invalidate the stored reel.
+- [ffprobe probesize is a literal RAM allocation](ffprobe-probesize-oom.md) — probesize=2147483647 allocates 2 GB buffer; use ≤500 MB; fMP4 from iOS may need 5-stage duration cascade + empirical packet scan.
 - [Express sub-router auth blackhole](express-subrouter-auth-blackhole.md) — `router.use(requireAuth)` with no path prefix silently blocks sibling routers' public routes mounted later; apply auth per-route instead.
 - [Multi-tenant ownerId scoping patterns](multi-tenant-ownerid-scoping.md) — designated-owner legacy claim (not first-signup), FK-from-body validation, unscoped-join leaks, and object-storage ACL hijack guards.
 - [stripe-replit-sync migration race on first boot](stripe-sync-migration-race.md) — first automatic boot can log "relation stripe.accounts does not exist" even though migrations succeed; confirm tables then just restart.

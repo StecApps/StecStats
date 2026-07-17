@@ -434,24 +434,60 @@ async function renderGameSegments(
   }
 
   if (!Number.isFinite(duration) || duration <= 0) {
-    // Attempt to estimate duration from container size + reported bitrate.
-    // This avoids reading or copying the file a second time.
-    const formatInfo = await ffprobe([
+    // Probe 3: larger probesize — reads up to 500 MB from the file.
+    // Safe even for 3 GB sources (500 MB << typical container RAM headroom).
+    const deepDurStr = await ffprobe([
       "-v", "error",
-      "-analyzeduration", "10000000",
-      "-probesize", "10000000",
-      "-show_entries", "format=size,bit_rate",
-      "-of", "default=nw=1",
+      "-analyzeduration", "500000000",
+      "-probesize", "500000000",
+      "-show_entries", "format=duration",
+      "-of", "default=nw=1:nk=1",
       srcPath,
     ]).catch(() => "");
-    const sizeMatch = formatInfo.match(/size=(\d+)/);
-    const bitrateMatch = formatInfo.match(/bit_rate=(\d+)/);
-    if (sizeMatch && bitrateMatch) {
-      const fileSizeBytes = Number(sizeMatch[1]);
-      const bitrateBps = Number(bitrateMatch[1]);
-      if (fileSizeBytes > 0 && bitrateBps > 0) {
-        duration = fileSizeBytes / (bitrateBps / 8);
-        logger.info({ prefix, duration, source: "bitrate-estimate" }, "Duration estimated from bitrate");
+    duration = parseFloat(deepDurStr);
+  }
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    // Probe 4: attempt same 500 MB scan on the video stream directly.
+    const deepStreamDurStr = await ffprobe([
+      "-v", "error",
+      "-analyzeduration", "500000000",
+      "-probesize", "500000000",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=duration",
+      "-of", "default=nw=1:nk=1",
+      srcPath,
+    ]).catch(() => "");
+    duration = parseFloat(deepStreamDurStr);
+  }
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    // Probe 5: empirical bitrate estimate.
+    // Read the first 90 seconds worth of video packets, measure
+    // (totalBytes / elapsed) to get bytes/sec, then scale to file size.
+    // This works for VBR streams where the container header has no bit_rate.
+    const packetRaw = await ffprobe([
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "packet=pts_time,size",
+      "-of", "csv=p=0",
+      "-read_intervals", "%+90",
+      srcPath,
+    ]).catch(() => "");
+    const packets = packetRaw.trim().split("\n")
+      .map((l) => { const [t, s] = l.split(","); return { t: parseFloat(t), s: Number(s) }; })
+      .filter((p) => Number.isFinite(p.t) && p.t >= 0 && p.s > 0);
+    if (packets.length > 5) {
+      const lastPts = packets[packets.length - 1].t;
+      const totalBytes = packets.reduce((acc, p) => acc + p.s, 0);
+      if (lastPts > 0 && totalBytes > 0) {
+        const empiricalBps = totalBytes / lastPts; // bytes per second
+        const srcStatSize = await fs.stat(srcPath).then((s) => s.size).catch(() => 0);
+        if (srcStatSize > 0) {
+          duration = srcStatSize / empiricalBps;
+          logger.info({ prefix, duration, source: "empirical-bitrate", packets: packets.length },
+            "Duration estimated from empirical packet bitrate");
+        }
       }
     }
   }
