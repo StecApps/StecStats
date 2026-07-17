@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, User, Trophy, ArrowRight, PartyPopper, Link } from "lucide-react";
+import { Loader2, User, Trophy, ArrowRight, PartyPopper, Link, Plus, Zap, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type Step = "player" | "team" | "done";
@@ -32,11 +32,15 @@ export default function Onboarding() {
   const [playerName, setPlayerName] = useState("");
   const [teamName, setTeamName] = useState("");
 
-  // Track the names that were successfully confirmed so we can reference them
-  // in subsequent steps and on the done screen.
-  const [confirmedPlayerName, setConfirmedPlayerName] = useState<string>("");
+  // All players confirmed during this onboarding session
+  const [confirmedPlayers, setConfirmedPlayers] = useState<string[]>([]);
   const [confirmedTeamName, setConfirmedTeamName] = useState<string>("");
-  const [justFinishedPlayer, setJustFinishedPlayer] = useState(false);
+
+  // Whether the free-plan limit was hit during this session
+  const [limitHit, setLimitHit] = useState(false);
+
+  // Whether the user has explicitly chosen to move to the team step
+  const [proceedToTeam, setProceedToTeam] = useState(false);
 
   if (playersLoading || teamsLoading) {
     return (
@@ -46,16 +50,39 @@ export default function Onboarding() {
     );
   }
 
-  // If the coach already had a player before onboarding, use the first one's
-  // name as the confirmed player so the team step still personalises correctly.
-  const existingPlayerName = players?.[0]?.name ?? "";
-  const resolvedPlayerName = confirmedPlayerName || existingPlayerName;
+  // Existing players from before this session
+  const existingPlayers = players ?? [];
 
-  const hasPlayer = (players?.length ?? 0) > 0 || justFinishedPlayer;
+  // Total player count visible in the session: existing + newly confirmed
+  const totalPlayers = existingPlayers.length + confirmedPlayers.length;
+
+  const hasAnyPlayer = totalPlayers > 0;
   const hasTeam = (teams?.length ?? 0) > 0;
-  const step: Step = !hasPlayer ? "player" : !hasTeam ? "team" : "done";
 
-  // Likewise, fall back to the first existing team name for the done screen.
+  // Determine the current step:
+  // - "player" if no player exists yet
+  // - "player" (add-more mode) if players exist but the coach hasn't explicitly continued
+  // - "team" once the coach clicked Continue to Team or a team already exists
+  // - "done" once a team exists
+  const step: Step = !hasAnyPlayer
+    ? "player"
+    : !hasTeam && !proceedToTeam
+    ? "player"
+    : hasTeam
+    ? "done"
+    : "team";
+
+  // For the team/done steps: use the first confirmed player name, falling back
+  // to the first pre-existing player name.
+  const primaryPlayerName =
+    confirmedPlayers[0] || existingPlayers[0]?.name || "";
+
+  // All player names shown on the done screen
+  const allPlayerNames: string[] = [
+    ...existingPlayers.map((p) => p.name),
+    ...confirmedPlayers,
+  ];
+
   const existingTeamName = teams?.[0]?.name ?? "";
   const resolvedTeamName = confirmedTeamName || existingTeamName;
 
@@ -64,11 +91,20 @@ export default function Onboarding() {
     try {
       await createPlayer.mutateAsync({ data: { name: playerName.trim() } });
       queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey() });
-      setConfirmedPlayerName(playerName.trim());
-      setJustFinishedPlayer(true);
+      setConfirmedPlayers((prev) => [...prev, playerName.trim()]);
+      setPlayerName("");
       toast({ title: "Player added", description: `${playerName.trim()} is on the roster.` });
-    } catch (err) {
-      const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : "Failed to add player";
+    } catch (err: unknown) {
+      // Check for the free-plan limit response (ApiError.status + ApiError.data.code)
+      const anyErr = err as { status?: number; data?: { code?: string } };
+      if (anyErr?.status === 403 || anyErr?.data?.code === "UPGRADE_REQUIRED") {
+        setLimitHit(true);
+        return;
+      }
+      const description =
+        err instanceof Error
+          ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "")
+          : "Failed to add player";
       toast({ title: "Error", description, variant: "destructive" });
     }
   };
@@ -81,7 +117,10 @@ export default function Onboarding() {
       setConfirmedTeamName(teamName.trim());
       toast({ title: "Team added", description: `${teamName.trim()} is ready.` });
     } catch (err) {
-      const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : "Failed to add team";
+      const description =
+        err instanceof Error
+          ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "")
+          : "Failed to add team";
       toast({ title: "Error", description, variant: "destructive" });
     }
   };
@@ -89,6 +128,7 @@ export default function Onboarding() {
   return (
     <div className="min-h-[100dvh] flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md space-y-6">
+        {/* Progress dots */}
         <div className="flex items-center justify-center gap-2">
           {(["player", "team", "done"] as const).map((s, i) => (
             <div
@@ -104,41 +144,108 @@ export default function Onboarding() {
           ))}
         </div>
 
+        {/* ── PLAYER STEP ── */}
         {step === "player" && (
           <Card>
             <CardHeader className="text-center">
               <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
                 <User className="w-6 h-6 text-primary" />
               </div>
-              <CardTitle className="font-display text-2xl uppercase tracking-wide">Add your first player</CardTitle>
-              <CardDescription>Every stat, game, and highlight in STEC STATS is organized around a player.</CardDescription>
+              <CardTitle className="font-display text-2xl uppercase tracking-wide">
+                {hasAnyPlayer ? "Add players to your roster" : "Add your first player"}
+              </CardTitle>
+              <CardDescription>
+                {hasAnyPlayer
+                  ? "Add as many players as you track, then continue to your team."
+                  : "Every stat, game, and highlight in STEC STATS is organized around a player."}
+              </CardDescription>
             </CardHeader>
+
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="onboarding-player-name">Player Name</Label>
-                <Input
-                  id="onboarding-player-name"
-                  data-testid="input-onboarding-player-name"
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="e.g. Jordan Smith"
-                  onKeyDown={(e) => e.key === "Enter" && handleCreatePlayer()}
-                  autoFocus
-                />
-              </div>
-              <Button
-                className="w-full font-display uppercase tracking-wide"
-                onClick={handleCreatePlayer}
-                disabled={!playerName.trim() || createPlayer.isPending}
-                data-testid="button-onboarding-create-player"
-              >
-                {createPlayer.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                Continue <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
+              {/* Confirmed players list */}
+              {allPlayerNames.length > 0 && (
+                <ul className="space-y-1.5" data-testid="onboarding-player-list">
+                  {allPlayerNames.map((name) => (
+                    <li
+                      key={name}
+                      className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm font-medium"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Upgrade prompt when free limit is hit */}
+              {limitHit ? (
+                <div
+                  className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm space-y-2"
+                  data-testid="onboarding-upgrade-prompt"
+                >
+                  <p className="font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 shrink-0" />
+                    Free plan — 1 player limit reached
+                  </p>
+                  <p className="text-muted-foreground">
+                    Upgrade to Pro to track unlimited players.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setLocation("/billing")}
+                  >
+                    Upgrade to Pro
+                  </Button>
+                </div>
+              ) : (
+                /* Add-player form */
+                <div className="space-y-2">
+                  <Label htmlFor="onboarding-player-name">
+                    {hasAnyPlayer ? "Another player's name" : "Player Name"}
+                  </Label>
+                  <Input
+                    id="onboarding-player-name"
+                    data-testid="input-onboarding-player-name"
+                    value={playerName}
+                    onChange={(e) => setPlayerName(e.target.value)}
+                    placeholder="e.g. Jordan Smith"
+                    onKeyDown={(e) => e.key === "Enter" && handleCreatePlayer()}
+                    autoFocus
+                  />
+                  <Button
+                    className="w-full font-display uppercase tracking-wide"
+                    onClick={handleCreatePlayer}
+                    disabled={!playerName.trim() || createPlayer.isPending}
+                    data-testid="button-onboarding-add-player"
+                  >
+                    {createPlayer.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Plus className="w-4 h-4 mr-2" />
+                    )}
+                    {hasAnyPlayer ? "Add Player" : "Add Player"}
+                  </Button>
+                </div>
+              )}
+
+              {/* Continue to team — only shown once at least one player exists */}
+              {hasAnyPlayer && (
+                <Button
+                  variant="ghost"
+                  className="w-full font-display uppercase tracking-wide text-muted-foreground hover:text-foreground"
+                  onClick={() => setProceedToTeam(true)}
+                  data-testid="button-onboarding-continue-to-team"
+                >
+                  Continue to Team <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}
 
+        {/* ── TEAM STEP ── */}
         {step === "team" && (
           <Card>
             <CardHeader className="text-center">
@@ -146,11 +253,11 @@ export default function Onboarding() {
                 <Trophy className="w-6 h-6 text-primary" />
               </div>
               <CardTitle className="font-display text-2xl uppercase tracking-wide">
-                {resolvedPlayerName ? `Add ${resolvedPlayerName}'s team` : "Add a team or season"}
+                {primaryPlayerName ? `Add ${primaryPlayerName}'s team` : "Add a team or season"}
               </CardTitle>
               <CardDescription>
-                {resolvedPlayerName
-                  ? `Which team or season does ${resolvedPlayerName} play for? (e.g. "Travel 24-25'" or "Varsity Fall")`
+                {primaryPlayerName
+                  ? `Which team or season does ${primaryPlayerName} play for? (e.g. "Travel 24-25'" or "Varsity Fall")`
                   : `Group games by team and season — like "Travel 24-25'" or "Varsity Fall".`}
               </CardDescription>
             </CardHeader>
@@ -180,6 +287,7 @@ export default function Onboarding() {
           </Card>
         )}
 
+        {/* ── DONE STEP ── */}
         {step === "done" && (
           <Card>
             <CardHeader className="text-center">
@@ -188,35 +296,49 @@ export default function Onboarding() {
               </div>
               <CardTitle className="font-display text-2xl uppercase tracking-wide">You're all set</CardTitle>
               <CardDescription>
-                {resolvedPlayerName && resolvedTeamName
-                  ? `Record your first game for ${resolvedPlayerName} under ${resolvedTeamName} and they'll be linked automatically.`
+                {allPlayerNames.length > 0 && resolvedTeamName
+                  ? `Record your first game under ${resolvedTeamName} and your players will be linked automatically.`
                   : "Head to your dashboard, then record your first game to see stats roll in."}
               </CardDescription>
             </CardHeader>
-            {(resolvedPlayerName || resolvedTeamName) && (
-              <CardContent className="pb-4">
-                <div className="flex items-center justify-center gap-3 rounded-lg bg-muted/50 px-4 py-3 text-sm">
-                  {resolvedPlayerName && (
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <User className="w-3.5 h-3.5 text-muted-foreground" />
-                      {resolvedPlayerName}
-                    </span>
-                  )}
-                  {resolvedPlayerName && resolvedTeamName && (
-                    <Link className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  )}
-                  {resolvedTeamName && (
+
+            {(allPlayerNames.length > 0 || resolvedTeamName) && (
+              <CardContent className="pb-4 space-y-3">
+                {/* Players list */}
+                {allPlayerNames.length > 0 && (
+                  <div className="rounded-lg bg-muted/50 px-4 py-3 space-y-1.5">
+                    {allPlayerNames.map((name) => (
+                      <div
+                        key={name}
+                        className="flex items-center gap-1.5 text-sm font-medium"
+                        data-testid="done-player-name"
+                      >
+                        <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        {name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Team */}
+                {resolvedTeamName && (
+                  <div className="flex items-center gap-3 rounded-lg bg-muted/50 px-4 py-3 text-sm">
+                    {allPlayerNames.length > 0 && (
+                      <Link className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    )}
                     <span className="flex items-center gap-1.5 font-medium">
                       <Trophy className="w-3.5 h-3.5 text-muted-foreground" />
                       {resolvedTeamName}
                     </span>
-                  )}
-                </div>
-                <p className="mt-2 text-center text-xs text-muted-foreground">
+                  </div>
+                )}
+
+                <p className="text-center text-xs text-muted-foreground">
                   Linked automatically when you record your first game
                 </p>
               </CardContent>
             )}
+
             <CardContent>
               <Button
                 className="w-full font-display uppercase tracking-wide"
