@@ -13,7 +13,7 @@ const router: IRouter = Router();
 
 const inFlight = new Set<number>();
 // 10-minute stale window — job is considered abandoned after this.
-const STALE_PROCESSING_MS = 10 * 60 * 1000;
+const STALE_PROCESSING_MS = 30 * 60 * 1000; // 30 minutes — large files can take ~15 min
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -82,9 +82,9 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     inFlight.add(gameId);
     startedAt = new Date();
     await db.update(gamesTable).set({ lowlightStatus: "processing", lowlightError: null, lowlightStartedAt: startedAt }).where(eq(gamesTable.id, gameId));
-    // Hard 12-minute timeout so inFlight is always cleared even if the
-    // generator gets stuck on a hanging network call.
-    const MAX_JOB_MS = 20 * 60 * 1000;
+    // Hard timeout — generous for large games where source download (~3 min)
+    // + serialized ffmpeg encodes (13 segments × ~45s) can take ~15 min total.
+    const MAX_JOB_MS = 40 * 60 * 1000;
     void Promise.race([
       generateLowlight(gameId),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
@@ -121,7 +121,7 @@ export function resumeLowlightJob(gameId: number): void {
     .set({ lowlightStartedAt: startedAt })
     .where(eq(gamesTable.id, gameId))
     .catch(() => {});
-  const MAX_JOB_MS = 20 * 60 * 1000;
+  const MAX_JOB_MS = 40 * 60 * 1000;
   void Promise.race([
     generateLowlight(gameId),
     new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),

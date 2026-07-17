@@ -28,5 +28,13 @@ Five-stage cascade (each stage only runs if previous returned NaN/0):
 
 Fallback: MKV remux still valid for files **< 600 MB** (creates a second copy with seek index). Block it for large files to prevent disk-doubling.
 
+## Concurrent highlight+lowlight causes OOM
+
+Both highlight and lowlight jobs start at the same millisecond (shared source download). Even with per-reel RENDER_CONCURRENCY=1, the two concurrent ffmpeg encode processes together OOM-kill the container.
+
+**Fix:** module-level promise-queue serializer (`runFfmpegQueued`) in `highlightGenerator.ts`. All ffmpeg calls (segment encode + concat) go through it — only ONE ffmpeg process at a time globally.
+
+**Timeout impact:** serializing 13 total segments (9 highlight + 4 lowlight) at ~45s each = ~10 min encoding + 3 min download. Set `STALE_PROCESSING_MS = 30 min` and `MAX_JOB_MS = 40 min` in both routes or the UI marks the job "timed out" while it's still running.
+
 ## The MKV remux disk trap
 `ffmpeg -f concat -c copy src.mp4 remux.mkv` writes a full second copy. For a 3 GB source this means 6 GB total — filling the container disk and crashing the server. Never remux files > 600 MB.

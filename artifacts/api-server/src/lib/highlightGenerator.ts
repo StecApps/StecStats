@@ -270,6 +270,22 @@ function run(cmd: string, args: string[], timeoutMs: number = PROCESS_TIMEOUT_MS
   });
 }
 
+// Module-level ffmpeg serializer.
+// Running two concurrent ffmpeg encode/remux processes on a large source file
+// (2+ GB) causes OOM SIGKILL — the decode ring-buffers alone can be several
+// hundred MB per process, and two highlight+lowlight jobs typically start at
+// the same millisecond. This queue ensures only ONE ffmpeg process is spawned
+// at a time, globally, regardless of how many reel jobs are in flight.
+let _ffmpegQueueTail: Promise<void> = Promise.resolve();
+
+function runFfmpegQueued(args: string[], timeoutMs?: number): Promise<string> {
+  let unlock!: () => void;
+  const token = new Promise<void>((r) => { unlock = r; });
+  const prev = _ffmpegQueueTail;
+  _ffmpegQueueTail = token;
+  return prev.then(() => run("ffmpeg", args, timeoutMs)).finally(unlock);
+}
+
 async function ffprobe(args: string[]): Promise<string> {
   return (await run("ffprobe", args)).trim();
 }
@@ -665,7 +681,7 @@ async function renderGameSegments(
     args.push("-reset_timestamps", "1");
     args.push("-f", "mpegts", segPath);
 
-    await run("ffmpeg", args);
+    await runFfmpegQueued(args);
     return segPath;
   };
 
@@ -702,7 +718,7 @@ async function concatSegments(
   ];
   if (hasAudio) concatArgs.push("-bsf:a", "aac_adtstoasc");
   concatArgs.push("-movflags", "+faststart", outPath);
-  await run("ffmpeg", concatArgs);
+  await runFfmpegQueued(concatArgs);
 }
 
 async function uploadHighlight(outPath: string, ownerId: number): Promise<string> {
