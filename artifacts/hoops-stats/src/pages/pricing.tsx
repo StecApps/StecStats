@@ -9,8 +9,33 @@ import { Check, Sparkles, Loader2 } from "lucide-react";
 import MarketingHeader from "@/components/marketing-header";
 import { useToast } from "@/hooks/use-toast";
 
-export const PENDING_CHECKOUT_KEY = "stec-pending-checkout-interval";
-export const FAILED_CHECKOUT_KEY = "stec-failed-checkout-interval";
+export const PENDING_CHECKOUT_KEY = "stec-pending-checkout";
+export const FAILED_CHECKOUT_KEY = "stec-failed-checkout";
+
+export type CheckoutIntent = { interval: "month" | "year"; tier: "pro" | "premium" };
+
+export function encodeCheckoutIntent(intent: CheckoutIntent): string {
+  return JSON.stringify(intent);
+}
+
+export function decodeCheckoutIntent(raw: string | null): CheckoutIntent | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      (parsed.interval === "month" || parsed.interval === "year") &&
+      (parsed.tier === "pro" || parsed.tier === "premium")
+    ) {
+      return parsed as CheckoutIntent;
+    }
+  } catch {
+    // legacy plain-string format (interval only) — treat as pro
+    if (raw === "month" || raw === "year") {
+      return { interval: raw, tier: "pro" };
+    }
+  }
+  return null;
+}
 
 const FREE_FEATURES = [
   "1 player",
@@ -34,17 +59,17 @@ export default function Pricing() {
   const [interval, setInterval] = useState<"month" | "year">("month");
   const checkout = useCreateCheckoutSession();
 
-  const handleStartTrial = async () => {
+  const handleStartTrial = async (tier: "pro" | "premium" = "pro") => {
     if (!isLoaded) return;
 
     if (!isSignedIn) {
-      sessionStorage.setItem(PENDING_CHECKOUT_KEY, interval);
+      sessionStorage.setItem(PENDING_CHECKOUT_KEY, encodeCheckoutIntent({ interval, tier }));
       setLocation("/sign-up");
       return;
     }
 
     try {
-      const res = await checkout.mutateAsync({ data: { interval } });
+      const res = await checkout.mutateAsync({ data: { interval, tier } });
       window.location.href = res.url;
     } catch {
       toast({ title: "Error", description: "Failed to start checkout. Please try again.", variant: "destructive" });
@@ -127,7 +152,7 @@ export default function Pricing() {
               </ul>
               <Button
                 className="w-full font-display uppercase tracking-wide"
-                onClick={handleStartTrial}
+                onClick={() => handleStartTrial("pro")}
                 disabled={checkout.isPending || !isLoaded}
                 data-testid="button-start-trial"
               >

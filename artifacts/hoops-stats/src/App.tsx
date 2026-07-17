@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { backgroundUpload } from "@/lib/backgroundUpload";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
-import Pricing, { PENDING_CHECKOUT_KEY, FAILED_CHECKOUT_KEY } from "@/pages/pricing";
+import Pricing, { PENDING_CHECKOUT_KEY, FAILED_CHECKOUT_KEY, encodeCheckoutIntent, decodeCheckoutIntent } from "@/pages/pricing";
 import Onboarding from "@/pages/onboarding";
 import Dashboard from "@/pages/dashboard";
 import RecordGame from "@/pages/record";
@@ -299,17 +299,17 @@ function PendingCheckoutResumer() {
 
   useEffect(() => {
     if (startedRef.current) return;
-    const interval = sessionStorage.getItem(PENDING_CHECKOUT_KEY);
-    if (interval !== "month" && interval !== "year") return;
+    const intent = decodeCheckoutIntent(sessionStorage.getItem(PENDING_CHECKOUT_KEY));
+    if (!intent) return;
     startedRef.current = true;
     sessionStorage.removeItem(PENDING_CHECKOUT_KEY);
     checkout
-      .mutateAsync({ data: { interval } })
+      .mutateAsync({ data: { interval: intent.interval, tier: intent.tier } })
       .then((res) => {
         window.location.href = res.url;
       })
       .catch(() => {
-        try { localStorage.setItem(FAILED_CHECKOUT_KEY, interval); } catch {}
+        try { localStorage.setItem(FAILED_CHECKOUT_KEY, encodeCheckoutIntent(intent)); } catch {}
         toast({
           title: "Checkout didn't open",
           description: "No worries — head to Billing to start your free trial.",

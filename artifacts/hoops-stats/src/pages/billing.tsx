@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Check, Crown, Sparkles, Zap, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSearch } from "wouter";
-import { FAILED_CHECKOUT_KEY } from "@/pages/pricing";
+import { FAILED_CHECKOUT_KEY, decodeCheckoutIntent } from "@/pages/pricing";
+import type { CheckoutIntent } from "@/pages/pricing";
 
 const FREE_FEATURES = [
   "1 player",
@@ -44,10 +45,9 @@ export default function Billing() {
   const checkout = useCreateCheckoutSession();
   const portal = useCreateBillingPortalSession();
 
-  const [resumeInterval, setResumeInterval] = useState<"month" | "year" | null>(() => {
+  const [resumeIntent, setResumeIntent] = useState<CheckoutIntent | null>(() => {
     try {
-      const v = localStorage.getItem(FAILED_CHECKOUT_KEY);
-      return v === "month" || v === "year" ? v : null;
+      return decodeCheckoutIntent(localStorage.getItem(FAILED_CHECKOUT_KEY));
     } catch {
       return null;
     }
@@ -55,7 +55,7 @@ export default function Billing() {
 
   const dismissResumeBanner = () => {
     try { localStorage.removeItem(FAILED_CHECKOUT_KEY); } catch {}
-    setResumeInterval(null);
+    setResumeIntent(null);
   };
 
   useEffect(() => {
@@ -128,12 +128,12 @@ export default function Billing() {
         <p className="text-muted-foreground">Manage your plan and subscription.</p>
       </div>
 
-      {resumeInterval && plan === "free" && (
+      {resumeIntent && plan === "free" && (
         <Card className="border-primary/60 bg-primary/5 shadow-md" data-testid="resume-checkout-banner">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-primary shrink-0" />
+                {resumeIntent.tier === "premium" ? <Zap className="w-5 h-5 text-primary fill-primary shrink-0" /> : <Sparkles className="w-5 h-5 text-primary shrink-0" />}
                 <CardTitle className="font-display text-xl uppercase tracking-wide">Start your free trial</CardTitle>
               </div>
               <button
@@ -145,29 +145,29 @@ export default function Billing() {
               </button>
             </div>
             <CardDescription>
-              Your checkout didn't complete. Pick a billing cycle below to start your 14-day free trial now — no charge until the trial ends.
+              Your {resumeIntent.tier === "premium" ? "Premium" : "Pro"} checkout didn't complete. Resume below to start your 14-day free trial — no charge until the trial ends.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 className="flex-1 font-display uppercase tracking-wide"
-                onClick={() => handleUpgrade("month", "pro")}
+                onClick={() => handleUpgrade("month", resumeIntent.tier)}
                 disabled={checkout.isPending}
                 data-testid="button-resume-monthly"
               >
                 {checkout.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                Try Pro — Monthly
+                Try {resumeIntent.tier === "premium" ? "Premium" : "Pro"} — Monthly
               </Button>
               <Button
                 variant="secondary"
                 className="flex-1 font-display uppercase tracking-wide"
-                onClick={() => handleUpgrade("year", "pro")}
+                onClick={() => handleUpgrade("year", resumeIntent.tier)}
                 disabled={checkout.isPending}
                 data-testid="button-resume-yearly"
               >
                 {checkout.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                Try Pro — Yearly
+                Try {resumeIntent.tier === "premium" ? "Premium" : "Pro"} — Yearly
               </Button>
             </div>
           </CardContent>
