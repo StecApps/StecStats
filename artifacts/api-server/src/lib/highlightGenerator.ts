@@ -105,6 +105,10 @@ export class HighlightError extends Error {}
 const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per segment
 // Stall detection: if no bytes arrive within this window, abort the download.
 const DOWNLOAD_STALL_MS = 60 * 1000; // 60 seconds of no data = stalled
+// Maximum source video size we'll attempt to process. Larger files successfully
+// download but then crash the server during the ffmpeg rendering phase because
+// the source file + rendered segments exceed the container's disk/memory.
+const MAX_SOURCE_VIDEO_MB = Number(process.env["MAX_SOURCE_VIDEO_MB"] ?? 1800);
 
 /**
  * Download a source video from object storage to a local temp file using the
@@ -118,10 +122,19 @@ const DOWNLOAD_STALL_MS = 60 * 1000; // 60 seconds of no data = stalled
 async function downloadSourceVideo(objectPath: string, destPath: string): Promise<void> {
   const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
-  // Log file size for diagnostics.
+  // Log file size for diagnostics and guard against oversized videos.
   const [meta] = await objectFile.getMetadata();
   const fileSizeBytes = Number(meta.size ?? 0);
-  logger.info({ objectPath, fileSizeMB: (fileSizeBytes / 1024 / 1024).toFixed(1) }, "Source video metadata before download");
+  const fileSizeMB = fileSizeBytes / 1024 / 1024;
+  logger.info({ objectPath, fileSizeMB: fileSizeMB.toFixed(1) }, "Source video metadata before download");
+
+  if (fileSizeMB > MAX_SOURCE_VIDEO_MB) {
+    throw new HighlightError(
+      `Video file is too large to process (${fileSizeMB.toFixed(0)} MB). ` +
+      `The limit is ${MAX_SOURCE_VIDEO_MB} MB. ` +
+      `Please trim the recording to under ${MAX_SOURCE_VIDEO_MB} MB and try again.`
+    );
+  }
 
   let bytesReceived = 0;
   let lastByteTime = Date.now();
@@ -713,6 +726,11 @@ export async function generateHighlight(gameId: number): Promise<void> {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
 
+    // Free the 2.8 GB source file immediately after all segments are rendered —
+    // before concat + upload — so it doesn't sit on disk alongside the output.
+    releaseSourceVideo?.();
+    releaseSourceVideo = null;
+
     const outPath = path.join(tmpDir, "highlight.mp4");
     await concatSegments(segPaths, tmpDir, outPath, hasAudio);
 
@@ -798,6 +816,10 @@ export async function generateLowlight(gameId: number): Promise<void> {
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
+
+    // Free the source file immediately after rendering — before concat + upload.
+    releaseSourceVideo?.();
+    releaseSourceVideo = null;
 
     const outPath = path.join(tmpDir, "lowlight.mp4");
     await concatSegments(segPaths, tmpDir, outPath, hasAudio);
