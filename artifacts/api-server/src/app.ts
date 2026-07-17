@@ -3,6 +3,8 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
+import { eq } from "drizzle-orm";
+import { db, gamesTable } from "@workspace/db";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { WebhookHandlers } from "./lib/webhookHandlers";
@@ -13,6 +15,24 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 
 const app: Express = express();
+
+// Admin reset endpoint — protected by ADMIN_RESET_SECRET header.
+// Used to cancel stuck highlight/lowlight jobs without needing a Clerk session.
+app.post("/api/admin/games/:gameId/cancel-reels", express.json(), async (req, res) => {
+  const secret = process.env["ADMIN_RESET_SECRET"];
+  if (!secret || req.headers["x-admin-secret"] !== secret) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+  const gameId = Number(req.params["gameId"]);
+  if (!Number.isInteger(gameId)) { res.status(400).json({ error: "Invalid gameId" }); return; }
+  await db.update(gamesTable).set({
+    highlightStatus: null, highlightStartedAt: null, highlightError: null,
+    lowlightStatus: null, lowlightStartedAt: null, lowlightError: null,
+  }).where(eq(gamesTable.id, gameId));
+  logger.info({ gameId }, "Admin: reel jobs cancelled");
+  res.json({ ok: true });
+});
 
 // Stripe webhook route MUST be registered before express.json() below —
 // it needs the raw request Buffer to verify the signature. This webhook is
