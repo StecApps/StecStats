@@ -101,30 +101,70 @@ const STAT_LABELS: Record<string, string> = {
 
 export class HighlightError extends Error {}
 
-// Maximum time to wait for the full source video to download from GCS.
-const DOWNLOAD_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 // Maximum time allowed for a single ffmpeg/ffprobe process before SIGKILL.
 const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per segment
+// Stall detection: if no bytes arrive within this window, abort the download.
+const DOWNLOAD_STALL_MS = 30 * 1000; // 30 seconds of no data = stalled
 
 /**
  * Download a source video from object storage to a local temp file using the
  * GCS SDK streaming API (file.createReadStream). This avoids signed URLs,
  * which fail on range requests in production (IO error: End of file).
- * A hard AbortController timeout prevents the stream from hanging forever.
+ *
+ * Uses a rolling stall-detector (30s with no new bytes = abort) rather than a
+ * fixed wall-clock timeout, so large-but-healthy files download fully while
+ * truly stalled/truncated GCS objects fail quickly.
  */
 async function downloadSourceVideo(objectPath: string, destPath: string): Promise<void> {
   const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+
+  // Log file size for diagnostics.
+  const [meta] = await objectFile.getMetadata();
+  const fileSizeBytes = Number(meta.size ?? 0);
+  logger.info({ objectPath, fileSizeMB: (fileSizeBytes / 1024 / 1024).toFixed(1) }, "Source video metadata before download");
+
+  let bytesReceived = 0;
+  let lastByteTime = Date.now();
+
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), DOWNLOAD_TIMEOUT_MS);
+
+  // Rolling stall timer: reset every time a data chunk arrives.
+  // If 30s pass with no data, abort.
+  let stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
+  const resetStall = () => {
+    clearTimeout(stallTimer);
+    lastByteTime = Date.now();
+    stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
+  };
+
+  // Progress log every 30s so we can see bytes flowing in deployment logs.
+  const progressInterval = setInterval(() => {
+    const pct = fileSizeBytes > 0 ? ((bytesReceived / fileSizeBytes) * 100).toFixed(1) : "?";
+    const stallSec = ((Date.now() - lastByteTime) / 1000).toFixed(0);
+    logger.info({ bytesReceived, fileSizeBytes, pct, stallSec }, "Source video download progress");
+  }, 30_000);
+
+  const sourceStream = objectFile.createReadStream();
+  sourceStream.on("data", (chunk: Buffer) => {
+    bytesReceived += chunk.length;
+    resetStall();
+  });
+
   try {
-    await pipeline(objectFile.createReadStream(), createWriteStream(destPath), { signal: ac.signal });
+    await pipeline(sourceStream, createWriteStream(destPath), { signal: ac.signal });
+    logger.info({ bytesReceived, fileSizeBytes }, "Source video download complete");
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "AbortError") {
-      throw new HighlightError(`Source video download timed out after ${DOWNLOAD_TIMEOUT_MS / 1000}s — the file may be too large or the connection stalled.`);
+      const pct = fileSizeBytes > 0 ? ((bytesReceived / fileSizeBytes) * 100).toFixed(1) : "?";
+      throw new HighlightError(
+        `Video download stalled — ${bytesReceived.toLocaleString()} of ${fileSizeBytes.toLocaleString()} bytes received (${pct}%). ` +
+        `The stored video may be corrupted or truncated. Try repairing the video then generate the reel again.`
+      );
     }
     throw err;
   } finally {
-    clearTimeout(timer);
+    clearTimeout(stallTimer);
+    clearInterval(progressInterval);
   }
 }
 
