@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { backgroundUpload } from "@/lib/backgroundUpload";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
-import Pricing, { PENDING_CHECKOUT_KEY } from "@/pages/pricing";
+import Pricing, { PENDING_CHECKOUT_KEY, FAILED_CHECKOUT_KEY } from "@/pages/pricing";
 import Onboarding from "@/pages/onboarding";
 import Dashboard from "@/pages/dashboard";
 import RecordGame from "@/pages/record";
@@ -309,9 +309,10 @@ function PendingCheckoutResumer() {
         window.location.href = res.url;
       })
       .catch(() => {
+        try { localStorage.setItem(FAILED_CHECKOUT_KEY, interval); } catch {}
         toast({
-          title: "Error",
-          description: "Failed to start checkout. You can retry from the Billing page.",
+          title: "Checkout didn't open",
+          description: "No worries — head to Billing to start your free trial.",
           variant: "destructive",
         });
       });

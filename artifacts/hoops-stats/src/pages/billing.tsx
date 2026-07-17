@@ -1,11 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useGetBillingStatus, useCreateCheckoutSession, useCreateBillingPortalSession } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, Crown, Sparkles, Zap } from "lucide-react";
+import { Loader2, Check, Crown, Sparkles, Zap, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSearch } from "wouter";
+import { FAILED_CHECKOUT_KEY } from "@/pages/pricing";
 
 const FREE_FEATURES = [
   "1 player",
@@ -43,6 +44,20 @@ export default function Billing() {
   const checkout = useCreateCheckoutSession();
   const portal = useCreateBillingPortalSession();
 
+  const [resumeInterval, setResumeInterval] = useState<"month" | "year" | null>(() => {
+    try {
+      const v = localStorage.getItem(FAILED_CHECKOUT_KEY);
+      return v === "month" || v === "year" ? v : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const dismissResumeBanner = () => {
+    try { localStorage.removeItem(FAILED_CHECKOUT_KEY); } catch {}
+    setResumeInterval(null);
+  };
+
   useEffect(() => {
     const params = new URLSearchParams(search);
     const checkoutResult = params.get("checkout");
@@ -56,6 +71,7 @@ export default function Billing() {
   const handleUpgrade = async (interval: "month" | "year", tier: "pro" | "premium" = "pro") => {
     try {
       const res = await checkout.mutateAsync({ data: { interval, tier } });
+      try { localStorage.removeItem(FAILED_CHECKOUT_KEY); } catch {}
       window.location.href = res.url;
     } catch {
       toast({ title: "Error", description: "Failed to start checkout. Please try again.", variant: "destructive" });
@@ -111,6 +127,52 @@ export default function Billing() {
         <h1 className="text-4xl font-display font-bold uppercase tracking-tight text-secondary">Billing</h1>
         <p className="text-muted-foreground">Manage your plan and subscription.</p>
       </div>
+
+      {resumeInterval && plan === "free" && (
+        <Card className="border-primary/60 bg-primary/5 shadow-md" data-testid="resume-checkout-banner">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary shrink-0" />
+                <CardTitle className="font-display text-xl uppercase tracking-wide">Start your free trial</CardTitle>
+              </div>
+              <button
+                onClick={dismissResumeBanner}
+                className="text-muted-foreground hover:text-foreground transition-colors mt-0.5"
+                aria-label="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <CardDescription>
+              Your checkout didn't complete. Pick a billing cycle below to start your 14-day free trial now — no charge until the trial ends.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                className="flex-1 font-display uppercase tracking-wide"
+                onClick={() => handleUpgrade("month", "pro")}
+                disabled={checkout.isPending}
+                data-testid="button-resume-monthly"
+              >
+                {checkout.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Try Pro — Monthly
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1 font-display uppercase tracking-wide"
+                onClick={() => handleUpgrade("year", "pro")}
+                disabled={checkout.isPending}
+                data-testid="button-resume-yearly"
+              >
+                {checkout.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Try Pro — Yearly
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

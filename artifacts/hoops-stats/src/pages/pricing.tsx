@@ -10,6 +10,7 @@ import MarketingHeader from "@/components/marketing-header";
 import { useToast } from "@/hooks/use-toast";
 
 export const PENDING_CHECKOUT_KEY = "stec-pending-checkout-interval";
+export const FAILED_CHECKOUT_KEY = "stec-failed-checkout-interval";
 
 const FREE_FEATURES = [
   "1 player",
