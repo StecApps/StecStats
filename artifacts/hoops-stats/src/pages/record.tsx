@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { backgroundUpload } from "@/lib/backgroundUpload";
 import { 
   useListPlayers, 
   useListTeams,
@@ -2246,6 +2247,97 @@ export default function RecordGame() {
     const isWin = teamScore > opponentScore;
     const isTie = teamScore === opponentScore;
     const result = isWin ? 'W' : 'L'; // Backend requires W or L
+
+    // ── Background upload path (new games only) ──────────────────────────────
+    // For brand-new recordings we save the stats immediately and kick off the
+    // video upload in the background so the user isn't stuck on the record
+    // screen for the full upload duration (up to several minutes on mobile).
+    // Edits keep the blocking upload so the in-place video is always consistent.
+    const hasVideoToUpload = (segmentsToMerge || blobToUpload) && !skipVideo;
+    if (hasVideoToUpload && !isEditing) {
+      const bgPayload = {
+        teamId: parseInt(teamId, 10),
+        opponent,
+        date: date.toISOString().split('T')[0],
+        result: result as 'W' | 'L',
+        teamScore,
+        opponentScore,
+        videoObjectPath: null,
+        videoOffsetMs: videoOffsetMs > 0 ? videoOffsetMs : null,
+        stats: Object.values(stats),
+        events,
+      };
+
+      let newGameId: number;
+      try {
+        const created = await createGame.mutateAsync({ data: bgPayload });
+        newGameId = (created as any).id;
+      } catch (err) {
+        savingRef.current = false;
+        const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : undefined;
+        toast({ title: "Error saving game", description, variant: "destructive" });
+        return;
+      }
+
+      // Navigate immediately while video uploads in the background
+      selectedPlayerIds.forEach(pid => {
+        queryClient.invalidateQueries({ queryKey: getGetPlayerSummaryQueryKey(pid) });
+        queryClient.invalidateQueries({ queryKey: getListPlayerTeamGroupsQueryKey(pid) });
+      });
+      queryClient.invalidateQueries({ queryKey: getListTeamGamesQueryKey(parseInt(teamId, 10)) });
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      if (recordingSessionIdRef.current) {
+        deleteSession(recordingSessionIdRef.current).catch(() => {});
+        recordingSessionIdRef.current = null;
+      }
+      navigate("/dashboard");
+      toast({ title: "Game saved!", description: "Video is uploading in the background." });
+
+      const capturedSegs = segmentsToMerge;
+      const capturedBlob = blobToUpload;
+      const capturedOpponent = opponent;
+      const capturedGameId = newGameId;
+
+      backgroundUpload.start(
+        capturedGameId,
+        capturedOpponent,
+        async (onProgress) => {
+          if (capturedSegs) {
+            const segPaths: string[] = [];
+            for (let i = 0; i < capturedSegs.length; i++) {
+              const segPath = await uploadVideoBlob(capturedSegs[i], (pct) => {
+                onProgress(Math.round((i / capturedSegs.length) * 85 + (pct / 100) * (85 / capturedSegs.length)));
+              });
+              segPaths.push(segPath);
+            }
+            const concatRes = await fetch('/api/storage/concat-segments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ segmentPaths: segPaths }),
+            });
+            if (!concatRes.ok) throw new Error('Failed to merge video halves on server');
+            const { videoObjectPath: mergedPath } = await concatRes.json();
+            return mergedPath;
+          } else if (capturedBlob) {
+            return uploadVideoBlob(capturedBlob, onProgress);
+          }
+          return null;
+        },
+        async (objectPath) => {
+          const patchRes = await fetch(`/api/games/${capturedGameId}/video`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoObjectPath: objectPath }),
+          });
+          if (!patchRes.ok) throw new Error('Failed to attach video to game');
+          // Trigger highlight and lowlight generation (fire-and-forget)
+          fetch(`/api/games/${capturedGameId}/highlight`, { method: 'POST' }).catch(() => {});
+          fetch(`/api/games/${capturedGameId}/lowlight`, { method: 'POST' }).catch(() => {});
+        },
+      );
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     let videoObjectPath = existingVideoObjectPath;
     if (segmentsToMerge && !skipVideo) {

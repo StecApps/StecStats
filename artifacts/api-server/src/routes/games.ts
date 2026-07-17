@@ -552,6 +552,73 @@ router.get("/games/:gameId/video-probe", requireAuth, async (req, res) => {
  * multiple round-trip range requests).  A new object is uploaded and the game
  * record is updated in-place; the old object is left untouched.
  */
+/**
+ * PATCH /games/:gameId/video
+ *
+ * Lightweight endpoint for attaching an already-uploaded video object to an
+ * existing game. Used by the background-upload flow so the game record and
+ * stats are saved immediately (without waiting for the upload to finish) and
+ * the video is linked once the upload completes.
+ *
+ * Resets highlight/lowlight status to idle so the client can trigger
+ * generation after the video is confirmed attached.
+ */
+router.patch("/games/:gameId/video", requireAuth, async (req, res) => {
+  const gameId = Number(req.params.gameId);
+  if (isNaN(gameId)) return void res.status(400).json({ error: "Invalid gameId" });
+
+  const rawPath = req.body?.videoObjectPath;
+  if (typeof rawPath !== "string" || !rawPath.trim()) {
+    return void res.status(400).json({ error: "videoObjectPath is required" });
+  }
+
+  const ownerId = req.appUser!.id;
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+  });
+  if (!game) return void res.status(404).json({ error: "Game not found" });
+
+  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  if (!isPro(entitlements)) {
+    return void res.status(403).json({
+      error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",
+      code: "UPGRADE_REQUIRED",
+    });
+  }
+
+  const videoObjectPath = objectStorageService.normalizeObjectEntityPath(rawPath);
+
+  if (videoObjectPath !== game.videoObjectPath) {
+    try {
+      await claimVideoObjectPath(videoObjectPath, ownerId);
+    } catch (err) {
+      if (err instanceof ObjectOwnershipConflictError) {
+        return void res.status(409).json({ error: "Video object is already owned by another user" });
+      }
+      req.log.error({ err }, "Failed to claim video object ACL policy");
+      return void res.status(400).json({ error: "Invalid or inaccessible video object" });
+    }
+  }
+
+  await db
+    .update(gamesTable)
+    .set({
+      videoObjectPath,
+      highlightObjectPath: null,
+      highlightStatus: "idle",
+      highlightError: null,
+      highlightStartedAt: null,
+      lowlightObjectPath: null,
+      lowlightStatus: "idle",
+      lowlightError: null,
+      lowlightStartedAt: null,
+    })
+    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+
+  req.log.info({ gameId, videoObjectPath }, "game video attached via background upload");
+  res.json({ ok: true });
+});
+
 router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
   const gameId = Number(req.params.gameId);
   if (isNaN(gameId)) return void res.status(400).json({ error: "Invalid gameId" });

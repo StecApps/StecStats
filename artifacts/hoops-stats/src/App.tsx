@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, Component } from "react";
+import { useEffect, useRef, useState, useCallback, Component, useSyncExternalStore } from "react";
 import type { ReactNode, ErrorInfo } from "react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -6,10 +6,11 @@ import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { useListPlayers, useCreateCheckoutSession } from "@workspace/api-client-react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { backgroundUpload } from "@/lib/backgroundUpload";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Pricing, { PENDING_CHECKOUT_KEY } from "@/pages/pricing";
@@ -343,6 +344,68 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function VideoUploadBanner() {
+  const state = useSyncExternalStore(
+    backgroundUpload.subscribe,
+    backgroundUpload.getSnapshot,
+  );
+  if (!state) return null;
+
+  return (
+    <div className="fixed bottom-20 md:bottom-4 right-4 z-50 bg-zinc-900 border border-zinc-700 rounded-xl p-3 shadow-2xl flex items-center gap-3 w-72">
+      {state.status === "uploading" && (
+        <>
+          <Loader2 className="w-4 h-4 animate-spin text-orange-500 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white">Uploading game video</p>
+            <div className="mt-1.5 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-orange-500 rounded-full transition-all duration-300"
+                style={{ width: `${state.progress}%` }}
+              />
+            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">{state.progress}% · vs {state.opponent}</p>
+          </div>
+        </>
+      )}
+      {state.status === "attaching" && (
+        <>
+          <Loader2 className="w-4 h-4 animate-spin text-orange-500 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-white">Saving video…</p>
+            <p className="text-xs text-zinc-400">vs {state.opponent}</p>
+          </div>
+        </>
+      )}
+      {state.status === "done" && (
+        <>
+          <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-white">Video saved!</p>
+            <p className="text-xs text-zinc-400">Highlights are generating in the background</p>
+          </div>
+        </>
+      )}
+      {state.status === "failed" && (
+        <>
+          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white">Upload failed</p>
+            <p className="text-xs text-zinc-400 truncate">{state.error ?? "Check your connection and try again"}</p>
+          </div>
+          <button
+            onClick={() => backgroundUpload.dismiss()}
+            className="text-zinc-500 hover:text-white ml-1"
+            aria-label="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ProtectedApp() {
   return (
     <>
@@ -361,6 +424,7 @@ function ProtectedApp() {
             </Switch>
           </OnboardingGate>
         </Layout>
+        <VideoUploadBanner />
       </Show>
       <Show when="signed-out">
         <Redirect to="/" />

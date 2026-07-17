@@ -356,9 +356,12 @@ async function renderGameSegments(
   const wmLogoHeight = Math.max(24, Math.round(OUTPUT_HEIGHT * 0.05));
   const wmLogoMargin = Math.max(8, Math.round(OUTPUT_HEIGHT * 0.018));
 
-  const segPaths: string[] = [];
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
+  // Run up to RENDER_CONCURRENCY clip encodes in parallel — each clip reads a
+  // different time window from the same (read-only) source and writes to its
+  // own temp file, so there is no shared mutable state between renders.
+  const RENDER_CONCURRENCY = 4;
+
+  const renderOne = async (seg: Segment, i: number): Promise<string> => {
     const segDur = seg.end - seg.start;
 
     const drawFilters = seg.moments.map((m, j) => {
@@ -373,9 +376,6 @@ async function renderGameSegments(
       drawFilters.map((d) => fs.writeFile(d.capFile, d.text, "utf8")),
     );
 
-    // Build filter chain: optional rotation correction first, then scale DOWN
-    // to OUTPUT_WIDTH×OUTPUT_HEIGHT (preserving aspect ratio), then even-dim
-    // fix (required by H.264), then captions.
     const filterParts: string[] = [];
     if (transposeFilter) filterParts.push(transposeFilter);
     filterParts.push(
@@ -398,8 +398,6 @@ async function renderGameSegments(
         ].join(":"),
       );
     }
-    // Build filter_complex: video transforms + captions on [0:v], then
-    // overlay the logo PNG (input 1, looped still image) in the top-right.
     const mainFilters = filterParts.join(",");
     const filterComplex = [
       `[0:v]${mainFilters}[main]`,
@@ -412,14 +410,12 @@ async function renderGameSegments(
       "-y",
       "-ss", seg.start.toFixed(3),
       "-i", activeSrcPath,
-      // Logo PNG as a looped still image (input 1).
       "-loop", "1", "-i", LOGO_FILE,
       "-t", segDur.toFixed(3),
       "-filter_complex", filterComplex,
       "-map", "[out]",
       "-r", "30",
       "-c:v", "libx264",
-      // veryfast: much better quality than ultrafast with only ~30% slower encode
       "-preset", "veryfast",
       "-profile:v", "main",
       "-pix_fmt", "yuv420p",
@@ -427,22 +423,28 @@ async function renderGameSegments(
       "-b:v", "4500k",
       "-maxrate", "6000k",
       "-bufsize", "12000k",
-      // Use all available threads
-      "-threads", "0",
+      // Limit threads per process so parallel renders share the CPU fairly.
+      "-threads", "2",
     ];
     if (hasAudio) {
       args.push("-map", "0:a?", "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
     } else {
       args.push("-an");
     }
-    // Reset output PTS/DTS to 0 for every segment so they don't inherit the
-    // source stream's absolute timestamp. Without this, iOS Safari sees an MP4
-    // whose first frame PTS is 400+ seconds in and refuses to play it.
     args.push("-reset_timestamps", "1");
     args.push("-f", "mpegts", segPath);
 
     await run("ffmpeg", args);
-    segPaths.push(segPath);
+    return segPath;
+  };
+
+  // Process in ordered batches — results within each batch are parallel but
+  // the overall array order matches segment order for the concat step.
+  const segPaths: string[] = [];
+  for (let b = 0; b < segments.length; b += RENDER_CONCURRENCY) {
+    const batch = segments.slice(b, b + RENDER_CONCURRENCY);
+    const results = await Promise.all(batch.map((seg, j) => renderOne(seg, b + j)));
+    segPaths.push(...results);
   }
 
   return segPaths;
