@@ -105,10 +105,11 @@ export class HighlightError extends Error {}
 const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per segment
 // Stall detection: if no bytes arrive within this window, abort the download.
 const DOWNLOAD_STALL_MS = 60 * 1000; // 60 seconds of no data = stalled
-// Maximum source video size we'll attempt to process. Larger files successfully
-// download but then crash the server during the ffmpeg rendering phase because
-// the source file + rendered segments exceed the container's disk/memory.
-const MAX_SOURCE_VIDEO_MB = Number(process.env["MAX_SOURCE_VIDEO_MB"] ?? 1800);
+// Maximum source video size we'll attempt to process.
+// The real rendering limit is container disk/memory, not file size per se.
+// The default is generous — the actual crash was caused by oversized ffprobe
+// buffer flags (probesize=2GB), not the video itself. Those are now fixed.
+const MAX_SOURCE_VIDEO_MB = Number(process.env["MAX_SOURCE_VIDEO_MB"] ?? 6000);
 
 /**
  * Download a source video from object storage to a local temp file using the
@@ -390,17 +391,29 @@ async function renderGameSegments(
   nameById: Map<number, string>,
   offsetMs: number = 0,
 ): Promise<string[]> {
-  // MediaRecorder WebM files often lack a container-level duration header AND
-  // have no seek index (cue points), making -ss seeks extremely slow.
-  // Strategy: try cheap probes first; if they fail, remux to MKV (copy-only,
-  // fast) which writes both a duration header and cue points.  All subsequent
-  // probes and segment extractions use activeSrcPath so seeking is O(1).
+  // Duration detection strategy — designed to be safe for large files (3+ GB).
+  //
+  // IMPORTANT: never set -probesize or -analyzeduration to 2147483647 (2 GB).
+  // That value is not a "read everything" flag — it is a literal buffer-size
+  // allocation.  On a container that already holds a 3 GB source file, asking
+  // ffprobe to allocate another 2 GB causes an immediate OOM kill.
+  //
+  // Strategy (each step is tried only if the previous one fails):
+  //   1. Fast header probe (10 MB) — works for MP4/fMP4 with moov at front.
+  //   2. Deeper stream probe (150 MB) — works for most TS / WebM with index.
+  //   3. Bitrate estimate — compute duration = size / (bit_rate / 8).
+  //      Accurate to ±5% for CBR content; good enough for timestamp mapping.
+  //   4. If all else fails, fall back to the old MKV remux ONLY for small
+  //      files (< 600 MB) where a second copy won't blow out disk quota.
+  //
+  // The old MKV remux for large files is deliberately removed — it would write
+  // a second copy equal in size to the source, filling the container disk.
   let activeSrcPath = srcPath;
 
   let durationStr = await ffprobe([
     "-v", "error",
-    "-analyzeduration", "2147483647",
-    "-probesize", "2147483647",
+    "-analyzeduration", "10000000",
+    "-probesize", "10000000",
     "-show_entries", "format=duration",
     "-of", "default=nw=1:nk=1",
     srcPath,
@@ -410,8 +423,8 @@ async function renderGameSegments(
   if (!Number.isFinite(duration) || duration <= 0) {
     const streamDurStr = await ffprobe([
       "-v", "error",
-      "-analyzeduration", "2147483647",
-      "-probesize", "2147483647",
+      "-analyzeduration", "150000000",
+      "-probesize", "150000000",
       "-select_streams", "v:0",
       "-show_entries", "stream=duration",
       "-of", "default=nw=1:nk=1",
@@ -421,14 +434,45 @@ async function renderGameSegments(
   }
 
   if (!Number.isFinite(duration) || duration <= 0) {
-    // Remux to MKV: ffmpeg rewrites the container with a duration header and
-    // cue points, enabling accurate random-access seeking for all later steps.
-    // Keep the remuxed file alive; it becomes activeSrcPath.
+    // Attempt to estimate duration from container size + reported bitrate.
+    // This avoids reading or copying the file a second time.
+    const formatInfo = await ffprobe([
+      "-v", "error",
+      "-analyzeduration", "10000000",
+      "-probesize", "10000000",
+      "-show_entries", "format=size,bit_rate",
+      "-of", "default=nw=1",
+      srcPath,
+    ]).catch(() => "");
+    const sizeMatch = formatInfo.match(/size=(\d+)/);
+    const bitrateMatch = formatInfo.match(/bit_rate=(\d+)/);
+    if (sizeMatch && bitrateMatch) {
+      const fileSizeBytes = Number(sizeMatch[1]);
+      const bitrateBps = Number(bitrateMatch[1]);
+      if (fileSizeBytes > 0 && bitrateBps > 0) {
+        duration = fileSizeBytes / (bitrateBps / 8);
+        logger.info({ prefix, duration, source: "bitrate-estimate" }, "Duration estimated from bitrate");
+      }
+    }
+  }
+
+  if (!Number.isFinite(duration) || duration <= 0) {
+    // Last resort: MKV remux (builds a seek index + duration header).
+    // Only safe for small files — remuxing a large file writes a second copy
+    // equal in size to the source and will fill the container disk quota.
+    const srcStatSize = await fs.stat(srcPath).then((s) => s.size).catch(() => 0);
+    const srcMB = srcStatSize / 1024 / 1024;
+    if (srcMB > 600) {
+      throw new HighlightError(
+        "Could not read the video duration. The file may be in an unsupported format. " +
+        "Try re-recording the game, or contact support."
+      );
+    }
     const remuxPath = path.join(tmpDir, `${prefix}_remux.mkv`);
     await run("ffmpeg", [
       "-y",
-      "-analyzeduration", "2147483647",
-      "-probesize", "2147483647",
+      "-analyzeduration", "150000000",
+      "-probesize", "150000000",
       "-i", srcPath,
       "-c", "copy",
       remuxPath,
