@@ -247,6 +247,111 @@ export async function acquireSourceVideo(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Proxy video cache — a compressed, seekable re-encode of the source stored
+// in GCS. Encoding segments from a ~700 MB proxy instead of the raw 2.8 GB
+// fMP4 dramatically reduces RAM pressure and seek latency.
+//
+// On first use: transcodes source → proxy (sequential, low RAM), uploads to
+// GCS, saves videoProxyObjectPath in DB.
+// On restart / subsequent attempts: downloads the existing ~700 MB proxy from
+// GCS instead of re-downloading the 2.8 GB source.
+//
+// Both highlight and lowlight for the same game share one proxy (ref-counted,
+// just like sourceVideoCache). Cache key is the game id.
+// ---------------------------------------------------------------------------
+const proxyLocalCache = new Map<number, SourceVideoEntry>();
+
+async function acquireGameProxy(
+  gameId: number,
+  ownerId: number,
+  srcPath: string,
+): Promise<{ proxyPath: string; release: () => void }> {
+  if (!proxyLocalCache.has(gameId)) {
+    const tmpDir = path.join(
+      os.tmpdir(),
+      `video-proxy-${gameId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    const destPath = path.join(tmpDir, "proxy.mp4");
+    const entry: SourceVideoEntry = {
+      promise: fs.mkdir(tmpDir, { recursive: true })
+        .then(async () => {
+          // Check DB for a proxy created by a prior run or concurrent job.
+          const game = await db.query.gamesTable.findFirst({
+            where: eq(gamesTable.id, gameId),
+          });
+          if (game?.videoProxyObjectPath) {
+            logger.info(
+              { gameId, objectPath: game.videoProxyObjectPath },
+              "Downloading existing proxy video",
+            );
+            await downloadSourceVideo(game.videoProxyObjectPath, destPath);
+            logger.info({ gameId }, "Proxy download complete");
+            return destPath;
+          }
+          // Create proxy: sequential transcode from source.
+          // Reads source start-to-end (no random seeks) — minimal RAM even
+          // for 2.8 GB inputs. Output has a faststart moov header so duration
+          // is always in the header and seeks are O(1) on the small proxy.
+          logger.info({ gameId }, "Creating proxy video from source (ultrafast transcode — several minutes)");
+          await runFfmpegQueued(
+            [
+              "-y",
+              "-i", srcPath,
+              "-c:v", "libx264",
+              "-preset", "ultrafast",
+              "-crf", "28",
+              "-vf",
+                `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
+                `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+              "-c:a", "copy",
+              "-movflags", "+faststart",
+              destPath,
+            ],
+            75 * 60 * 1000, // 75 min — generous for a 33-min source
+          );
+          logger.info({ gameId }, "Proxy created — uploading to storage");
+          const proxyObjectPath = await uploadHighlight(destPath, ownerId);
+          await db
+            .update(gamesTable)
+            .set({ videoProxyObjectPath: proxyObjectPath })
+            .where(eq(gamesTable.id, gameId));
+          logger.info({ gameId, proxyObjectPath }, "Proxy persisted in GCS and DB");
+          return destPath;
+        })
+        .catch((err) => {
+          proxyLocalCache.delete(gameId);
+          fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+          throw err;
+        }),
+      tmpDir,
+      refs: 0,
+    };
+    proxyLocalCache.set(gameId, entry);
+  }
+
+  const entry = proxyLocalCache.get(gameId)!;
+  entry.refs++;
+  let proxyPath: string;
+  try {
+    proxyPath = await entry.promise;
+  } catch (err) {
+    entry.refs--;
+    throw err;
+  }
+  const capturedEntry = entry;
+  return {
+    proxyPath,
+    release: () => {
+      capturedEntry.refs--;
+      if (capturedEntry.refs <= 0) {
+        proxyLocalCache.delete(gameId);
+        fs.rm(capturedEntry.tmpDir, { recursive: true, force: true }).catch(() => {});
+      }
+    },
+  };
+}
+
 type Moment = { timeSec: number; caption: string };
 type Segment = { start: number; end: number; moments: Moment[] };
 
@@ -670,8 +775,6 @@ async function renderGameSegments(
       "-b:v", "4500k",
       "-maxrate", "6000k",
       "-bufsize", "12000k",
-      // One thread per encode to keep memory/CPU low in the container.
-      "-threads", "1",
     ];
     if (hasAudio) {
       args.push("-map", "0:a?", "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
@@ -767,6 +870,8 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
  */
 export async function generateHighlight(gameId: number): Promise<void> {
   let tmpDir: string | null = null;
+  let releaseSourceVideo: (() => void) | null = null;
+  let releaseProxy: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -803,29 +908,42 @@ export async function generateHighlight(gameId: number): Promise<void> {
     // Shared download: highlight + lowlight for the same game share one copy.
     // Avoids the OOM/disk-full crash caused by two simultaneous 2+ GB downloads.
     logger.info({ gameId }, "Downloading source video for highlight generation");
-    let releaseSourceVideo: (() => void) | null = null;
     const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath);
     releaseSourceVideo = release;
     logger.info({ gameId }, "Source video ready for highlight generation");
+
+    // Create/download a compressed proxy (~700 MB) from the raw source.
+    // Encoding from the proxy instead of the 2.8 GB source eliminates the OOM
+    // kills and SIGTERM-during-seek issues: the proxy is seekable in O(1),
+    // fits comfortably in container memory, and is cached in GCS so restarts
+    // skip the expensive re-transcode and just download the small proxy.
+    const { proxyPath, release: releaseP } = await acquireGameProxy(
+      gameId,
+      game.ownerId,
+      srcPath,
+    );
+    releaseProxy = releaseP;
+
+    // Release the 2.8 GB source immediately — the proxy is all we need now.
+    releaseSourceVideo?.();
+    releaseSourceVideo = null;
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      srcPath,
+      proxyPath,
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcPath, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0);
+    const segPaths = await renderGameSegments(proxyPath, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0);
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
 
-    // Free the 2.8 GB source file immediately after all segments are rendered —
-    // before concat + upload — so it doesn't sit on disk alongside the output.
-    releaseSourceVideo?.();
-    releaseSourceVideo = null;
+    releaseProxy?.();
+    releaseProxy = null;
 
     const outPath = path.join(tmpDir, "highlight.mp4");
     await concatSegments(segPaths, tmpDir, outPath, hasAudio);
@@ -847,6 +965,7 @@ export async function generateHighlight(gameId: number): Promise<void> {
     throw err;
   } finally {
     releaseSourceVideo?.();
+    releaseProxy?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -860,6 +979,8 @@ export async function generateHighlight(gameId: number): Promise<void> {
  */
 export async function generateLowlight(gameId: number): Promise<void> {
   let tmpDir: string | null = null;
+  let releaseSourceVideo: (() => void) | null = null;
+  let releaseProxy: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -894,28 +1015,38 @@ export async function generateLowlight(gameId: number): Promise<void> {
     // Shared download: reuses the same source file if highlight is already
     // downloading or has downloaded it — avoids the double 2+ GB OOM crash.
     logger.info({ gameId }, "Downloading source video for lowlight generation");
-    let releaseSourceVideo: (() => void) | null = null;
     const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath);
     releaseSourceVideo = release;
     logger.info({ gameId }, "Source video ready for lowlight generation");
+
+    // Acquire the compressed proxy (shared with highlight job for the same game).
+    const { proxyPath, release: releaseP } = await acquireGameProxy(
+      gameId,
+      game.ownerId,
+      srcPath,
+    );
+    releaseProxy = releaseP;
+
+    // Release the 2.8 GB source — the proxy is sufficient for all encoding.
+    releaseSourceVideo?.();
+    releaseSourceVideo = null;
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      srcPath,
+      proxyPath,
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcPath, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0);
+    const segPaths = await renderGameSegments(proxyPath, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0);
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
 
-    // Free the source file immediately after rendering — before concat + upload.
-    releaseSourceVideo?.();
-    releaseSourceVideo = null;
+    releaseProxy?.();
+    releaseProxy = null;
 
     const outPath = path.join(tmpDir, "lowlight.mp4");
     await concatSegments(segPaths, tmpDir, outPath, hasAudio);
@@ -937,6 +1068,7 @@ export async function generateLowlight(gameId: number): Promise<void> {
     throw err;
   } finally {
     releaseSourceVideo?.();
+    releaseProxy?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
