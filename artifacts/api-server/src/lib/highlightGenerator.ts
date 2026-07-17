@@ -294,22 +294,33 @@ async function acquireGameProxy(
           // for 2.8 GB inputs. Output has a faststart moov header so duration
           // is always in the header and seeks are O(1) on the small proxy.
           logger.info({ gameId }, "Creating proxy video from source (ultrafast transcode — several minutes)");
-          await runFfmpegQueued(
-            [
-              "-y",
-              "-i", srcPath,
-              "-c:v", "libx264",
-              "-preset", "ultrafast",
-              "-crf", "28",
-              "-vf",
-                `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
-                `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
-              "-c:a", "copy",
-              "-movflags", "+faststart",
-              destPath,
-            ],
-            75 * 60 * 1000, // 75 min — generous for a 33-min source
-          );
+          const proxyStartMs = Date.now();
+          const proxyHeartbeat = setInterval(() => {
+            logger.info(
+              { gameId, elapsedMin: ((Date.now() - proxyStartMs) / 60000).toFixed(1) },
+              "Proxy transcode in progress",
+            );
+          }, 60_000);
+          try {
+            await runFfmpegQueued(
+              [
+                "-y",
+                "-i", srcPath,
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "28",
+                "-vf",
+                  `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
+                  `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                destPath,
+              ],
+              75 * 60 * 1000, // 75 min — generous for a 33-min source
+            );
+          } finally {
+            clearInterval(proxyHeartbeat);
+          }
           logger.info({ gameId }, "Proxy created — uploading to storage");
           const proxyObjectPath = await uploadHighlight(destPath, ownerId);
           await db

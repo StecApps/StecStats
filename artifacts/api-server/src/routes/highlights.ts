@@ -17,7 +17,7 @@ const inFlight = new Set<number>();
 
 // A DB status of "processing" older than this is considered abandoned (e.g. the
 // server restarted mid-job) and may be retried.
-const STALE_PROCESSING_MS = 30 * 60 * 1000; // 30 minutes — large files can take ~15 min
+const STALE_PROCESSING_MS = 95 * 60 * 1000; // 95 minutes — proxy transcode of a 33-min source can take ~35 min
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -114,9 +114,9 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       .where(eq(gamesTable.id, gameId));
 
     // Fire-and-forget: generation continues after the response is sent.
-    // Hard timeout — generous for large games where source download (~3 min)
-    // + serialized ffmpeg encodes (13 segments × ~45s) can take ~15 min total.
-    const MAX_JOB_MS = 40 * 60 * 1000;
+    // Hard timeout — download (~6 min) + proxy transcode (~35 min) + encoding
+    // (13 segments × ~45s) + upload = up to ~55 min on a cold start.
+    const MAX_JOB_MS = 90 * 60 * 1000;
     void Promise.race([
       generateHighlight(gameId),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
@@ -157,7 +157,7 @@ export function resumeHighlightJob(gameId: number): void {
     .set({ highlightStartedAt: startedAt })
     .where(eq(gamesTable.id, gameId))
     .catch(() => {});
-  const MAX_JOB_MS = 40 * 60 * 1000;
+  const MAX_JOB_MS = 90 * 60 * 1000;
   void Promise.race([
     generateHighlight(gameId),
     new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
