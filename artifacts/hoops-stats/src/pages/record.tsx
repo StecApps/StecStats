@@ -233,10 +233,14 @@ export default function RecordGame() {
   const highlightElapsedSec = highlight?.startedAt
     ? Math.max(0, (highlightNow - new Date(highlight.startedAt).getTime()) / 1000)
     : 0;
-  const highlightProgressPct = Math.min(92, Math.round(100 * (1 - Math.exp(-highlightElapsedSec / 22))));
+  // Time constant of 900s: bar reaches 63% at 15 min, 86% at 30 min, caps at
+  // 92% around 45 min — honest for large games that take up to 55 min.
+  const highlightProgressPct = Math.min(92, Math.round(100 * (1 - Math.exp(-highlightElapsedSec / 900))));
   const highlightStageText =
-    highlightElapsedSec < 8 ? "Finding your best plays…" :
-    highlightElapsedSec < 25 ? "Rendering highlight clips…" :
+    highlightElapsedSec < 30   ? "Finding your best plays…" :
+    highlightElapsedSec < 360  ? "Downloading source video…" :
+    highlightElapsedSec < 2700 ? "Compressing video — large games take a while…" :
+    highlightElapsedSec < 3300 ? "Encoding highlight clips…" :
     "Almost done — finalizing your reel…";
 
   const [repairSourcePath, setRepairSourcePath] = useState("");
@@ -351,10 +355,13 @@ export default function RecordGame() {
   const lowlightElapsedSec = lowlight?.startedAt
     ? Math.max(0, (lowlightNow - new Date(lowlight.startedAt).getTime()) / 1000)
     : 0;
-  const lowlightProgressPct = Math.min(92, Math.round(100 * (1 - Math.exp(-lowlightElapsedSec / 22))));
+  // Time constant of 900s: same honest curve as highlight above.
+  const lowlightProgressPct = Math.min(92, Math.round(100 * (1 - Math.exp(-lowlightElapsedSec / 900))));
   const lowlightStageText =
-    lowlightElapsedSec < 8 ? "Finding misses and turnovers…" :
-    lowlightElapsedSec < 25 ? "Rendering lowlight clips…" :
+    lowlightElapsedSec < 30   ? "Finding misses and turnovers…" :
+    lowlightElapsedSec < 360  ? "Downloading source video…" :
+    lowlightElapsedSec < 2700 ? "Compressing video — large games take a while…" :
+    lowlightElapsedSec < 3300 ? "Encoding lowlight clips…" :
     "Almost done — finalizing your reel…";
 
   const lowlightFileName = () => {
