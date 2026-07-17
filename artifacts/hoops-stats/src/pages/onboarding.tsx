@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   useListPlayers,
@@ -42,14 +42,6 @@ export default function Onboarding() {
   // Whether the user has explicitly chosen to move to the team step
   const [proceedToTeam, setProceedToTeam] = useState(false);
 
-  if (playersLoading || teamsLoading) {
-    return (
-      <div className="min-h-[100dvh] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   // Existing players from before this session
   const existingPlayers = players ?? [];
 
@@ -82,6 +74,24 @@ export default function Onboarding() {
     ...existingPlayers.map((p) => p.name),
     ...confirmedPlayers,
   ];
+
+  // A fully-onboarded coach who navigates back to /onboarding should be sent
+  // straight to /dashboard. Only skip this redirect when the coach just
+  // completed the flow in this session (i.e. confirmedTeamName is set).
+  useEffect(() => {
+    if (!playersLoading && !teamsLoading && step === "done" && !confirmedTeamName) {
+      setLocation("/dashboard");
+    }
+  }, [playersLoading, teamsLoading, step, confirmedTeamName, setLocation]);
+
+  if (playersLoading || teamsLoading) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
 
   const existingTeamName = teams?.[0]?.name ?? "";
   const resolvedTeamName = confirmedTeamName || existingTeamName;
