@@ -252,6 +252,17 @@ export default function RecordGame() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (res.status === 202) {
+        // Repair is running in the background (large files take several minutes).
+        // Show a persistent message and leave isRepairing true so the button stays
+        // disabled. The user should refresh the page once the video is ready.
+        setRepairError(null);
+        toast({
+          title: "Repair started",
+          description: "The video is being repaired in the background — this takes a few minutes for large files. Refresh the page when done.",
+        });
+        return; // leave isRepairing=true to disable the button
+      }
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
         throw new Error(b.error ?? `Server error ${res.status}`);
@@ -262,8 +273,9 @@ export default function RecordGame() {
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
       setRepairError(err instanceof Error ? err.message : "Repair failed");
-    } finally {
       setIsRepairing(false);
+    } finally {
+      // Don't set isRepairing=false on 202 — button stays disabled while running
     }
   };
 

@@ -585,12 +585,20 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     }
   }
 
+  // Kick off the repair asynchronously so we can return 202 immediately.
+  // For large files (2-3 GB) the download + ffmpeg + re-upload takes several
+  // minutes, far exceeding any HTTP proxy timeout.  The client should poll
+  // the game record until videoObjectPath changes (or just refresh the page).
+  const log = req.log;
+  res.status(202).json({ status: "started", message: "Repair running in the background — refresh this page in a few minutes." });
+
+  (async () => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `repair-${gameId}-`));
   try {
     // Get the GCS File object — used for authenticated SDK reads/downloads,
     // bypassing signed URLs (which have unreliable range-request support in
     // the Replit production sidecar environment).
-    req.log.info({ gameId, sourceObjectPath }, "repair-video: opening source file");
+    log.info({ gameId, sourceObjectPath }, "repair-video: opening source file");
     const srcFile = await objectStorageService.getObjectEntityFile(sourceObjectPath);
 
     // Diagnostic probe: log GCS metadata, hex dump of first 64 bytes, and
@@ -598,14 +606,14 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     // without guessing from box-type bytes alone.
     try {
       const [meta] = await (srcFile as any).getMetadata();
-      req.log.info(
+      log.info(
         { size: meta.size, contentType: meta.contentType, contentEncoding: meta.contentEncoding ?? null },
         "repair-video: source metadata",
       );
 
       const firstBytes = await readGCSBytes(srcFile, 0, 64);
       if (firstBytes) {
-        req.log.info({ hex: firstBytes.toString("hex") }, "repair-video: source hex dump");
+        log.info({ hex: firstBytes.toString("hex") }, "repair-video: source hex dump");
       }
 
       const probePath = path.join(tmpDir, "probe.bin");
@@ -618,7 +626,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
           (_err, stdout, stderr) => {
             try {
               const parsed = JSON.parse(stdout || "{}");
-              req.log.info(
+              log.info(
                 {
                   format: parsed.format?.format_name,
                   duration: parsed.format?.duration,
@@ -633,23 +641,23 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
                 "repair-video: ffprobe result",
               );
             } catch {
-              req.log.info({ raw: stdout?.slice(0, 500), err: stderr?.slice(0, 300) }, "repair-video: ffprobe raw");
+              log.info({ raw: stdout?.slice(0, 500), err: stderr?.slice(0, 300) }, "repair-video: ffprobe raw");
             }
             resolve();
           },
         );
       });
     } catch (diagErr: any) {
-      req.log.warn({ msg: String(diagErr?.message ?? diagErr) }, "repair-video: diagnostic failed");
+      log.warn({ msg: String(diagErr?.message ?? diagErr) }, "repair-video: diagnostic failed");
     }
 
     // Scan the top-level box structure to detect whether the file contains
     // two raw-concatenated segments.  Handles both layouts:
     //   A) [ftyp1][mdat1][moov1][ftyp2][mdat2][moov2]  – second ftyp present
     //   B) [ftyp][mdat1][moov1][mdat2][moov2]           – shared ftyp, no second ftyp
-    req.log.info({ gameId }, "repair-video: scanning for segment boundary");
-    const boundary = await detectSegmentBoundary(srcFile, req.log);
-    req.log.info(
+    log.info({ gameId }, "repair-video: scanning for segment boundary");
+    const boundary = await detectSegmentBoundary(srcFile, log);
+    log.info(
       { gameId, splitOffset: boundary?.splitOffset ?? null, needsFtypPrepend: boundary?.needsFtypPrepend ?? null },
       "repair-video: scan complete",
     );
@@ -663,10 +671,10 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       const raw0 = path.join(tmpDir, "raw0.mp4");
       const raw1 = path.join(tmpDir, "raw1.mp4");
 
-      req.log.info({ gameId, end: boundary.splitOffset - 1 }, "repair-video: downloading seg1");
+      log.info({ gameId, end: boundary.splitOffset - 1 }, "repair-video: downloading seg1");
       await downloadGCSRange(srcFile, raw0, 0, boundary.splitOffset - 1);
 
-      req.log.info(
+      log.info(
         { gameId, start: boundary.splitOffset, needsFtypPrepend: boundary.needsFtypPrepend },
         "repair-video: downloading seg2",
       );
@@ -682,7 +690,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       for (let i = 0; i < 2; i++) {
         const rawSeg = i === 0 ? raw0 : raw1;
         const procSeg = path.join(tmpDir, `proc${i}.mp4`);
-        req.log.info({ gameId, i }, "repair-video: ffmpeg on segment");
+        log.info({ gameId, i }, "repair-video: ffmpeg on segment");
         await new Promise<void>((resolve, reject) => {
           execFile(
             "ffmpeg",
@@ -699,7 +707,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       // Concat: adjusts timestamps so seg2 follows seg1 seamlessly
       const fileList = path.join(tmpDir, "filelist.txt");
       await fs.writeFile(fileList, procPaths.map((p) => `file '${p}'`).join("\n"), "utf8");
-      req.log.info({ gameId }, "repair-video: concatenating 2 segments");
+      log.info({ gameId }, "repair-video: concatenating 2 segments");
       await new Promise<void>((resolve, reject) => {
         const proc = spawn("ffmpeg", [
           "-f", "concat", "-safe", "0",
@@ -716,10 +724,10 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       });
     } else {
       // Single segment: download the whole file then faststart remux
-      req.log.info({ gameId }, "repair-video: single segment, downloading");
+      log.info({ gameId }, "repair-video: single segment, downloading");
       const rawFull = path.join(tmpDir, "raw.mp4");
       await downloadGCSRange(srcFile, rawFull);
-      req.log.info({ gameId }, "repair-video: applying faststart");
+      log.info({ gameId }, "repair-video: applying faststart");
       await new Promise<void>((resolve, reject) => {
         execFile(
           "ffmpeg",
@@ -731,7 +739,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       });
     }
 
-    req.log.info({ gameId }, "repair-video: uploading");
+    log.info({ gameId }, "repair-video: uploading");
     const newObjectPath = await objectStorageService.uploadLocalFileAsObjectEntity(
       tmpOut,
       ownerId,
@@ -749,11 +757,13 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       })
       .where(eq(gamesTable.id, gameId));
 
-    req.log.info({ gameId, newObjectPath }, "repair-video: done");
-    res.json({ success: true, newObjectPath });
+    log.info({ gameId, newObjectPath }, "repair-video: done");
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
+  })().catch((err) => {
+    log.error({ gameId, err: String(err?.message ?? err) }, "repair-video: background job failed");
+  });
 });
 
 export default router;
