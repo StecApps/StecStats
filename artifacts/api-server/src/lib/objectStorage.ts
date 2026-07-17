@@ -246,6 +246,49 @@ export class ObjectStorageService {
 
     return `/objects/uploads/${ownerId}/${objectId}`;
   }
+
+  /**
+   * Check whether an object entity exists without throwing.
+   * Returns false for any non-existent path; re-throws non-existence errors.
+   */
+  async checkObjectEntityExists(objectPath: string): Promise<boolean> {
+    try {
+      await this.getObjectEntityFile(objectPath);
+      return true;
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) return false;
+      throw err;
+    }
+  }
+
+  /**
+   * Upload a local file to a deterministic /objects/... path (instead of a
+   * random UUID). Used for restart-resilient chunk uploads so a known path
+   * can be checked on the next boot.
+   *
+   * objectEntityPath must be of the form /objects/uploads/{ownerId}/{name}.
+   */
+  async uploadLocalFileToObjectPath(
+    localPath: string,
+    objectEntityPath: string,
+    contentType: string,
+  ): Promise<void> {
+    if (!objectEntityPath.startsWith("/objects/")) {
+      throw new Error(`uploadLocalFileToObjectPath: path must start with /objects/, got ${objectEntityPath}`);
+    }
+    const entityId = objectEntityPath.slice("/objects/".length);
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
+    const fullPath = `${entityDir}${entityId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    await pipeline(
+      createReadStream(localPath),
+      file.createWriteStream({ metadata: { contentType }, resumable: false }),
+    );
+  }
 }
 
 function parseObjectPath(path: string): {

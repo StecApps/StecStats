@@ -252,14 +252,146 @@ export async function acquireSourceVideo(
 // in GCS. Encoding segments from a ~700 MB proxy instead of the raw 2.8 GB
 // fMP4 dramatically reduces RAM pressure and seek latency.
 //
-// On first use: transcodes source → proxy (sequential, low RAM), uploads to
-// GCS, saves videoProxyObjectPath in DB.
+// On first use: transcodes source → proxy in CHUNKS (each chunk uploaded to
+// GCS immediately). If the server restarts mid-transcode, already-uploaded
+// chunks are reused and only missing chunks are re-encoded — at most one
+// chunk's worth of work is lost per restart.
 // On restart / subsequent attempts: downloads the existing ~700 MB proxy from
 // GCS instead of re-downloading the 2.8 GB source.
 //
 // Both highlight and lowlight for the same game share one proxy (ref-counted,
 // just like sourceVideoCache). Cache key is the game id.
 // ---------------------------------------------------------------------------
+
+// Duration of each proxy chunk in seconds. Each chunk takes roughly this many
+// minutes to transcode at real-time speed, then is uploaded to GCS immediately.
+// A server restart loses at most PROXY_CHUNK_DURATION_SEC of progress.
+const PROXY_CHUNK_DURATION_SEC = 360; // 6 minutes
+
+/**
+ * Quick duration probe for a source video. Used to determine how many chunks
+ * to split the proxy transcode into. Accuracy to ±10% is sufficient.
+ */
+async function probeVideoDurationForChunking(srcPath: string): Promise<number> {
+  const fast = await ffprobe([
+    "-v", "error",
+    "-analyzeduration", "10000000",
+    "-probesize", "10000000",
+    "-show_entries", "format=duration",
+    "-of", "default=nw=1:nk=1",
+    srcPath,
+  ]).catch(() => "");
+  let dur = parseFloat(fast);
+  if (Number.isFinite(dur) && dur > 0) return dur;
+
+  const deep = await ffprobe([
+    "-v", "error",
+    "-analyzeduration", "150000000",
+    "-probesize", "150000000",
+    "-show_entries", "format=duration",
+    "-of", "default=nw=1:nk=1",
+    srcPath,
+  ]).catch(() => "");
+  dur = parseFloat(deep);
+  if (Number.isFinite(dur) && dur > 0) return dur;
+
+  // Fallback: file size ÷ 3 Mbps (conservative estimate for ultrafast CRF28).
+  const stat = await fs.stat(srcPath);
+  return stat.size / (3_000_000 / 8);
+}
+
+/**
+ * Transcode srcPath → destPath in restart-resilient chunks.
+ *
+ * Each ~6-minute chunk is uploaded to GCS immediately after encoding.
+ * On restart, existing GCS chunks are downloaded and reused; only the
+ * missing chunks are re-encoded. A restart costs ≤ 6 minutes, not 35.
+ */
+async function createChunkedProxy(
+  gameId: number,
+  ownerId: number,
+  srcPath: string,
+  destPath: string,
+): Promise<void> {
+  const proxyTmpDir = path.dirname(destPath);
+  const duration = await probeVideoDurationForChunking(srcPath);
+  const numChunks = Math.max(1, Math.ceil(duration / PROXY_CHUNK_DURATION_SEC));
+
+  logger.info(
+    { gameId, durationSec: duration.toFixed(0), numChunks },
+    "Proxy: creating in restart-resilient chunks",
+  );
+
+  const chunkLocalPaths: string[] = [];
+
+  for (let i = 0; i < numChunks; i++) {
+    const chunkObjectPath = `/objects/uploads/${ownerId}/proxy_chunk_${gameId}_${i}`;
+    const chunkLocalPath = path.join(proxyTmpDir, `proxy_chunk_${i}.mp4`);
+
+    const chunkExists = await objectStorageService.checkObjectEntityExists(chunkObjectPath);
+    if (chunkExists) {
+      logger.info({ gameId, chunk: i, numChunks }, "Proxy chunk already in GCS — reusing");
+      await downloadSourceVideo(chunkObjectPath, chunkLocalPath);
+    } else {
+      const startSec = i * PROXY_CHUNK_DURATION_SEC;
+      logger.info({ gameId, chunk: i, numChunks, startSec }, "Proxy chunk: transcoding");
+      await runFfmpegQueued(
+        [
+          "-y",
+          "-ss", String(startSec),
+          "-i", srcPath,
+          "-t", String(PROXY_CHUNK_DURATION_SEC),
+          "-c:v", "libx264",
+          "-preset", "ultrafast",
+          "-crf", "28",
+          "-vf",
+            `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
+            `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+          "-c:a", "copy",
+          "-movflags", "+faststart",
+          chunkLocalPath,
+        ],
+        12 * 60 * 1000, // 12 min per 6-min chunk
+      );
+      logger.info({ gameId, chunk: i, numChunks }, "Proxy chunk: uploading to GCS");
+      await objectStorageService.uploadLocalFileToObjectPath(
+        chunkLocalPath,
+        chunkObjectPath,
+        "video/mp4",
+      );
+      logger.info({ gameId, chunk: i, numChunks }, "Proxy chunk: saved to GCS");
+    }
+
+    chunkLocalPaths.push(chunkLocalPath);
+  }
+
+  if (numChunks === 1) {
+    await fs.rename(chunkLocalPaths[0], destPath);
+  } else {
+    const concatListPath = path.join(proxyTmpDir, "proxy_concat.txt");
+    await fs.writeFile(
+      concatListPath,
+      chunkLocalPaths.map((p) => `file '${p}'`).join("\n"),
+    );
+    logger.info({ gameId, numChunks }, "Proxy: concatenating chunks into final proxy");
+    await runFfmpegQueued(
+      [
+        "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", concatListPath,
+        "-c", "copy",
+        "-movflags", "+faststart",
+        destPath,
+      ],
+      10 * 60 * 1000,
+    );
+    for (const p of chunkLocalPaths) {
+      await fs.unlink(p).catch(() => {});
+    }
+  }
+}
+
 const proxyLocalCache = new Map<number, SourceVideoEntry>();
 
 async function acquireGameProxy(
@@ -289,39 +421,10 @@ async function acquireGameProxy(
             logger.info({ gameId }, "Proxy download complete");
             return destPath;
           }
-          // Create proxy: sequential transcode from source.
-          // Reads source start-to-end (no random seeks) — minimal RAM even
-          // for 2.8 GB inputs. Output has a faststart moov header so duration
-          // is always in the header and seeks are O(1) on the small proxy.
-          logger.info({ gameId }, "Creating proxy video from source (ultrafast transcode — several minutes)");
-          const proxyStartMs = Date.now();
-          const proxyHeartbeat = setInterval(() => {
-            logger.info(
-              { gameId, elapsedMin: ((Date.now() - proxyStartMs) / 60000).toFixed(1) },
-              "Proxy transcode in progress",
-            );
-          }, 60_000);
-          try {
-            await runFfmpegQueued(
-              [
-                "-y",
-                "-i", srcPath,
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-crf", "28",
-                "-vf",
-                  `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
-                  `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
-                "-c:a", "copy",
-                "-movflags", "+faststart",
-                destPath,
-              ],
-              75 * 60 * 1000, // 75 min — generous for a 33-min source
-            );
-          } finally {
-            clearInterval(proxyHeartbeat);
-          }
-          logger.info({ gameId }, "Proxy created — uploading to storage");
+          // Create proxy using restart-resilient chunked transcode.
+          logger.info({ gameId }, "Creating proxy video (chunked — survives server restarts)");
+          await createChunkedProxy(gameId, ownerId, srcPath, destPath);
+          logger.info({ gameId }, "Proxy created — uploading final proxy to storage");
           const proxyObjectPath = await uploadHighlight(destPath, ownerId);
           await db
             .update(gamesTable)
