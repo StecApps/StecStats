@@ -3467,6 +3467,7 @@ export default function RecordGame() {
 }
 
 function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoMiss }: any) {
+  const misses = attempt - made;
   return (
     <div className="flex flex-col border rounded-lg overflow-hidden bg-muted/20">
       <div className="bg-muted text-center py-1 text-xs font-bold tracking-widest text-muted-foreground">{label}</div>
@@ -3495,6 +3496,28 @@ function StatCounter({ label, made, attempt, onMake, onMiss, onUndoMake, onUndoM
           <span className="text-[9px] font-bold leading-none whitespace-nowrap">MISS</span>
         </Button>
       </div>
+      {(made > 0 || misses > 0) && (
+        <div className="grid grid-cols-2 divide-x divide-border border-t bg-muted/40">
+          <Button
+            variant="ghost"
+            className="rounded-none h-7 tablet-landscape-lg:h-6 min-w-0 text-[10px] font-semibold text-muted-foreground hover:text-green-400 hover:bg-green-950/40 disabled:opacity-30 disabled:pointer-events-none px-1"
+            onClick={onUndoMake}
+            disabled={made <= 0}
+            title="Undo last make"
+          >
+            −make
+          </Button>
+          <Button
+            variant="ghost"
+            className="rounded-none h-7 tablet-landscape-lg:h-6 min-w-0 text-[10px] font-semibold text-muted-foreground hover:text-red-400 hover:bg-red-950/40 disabled:opacity-30 disabled:pointer-events-none px-1"
+            onClick={onUndoMiss}
+            disabled={misses <= 0}
+            title="Undo last miss"
+          >
+            −miss
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
