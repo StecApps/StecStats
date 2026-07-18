@@ -344,6 +344,10 @@ async function createChunkedProxy(
           "-c:v", "libx264",
           "-preset", "ultrafast",
           "-crf", "28",
+          // Cap threads so ffmpeg doesn't starve the Node event loop and
+          // trigger Replit's health-monitor auto-restart. Slower encode
+          // (~10 min/chunk) is fine — server responsiveness is critical.
+          "-threads", "2",
           "-vf",
             `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
             `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
@@ -351,7 +355,7 @@ async function createChunkedProxy(
           "-movflags", "+faststart",
           chunkLocalPath,
         ],
-        12 * 60 * 1000, // 12 min per 6-min chunk
+        15 * 60 * 1000, // 15 min per chunk (extra buffer for 2-thread encode)
       );
       logger.info({ gameId, chunk: i, numChunks }, "Proxy chunk: uploading to GCS");
       await objectStorageService.uploadLocalFileToObjectPath(
