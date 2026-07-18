@@ -98,6 +98,16 @@ router.get("/auth/youtube/callback", async (req, res) => {
   }
 });
 
+// POST /api/auth/youtube/disconnect
+// Clears the stored refresh token so the coach can reconnect with a different account.
+router.post("/auth/youtube/disconnect", requireAuth, async (req, res) => {
+  await db
+    .update(usersTable)
+    .set({ youtubeRefreshToken: null })
+    .where(eq(usersTable.id, req.appUser!.id));
+  res.json({ disconnected: true });
+});
+
 // GET /api/auth/youtube/status
 // Returns whether the current user has connected their YouTube account.
 router.get("/auth/youtube/status", requireAuth, async (req, res) => {

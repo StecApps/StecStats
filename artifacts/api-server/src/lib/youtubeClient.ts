@@ -24,7 +24,7 @@ export function getAuthUrl(state: string): string {
     access_type: "offline",
     scope: ["https://www.googleapis.com/auth/youtube.upload"],
     state,
-    prompt: "consent",
+    prompt: "select_account consent",
   });
 }
 

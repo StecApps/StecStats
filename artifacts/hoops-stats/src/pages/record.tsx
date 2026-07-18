@@ -530,6 +530,16 @@ export default function RecordGame() {
     setIsYoutubeDialogOpen(true);
   };
 
+  const handleDisconnectYoutube = async () => {
+    try {
+      await fetch("/api/auth/youtube/disconnect", { method: "POST" });
+      setIsYoutubeConnected(false);
+      setIsYoutubeDialogOpen(false);
+    } catch {
+      toast({ title: "Couldn't disconnect YouTube. Please try again.", variant: "destructive" });
+    }
+  };
+
   const handleConfirmYoutubeUpload = async () => {
     if (!gameId || !youtubeTitle.trim()) return;
     setIsUploadingToYoutube(true);
@@ -3135,6 +3145,16 @@ export default function RecordGame() {
                           </div>
                         ) : (
                           <div className="space-y-4 pt-1">
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                                onClick={handleDisconnectYoutube}
+                                disabled={isUploadingToYoutube}
+                              >
+                                Switch account
+                              </button>
+                            </div>
                             <div className="space-y-1.5">
                               <Label htmlFor="yt-title">Title</Label>
                               <Input
