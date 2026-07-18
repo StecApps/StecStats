@@ -80,7 +80,11 @@ async function cleanupOrphanedTempDirs(): Promise<void> {
  */
 async function resumeOrphanedJobs(): Promise<void> {
   try {
-    const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+    // Use 150 min — matches STALE_PROCESSING_MS (140 min) with headroom so
+    // jobs that have been dormant since before the last few restarts are
+    // also picked back up (e.g. a job started hours ago that was silently
+    // skipped because it predated the old 60-min window).
+    const cutoff = new Date(Date.now() - 150 * 60 * 1000);
     const rows = await db.execute(sql`
       SELECT id, highlight_status, highlight_started_at, lowlight_status, lowlight_started_at
       FROM games

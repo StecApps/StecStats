@@ -272,7 +272,7 @@ const PROXY_CHUNK_DURATION_SEC = 360; // 6 minutes
  * Quick duration probe for a source video. Used to determine how many chunks
  * to split the proxy transcode into. Accuracy to ±10% is sufficient.
  */
-async function probeVideoDurationForChunking(srcPath: string): Promise<number> {
+async function probeVideoDurationForChunking(srcPath: string, fileSizeBytes: number = 0): Promise<number> {
   const fast = await ffprobe([
     "-v", "error",
     "-analyzeduration", "10000000",
@@ -296,8 +296,13 @@ async function probeVideoDurationForChunking(srcPath: string): Promise<number> {
   if (Number.isFinite(dur) && dur > 0) return dur;
 
   // Fallback: file size ÷ 3 Mbps (conservative estimate for ultrafast CRF28).
-  const stat = await fs.stat(srcPath);
-  return stat.size / (3_000_000 / 8);
+  // For URL inputs, use the passed-in fileSizeBytes instead of fs.stat.
+  if (fileSizeBytes > 0) return fileSizeBytes / (3_000_000 / 8);
+  if (!srcPath.startsWith("http")) {
+    const stat = await fs.stat(srcPath);
+    return stat.size / (3_000_000 / 8);
+  }
+  return 7200; // 2-hr default for URL sources when size is unknown
 }
 
 /**
@@ -314,9 +319,10 @@ async function createChunkedProxy(
   ownerId: number,
   srcPath: string,
   destPath: string,
+  fileSizeBytes: number = 0,
 ): Promise<void> {
   const proxyTmpDir = path.dirname(destPath);
-  const duration = await probeVideoDurationForChunking(srcPath);
+  const duration = await probeVideoDurationForChunking(srcPath, fileSizeBytes);
   const numChunks = Math.max(1, Math.ceil(duration / PROXY_CHUNK_DURATION_SEC));
 
   logger.info(
@@ -366,13 +372,17 @@ async function createChunkedProxy(
     const segmentListPath = path.join(proxyTmpDir, "segments.txt");
     await fs.unlink(segmentListPath).catch(() => {}); // clear stale list from prior run
 
+    // For HTTP/HTTPS sources (GCS signed URLs), range requests are unreliable
+    // in production.  Place -ss AFTER -i so ffmpeg decodes-and-discards rather
+    // than issuing a mid-file Range: bytes= request.  For local file inputs,
+    // keep the fast pre-input seek (lseek is O(1) on disk).
+    const isUrlSource = srcPath.startsWith("http");
     const ffmpegArgs = [
       "-y",
-      // If resuming from a prior run, seek to firstMissing's start time.
-      // For a fragmented MP4 this is one seek (slow but unavoidable) vs the
-      // old per-chunk approach which performed 22 independent seeks.
-      ...(firstMissing > 0 ? ["-ss", String(startSec)] : []),
+      ...((!isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
       "-i", srcPath,
+      // Slow (decode-and-discard) seek for URL sources — avoids range requests.
+      ...((isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
       "-c:v", "libx264",
       "-preset", "ultrafast",
       "-crf", "28",
@@ -478,7 +488,6 @@ const proxyLocalCache = new Map<number, SourceVideoEntry>();
 async function acquireGameProxy(
   gameId: number,
   ownerId: number,
-  srcPath: string,
 ): Promise<{ proxyPath: string; release: () => void }> {
   if (!proxyLocalCache.has(gameId)) {
     const tmpDir = path.join(
@@ -502,9 +511,18 @@ async function acquireGameProxy(
             logger.info({ gameId }, "Proxy download complete");
             return destPath;
           }
-          // Create proxy using restart-resilient chunked transcode.
-          logger.info({ gameId }, "Creating proxy video (chunked — survives server restarts)");
-          await createChunkedProxy(gameId, ownerId, srcPath, destPath);
+          if (!game?.videoObjectPath) throw new HighlightError("Game has no recorded video");
+          // Generate a signed URL for the source so ffmpeg streams it directly —
+          // no 2.8 GB local download needed.  4-hr TTL covers any restart cycle.
+          const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
+          const [meta] = await objectFile.getMetadata();
+          const fileSizeBytes = Number((meta as { size?: unknown }).size ?? 0);
+          const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 4 * 3600);
+          logger.info(
+            { gameId, fileSizeMB: (fileSizeBytes / 1024 / 1024).toFixed(1) },
+            "Creating proxy video (chunked — streaming source from GCS, no local download)",
+          );
+          await createChunkedProxy(gameId, ownerId, srcUrl, destPath, fileSizeBytes);
           logger.info({ gameId }, "Proxy created — uploading final proxy to storage");
           const proxyObjectPath = await uploadHighlight(destPath, ownerId);
           await db
@@ -1069,7 +1087,6 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
  */
 export async function generateHighlight(gameId: number): Promise<void> {
   let tmpDir: string | null = null;
-  let releaseSourceVideo: (() => void) | null = null;
   let releaseProxy: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
@@ -1104,28 +1121,14 @@ export async function generateHighlight(gameId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
 
-    // Shared download: highlight + lowlight for the same game share one copy.
-    // Avoids the OOM/disk-full crash caused by two simultaneous 2+ GB downloads.
-    logger.info({ gameId }, "Downloading source video for highlight generation");
-    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath);
-    releaseSourceVideo = release;
-    logger.info({ gameId }, "Source video ready for highlight generation");
-
-    // Create/download a compressed proxy (~700 MB) from the raw source.
-    // Encoding from the proxy instead of the 2.8 GB source eliminates the OOM
-    // kills and SIGTERM-during-seek issues: the proxy is seekable in O(1),
-    // fits comfortably in container memory, and is cached in GCS so restarts
-    // skip the expensive re-transcode and just download the small proxy.
+    // acquireGameProxy streams source directly from GCS via a signed URL —
+    // no local 2+ GB download needed.  The proxy (~200–400 MB) is cached in
+    // GCS so subsequent restarts skip re-encoding and just download the proxy.
     const { proxyPath, release: releaseP } = await acquireGameProxy(
       gameId,
       game.ownerId,
-      srcPath,
     );
     releaseProxy = releaseP;
-
-    // Release the 2.8 GB source immediately — the proxy is all we need now.
-    releaseSourceVideo?.();
-    releaseSourceVideo = null;
 
     const audioStreams = await ffprobe([
       "-v", "error",
@@ -1163,7 +1166,6 @@ export async function generateHighlight(gameId: number): Promise<void> {
     await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
-    releaseSourceVideo?.();
     releaseProxy?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -1178,7 +1180,6 @@ export async function generateHighlight(gameId: number): Promise<void> {
  */
 export async function generateLowlight(gameId: number): Promise<void> {
   let tmpDir: string | null = null;
-  let releaseSourceVideo: (() => void) | null = null;
   let releaseProxy: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
@@ -1211,24 +1212,13 @@ export async function generateLowlight(gameId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
 
-    // Shared download: reuses the same source file if highlight is already
-    // downloading or has downloaded it — avoids the double 2+ GB OOM crash.
-    logger.info({ gameId }, "Downloading source video for lowlight generation");
-    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath);
-    releaseSourceVideo = release;
-    logger.info({ gameId }, "Source video ready for lowlight generation");
-
-    // Acquire the compressed proxy (shared with highlight job for the same game).
+    // acquireGameProxy streams source directly from GCS via a signed URL —
+    // no local 2+ GB download needed.
     const { proxyPath, release: releaseP } = await acquireGameProxy(
       gameId,
       game.ownerId,
-      srcPath,
     );
     releaseProxy = releaseP;
-
-    // Release the 2.8 GB source — the proxy is sufficient for all encoding.
-    releaseSourceVideo?.();
-    releaseSourceVideo = null;
 
     const audioStreams = await ffprobe([
       "-v", "error",
@@ -1266,7 +1256,6 @@ export async function generateLowlight(gameId: number): Promise<void> {
     await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
-    releaseSourceVideo?.();
     releaseProxy?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
