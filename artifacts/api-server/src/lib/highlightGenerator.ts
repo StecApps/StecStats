@@ -747,16 +747,34 @@ async function renderGameSegments(
   // The old MKV remux for large files is deliberately removed — it would write
   // a second copy equal in size to the source, filling the container disk.
   let activeSrcPath = srcPath;
+  const isUrl = srcPath.startsWith("http://") || srcPath.startsWith("https://");
 
-  let durationStr = await ffprobe([
-    "-v", "error",
-    "-analyzeduration", "10000000",
-    "-probesize", "10000000",
-    "-show_entries", "format=duration",
-    "-of", "default=nw=1:nk=1",
-    srcPath,
-  ]);
-  let duration = parseFloat(durationStr);
+  let duration = NaN;
+  if (isUrl) {
+    // Remote sources (GCS signed URLs) are typically live-recorded WebM or
+    // fMP4 with NO duration header and NO seek index — every duration probe
+    // returns N/A, and bitrate estimates are wildly wrong for VBR content.
+    // Duration is only used to clamp segment windows, so derive a
+    // pseudo-duration from the last tagged moment instead. Segments that
+    // extend past the true end-of-file simply come out shorter (or empty)
+    // in the stream-copy extraction pass below and are dropped there.
+    const maxEventSec = eligible.length > 0
+      ? Math.max(...eligible.map((e) => (e.videoTimestampMs - offsetMs) / 1000))
+      : 0;
+    duration = Math.max(1, maxEventSec + POST_SECONDS + 60);
+    logger.info({ prefix, duration, source: "event-derived" },
+      "Using event-derived pseudo-duration for remote source");
+  } else {
+    const durationStr = await ffprobe([
+      "-v", "error",
+      "-analyzeduration", "10000000",
+      "-probesize", "10000000",
+      "-show_entries", "format=duration",
+      "-of", "default=nw=1:nk=1",
+      srcPath,
+    ]);
+    duration = parseFloat(durationStr);
+  }
 
   if (!Number.isFinite(duration) || duration <= 0) {
     const streamDurStr = await ffprobe([
@@ -921,8 +939,63 @@ async function renderGameSegments(
   ]);
   const hasAudio = audioStreams.length > 0;
 
-  const segments = buildSegments(eligible, duration, nameById, offsetMs);
+  let segments = buildSegments(eligible, duration, nameById, offsetMs);
   if (segments.length === 0) return [];
+
+  // Phase A (remote sources only): single-pass stream-copy extraction.
+  // A cueless live-recorded WebM cannot be seeked over HTTP — every -ss
+  // triggers a linear scan from byte 0, so per-clip remote seeking would be
+  // O(clips × filesize). Instead, ONE ffmpeg invocation reads the source
+  // linearly at network speed (no decode) and stream-copies every clip
+  // window into a small local file. MediaRecorder keyframes are ~2s apart,
+  // so a fixed pre-pad guarantees a keyframe lands before the clip start;
+  // the precise cut happens in the local re-encode below (renderOne).
+  let segInputs: { path: string; seek: number }[] | null = null;
+  if (isUrl) {
+    const COPY_PAD_SECONDS = 6;
+    const copyArgs: string[] = [
+      "-y", "-v", "error",
+      "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "10",
+      "-i", srcPath,
+    ];
+    const wins = segments.map((seg, i) => {
+      const winStart = Math.max(0, seg.start - COPY_PAD_SECONDS);
+      const winPath = path.join(tmpDir, `win_${prefix}_${i}.mkv`);
+      copyArgs.push(
+        "-map", "0",
+        "-c", "copy",
+        "-ss", winStart.toFixed(3),
+        "-to", (seg.end + 0.5).toFixed(3),
+        "-avoid_negative_ts", "make_zero",
+        winPath,
+      );
+      return { path: winPath, seek: seg.start - winStart };
+    });
+    logger.info({ prefix, windows: wins.length },
+      "Starting single-pass stream-copy extraction from remote source");
+    const copyStart = Date.now();
+    await runFfmpegQueued(copyArgs, 30 * 60 * 1000);
+    logger.info({ prefix, ms: Date.now() - copyStart },
+      "Stream-copy extraction complete");
+
+    // Drop segments whose window landed past the true end of the recording —
+    // the pseudo-duration is event-derived and may exceed the actual video.
+    const keptSegments: Segment[] = [];
+    const keptInputs: { path: string; seek: number }[] = [];
+    for (let i = 0; i < segments.length; i++) {
+      const size = await fs.stat(wins[i].path).then((s) => s.size).catch(() => 0);
+      if (size > 20_000) {
+        keptSegments.push(segments[i]);
+        keptInputs.push(wins[i]);
+      } else {
+        logger.warn({ prefix, i, size },
+          "Dropping segment window past end of source video");
+      }
+    }
+    segments = keptSegments;
+    segInputs = keptInputs;
+    if (segments.length === 0) return [];
+  }
 
   // Base caption sizing on OUTPUT dimensions, not source (source may be 4K+).
   const fontSize = Math.min(36, Math.max(12, Math.round(OUTPUT_HEIGHT / 20)));
@@ -982,10 +1055,13 @@ async function renderGameSegments(
     ].join(";");
 
     const segPath = path.join(tmpDir, `seg_${prefix}_${i}.ts`);
+    // When Phase A ran, encode from the small local intermediate (seek is
+    // relative to the window start); otherwise seek directly in the source.
+    const input = segInputs ? segInputs[i] : { path: activeSrcPath, seek: seg.start };
     const args = [
       "-y",
-      "-ss", seg.start.toFixed(3),
-      "-i", activeSrcPath,
+      "-ss", input.seek.toFixed(3),
+      "-i", input.path,
       "-loop", "1", "-i", LOGO_FILE,
       "-t", segDur.toFixed(3),
       "-filter_complex", filterComplex,
