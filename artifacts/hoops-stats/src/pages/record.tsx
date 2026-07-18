@@ -3094,6 +3094,9 @@ export default function RecordGame() {
                         <SelectItem value="energetic">Energetic</SelectItem>
                         <SelectItem value="upbeat">Upbeat</SelectItem>
                         <SelectItem value="dynamic">Dynamic</SelectItem>
+                        <SelectItem value="cinematic">Cinematic</SelectItem>
+                        <SelectItem value="oldschool">Old School</SelectItem>
+                        <SelectItem value="lofi">Lo-Fi</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -3243,6 +3246,9 @@ export default function RecordGame() {
                         <SelectItem value="energetic">Energetic</SelectItem>
                         <SelectItem value="upbeat">Upbeat</SelectItem>
                         <SelectItem value="dynamic">Dynamic</SelectItem>
+                        <SelectItem value="cinematic">Cinematic</SelectItem>
+                        <SelectItem value="oldschool">Old School</SelectItem>
+                        <SelectItem value="lofi">Lo-Fi</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -3306,6 +3312,9 @@ export default function RecordGame() {
                           <SelectItem value="energetic">Energetic</SelectItem>
                           <SelectItem value="upbeat">Upbeat</SelectItem>
                           <SelectItem value="dynamic">Dynamic</SelectItem>
+                          <SelectItem value="cinematic">Cinematic</SelectItem>
+                          <SelectItem value="oldschool">Old School</SelectItem>
+                          <SelectItem value="lofi">Lo-Fi</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -3342,6 +3351,9 @@ export default function RecordGame() {
                           <SelectItem value="energetic">Energetic</SelectItem>
                           <SelectItem value="upbeat">Upbeat</SelectItem>
                           <SelectItem value="dynamic">Dynamic</SelectItem>
+                          <SelectItem value="cinematic">Cinematic</SelectItem>
+                          <SelectItem value="oldschool">Old School</SelectItem>
+                          <SelectItem value="lofi">Lo-Fi</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

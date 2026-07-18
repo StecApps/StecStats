@@ -53,3 +53,21 @@ id = "Hf-zr1_4djvaMuRSut5vG"
 uri = "file://artifacts/api-server/assets/music/dynamic.mp3"
 type = "audio"
 title = "dynamic"
+
+[[outputs]]
+id = "D5aDxrqhuUz-jSDy4dF1z"
+uri = "file://artifacts/api-server/assets/music/lofi.mp3"
+type = "audio"
+title = "lofi"
+
+[[outputs]]
+id = "U6oRS84NAlUYwVMFvduRH"
+uri = "file://artifacts/api-server/assets/music/cinematic.mp3"
+type = "audio"
+title = "cinematic"
+
+[[outputs]]
+id = "sCZtNaHuZZdYWHcJKnSqm"
+uri = "file://artifacts/api-server/assets/music/oldschool.mp3"
+type = "audio"
+title = "oldschool"

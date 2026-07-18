@@ -1,9 +1,12 @@
 import path from "path";
 
 export const MUSIC_TRACKS = [
-  { id: "energetic", label: "Energetic", description: "High-energy uptempo" },
-  { id: "upbeat",    label: "Upbeat",    description: "Fun, positive groove" },
-  { id: "dynamic",   label: "Dynamic",   description: "Driving, powerful beat" },
+  { id: "energetic",  label: "Energetic",  description: "High-energy uptempo" },
+  { id: "upbeat",     label: "Upbeat",     description: "Fun, positive groove" },
+  { id: "dynamic",    label: "Dynamic",    description: "Driving, powerful beat" },
+  { id: "cinematic",  label: "Cinematic",  description: "Epic orchestral triumph" },
+  { id: "oldschool",  label: "Old School", description: "Classic boom bap hip-hop" },
+  { id: "lofi",       label: "Lo-Fi",      description: "Chill, mellow backdrop" },
 ] as const;
 
 export type MusicTrackId = (typeof MUSIC_TRACKS)[number]["id"];

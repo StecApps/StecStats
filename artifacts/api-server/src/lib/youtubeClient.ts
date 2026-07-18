@@ -6,6 +6,7 @@ export function isYoutubeConfigured(): boolean {
 }
 
 function getCallbackUrl(): string {
+  if (process.env.YOUTUBE_CALLBACK_URL) return process.env.YOUTUBE_CALLBACK_URL;
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0] ?? "";
   return `https://${domain}/api/auth/youtube/callback`;
 }
