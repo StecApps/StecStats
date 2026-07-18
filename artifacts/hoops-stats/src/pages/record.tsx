@@ -9,9 +9,7 @@ import {
   useCreateTeam,
   useCreatePlayer,
   useGetGameHighlight,
-  useGenerateGameHighlight,
   useGetGameLowlight,
-  useGenerateGameLowlight,
   useGetBillingStatus,
   getGetGameHighlightQueryKey,
   getGetGameLowlightQueryKey,
@@ -29,7 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Pause, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home, BarChart2 } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Pause, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home, BarChart2, Music } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -170,8 +168,10 @@ export default function RecordGame() {
   const createGame = useCreateGame();
   const updateGame = useUpdateGame();
   const savingRef = useRef(false);
-  const generateHighlight = useGenerateGameHighlight();
-  const generateLowlight = useGenerateGameLowlight();
+  const [highlightMusicTrack, setHighlightMusicTrack] = useState<string | null>(null);
+  const [lowlightMusicTrack, setLowlightMusicTrack] = useState<string | null>(null);
+  const [isGeneratingHighlight, setIsGeneratingHighlight] = useState(false);
+  const [isGeneratingLowlight, setIsGeneratingLowlight] = useState(false);
 
   const { data: highlight } = useGetGameHighlight(gameId as number, {
     query: {
@@ -287,11 +287,21 @@ export default function RecordGame() {
   const handleGenerateHighlight = async () => {
     if (!gameId) return;
     highlightBlobCacheRef.current = null;
+    setIsGeneratingHighlight(true);
     try {
-      await generateHighlight.mutateAsync({ gameId });
+      const body: Record<string, string> = {};
+      if (highlightMusicTrack) body.musicTrack = highlightMusicTrack;
+      const res = await fetch(`/api/games/${gameId}/highlight`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed");
       await queryClient.invalidateQueries({ queryKey: getGetGameHighlightQueryKey(gameId) });
     } catch {
       toast({ title: "Couldn't start the highlight reel", variant: "destructive" });
+    } finally {
+      setIsGeneratingHighlight(false);
     }
   };
 
@@ -372,11 +382,21 @@ export default function RecordGame() {
   const handleGenerateLowlight = async () => {
     if (!gameId) return;
     lowlightBlobCacheRef.current = null;
+    setIsGeneratingLowlight(true);
     try {
-      await generateLowlight.mutateAsync({ gameId });
+      const body: Record<string, string> = {};
+      if (lowlightMusicTrack) body.musicTrack = lowlightMusicTrack;
+      const res = await fetch(`/api/games/${gameId}/lowlight`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Failed");
       await queryClient.invalidateQueries({ queryKey: getGetGameLowlightQueryKey(gameId) });
     } catch {
       toast({ title: "Couldn't start the lowlight reel", variant: "destructive" });
+    } finally {
+      setIsGeneratingLowlight(false);
     }
   };
 
@@ -2974,6 +2994,21 @@ export default function RecordGame() {
                       <span className="text-white font-bold text-[11px] leading-none">.com</span>
                     </a>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground">Music</span>
+                    <Select value={highlightMusicTrack ?? "none"} onValueChange={v => setHighlightMusicTrack(v === "none" ? null : v)}>
+                      <SelectTrigger className="h-7 w-32 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No music</SelectItem>
+                        <SelectItem value="energetic">Energetic</SelectItem>
+                        <SelectItem value="upbeat">Upbeat</SelectItem>
+                        <SelectItem value="dynamic">Dynamic</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareHighlight} disabled={isPreparingShare}>
                       {isPreparingShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
@@ -2981,8 +3016,8 @@ export default function RecordGame() {
                     <Button type="button" variant="outline" onClick={handleDownloadHighlight}>
                       <Download className="w-4 h-4 mr-2" /> Download
                     </Button>
-                    <Button type="button" variant="ghost" onClick={handleGenerateHighlight} disabled={generateHighlight.isPending}>
-                      {generateHighlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                    <Button type="button" variant="ghost" onClick={handleGenerateHighlight} disabled={isGeneratingHighlight}>
+                      {isGeneratingHighlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
                       Regenerate
                     </Button>
                   </div>
@@ -2995,8 +3030,23 @@ export default function RecordGame() {
                   {highlight?.status === "failed" && highlight.error && (
                     <p className="text-sm text-destructive">{highlight.error}</p>
                   )}
-                  <Button type="button" onClick={handleGenerateHighlight} disabled={generateHighlight.isPending}>
-                    {generateHighlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                  <div className="flex items-center gap-2">
+                    <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <span className="text-xs text-muted-foreground">Music</span>
+                    <Select value={highlightMusicTrack ?? "none"} onValueChange={v => setHighlightMusicTrack(v === "none" ? null : v)}>
+                      <SelectTrigger className="h-7 w-32 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No music</SelectItem>
+                        <SelectItem value="energetic">Energetic</SelectItem>
+                        <SelectItem value="upbeat">Upbeat</SelectItem>
+                        <SelectItem value="dynamic">Dynamic</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="button" onClick={handleGenerateHighlight} disabled={isGeneratingHighlight}>
+                    {isGeneratingHighlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
                     {highlight?.status === "failed" ? "Try Again" : "Generate Highlight Reel"}
                   </Button>
                 </div>
@@ -3043,6 +3093,21 @@ export default function RecordGame() {
                         <span className="text-white font-bold text-[11px] leading-none">.com</span>
                       </a>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs text-muted-foreground">Music</span>
+                      <Select value={lowlightMusicTrack ?? "none"} onValueChange={v => setLowlightMusicTrack(v === "none" ? null : v)}>
+                        <SelectTrigger className="h-7 w-32 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No music</SelectItem>
+                          <SelectItem value="energetic">Energetic</SelectItem>
+                          <SelectItem value="upbeat">Upbeat</SelectItem>
+                          <SelectItem value="dynamic">Dynamic</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button type="button" onClick={handleShareLowlight} disabled={isPreparingLowlightShare}>
                         {isPreparingLowlightShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
@@ -3050,8 +3115,8 @@ export default function RecordGame() {
                       <Button type="button" variant="outline" onClick={handleDownloadLowlight}>
                         <Download className="w-4 h-4 mr-2" /> Download
                       </Button>
-                      <Button type="button" variant="ghost" onClick={handleGenerateLowlight} disabled={generateLowlight.isPending}>
-                        {generateLowlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
+                      <Button type="button" variant="ghost" onClick={handleGenerateLowlight} disabled={isGeneratingLowlight}>
+                        {isGeneratingLowlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
                         Regenerate
                       </Button>
                     </div>
@@ -3064,8 +3129,23 @@ export default function RecordGame() {
                     {lowlight?.status === "failed" && lowlight.error && (
                       <p className="text-sm text-destructive">{lowlight.error}</p>
                     )}
-                    <Button type="button" onClick={handleGenerateLowlight} disabled={generateLowlight.isPending}>
-                      {generateLowlight.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
+                    <div className="flex items-center gap-2">
+                      <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-xs text-muted-foreground">Music</span>
+                      <Select value={lowlightMusicTrack ?? "none"} onValueChange={v => setLowlightMusicTrack(v === "none" ? null : v)}>
+                        <SelectTrigger className="h-7 w-32 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No music</SelectItem>
+                          <SelectItem value="energetic">Energetic</SelectItem>
+                          <SelectItem value="upbeat">Upbeat</SelectItem>
+                          <SelectItem value="dynamic">Dynamic</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button type="button" onClick={handleGenerateLowlight} disabled={isGeneratingLowlight}>
+                      {isGeneratingLowlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
                       {lowlight?.status === "failed" ? "Try Again" : "Generate Lowlight Reel"}
                     </Button>
                   </div>

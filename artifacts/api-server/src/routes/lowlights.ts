@@ -8,6 +8,7 @@ import {
 } from "../lib/highlightGenerator";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements, isPro } from "../lib/entitlements";
+import { getMusicTrackPath } from "../lib/musicTracks";
 
 const router: IRouter = Router();
 
@@ -74,6 +75,10 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     return;
   }
 
+  // Optional background music — validate the track ID server-side.
+  const musicTrackId = typeof req.body?.musicTrack === "string" ? req.body.musicTrack : undefined;
+  const musicTrackPath = musicTrackId ? getMusicTrackPath(musicTrackId) : undefined;
+
   const startedAtMs = game.lowlightStartedAt ? new Date(game.lowlightStartedAt).getTime() : 0;
   const staleProcessing = game.lowlightStatus === "processing" && Date.now() - startedAtMs > STALE_PROCESSING_MS;
   const alreadyRunning = inFlight.has(gameId) || (game.lowlightStatus === "processing" && !staleProcessing);
@@ -85,7 +90,7 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     // Hard timeout — 2-hr game: download + proxy (nice -n 19) + encode + upload
     const MAX_JOB_MS = 130 * 60 * 1000;
     void Promise.race([
-      generateLowlight(gameId),
+      generateLowlight(gameId, musicTrackPath ?? undefined),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
     ])
       .catch(async () => {

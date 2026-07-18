@@ -8,6 +8,7 @@ import {
 } from "../lib/highlightGenerator";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements, isPro } from "../lib/entitlements";
+import { getMusicTrackPath } from "../lib/musicTracks";
 
 const router: IRouter = Router();
 
@@ -100,6 +101,10 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
     game.highlightStatus === "processing" && Date.now() - startedAtMs > STALE_PROCESSING_MS;
   const alreadyRunning =
     inFlight.has(gameId) || (game.highlightStatus === "processing" && !staleProcessing);
+  // Optional background music — validate the track ID server-side.
+  const musicTrackId = typeof req.body?.musicTrack === "string" ? req.body.musicTrack : undefined;
+  const musicTrackPath = musicTrackId ? getMusicTrackPath(musicTrackId) : undefined;
+
   let startedAt = game.highlightStartedAt;
   if (!alreadyRunning) {
     inFlight.add(gameId);
@@ -118,7 +123,7 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
     // + segment encoding + upload. 2-hr game = ~70 min; give 130 min buffer.
     const MAX_JOB_MS = 130 * 60 * 1000;
     void Promise.race([
-      generateHighlight(gameId),
+      generateHighlight(gameId, musicTrackPath ?? undefined),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
     ])
       .catch(async () => {

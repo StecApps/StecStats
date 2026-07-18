@@ -728,6 +728,7 @@ async function renderGameSegments(
   eligible: { videoTimestampMs: number; playerId: number; statField: string }[],
   nameById: Map<number, string>,
   offsetMs: number = 0,
+  musicTrackPath?: string,
 ): Promise<string[]> {
   // Duration detection strategy — designed to be safe for large files (3+ GB).
   //
@@ -1048,11 +1049,24 @@ async function renderGameSegments(
       );
     }
     const mainFilters = filterParts.join(",");
-    const filterComplex = [
+    // Build filter_complex.  Music is added as input 2 (0=video, 1=logo, 2=music)
+    // when a musicTrackPath is provided.  The audio filter runs INSIDE
+    // filter_complex so that the amix output can be routed with -map [aout].
+    const fcParts = [
       `[0:v]${mainFilters}[main]`,
       `[1:v]scale=-1:${wmLogoHeight},format=rgba,colorchannelmixer=aa=0.65[logo]`,
       `[main][logo]overlay=W-w-${wmLogoMargin}:${wmLogoMargin}:shortest=1[out]`,
-    ].join(";");
+    ];
+    if (musicTrackPath) {
+      // Music volume: 20% of original audio when source has audio (amix
+      // weights=1 0.2), or 30% solo volume when there is no source audio.
+      if (hasAudio) {
+        fcParts.push(`[0:a][2:a]amix=inputs=2:duration=first:weights=1 0.2[aout]`);
+      } else {
+        fcParts.push(`[2:a]volume=0.3[aout]`);
+      }
+    }
+    const filterComplex = fcParts.join(";");
 
     const segPath = path.join(tmpDir, `seg_${prefix}_${i}.ts`);
     // When Phase A ran, encode from the small local intermediate (seek is
@@ -1063,6 +1077,7 @@ async function renderGameSegments(
       "-ss", input.seek.toFixed(3),
       "-i", input.path,
       "-loop", "1", "-i", LOGO_FILE,
+      ...(musicTrackPath ? ["-stream_loop", "-1", "-i", musicTrackPath] : []),
       "-t", segDur.toFixed(3),
       "-filter_complex", filterComplex,
       "-map", "[out]",
@@ -1076,7 +1091,9 @@ async function renderGameSegments(
       "-maxrate", "6000k",
       "-bufsize", "12000k",
     ];
-    if (hasAudio) {
+    if (musicTrackPath) {
+      args.push("-map", "[aout]", "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
+    } else if (hasAudio) {
       args.push("-map", "0:a?", "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
     } else {
       args.push("-an");
@@ -1168,7 +1185,7 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
  * Runs fully async (fire-and-forget); progress is tracked via the game's
  * highlightStatus column.
  */
-export async function generateHighlight(gameId: number): Promise<void> {
+export async function generateHighlight(gameId: number, musicTrackPath?: string): Promise<void> {
   let tmpDir: string | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
@@ -1222,13 +1239,14 @@ export async function generateHighlight(gameId: number): Promise<void> {
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcUrl, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0);
+    const segPaths = await renderGameSegments(srcUrl, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0, musicTrackPath);
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
 
     const outPath = path.join(tmpDir, "highlight.mp4");
-    await concatSegments(segPaths, tmpDir, outPath, hasAudio);
+    const outputHasAudio = hasAudio || !!musicTrackPath;
+    await concatSegments(segPaths, tmpDir, outPath, outputHasAudio);
 
     const objectPath = await uploadHighlight(outPath, game.ownerId);
 
@@ -1257,7 +1275,7 @@ export async function generateHighlight(gameId: number): Promise<void> {
  * Runs fully async (fire-and-forget); progress is tracked via the game's
  * lowlightStatus column.
  */
-export async function generateLowlight(gameId: number): Promise<void> {
+export async function generateLowlight(gameId: number, musicTrackPath?: string): Promise<void> {
   let tmpDir: string | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
@@ -1306,13 +1324,14 @@ export async function generateLowlight(gameId: number): Promise<void> {
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcUrl, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0);
+    const segPaths = await renderGameSegments(srcUrl, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0, musicTrackPath);
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
 
     const outPath = path.join(tmpDir, "lowlight.mp4");
-    await concatSegments(segPaths, tmpDir, outPath, hasAudio);
+    const outputHasAudio = hasAudio || !!musicTrackPath;
+    await concatSegments(segPaths, tmpDir, outPath, outputHasAudio);
 
     const objectPath = await uploadHighlight(outPath, game.ownerId);
 
