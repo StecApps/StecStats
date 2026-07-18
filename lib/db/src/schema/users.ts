@@ -16,6 +16,9 @@ export const usersTable = pgTable("users", {
   // stripe-replit-sync keeps in sync via webhooks, which is the source of
   // truth. See lib/entitlements.ts in api-server.
   stripeCustomerId: text("stripe_customer_id"),
+  // Stored refresh token from the coach's personal YouTube OAuth consent.
+  // Null when the coach has not connected YouTube yet.
+  youtubeRefreshToken: text("youtube_refresh_token"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -27,7 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Pause, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home, BarChart2, Music } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Pause, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home, BarChart2, Music, Youtube } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
@@ -486,6 +486,72 @@ export default function RecordGame() {
   const lowlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
   const [isPreparingShare, setIsPreparingShare] = useState(false);
   const [isPreparingLowlightShare, setIsPreparingLowlightShare] = useState(false);
+
+  const [isYoutubeConnected, setIsYoutubeConnected] = useState<boolean | null>(null);
+  const [isYoutubeDialogOpen, setIsYoutubeDialogOpen] = useState(false);
+  const [youtubeTitle, setYoutubeTitle] = useState("");
+  const [youtubePrivacy, setYoutubePrivacy] = useState<"public" | "unlisted" | "private">("unlisted");
+  const [isUploadingToYoutube, setIsUploadingToYoutube] = useState(false);
+  const [youtubeVideoUrl, setYoutubeVideoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEditing) return;
+    fetch("/api/auth/youtube/status")
+      .then((r) => r.json())
+      .then((d: { connected: boolean }) => setIsYoutubeConnected(d.connected))
+      .catch(() => setIsYoutubeConnected(false));
+  }, [isEditing]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const ytParam = params.get("youtube");
+    if (ytParam === "connected") {
+      setIsYoutubeConnected(true);
+      setYoutubeVideoUrl(null);
+      setYoutubeTitle("STEC STATS Highlights");
+      setIsYoutubeDialogOpen(true);
+      if (gameId) navigate(`/record/${gameId}`);
+    } else if (ytParam === "error") {
+      toast({ title: "Couldn't connect YouTube. Please try again.", variant: "destructive" });
+      if (gameId) navigate(`/record/${gameId}`);
+    }
+    // Intentionally empty deps — only run on mount to handle OAuth callback redirect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleUploadToYoutube = () => {
+    if (!gameId) return;
+    if (!isYoutubeConnected) {
+      window.location.href = `/api/auth/youtube/connect?returnTo=${encodeURIComponent(`/record/${gameId}`)}`;
+      return;
+    }
+    setYoutubeTitle(`STEC STATS — ${opponent || "Game"} Highlights`);
+    setYoutubeVideoUrl(null);
+    setIsYoutubeDialogOpen(true);
+  };
+
+  const handleConfirmYoutubeUpload = async () => {
+    if (!gameId || !youtubeTitle.trim()) return;
+    setIsUploadingToYoutube(true);
+    try {
+      const res = await fetch(`/api/games/${gameId}/highlight/upload-youtube`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: youtubeTitle.trim(), privacyStatus: youtubePrivacy }),
+      });
+      const data = await res.json() as { youtubeUrl?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      setYoutubeVideoUrl(data.youtubeUrl ?? null);
+    } catch (err) {
+      toast({
+        title: "YouTube upload failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingToYoutube(false);
+    }
+  };
 
   const [isLive, setIsLive] = useState(false);
   const [liveCode, setLiveCode] = useState<string | null>(null);
@@ -3016,11 +3082,114 @@ export default function RecordGame() {
                     <Button type="button" variant="outline" onClick={handleDownloadHighlight}>
                       <Download className="w-4 h-4 mr-2" /> Download
                     </Button>
+                    {isPro && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleUploadToYoutube}
+                        disabled={isYoutubeConnected === null}
+                      >
+                        <Youtube className="w-4 h-4 mr-2" />
+                        {isYoutubeConnected ? "YouTube" : "Connect YouTube"}
+                      </Button>
+                    )}
                     <Button type="button" variant="ghost" onClick={handleGenerateHighlight} disabled={isGeneratingHighlight}>
                       {isGeneratingHighlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
                       Regenerate
                     </Button>
                   </div>
+                  {isPro && (
+                    <Dialog
+                      open={isYoutubeDialogOpen}
+                      onOpenChange={(open) => {
+                        if (!isUploadingToYoutube) setIsYoutubeDialogOpen(open);
+                      }}
+                    >
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Upload to YouTube</DialogTitle>
+                        </DialogHeader>
+                        {youtubeVideoUrl ? (
+                          <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground">Uploaded successfully!</p>
+                            <a
+                              href={youtubeVideoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary underline text-sm break-all block"
+                            >
+                              {youtubeVideoUrl}
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="space-y-4 pt-1">
+                            <div className="space-y-1.5">
+                              <Label htmlFor="yt-title">Title</Label>
+                              <Input
+                                id="yt-title"
+                                value={youtubeTitle}
+                                onChange={(e) => setYoutubeTitle(e.target.value)}
+                                maxLength={100}
+                                disabled={isUploadingToYoutube}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Privacy</Label>
+                              <Select
+                                value={youtubePrivacy}
+                                onValueChange={(v) => setYoutubePrivacy(v as "public" | "unlisted" | "private")}
+                                disabled={isUploadingToYoutube}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="unlisted">Unlisted (link-only)</SelectItem>
+                                  <SelectItem value="public">Public</SelectItem>
+                                  <SelectItem value="private">Private</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {isUploadingToYoutube && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                Uploading to YouTube — this may take a few minutes for large videos…
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <DialogFooter>
+                          {youtubeVideoUrl ? (
+                            <Button type="button" onClick={() => setIsYoutubeDialogOpen(false)}>
+                              Done
+                            </Button>
+                          ) : (
+                            <>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsYoutubeDialogOpen(false)}
+                                disabled={isUploadingToYoutube}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                onClick={handleConfirmYoutubeUpload}
+                                disabled={isUploadingToYoutube || !youtubeTitle.trim()}
+                              >
+                                {isUploadingToYoutube ? (
+                                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Uploading…</>
+                                ) : (
+                                  "Upload to YouTube"
+                                )}
+                              </Button>
+                            </>
+                          )}
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">

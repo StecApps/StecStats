@@ -10,6 +10,7 @@ import storageRouter from "./storage";
 import liveRouter from "./live";
 import billingRouter from "./billing";
 import musicRouter from "./music";
+import youtubeRouter from "./youtube";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(storageRouter);
 router.use(liveRouter);
 router.use(billingRouter);
 router.use(musicRouter);
+router.use(youtubeRouter);
 
 export default router;

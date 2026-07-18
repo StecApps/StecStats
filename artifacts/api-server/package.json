@@ -21,6 +21,7 @@
     "drizzle-orm": "catalog:",
     "express": "^5.2.1",
     "google-auth-library": "^10.9.0",
+    "googleapis": "^173.0.0",
     "http-proxy-middleware": "^4.2.0",
     "nanoid": "^5.1.5",
     "pino": "^9.14.0",
