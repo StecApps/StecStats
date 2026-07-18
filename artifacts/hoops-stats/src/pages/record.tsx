@@ -541,7 +541,19 @@ export default function RecordGame() {
       });
       const data = await res.json() as { youtubeUrl?: string; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      setYoutubeVideoUrl(data.youtubeUrl ?? null);
+      const url = data.youtubeUrl ?? null;
+      setYoutubeVideoUrl(url);
+      setIsYoutubeDialogOpen(false);
+      if (url) {
+        toast({
+          title: "Uploaded to YouTube!",
+          description: (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="underline break-all">
+              {url}
+            </a>
+          ),
+        });
+      }
     } catch (err) {
       toast({
         title: "YouTube upload failed",
