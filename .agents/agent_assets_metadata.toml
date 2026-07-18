@@ -35,3 +35,21 @@ id = "vE4VlKutPOc80ACGcnskE"
 uri = "file://attached_assets/logo_option_3.png"
 type = "image"
 title = "Option 3 — Horizontal wordmark"
+
+[[outputs]]
+id = "elcT0r38tpLK8SekqIVeY"
+uri = "file://artifacts/api-server/assets/music/energetic.mp3"
+type = "audio"
+title = "energetic"
+
+[[outputs]]
+id = "vvpiSi810aD8HLBuMwhmq"
+uri = "file://artifacts/api-server/assets/music/upbeat.mp3"
+type = "audio"
+title = "upbeat"
+
+[[outputs]]
+id = "Hf-zr1_4djvaMuRSut5vG"
+uri = "file://artifacts/api-server/assets/music/dynamic.mp3"
+type = "audio"
+title = "dynamic"
