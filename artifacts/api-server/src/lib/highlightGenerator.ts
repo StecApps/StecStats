@@ -344,10 +344,6 @@ async function createChunkedProxy(
           "-c:v", "libx264",
           "-preset", "ultrafast",
           "-crf", "28",
-          // Cap threads so ffmpeg doesn't starve the Node event loop and
-          // trigger Replit's health-monitor auto-restart. Slower encode
-          // (~10 min/chunk) is fine — server responsiveness is critical.
-          "-threads", "2",
           "-vf",
             `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
             `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
@@ -355,7 +351,7 @@ async function createChunkedProxy(
           "-movflags", "+faststart",
           chunkLocalPath,
         ],
-        15 * 60 * 1000, // 15 min per chunk (extra buffer for 2-thread encode)
+        20 * 60 * 1000, // 20 min per chunk (generous buffer; nice -n 19 uses all idle cores)
       );
       logger.info({ gameId, chunk: i, numChunks }, "Proxy chunk: uploading to GCS");
       await objectStorageService.uploadLocalFileToObjectPath(
@@ -506,7 +502,10 @@ function runFfmpegQueued(args: string[], timeoutMs?: number): Promise<string> {
   const token = new Promise<void>((r) => { unlock = r; });
   const prev = _ffmpegQueueTail;
   _ffmpegQueueTail = token;
-  return prev.then(() => run("ffmpeg", args, timeoutMs)).finally(unlock);
+  // Wrap in `nice -n 19` so ffmpeg runs at lowest OS scheduling priority.
+  // Node's event loop always wins CPU when a healthcheck fires, but ffmpeg
+  // uses all idle cores — much faster than a hard thread cap.
+  return prev.then(() => run("nice", ["-n", "19", "ffmpeg", ...args], timeoutMs)).finally(unlock);
 }
 
 async function ffprobe(args: string[]): Promise<string> {
