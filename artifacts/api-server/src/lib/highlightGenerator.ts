@@ -322,50 +322,75 @@ async function createChunkedProxy(
     "Proxy: creating in restart-resilient chunks",
   );
 
+  // Check if ALL chunks are already in GCS from a prior complete encode.
+  const gcsChunkPaths = Array.from({ length: numChunks }, (_, i) =>
+    `/objects/uploads/${ownerId}/proxy_chunk_${gameId}_${i}`,
+  );
+  const existFlags = await Promise.all(
+    gcsChunkPaths.map((p) => objectStorageService.checkObjectEntityExists(p)),
+  );
+  const allInGcs = existFlags.every(Boolean);
+
   const chunkLocalPaths: string[] = [];
 
-  for (let i = 0; i < numChunks; i++) {
-    const chunkObjectPath = `/objects/uploads/${ownerId}/proxy_chunk_${gameId}_${i}`;
-    const chunkLocalPath = path.join(proxyTmpDir, `proxy_chunk_${i}.mp4`);
+  if (allInGcs) {
+    // Fast path: download all already-encoded chunks from GCS.
+    logger.info({ gameId, numChunks }, "Proxy: all chunks in GCS — downloading");
+    for (let i = 0; i < numChunks; i++) {
+      const chunkLocalPath = path.join(proxyTmpDir, `proxy_chunk_${i}.mp4`);
+      await downloadSourceVideo(gcsChunkPaths[i], chunkLocalPath);
+      chunkLocalPaths.push(chunkLocalPath);
+    }
+  } else {
+    // Single-pass encode: read the source ONCE and split into segments.
+    // This is dramatically faster than 22 separate seeks into a 2.8 GB fMP4
+    // because the file is read linearly instead of re-opened and re-probed
+    // for each chunk. A 2-hr game that took >20 min per chunk now completes
+    // the full encode in ~10-15 min.
+    logger.info({ gameId, numChunks }, "Proxy: single-pass segment encode (linear, no seeks)");
+    const segmentPattern = path.join(proxyTmpDir, "proxy_chunk_%05d.mp4");
+    const segmentListPath = path.join(proxyTmpDir, "segments.txt");
 
-    const chunkExists = await objectStorageService.checkObjectEntityExists(chunkObjectPath);
-    if (chunkExists) {
-      logger.info({ gameId, chunk: i, numChunks }, "Proxy chunk already in GCS — reusing");
-      await downloadSourceVideo(chunkObjectPath, chunkLocalPath);
-    } else {
-      const startSec = i * PROXY_CHUNK_DURATION_SEC;
-      logger.info({ gameId, chunk: i, numChunks, startSec }, "Proxy chunk: transcoding");
-      await runFfmpegQueued(
-        [
-          "-y",
-          "-ss", String(startSec),
-          "-i", srcPath,
-          "-t", String(PROXY_CHUNK_DURATION_SEC),
-          "-c:v", "libx264",
-          "-preset", "ultrafast",
-          "-crf", "28",
-          "-vf",
-            `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
-            `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
-          "-c:a", "copy",
-          "-movflags", "+faststart",
-          chunkLocalPath,
-        ],
-        20 * 60 * 1000, // 20 min per chunk (generous buffer; nice -n 19 uses all idle cores)
-      );
-      logger.info({ gameId, chunk: i, numChunks }, "Proxy chunk: uploading to GCS");
+    await runFfmpegQueued(
+      [
+        "-y",
+        "-i", srcPath,
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "28",
+        "-vf",
+          `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
+          `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+        "-c:a", "copy",
+        "-f", "segment",
+        "-segment_time", String(PROXY_CHUNK_DURATION_SEC),
+        "-reset_timestamps", "1",
+        "-segment_list", segmentListPath,
+        "-segment_list_type", "flat",
+        segmentPattern,
+      ],
+      90 * 60 * 1000, // 90 min cap; single-pass of 2-hr game typically ~10-15 min
+    );
+
+    // Parse the segment list (one bare filename per line, relative to proxyTmpDir).
+    const listContent = await fs.readFile(segmentListPath, "utf-8");
+    const chunkNames = listContent.trim().split("\n").filter(Boolean);
+
+    // Upload each chunk to GCS immediately so restarts can resume from here.
+    logger.info({ gameId, produced: chunkNames.length }, "Proxy: uploading chunks to GCS");
+    for (let i = 0; i < chunkNames.length; i++) {
+      const chunkLocalPath = path.join(proxyTmpDir, chunkNames[i]);
+      chunkLocalPaths.push(chunkLocalPath);
       await objectStorageService.uploadLocalFileToObjectPath(
         chunkLocalPath,
-        chunkObjectPath,
+        gcsChunkPaths[i] ?? `/objects/uploads/${ownerId}/proxy_chunk_${gameId}_${i}`,
         "video/mp4",
       );
-      logger.info({ gameId, chunk: i, numChunks }, "Proxy chunk: saved to GCS");
+      logger.info({ gameId, chunk: i, total: chunkNames.length }, "Proxy chunk: saved to GCS");
     }
-
-    chunkLocalPaths.push(chunkLocalPath);
   }
 
-  if (numChunks === 1) {
+  if (chunkLocalPaths.length === 1) {
     await fs.rename(chunkLocalPaths[0], destPath);
   } else {
     const concatListPath = path.join(proxyTmpDir, "proxy_concat.txt");
@@ -373,7 +398,7 @@ async function createChunkedProxy(
       concatListPath,
       chunkLocalPaths.map((p) => `file '${p}'`).join("\n"),
     );
-    logger.info({ gameId, numChunks }, "Proxy: concatenating chunks into final proxy");
+    logger.info({ gameId, numChunks: chunkLocalPaths.length }, "Proxy: concatenating chunks");
     await runFfmpegQueued(
       [
         "-y",
@@ -502,10 +527,11 @@ function runFfmpegQueued(args: string[], timeoutMs?: number): Promise<string> {
   const token = new Promise<void>((r) => { unlock = r; });
   const prev = _ffmpegQueueTail;
   _ffmpegQueueTail = token;
-  // Wrap in `nice -n 19` so ffmpeg runs at lowest OS scheduling priority.
-  // Node's event loop always wins CPU when a healthcheck fires, but ffmpeg
-  // uses all idle cores — much faster than a hard thread cap.
-  return prev.then(() => run("nice", ["-n", "19", "ffmpeg", ...args], timeoutMs)).finally(unlock);
+  // nice -n 10: ffmpeg runs at reduced OS priority so Node's event loop
+  // always preempts it for healthchecks/API calls, but ffmpeg still gets
+  // plenty of CPU between requests. -n 19 was too aggressive — the download
+  // process starved ffmpeg so badly that encoding took >20 min per chunk.
+  return prev.then(() => run("nice", ["-n", "10", "ffmpeg", ...args], timeoutMs)).finally(unlock);
 }
 
 async function ffprobe(args: string[]): Promise<string> {
