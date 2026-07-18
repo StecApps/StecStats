@@ -303,9 +303,11 @@ async function probeVideoDurationForChunking(srcPath: string): Promise<number> {
 /**
  * Transcode srcPath → destPath in restart-resilient chunks.
  *
- * Each ~6-minute chunk is uploaded to GCS immediately after encoding.
- * On restart, existing GCS chunks are downloaded and reused; only the
- * missing chunks are re-encoded. A restart costs ≤ 6 minutes, not 35.
+ * Chunks are uploaded to GCS incrementally as ffmpeg finishes each one,
+ * so a platform restart (Replit cycles instances every ~8 min) only loses
+ * the last 1-2 chunks that hadn't been uploaded yet.  On the next boot,
+ * firstMissing is computed from the GCS existence check and ffmpeg resumes
+ * from that point (one seek, not 22).
  */
 async function createChunkedProxy(
   gameId: number,
@@ -322,7 +324,6 @@ async function createChunkedProxy(
     "Proxy: creating in restart-resilient chunks",
   );
 
-  // Check if ALL chunks are already in GCS from a prior complete encode.
   const gcsChunkPaths = Array.from({ length: numChunks }, (_, i) =>
     `/objects/uploads/${ownerId}/proxy_chunk_${gameId}_${i}`,
   );
@@ -331,62 +332,117 @@ async function createChunkedProxy(
   );
   const allInGcs = existFlags.every(Boolean);
 
+  // Local filename for chunk i — consistent across all paths.
+  const chunkLocalPath = (i: number) =>
+    path.join(proxyTmpDir, `proxy_chunk_${String(i).padStart(5, "0")}.mp4`);
+
   const chunkLocalPaths: string[] = [];
 
   if (allInGcs) {
     // Fast path: download all already-encoded chunks from GCS.
     logger.info({ gameId, numChunks }, "Proxy: all chunks in GCS — downloading");
     for (let i = 0; i < numChunks; i++) {
-      const chunkLocalPath = path.join(proxyTmpDir, `proxy_chunk_${i}.mp4`);
-      await downloadSourceVideo(gcsChunkPaths[i], chunkLocalPath);
-      chunkLocalPaths.push(chunkLocalPath);
+      await downloadSourceVideo(gcsChunkPaths[i], chunkLocalPath(i));
+      chunkLocalPaths.push(chunkLocalPath(i));
     }
   } else {
-    // Single-pass encode: read the source ONCE and split into segments.
-    // This is dramatically faster than 22 separate seeks into a 2.8 GB fMP4
-    // because the file is read linearly instead of re-opened and re-probed
-    // for each chunk. A 2-hr game that took >20 min per chunk now completes
-    // the full encode in ~10-15 min.
-    logger.info({ gameId, numChunks }, "Proxy: single-pass segment encode (linear, no seeks)");
-    const segmentPattern = path.join(proxyTmpDir, "proxy_chunk_%05d.mp4");
-    const segmentListPath = path.join(proxyTmpDir, "segments.txt");
+    // Partial or no chunks in GCS.
+    // Strategy: single-pass ffmpeg segment encode starting from the first
+    // missing chunk (one seek, not N seeks).  While ffmpeg runs, an upload
+    // loop watches the segment-list file that ffmpeg appends to each time it
+    // closes a segment, and pushes each completed chunk to GCS immediately.
+    // This way even a mid-encode platform restart preserves all chunks that
+    // were produced up to that point.
+    const firstMissing = existFlags.findIndex((e) => !e);
+    const startSec = firstMissing * PROXY_CHUNK_DURATION_SEC;
+    const numToEncode = numChunks - firstMissing;
 
-    await runFfmpegQueued(
-      [
-        "-y",
-        "-i", srcPath,
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "28",
-        "-vf",
-          `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
-          `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
-        "-c:a", "copy",
-        "-f", "segment",
-        "-segment_time", String(PROXY_CHUNK_DURATION_SEC),
-        "-reset_timestamps", "1",
-        "-segment_list", segmentListPath,
-        "-segment_list_type", "flat",
-        segmentPattern,
-      ],
-      90 * 60 * 1000, // 90 min cap; single-pass of 2-hr game typically ~10-15 min
+    logger.info(
+      { gameId, numChunks, firstMissing, startSec },
+      "Proxy: single-pass segment encode with incremental GCS upload",
     );
 
-    // Parse the segment list (one bare filename per line, relative to proxyTmpDir).
-    const listContent = await fs.readFile(segmentListPath, "utf-8");
-    const chunkNames = listContent.trim().split("\n").filter(Boolean);
+    const segmentPattern = path.join(proxyTmpDir, "proxy_chunk_%05d.mp4");
+    const segmentListPath = path.join(proxyTmpDir, "segments.txt");
+    await fs.unlink(segmentListPath).catch(() => {}); // clear stale list from prior run
 
-    // Upload each chunk to GCS immediately so restarts can resume from here.
-    logger.info({ gameId, produced: chunkNames.length }, "Proxy: uploading chunks to GCS");
-    for (let i = 0; i < chunkNames.length; i++) {
-      const chunkLocalPath = path.join(proxyTmpDir, chunkNames[i]);
-      chunkLocalPaths.push(chunkLocalPath);
-      await objectStorageService.uploadLocalFileToObjectPath(
-        chunkLocalPath,
-        gcsChunkPaths[i] ?? `/objects/uploads/${ownerId}/proxy_chunk_${gameId}_${i}`,
-        "video/mp4",
-      );
-      logger.info({ gameId, chunk: i, total: chunkNames.length }, "Proxy chunk: saved to GCS");
+    const ffmpegArgs = [
+      "-y",
+      // If resuming from a prior run, seek to firstMissing's start time.
+      // For a fragmented MP4 this is one seek (slow but unavoidable) vs the
+      // old per-chunk approach which performed 22 independent seeks.
+      ...(firstMissing > 0 ? ["-ss", String(startSec)] : []),
+      "-i", srcPath,
+      "-c:v", "libx264",
+      "-preset", "ultrafast",
+      "-crf", "28",
+      "-vf",
+        `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
+        `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+      "-c:a", "copy",
+      "-f", "segment",
+      "-segment_time", String(PROXY_CHUNK_DURATION_SEC),
+      // Start segment numbering at firstMissing so filenames match GCS keys.
+      "-segment_start_number", String(firstMissing),
+      "-reset_timestamps", "1",
+      "-segment_list", segmentListPath,
+      "-segment_list_type", "flat",
+      segmentPattern,
+    ];
+
+    // ffmpegDone is set in .finally() so the upload loop knows the last
+    // segment (whose entry appears in the list when ffmpeg opens it but is
+    // only fully flushed when ffmpeg exits) is safe to upload.
+    let ffmpegDone = false;
+    const ffmpegPromise = runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000).finally(
+      () => { ffmpegDone = true; },
+    );
+
+    // Incremental upload loop.
+    // ffmpeg appends chunk N's filename to segments.txt when it OPENS chunk N.
+    // Chunk N is fully written (safe to upload) only after chunk N+1 is opened
+    // (i.e., lines[N+1] exists) or ffmpeg has exited.
+    const uploadLoop = async (): Promise<void> => {
+      let nextLocalIdx = 0; // 0 = firstMissing, 1 = firstMissing+1, …
+
+      while (true) {
+        await new Promise<void>((r) => setTimeout(r, 2000));
+
+        const content = await fs.readFile(segmentListPath, "utf-8").catch(() => "");
+        const lines = content.trim().split("\n").filter(Boolean);
+
+        while (nextLocalIdx < Math.min(lines.length, numToEncode)) {
+          const safe = (nextLocalIdx + 1 < lines.length) || ffmpegDone;
+          if (!safe) break; // wait for ffmpeg to move past this chunk
+
+          const chunkIdx = firstMissing + nextLocalIdx;
+          if (!existFlags[chunkIdx]) {
+            const localPath = path.join(proxyTmpDir, lines[nextLocalIdx]);
+            logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: uploading to GCS");
+            await objectStorageService.uploadLocalFileToObjectPath(
+              localPath, gcsChunkPaths[chunkIdx], "video/mp4",
+            );
+            logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: saved to GCS");
+          } else {
+            logger.info({ gameId, chunk: chunkIdx }, "Proxy chunk: already in GCS, skipping");
+          }
+          nextLocalIdx++;
+        }
+
+        if (ffmpegDone && nextLocalIdx >= numToEncode) break;
+      }
+    };
+
+    await Promise.all([ffmpegPromise, uploadLoop()]);
+
+    // Chunks 0..firstMissing-1 were already in GCS — download them for concat.
+    for (let i = 0; i < firstMissing; i++) {
+      logger.info({ gameId, chunk: i }, "Proxy chunk: downloading GCS chunk for concat");
+      await downloadSourceVideo(gcsChunkPaths[i], chunkLocalPath(i));
+    }
+    // Chunks firstMissing..numChunks-1 were just encoded and are already on disk.
+    for (let i = 0; i < numChunks; i++) {
+      chunkLocalPaths.push(chunkLocalPath(i));
     }
   }
 
