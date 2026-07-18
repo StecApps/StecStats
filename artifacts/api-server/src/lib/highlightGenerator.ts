@@ -834,6 +834,13 @@ async function renderGameSegments(
     // Last resort: MKV remux (builds a seek index + duration header).
     // Only safe for small files — remuxing a large file writes a second copy
     // equal in size to the source and will fill the container disk quota.
+    // Not applicable for remote URLs — bail out early with a clear error.
+    if (srcPath.startsWith("http://") || srcPath.startsWith("https://")) {
+      throw new HighlightError(
+        "Could not determine the video duration from the source stream. " +
+        "The recording may be in an unsupported format.",
+      );
+    }
     const srcStatSize = await fs.stat(srcPath).then((s) => s.size).catch(() => 0);
     const srcMB = srcStatSize / 1024 / 1024;
     if (srcMB > 600) {
@@ -1087,7 +1094,6 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
  */
 export async function generateHighlight(gameId: number): Promise<void> {
   let tmpDir: string | null = null;
-  let releaseProxy: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -1121,31 +1127,29 @@ export async function generateHighlight(gameId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
 
-    // acquireGameProxy streams source directly from GCS via a signed URL —
-    // no local 2+ GB download needed.  The proxy (~200–400 MB) is cached in
-    // GCS so subsequent restarts skip re-encoding and just download the proxy.
-    const { proxyPath, release: releaseP } = await acquireGameProxy(
-      gameId,
-      game.ownerId,
+    // Stream clips directly from GCS via a signed URL — no full-file download
+    // and no proxy encoding required.  ffmpeg fast-seeks to each clip's start
+    // timestamp, reads only those bytes from GCS, and encodes the short clip.
+    // For 20-30 clips this is typically done in under 15 minutes regardless of
+    // source file size.
+    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
+      game.videoObjectPath!,
+      4 * 3600,
     );
-    releaseProxy = releaseP;
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      proxyPath,
+      srcUrl,
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(proxyPath, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0);
+    const segPaths = await renderGameSegments(srcUrl, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0);
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
-
-    releaseProxy?.();
-    releaseProxy = null;
 
     const outPath = path.join(tmpDir, "highlight.mp4");
     await concatSegments(segPaths, tmpDir, outPath, hasAudio);
@@ -1166,7 +1170,6 @@ export async function generateHighlight(gameId: number): Promise<void> {
     await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
-    releaseProxy?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -1180,7 +1183,6 @@ export async function generateHighlight(gameId: number): Promise<void> {
  */
 export async function generateLowlight(gameId: number): Promise<void> {
   let tmpDir: string | null = null;
-  let releaseProxy: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -1212,30 +1214,26 @@ export async function generateLowlight(gameId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
 
-    // acquireGameProxy streams source directly from GCS via a signed URL —
-    // no local 2+ GB download needed.
-    const { proxyPath, release: releaseP } = await acquireGameProxy(
-      gameId,
-      game.ownerId,
+    // Stream clips directly from GCS via a signed URL — no full-file download
+    // and no proxy encoding required.
+    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
+      game.videoObjectPath!,
+      4 * 3600,
     );
-    releaseProxy = releaseP;
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      proxyPath,
+      srcUrl,
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(proxyPath, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0);
+    const segPaths = await renderGameSegments(srcUrl, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0);
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
-
-    releaseProxy?.();
-    releaseProxy = null;
 
     const outPath = path.join(tmpDir, "lowlight.mp4");
     await concatSegments(segPaths, tmpDir, outPath, hasAudio);
@@ -1256,7 +1254,6 @@ export async function generateLowlight(gameId: number): Promise<void> {
     await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
-    releaseProxy?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
