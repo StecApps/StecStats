@@ -48,6 +48,12 @@ uri = "file://attached_assets/icon-v5-ball-text.png"
 type = "image"
 title = "StecStats ball with text icon v5"
 
+[[generated]]
+id = "2zQ18WprDbhATsdts5RPx"
+uri = "file://attached_assets/icon-final.png"
+type = "image"
+title = "StecStats final orange text icon"
+
 [[outputs]]
 id = "FZj9W2EktEJeb43lNxG9Q"
 uri = "file://attached_assets/logo_option_1.png"
@@ -131,3 +137,9 @@ id = "pK904vEELN2wugqC5oydL"
 uri = "file://attached_assets/icon-v5-ball-text.png"
 type = "image"
 title = "Option B — Basketball + StecStats text"
+
+[[outputs]]
+id = "bzwegz_wYplGZlBJVbqbB"
+uri = "file://attached_assets/icon-final.png"
+type = "image"
+title = "StecStats icon — orange text"
