@@ -18,6 +18,24 @@ uri = "file://attached_assets/logo_option_3.png"
 type = "image"
 title = "StecStats wordmark horizontal"
 
+[[generated]]
+id = "FVk_KexHPhwnWdNiwL0mL"
+uri = "file://attached_assets/icon-v1-basketball.png"
+type = "image"
+title = "basketball app icon v1"
+
+[[generated]]
+id = "nkxSqDLhkhSvn9-DM1LoU"
+uri = "file://attached_assets/icon-v2-s-basketball.png"
+type = "image"
+title = "basketball S logo app icon v2"
+
+[[generated]]
+id = "i8e2xKG0smCdZJQ3dlcKn"
+uri = "file://attached_assets/icon-v3-slash.png"
+type = "image"
+title = "basketball slash stats icon v3"
+
 [[outputs]]
 id = "FZj9W2EktEJeb43lNxG9Q"
 uri = "file://attached_assets/logo_option_1.png"
@@ -71,3 +89,21 @@ id = "sCZtNaHuZZdYWHcJKnSqm"
 uri = "file://artifacts/api-server/assets/music/oldschool.mp3"
 type = "audio"
 title = "oldschool"
+
+[[outputs]]
+id = "o-is_xg6n0QAKkEt6snpt"
+uri = "file://attached_assets/icon-v1-basketball.png"
+type = "image"
+title = "Option 1 — Basketball glow"
+
+[[outputs]]
+id = "1C2Qo___xlLOYoW6Oz2Qf"
+uri = "file://attached_assets/icon-v2-s-basketball.png"
+type = "image"
+title = "Option 2 — Stylized S"
+
+[[outputs]]
+id = "zNKu4QgsRfCqELWutHr8E"
+uri = "file://attached_assets/icon-v3-slash.png"
+type = "image"
+title = "Option 3 — Basketball + stat slash"
