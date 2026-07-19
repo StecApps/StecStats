@@ -36,6 +36,18 @@ uri = "file://attached_assets/icon-v3-slash.png"
 type = "image"
 title = "basketball slash stats icon v3"
 
+[[generated]]
+id = "7T77IzgDrBmnpRNc2_1zK"
+uri = "file://attached_assets/icon-v4-text.png"
+type = "image"
+title = "StecStats orange text icon v4"
+
+[[generated]]
+id = "wgQnlX25xivVTo-xOac6E"
+uri = "file://attached_assets/icon-v5-ball-text.png"
+type = "image"
+title = "StecStats ball with text icon v5"
+
 [[outputs]]
 id = "FZj9W2EktEJeb43lNxG9Q"
 uri = "file://attached_assets/logo_option_1.png"
@@ -107,3 +119,15 @@ id = "zNKu4QgsRfCqELWutHr8E"
 uri = "file://attached_assets/icon-v3-slash.png"
 type = "image"
 title = "Option 3 — Basketball + stat slash"
+
+[[outputs]]
+id = "tfqsGF0hEwoQiwcFt8Won"
+uri = "file://attached_assets/icon-v4-text.png"
+type = "image"
+title = "Option A — S logo + StecStats text"
+
+[[outputs]]
+id = "pK904vEELN2wugqC5oydL"
+uri = "file://attached_assets/icon-v5-ball-text.png"
+type = "image"
+title = "Option B — Basketball + StecStats text"
