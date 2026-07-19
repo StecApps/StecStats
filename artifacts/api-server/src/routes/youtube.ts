@@ -12,6 +12,7 @@ import {
   getAuthUrl,
   exchangeCode,
   uploadToYoutube,
+  YouTubeAuthError,
 } from "../lib/youtubeClient";
 import { encryptToken, decryptToken } from "../lib/tokenEncryption";
 
@@ -267,6 +268,18 @@ router.post("/games/:gameId/highlight/upload-youtube", requireAuth, async (req, 
 
     res.json({ youtubeUrl });
   } catch (err) {
+    if (err instanceof YouTubeAuthError) {
+      logger.warn({ gameId, userId: req.appUser!.id }, "YouTube token expired — clearing stale token");
+      await db
+        .update(usersTable)
+        .set({ youtubeRefreshToken: null })
+        .where(eq(usersTable.id, req.appUser!.id));
+      res.status(403).json({
+        error: "YOUTUBE_NOT_CONNECTED",
+        message: "Your YouTube connection expired — please reconnect to continue",
+      });
+      return;
+    }
     logger.error({ err, gameId }, "YouTube upload failed");
     const msg = err instanceof Error ? err.message : "Unknown error";
     res.status(500).json({ error: `YouTube upload failed: ${msg}` });

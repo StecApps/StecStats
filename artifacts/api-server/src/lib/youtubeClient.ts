@@ -1,6 +1,13 @@
 import { google } from "googleapis";
 import type { Readable } from "stream";
 
+export class YouTubeAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "YouTubeAuthError";
+  }
+}
+
 export function isYoutubeConfigured(): boolean {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
@@ -53,29 +60,38 @@ export async function uploadToYoutube({
 
   const youtube = google.youtube({ version: "v3", auth: oauth2Client });
 
-  const response = await youtube.videos.insert(
-    {
-      part: ["snippet", "status"],
-      requestBody: {
-        snippet: {
-          title,
-          description,
-          categoryId: "17",
+  let response;
+  try {
+    response = await youtube.videos.insert(
+      {
+        part: ["snippet", "status"],
+        requestBody: {
+          snippet: {
+            title,
+            description,
+            categoryId: "17",
+          },
+          status: {
+            privacyStatus,
+            selfDeclaredMadeForKids: false,
+          },
         },
-        status: {
-          privacyStatus,
-          selfDeclaredMadeForKids: false,
+        media: {
+          mimeType: "video/mp4",
+          body: stream,
         },
       },
-      media: {
-        mimeType: "video/mp4",
-        body: stream,
+      {
+        timeout: 10 * 60 * 1000,
       },
-    },
-    {
-      timeout: 10 * 60 * 1000,
-    },
-  );
+    );
+  } catch (err: unknown) {
+    const status = (err as { status?: number; code?: number })?.status ?? (err as { status?: number; code?: number })?.code;
+    if (status === 401 || status === 403) {
+      throw new YouTubeAuthError("YouTube token expired or revoked — please reconnect");
+    }
+    throw err;
+  }
 
   const videoId = response.data.id;
   if (!videoId) throw new Error("YouTube did not return a video ID");

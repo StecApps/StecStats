@@ -549,8 +549,21 @@ export default function RecordGame() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: youtubeTitle.trim(), privacyStatus: youtubePrivacy }),
       });
-      const data = await res.json() as { youtubeUrl?: string; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
+      const data = await res.json() as { youtubeUrl?: string; error?: string; message?: string };
+      if (!res.ok) {
+        if (data.error === "YOUTUBE_NOT_CONNECTED") {
+          setIsYoutubeConnected(false);
+          setIsYoutubeDialogOpen(false);
+          toast({
+            title: "YouTube connection expired",
+            description: "Your YouTube connection expired — reconnecting now…",
+            variant: "destructive",
+          });
+          window.location.href = `/api/auth/youtube/connect?returnTo=${encodeURIComponent(`/record/${gameId}`)}`;
+          return;
+        }
+        throw new Error(data.error ?? "Upload failed");
+      }
       const url = data.youtubeUrl ?? null;
       setYoutubeVideoUrl(url);
       setIsYoutubeDialogOpen(false);
