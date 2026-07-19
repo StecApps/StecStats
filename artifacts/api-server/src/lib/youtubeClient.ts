@@ -64,6 +64,7 @@ export async function uploadToYoutube({
         },
         status: {
           privacyStatus,
+          selfDeclaredMadeForKids: false,
         },
       },
       media: {
