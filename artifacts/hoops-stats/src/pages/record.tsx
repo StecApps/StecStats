@@ -532,7 +532,7 @@ export default function RecordGame() {
 
   const handleDisconnectYoutube = async () => {
     try {
-      await fetch("/api/auth/youtube/disconnect", { method: "POST" });
+      await fetch("/api/auth/youtube", { method: "DELETE" });
       setIsYoutubeConnected(false);
       setIsYoutubeDialogOpen(false);
     } catch {

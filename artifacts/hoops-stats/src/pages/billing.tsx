@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useGetBillingStatus, useCreateCheckoutSession, useCreateBillingPortalSession } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, Crown, Sparkles, Zap, X } from "lucide-react";
+import { Loader2, Check, Crown, Sparkles, Zap, X, Youtube, Link2Off } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSearch } from "wouter";
 import { FAILED_CHECKOUT_KEY, decodeCheckoutIntent } from "@/pages/pricing";
@@ -38,12 +38,44 @@ function formatDate(value: string | null | undefined): string | null {
   return new Date(value).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 }
 
+function useYoutubeStatus() {
+  const [connected, setConnected] = useState<boolean | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const { toast } = useToast();
+
+  const refresh = useCallback(() => {
+    fetch("/api/auth/youtube/status")
+      .then((r) => r.json())
+      .then((d: { connected: boolean }) => setConnected(d.connected))
+      .catch(() => setConnected(false));
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const disconnect = useCallback(async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/auth/youtube", { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed");
+      setConnected(false);
+      toast({ title: "YouTube disconnected", description: "You can reconnect any time from the Record page." });
+    } catch {
+      toast({ title: "Couldn't disconnect YouTube. Please try again.", variant: "destructive" });
+    } finally {
+      setDisconnecting(false);
+    }
+  }, [toast]);
+
+  return { connected, disconnecting, disconnect };
+}
+
 export default function Billing() {
   const { toast } = useToast();
   const search = useSearch();
   const { data: status, isLoading } = useGetBillingStatus();
   const checkout = useCreateCheckoutSession();
   const portal = useCreateBillingPortalSession();
+  const youtube = useYoutubeStatus();
 
   const [resumeIntent, setResumeIntent] = useState<CheckoutIntent | null>(() => {
     try {
@@ -195,6 +227,46 @@ export default function Billing() {
             </Button>
           </CardContent>
         )}
+      </Card>
+
+      {/* Connected accounts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display text-2xl uppercase tracking-wide">Connected Accounts</CardTitle>
+          <CardDescription>Third-party accounts linked to your profile.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Youtube className="w-5 h-5 text-red-500" />
+              <div>
+                <p className="text-sm font-medium">YouTube</p>
+                <p className="text-xs text-muted-foreground">
+                  {youtube.connected === null
+                    ? "Checking…"
+                    : youtube.connected
+                      ? "Connected — you can upload highlight reels directly to your channel"
+                      : "Not connected"}
+                </p>
+              </div>
+            </div>
+            {youtube.connected && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={youtube.disconnect}
+                disabled={youtube.disconnecting}
+                data-testid="button-disconnect-youtube"
+                className="shrink-0 text-destructive border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+              >
+                {youtube.disconnecting
+                  ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  : <Link2Off className="w-3.5 h-3.5 mr-1.5" />}
+                Disconnect
+              </Button>
+            )}
+          </div>
+        </CardContent>
       </Card>
 
       {/* Upgrade options — show when not on premium yet */}

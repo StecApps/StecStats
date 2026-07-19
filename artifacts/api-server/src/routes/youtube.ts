@@ -99,8 +99,17 @@ router.get("/auth/youtube/callback", async (req, res) => {
   }
 });
 
-// POST /api/auth/youtube/disconnect
+// DELETE /api/auth/youtube
 // Clears the stored refresh token so the coach can reconnect with a different account.
+router.delete("/auth/youtube", requireAuth, async (req, res) => {
+  await db
+    .update(usersTable)
+    .set({ youtubeRefreshToken: null })
+    .where(eq(usersTable.id, req.appUser!.id));
+  res.json({ disconnected: true });
+});
+
+// POST /api/auth/youtube/disconnect — kept as backward-compatible alias
 router.post("/auth/youtube/disconnect", requireAuth, async (req, res) => {
   await db
     .update(usersTable)
