@@ -217,7 +217,7 @@ router.post("/games/:gameId/highlight/upload-youtube", requireAuth, async (req, 
     : "";
 
   const lines: string[] = [];
-  lines.push(`STEC STATS — Highlight Reel`);
+  lines.push(`StecStats - Highlight Reel`);
   lines.push(`${game.result ?? ""} vs ${game.opponent ?? "Opponent"}  ${game.teamScore ?? ""}–${game.opponentScore ?? ""}  ${dateStr}`.trim());
   lines.push(``);
 
