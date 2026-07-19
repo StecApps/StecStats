@@ -20,7 +20,9 @@ import RecordGame from "@/pages/record";
 import ImportData from "@/pages/import";
 import Billing from "@/pages/billing";
 import WatchStream from "@/pages/watch";
+import AdminFeedback from "@/pages/admin";
 import Layout from "@/components/layout";
+import FeedbackButton from "@/components/feedback-button";
 
 const queryClient = new QueryClient();
 
@@ -505,11 +507,13 @@ function ClerkProviderWithRoutes() {
           <Switch>
             <Route path="/watch/:code" component={WatchStream} />
             <Route path="/pricing" component={Pricing} />
+            <Route path="/admin" component={AdminFeedback} />
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
             <Route component={ProtectedApp} />
           </Switch>
+          <FeedbackButton />
           <Toaster />
         </TooltipProvider>
       </QueryClientProvider>

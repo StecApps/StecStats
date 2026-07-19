@@ -49,6 +49,7 @@ const PRO_FEATURES = [
   "Shooting gauges & advanced stats",
   "Live streaming to family & fans",
   "Saved game video & highlight reels",
+  "YouTube highlight upload with auto box score",
   "Shareable player profile",
 ];
 
