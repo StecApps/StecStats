@@ -8,9 +8,10 @@
     "build": "vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "LD_LIBRARY_PATH=/nix/store/wilz94hzz4q3fss6qvv625zvww4a6s4s-mesa-libgbm-25.0.1/lib:/nix/store/sisfq9wihyqqjzmrpik9b4xksifw97ha-libxkbcommon-1.8.1/lib:/nix/store/5flwv7rri80114p8vlz7l8qf8z5i557h-systemd-minimal-libs-257.6/lib PLAYWRIGHT_BASE_URL=http://localhost:80 playwright test"
   },
   "devDependencies": {
+    "@clerk/backend": "^3.11.6",
     "@clerk/testing": "^2.2.9",
     "@hookform/resolvers": "^3.10.0",
     "@playwright/test": "^1.61.1",

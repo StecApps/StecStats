@@ -192,6 +192,9 @@ importers:
         specifier: ^1.4.1
         version: 1.4.1
     devDependencies:
+      '@clerk/backend':
+        specifier: ^3.11.6
+        version: 3.11.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@clerk/testing':
         specifier: ^2.2.9
         version: 2.2.9(@playwright/test@1.61.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -718,10 +721,6 @@ packages:
   '@babel/types@7.29.7':
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
-
-  '@clerk/backend@3.10.0':
-    resolution: {integrity: sha512-+No8bg+3SQ76zfu199l4lwpi3z+RqmO8N33CDXPkAnhXt6cAZu4HPT0WvZ/GDpbi7ZqpDmmP9yXpCQNGwEd0+g==}
-    engines: {node: '>=20.9.0'}
 
   '@clerk/backend@3.11.6':
     resolution: {integrity: sha512-cHAmZnSbr/z4HzyP00d8C7W9SjRZpdmzrS3q9SSdt176q3kw7KK6T0MBtn684tCx5E9sQPdCUB3Hvcu71hlWOA==}
@@ -4617,15 +4616,6 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@clerk/backend@3.10.0':
-    dependencies:
-      '@clerk/shared': 4.23.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      standardwebhooks: 1.0.0
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - react
-      - react-dom
-
   '@clerk/backend@3.11.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:
       '@clerk/shared': 4.25.4(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -4637,7 +4627,7 @@ snapshots:
 
   '@clerk/express@2.1.35(express@5.2.1)':
     dependencies:
-      '@clerk/backend': 3.10.0
+      '@clerk/backend': 3.11.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       '@clerk/shared': 4.23.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       express: 5.2.1
       tslib: 2.8.1
