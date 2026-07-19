@@ -136,9 +136,9 @@ export default function Pricing() {
               </div>
               <CardDescription className="text-3xl font-display font-bold text-foreground pt-2">
                 {interval === "month" ? (
-                  <>$6.99<span className="text-sm font-sans font-normal text-muted-foreground"> / month</span></>
+                  <>$9.99<span className="text-sm font-sans font-normal text-muted-foreground"> / month</span></>
                 ) : (
-                  <>$59<span className="text-sm font-sans font-normal text-muted-foreground"> / year</span></>
+                  <>$79<span className="text-sm font-sans font-normal text-muted-foreground"> / year</span></>
                 )}
               </CardDescription>
             </CardHeader>
