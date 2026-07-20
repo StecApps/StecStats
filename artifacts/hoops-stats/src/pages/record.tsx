@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { backgroundUpload } from "@/lib/backgroundUpload";
+import { backgroundUpload, PENDING_VIDEO_UPLOAD_KEY } from "@/lib/backgroundUpload";
+import { uploadVideoBlob } from "@/lib/videoUpload";
 import { 
   useListPlayers, 
   useListTeams,
@@ -99,43 +100,6 @@ function formatMs(ms: number): string {
   return `${min}:${sec.toString().padStart(2, "0")}`;
 }
 
-async function uploadVideoBlob(blob: Blob, onProgress?: (pct: number) => void): Promise<string> {
-  const requestRes = await fetch("/api/storage/uploads/request-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name: `game-recording-${Date.now()}.webm`,
-      size: blob.size,
-      contentType: blob.type || "video/webm",
-    }),
-  });
-  if (!requestRes.ok) throw new Error("Failed to request upload URL");
-  const { uploadURL, objectPath } = await requestRes.json();
-
-  // Use XHR (not fetch) so we get real upload progress events — large game
-  // recordings can take a while on mobile connections, and a bare spinner
-  // with no feedback looks identical to a hang.
-  await new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", uploadURL);
-    xhr.setRequestHeader("Content-Type", blob.type || "video/webm");
-    xhr.timeout = 90 * 60 * 1000; // 90-minute ceiling — enough for any game recording
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Upload failed (${xhr.status})`));
-    };
-    xhr.onerror = () => reject(new Error("Network error during upload — check your connection and try again"));
-    xhr.ontimeout = () => reject(new Error("Upload timed out — video may be too large for your current connection"));
-    xhr.send(blob);
-  });
-
-  return objectPath as string;
-}
 
 function videoObjectSrc(objectPath: string, downloadFilename?: string): string {
   const base = `/api/storage/objects/${objectPath.replace(/^\/objects\//, "")}`;
@@ -2419,11 +2383,30 @@ export default function RecordGame() {
         queryClient.invalidateQueries({ queryKey: getListPlayerTeamGroupsQueryKey(pid) });
       });
       queryClient.invalidateQueries({ queryKey: getListTeamGamesQueryKey(parseInt(teamId, 10)) });
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
-      if (recordingSessionIdRef.current) {
-        deleteSession(recordingSessionIdRef.current).catch(() => {});
-        recordingSessionIdRef.current = null;
+
+      // Capture session info BEFORE clearing refs so the IndexedDB chunks
+      // remain available for retry if the upload fails or the page refreshes.
+      const capturedSessionId = recordingSessionIdRef.current;
+      const capturedMimeType = mediaRecorderRef.current?.mimeType ?? null;
+
+      // Persist a pending-upload marker so PendingVideoUploadRecoverer can
+      // reassemble the footage from IndexedDB and retry on the next app load.
+      if (capturedSessionId) {
+        try {
+          localStorage.setItem(PENDING_VIDEO_UPLOAD_KEY, JSON.stringify({
+            gameId: newGameId,
+            opponent,
+            sessionId: capturedSessionId,
+            mimeType: capturedMimeType,
+            savedAt: Date.now(),
+          }));
+        } catch {}
       }
+
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      // Do NOT deleteSession here — keep IndexedDB chunks alive until the
+      // upload succeeds. Cleanup happens inside onVideoReady below.
+      recordingSessionIdRef.current = null;
       navigate("/dashboard");
       toast({ title: "Game saved!", description: "Video is uploading in the background." });
 
@@ -2464,6 +2447,9 @@ export default function RecordGame() {
             body: JSON.stringify({ videoObjectPath: objectPath }),
           });
           if (!patchRes.ok) throw new Error('Failed to attach video to game');
+          // Upload succeeded — clean up IndexedDB and the pending marker now.
+          if (capturedSessionId) deleteSession(capturedSessionId).catch(() => {});
+          try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
           // Trigger highlight and lowlight generation (fire-and-forget)
           fetch(`/api/games/${capturedGameId}/highlight`, { method: 'POST' }).catch(() => {});
           fetch(`/api/games/${capturedGameId}/lowlight`, { method: 'POST' }).catch(() => {});

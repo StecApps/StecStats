@@ -37,3 +37,4 @@
 - [iOS MP4 multi-half recording concat](ios-mp4-multi-half-concat.md) — raw Blob([half1,half2]) is invalid MP4; upload halves individually, merge server-side via POST /api/storage/concat-segments (ffmpeg -f concat -c copy); WebM raw-concat is fine.
 - [GCS signed-URL range requests unreliable in production](gcs-signed-url-range-requests.md) — mid-file Range reads via fetch+signedUrl return garbage bytes in prod; use file.createReadStream({start,end}) from GCS SDK instead.
 - [Cueless WebM clip extraction from GCS](cueless-webm-extraction.md) — live-recorded WebM has no duration/Cues; never proxy-transcode or remote-seek — event-derived pseudo-duration + one linear `-c copy` pass with windowed outputs.
+- [Background upload resilience pattern](bg-upload-resilience.md) — IndexedDB session must NOT be deleted until onVideoReady succeeds; save stec:pending-video-upload to localStorage so PendingVideoUploadRecoverer can reassemble + retry on next load.

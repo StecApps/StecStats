@@ -10,7 +10,9 @@ import { Loader2, RefreshCw, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { backgroundUpload } from "@/lib/backgroundUpload";
+import { backgroundUpload, PENDING_VIDEO_UPLOAD_KEY } from "@/lib/backgroundUpload";
+import { getOrderedChunks, deleteSession } from "@/lib/recordingStore";
+import { uploadVideoBlob } from "@/lib/videoUpload";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import Pricing, { PENDING_CHECKOUT_KEY, FAILED_CHECKOUT_KEY, encodeCheckoutIntent, decodeCheckoutIntent } from "@/pages/pricing";
@@ -389,6 +391,15 @@ function VideoUploadBanner() {
           </div>
         </>
       )}
+      {state.status === "retrying" && (
+        <>
+          <RefreshCw className="w-4 h-4 animate-spin text-orange-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white">Retrying upload…</p>
+            <p className="text-xs text-zinc-400">Attempt {(state.retryAttempt ?? 1) + 1} of 3 · vs {state.opponent}</p>
+          </div>
+        </>
+      )}
       {state.status === "failed" && (
         <>
           <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
@@ -396,6 +407,14 @@ function VideoUploadBanner() {
             <p className="text-sm font-medium text-white">Upload failed</p>
             <p className="text-xs text-zinc-400 truncate">{state.error ?? "Check your connection and try again"}</p>
           </div>
+          <button
+            onClick={() => backgroundUpload.retry()}
+            className="flex items-center gap-1 text-orange-400 hover:text-orange-300 ml-1 text-xs font-semibold whitespace-nowrap"
+            aria-label="Retry upload"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Retry
+          </button>
           <button
             onClick={() => backgroundUpload.dismiss()}
             className="text-zinc-500 hover:text-white ml-1"
@@ -409,11 +428,93 @@ function VideoUploadBanner() {
   );
 }
 
+const PENDING_VIDEO_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function PendingVideoUploadRecoverer() {
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    if (startedRef.current) return;
+
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
+    if (!raw) return;
+
+    let pending: { gameId: number; opponent: string; sessionId: string; mimeType: string | null; savedAt: number };
+    try {
+      pending = JSON.parse(raw);
+    } catch {
+      try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
+      return;
+    }
+
+    if (Date.now() - pending.savedAt > PENDING_VIDEO_MAX_AGE_MS) {
+      try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
+      deleteSession(pending.sessionId).catch(() => {});
+      return;
+    }
+
+    const current = backgroundUpload.getSnapshot();
+    if (current && current.gameId === pending.gameId) return;
+
+    startedRef.current = true;
+
+    (async () => {
+      try {
+        const gameRes = await fetch(`/api/games/${pending.gameId}`);
+        if (!gameRes.ok) {
+          try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
+          deleteSession(pending.sessionId).catch(() => {});
+          return;
+        }
+        const game = await gameRes.json();
+        if (game.videoObjectPath) {
+          try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
+          deleteSession(pending.sessionId).catch(() => {});
+          return;
+        }
+
+        const chunks = await getOrderedChunks(pending.sessionId);
+        if (chunks.length === 0) {
+          try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
+          return;
+        }
+
+        const blob = new Blob(chunks, { type: pending.mimeType || "video/webm" });
+        const { gameId, opponent, sessionId } = pending;
+
+        backgroundUpload.start(
+          gameId,
+          opponent,
+          (onProgress) => uploadVideoBlob(blob, onProgress),
+          async (objectPath) => {
+            const patchRes = await fetch(`/api/games/${gameId}/video`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ videoObjectPath: objectPath }),
+            });
+            if (!patchRes.ok) throw new Error("Failed to attach video to game");
+            deleteSession(sessionId).catch(() => {});
+            try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
+            fetch(`/api/games/${gameId}/highlight`, { method: "POST" }).catch(() => {});
+            fetch(`/api/games/${gameId}/lowlight`, { method: "POST" }).catch(() => {});
+          },
+        );
+      } catch {
+        startedRef.current = false;
+      }
+    })();
+  }, []);
+
+  return null;
+}
+
 function ProtectedApp() {
   return (
     <>
       <Show when="signed-in">
         <PendingCheckoutResumer />
+        <PendingVideoUploadRecoverer />
         <Layout>
           <OnboardingGate>
             <Switch>
