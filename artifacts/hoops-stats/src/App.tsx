@@ -430,6 +430,33 @@ function VideoUploadBanner() {
 
 const PENDING_VIDEO_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+declare function gtag(...args: unknown[]): void;
+const ADS_CONVERSION_KEY = "stec:ads-conversion-fired";
+
+function SignupConversionTracker() {
+  const { data: players, isLoading } = useListPlayers();
+
+  useEffect(() => {
+    if (isLoading) return;
+    try {
+      if (localStorage.getItem(ADS_CONVERSION_KEY)) return;
+    } catch { return; }
+
+    const isNewUser = (players?.length ?? 0) === 0;
+    if (!isNewUser) {
+      try { localStorage.setItem(ADS_CONVERSION_KEY, "1"); } catch {}
+      return;
+    }
+
+    try {
+      gtag("event", "conversion", { send_to: "AW-11081270024/OET1CPKO9vUYEIiG-6Mp" });
+      localStorage.setItem(ADS_CONVERSION_KEY, "1");
+    } catch {}
+  }, [isLoading, players]);
+
+  return null;
+}
+
 function PendingVideoUploadRecoverer() {
   const startedRef = useRef(false);
 
@@ -515,6 +542,7 @@ function ProtectedApp() {
       <Show when="signed-in">
         <PendingCheckoutResumer />
         <PendingVideoUploadRecoverer />
+        <SignupConversionTracker />
         <Layout>
           <OnboardingGate>
             <Switch>
