@@ -54,6 +54,36 @@ uri = "file://attached_assets/icon-final.png"
 type = "image"
 title = "StecStats final orange text icon"
 
+[[generated]]
+id = "UZfxdpKNSxQQfnFD6tRiU"
+uri = "file://attached_assets/ads/stecstats-ad-coach-sideline.png"
+type = "image"
+title = "coach sideline landscape"
+
+[[generated]]
+id = "iY_GvZMASw4sfIVi-wngp"
+uri = "file://attached_assets/ads/stecstats-ad-parent-filming.png"
+type = "image"
+title = "parent filming landscape"
+
+[[generated]]
+id = "vlsg_shKpGdHP9v1G2UI8"
+uri = "file://attached_assets/ads/stecstats-ad-player-layup-square.png"
+type = "image"
+title = "player layup square"
+
+[[generated]]
+id = "HejJONCd-_Pv2LjYtSILL"
+uri = "file://attached_assets/ads/stecstats-ad-coach-player-square.png"
+type = "image"
+title = "coach player stats square"
+
+[[generated]]
+id = "Gi-lJc96_C4I4a1qQ4sW5"
+uri = "file://attached_assets/ads/stecstats-ad-overhead-court.png"
+type = "image"
+title = "overhead court landscape"
+
 [[outputs]]
 id = "FZj9W2EktEJeb43lNxG9Q"
 uri = "file://attached_assets/logo_option_1.png"
@@ -143,3 +173,39 @@ id = "bzwegz_wYplGZlBJVbqbB"
 uri = "file://attached_assets/icon-final.png"
 type = "image"
 title = "StecStats icon — orange text"
+
+[[outputs]]
+id = "O44kwnf7tdkgRdc3jfz8-"
+uri = "file://attached_assets/ads/stecstats-ad-coach-sideline.png"
+type = "image"
+title = "Coach on Sideline (Landscape 16:9)"
+
+[[outputs]]
+id = "3MmWuaVnCQuvSWc5vGmm4"
+uri = "file://attached_assets/ads/stecstats-ad-parent-filming.png"
+type = "image"
+title = "Parent Filming Game (Landscape 16:9)"
+
+[[outputs]]
+id = "9NLrSEQMCr800qtKIrvct"
+uri = "file://attached_assets/ads/stecstats-ad-overhead-court.png"
+type = "image"
+title = "Overhead Court View (Landscape 16:9)"
+
+[[outputs]]
+id = "5IjzJBvxd-jikz10QdE35"
+uri = "file://attached_assets/ads/stecstats-ad-player-layup-square.png"
+type = "image"
+title = "Player Layup (Square 1:1)"
+
+[[outputs]]
+id = "TJeJYTqf0qoN6Np0zqzoA"
+uri = "file://attached_assets/ads/stecstats-ad-coach-player-square.png"
+type = "image"
+title = "Coach Showing Stats (Square 1:1)"
+
+[[outputs]]
+id = "RkRvsXgVg_KKOBVmFHExA"
+uri = "file://artifacts/hoops-stats/public/logo.png"
+type = "image"
+title = "StecStats Logo"
