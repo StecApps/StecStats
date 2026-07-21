@@ -233,3 +233,9 @@ id = "DEijnbJOycrVmxz9IMrMw"
 uri = "file://attached_assets/stecstats-google-ads-keywords.csv"
 type = "table"
 title = "StecStats Google Ads Keywords (68 keywords)"
+
+[[outputs]]
+id = "kpGkGn5gLQt4oUljuThV_"
+uri = "file://attached_assets/stecstats-google-ads-keywords-upload.csv"
+type = "table"
+title = "StecStats Keywords — Google Ads Upload Ready"
