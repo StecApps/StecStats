@@ -227,3 +227,9 @@ id = "qitdlPTskhyq5WWs6hWTP"
 uri = "file://attached_assets/ads/app-screenshot-home-full.jpg"
 type = "image"
 title = "Full Homepage (features section)"
+
+[[outputs]]
+id = "DEijnbJOycrVmxz9IMrMw"
+uri = "file://attached_assets/stecstats-google-ads-keywords.csv"
+type = "table"
+title = "StecStats Google Ads Keywords (68 keywords)"
