@@ -28,10 +28,10 @@ export function BcardBack() {
             left: "50%",
             top: "50%",
             transform: "translate(-50%, -50%)",
-            width: "300px",
-            height: "300px",
+            width: "360px",
+            height: "360px",
             objectFit: "contain",
-            opacity: 0.05,
+            opacity: 0.15,
             pointerEvents: "none",
           }}
         />

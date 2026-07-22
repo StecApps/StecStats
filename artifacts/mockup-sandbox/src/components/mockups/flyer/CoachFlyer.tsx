@@ -24,10 +24,10 @@ export function CoachFlyer() {
             position: "absolute",
             right: "-80px",
             top: "60px",
-            width: "500px",
-            height: "500px",
+            width: "560px",
+            height: "560px",
             objectFit: "contain",
-            opacity: 0.05,
+            opacity: 0.13,
             pointerEvents: "none",
           }}
         />

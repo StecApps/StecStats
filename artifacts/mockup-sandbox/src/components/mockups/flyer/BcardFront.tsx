@@ -25,13 +25,13 @@ export function BcardFront() {
           alt=""
           style={{
             position: "absolute",
-            right: "-60px",
+            right: "-70px",
             top: "50%",
             transform: "translateY(-50%)",
-            width: "340px",
-            height: "340px",
+            width: "380px",
+            height: "380px",
             objectFit: "contain",
-            opacity: 0.07,
+            opacity: 0.18,
             pointerEvents: "none",
           }}
         />
