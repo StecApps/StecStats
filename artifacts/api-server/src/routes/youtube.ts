@@ -11,6 +11,7 @@ import {
   isYoutubeConfigured,
   getAuthUrl,
   exchangeCode,
+  revokeToken,
   uploadToYoutube,
   YouTubeAuthError,
 } from "../lib/youtubeClient";
@@ -99,22 +100,35 @@ router.get("/auth/youtube/callback", async (req, res) => {
   }
 });
 
-// DELETE /api/auth/youtube
-// Clears the stored refresh token so the coach can reconnect with a different account.
-router.delete("/auth/youtube", requireAuth, async (req, res) => {
+async function disconnectYoutube(userId: number): Promise<void> {
+  const user = await db.query.usersTable.findFirst({
+    where: eq(usersTable.id, userId),
+    columns: { youtubeRefreshToken: true },
+  });
+  if (user?.youtubeRefreshToken) {
+    try {
+      const plainToken = decryptToken(user.youtubeRefreshToken);
+      await revokeToken(plainToken);
+    } catch (err) {
+      logger.warn({ err }, "YouTube token revocation failed — clearing DB record anyway");
+    }
+  }
   await db
     .update(usersTable)
     .set({ youtubeRefreshToken: null })
-    .where(eq(usersTable.id, req.appUser!.id));
+    .where(eq(usersTable.id, userId));
+}
+
+// DELETE /api/auth/youtube
+// Revokes the token on Google's side and clears it from the DB.
+router.delete("/auth/youtube", requireAuth, async (req, res) => {
+  await disconnectYoutube(req.appUser!.id);
   res.json({ disconnected: true });
 });
 
 // POST /api/auth/youtube/disconnect — kept as backward-compatible alias
 router.post("/auth/youtube/disconnect", requireAuth, async (req, res) => {
-  await db
-    .update(usersTable)
-    .set({ youtubeRefreshToken: null })
-    .where(eq(usersTable.id, req.appUser!.id));
+  await disconnectYoutube(req.appUser!.id);
   res.json({ disconnected: true });
 });
 

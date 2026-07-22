@@ -42,6 +42,15 @@ export async function exchangeCode(code: string): Promise<{ refreshToken: string
   return { refreshToken: tokens.refresh_token ?? null };
 }
 
+export async function revokeToken(refreshToken: string): Promise<void> {
+  const client = makeOAuth2Client();
+  try {
+    await client.revokeToken(refreshToken);
+  } catch {
+    // Token may already be expired or revoked on Google's side — that's fine.
+  }
+}
+
 export async function uploadToYoutube({
   refreshToken,
   title,
