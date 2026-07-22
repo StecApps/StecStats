@@ -24,6 +24,9 @@ export function BcardBack() {
 
           {/* Left: 4 bullets */}
           <div style={{ flex: 1, paddingRight: "40px" }}>
+            <div style={{ marginBottom: "20px" }}>
+              <img src="/__mockup/logo.png" alt="StecStats" style={{ height: "36px", width: "auto", objectFit: "contain" }} />
+            </div>
             <div style={{ fontSize: "11px", color: "#f97316", fontWeight: "700", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "20px" }}>
               What you get
             </div>

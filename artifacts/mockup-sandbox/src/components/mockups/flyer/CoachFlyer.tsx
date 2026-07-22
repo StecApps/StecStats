@@ -19,18 +19,8 @@ export function CoachFlyer() {
         {/* Header */}
         <div style={{ padding: "48px 56px 36px", borderBottom: "1px solid #1e1a18" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "16px" }}>
-            {/* Basketball icon */}
-            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="22" fill="#f97316" />
-              <path d="M24 2 C24 2 24 46 24 46" stroke="#0a0807" strokeWidth="2.5" />
-              <path d="M2 24 C2 24 46 24 46 24" stroke="#0a0807" strokeWidth="2.5" />
-              <path d="M6 10 C14 16 14 32 6 38" stroke="#0a0807" strokeWidth="2.5" fill="none" />
-              <path d="M42 10 C34 16 34 32 42 38" stroke="#0a0807" strokeWidth="2.5" fill="none" />
-            </svg>
+            <img src="/__mockup/logo.png" alt="StecStats" style={{ height: "64px", width: "auto", objectFit: "contain" }} />
             <div>
-              <div style={{ fontSize: "32px", fontWeight: "800", color: "#ffffff", letterSpacing: "-0.5px", lineHeight: 1 }}>
-                StecStats
-              </div>
               <div style={{ fontSize: "13px", color: "#f97316", fontWeight: "600", letterSpacing: "2px", textTransform: "uppercase", marginTop: "4px" }}>
                 Basketball Stats & Video
               </div>

@@ -35,17 +35,7 @@ export function BcardFront() {
         <div style={{ padding: "36px 44px 0", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
           {/* Logo row */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "28px" }}>
-            <svg width="36" height="36" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="22" fill="#f97316" />
-              <path d="M24 2 C24 2 24 46 24 46" stroke="#0a0807" strokeWidth="2.5" />
-              <path d="M2 24 C2 24 46 24 46 24" stroke="#0a0807" strokeWidth="2.5" />
-              <path d="M6 10 C14 16 14 32 6 38" stroke="#0a0807" strokeWidth="2.5" fill="none" />
-              <path d="M42 10 C34 16 34 32 42 38" stroke="#0a0807" strokeWidth="2.5" fill="none" />
-            </svg>
-            <div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#ffffff", letterSpacing: "-0.5px", lineHeight: 1 }}>StecStats</div>
-              <div style={{ fontSize: "10px", color: "#f97316", fontWeight: "600", letterSpacing: "2px", textTransform: "uppercase", marginTop: "3px" }}>Basketball Stats & Video</div>
-            </div>
+            <img src="/__mockup/logo.png" alt="StecStats" style={{ height: "48px", width: "auto", objectFit: "contain" }} />
           </div>
 
           {/* Tagline */}
