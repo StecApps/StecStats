@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { backgroundUpload, PENDING_VIDEO_UPLOAD_KEY } from "@/lib/backgroundUpload";
 import { uploadVideoBlob } from "@/lib/videoUpload";
+import FilmRoom from "@/components/film-room";
 import { 
   useListPlayers, 
   useListTeams,
@@ -2832,42 +2833,12 @@ export default function RecordGame() {
                   Portrait clip — will show with black bars when watched on a landscape screen.
                 </p>
               )}
-              {events.length > 0 && (
-                <div className="space-y-1 max-w-md">
-                  <Label>Stat Moments</Label>
-                  <div className="max-h-48 overflow-y-auto space-y-1 border rounded-lg p-2">
-                    {events.map((ev, idx) => {
-                      const player = players?.find(p => p.id === ev.playerId);
-                      const seekMs = ev.videoTimestampMs - videoOffsetMs;
-                      const hasVideo = seekMs >= 0;
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          disabled={!hasVideo}
-                          className={`w-full flex items-center justify-between text-sm px-2 py-1 rounded text-left ${hasVideo ? "hover:bg-muted" : "opacity-40 cursor-not-allowed"}`}
-                          onClick={() => {
-                            if (hasVideo && playbackRef.current) {
-                              playbackRef.current.currentTime = Math.max(0, (seekMs - 10_000) / 1000);
-                              playbackRef.current.play().catch(() => {});
-                            }
-                          }}
-                        >
-                          <span className="flex items-center gap-2">
-                            {hasVideo
-                              ? <Play className="w-3 h-3 text-primary" />
-                              : <span className="w-3 h-3 text-muted-foreground text-xs">—</span>}
-                            {player?.name ?? "Player"} — {STAT_LABELS[ev.statField] ?? ev.statField}
-                          </span>
-                          <span className="font-mono text-muted-foreground">
-                            {hasVideo ? formatMs(seekMs) : "no video"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              <FilmRoom
+                videoRef={playbackRef}
+                events={events}
+                players={players ?? []}
+                videoOffsetMs={videoOffsetMs}
+              />
               {existingVideoObjectPath && !recordedPreviewUrl && (
                 <div className="max-w-md space-y-1">
                   <Label className="text-xs text-muted-foreground">
