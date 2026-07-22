@@ -16,19 +16,49 @@ export function CoachFlyer() {
         {/* Top orange stripe */}
         <div style={{ height: "6px", background: "linear-gradient(90deg, #f97316, #ea580c)" }} />
 
+        {/* Icon watermark */}
+        <img
+          src="/__mockup/icon-512.png"
+          alt=""
+          style={{
+            position: "absolute",
+            right: "-80px",
+            top: "60px",
+            width: "500px",
+            height: "500px",
+            objectFit: "contain",
+            opacity: 0.05,
+            pointerEvents: "none",
+          }}
+        />
+
         {/* Header */}
-        <div style={{ padding: "48px 56px 36px", borderBottom: "1px solid #1e1a18" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "16px" }}>
+        <div style={{ padding: "48px 56px 36px", borderBottom: "1px solid #1e1a18", position: "relative" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "20px", marginBottom: "20px" }}>
             <img src="/__mockup/logo.png" alt="StecStats" style={{ height: "64px", width: "auto", objectFit: "contain" }} />
-            <div>
-              <div style={{ fontSize: "13px", color: "#f97316", fontWeight: "600", letterSpacing: "2px", textTransform: "uppercase", marginTop: "4px" }}>
-                Basketball Stats & Video
-              </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {["For Coaches", "For Parents"].map((label) => (
+                <div
+                  key={label}
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: "700",
+                    color: "#f97316",
+                    border: "1px solid #f97316",
+                    borderRadius: "20px",
+                    padding: "4px 12px",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {label}
+                </div>
+              ))}
             </div>
           </div>
           <div style={{ fontSize: "22px", color: "#d1ccc9", fontWeight: "400", lineHeight: "1.4", maxWidth: "580px" }}>
             The all-in-one app for coaches who want{" "}
-            <span style={{ color: "#f97316", fontWeight: "600" }}>real stats, real video, and happy parents</span>
+            <span style={{ color: "#f97316", fontWeight: "600" }}>real stats, real video, and parents who never miss a moment</span>
             {" "}— all from one phone.
           </div>
         </div>

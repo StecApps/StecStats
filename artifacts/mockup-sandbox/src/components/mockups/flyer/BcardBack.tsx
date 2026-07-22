@@ -19,26 +19,62 @@ export function BcardBack() {
         {/* Top accent bar */}
         <div style={{ height: "5px", background: "linear-gradient(90deg, #f97316, #ea580c)", flexShrink: 0 }} />
 
-        {/* Main content */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", padding: "0 44px" }}>
+        {/* Icon watermark — centered behind content */}
+        <img
+          src="/__mockup/icon-512.png"
+          alt=""
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            width: "300px",
+            height: "300px",
+            objectFit: "contain",
+            opacity: 0.05,
+            pointerEvents: "none",
+          }}
+        />
 
-          {/* Left: 4 bullets */}
+        {/* Main content */}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", padding: "0 44px", position: "relative" }}>
+
+          {/* Left: bullets */}
           <div style={{ flex: 1, paddingRight: "40px" }}>
-            <div style={{ marginBottom: "20px" }}>
-              <img src="/__mockup/logo.png" alt="StecStats" style={{ height: "36px", width: "auto", objectFit: "contain" }} />
+            <div style={{ marginBottom: "14px" }}>
+              <img src="/__mockup/logo.png" alt="StecStats" style={{ height: "32px", width: "auto", objectFit: "contain" }} />
             </div>
-            <div style={{ fontSize: "11px", color: "#f97316", fontWeight: "700", textTransform: "uppercase", letterSpacing: "2px", marginBottom: "20px" }}>
-              What you get
+
+            {/* Audience row */}
+            <div style={{ display: "flex", gap: "6px", marginBottom: "16px" }}>
+              {["Coaches", "Parents"].map((label) => (
+                <div
+                  key={label}
+                  style={{
+                    fontSize: "9px",
+                    fontWeight: "700",
+                    color: "#f97316",
+                    border: "1px solid rgba(249,115,22,0.5)",
+                    borderRadius: "20px",
+                    padding: "2px 8px",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {label}
+                </div>
+              ))}
             </div>
+
             {[
-              { icon: "📊", text: "Live stat tracking — per player, per game" },
+              { icon: "📊", text: "Live stat tracking — every player, every game" },
               { icon: "📹", text: "Auto game video upload from your phone" },
-              { icon: "📡", text: "Live stream to parents in one tap" },
-              { icon: "🏆", text: "Highlight reels in minutes" },
+              { icon: "📡", text: "Live stream so parents never miss a game" },
+              { icon: "🏆", text: "Highlight reels ready in minutes" },
             ].map((item) => (
-              <div key={item.text} style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
-                <span style={{ fontSize: "18px", flexShrink: 0 }}>{item.icon}</span>
-                <span style={{ fontSize: "13px", color: "#d1ccc9", lineHeight: "1.4" }}>{item.text}</span>
+              <div key={item.text} style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "11px" }}>
+                <span style={{ fontSize: "16px", flexShrink: 0 }}>{item.icon}</span>
+                <span style={{ fontSize: "12px", color: "#d1ccc9", lineHeight: "1.4" }}>{item.text}</span>
               </div>
             ))}
           </div>
@@ -47,7 +83,7 @@ export function BcardBack() {
           <div style={{ width: "1px", height: "200px", background: "#1e1a18", flexShrink: 0 }} />
 
           {/* Right: QR + URL + price */}
-          <div style={{ paddingLeft: "40px", display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+          <div style={{ paddingLeft: "40px", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
             <div style={{ background: "#ffffff", padding: "8px", borderRadius: "8px" }}>
               <img
                 src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://stecstats.com&bgcolor=ffffff&color=0a0807&margin=0"
@@ -59,8 +95,8 @@ export function BcardBack() {
             </div>
             <div style={{ fontSize: "14px", fontWeight: "700", color: "#f97316" }}>stecstats.com</div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "11px", color: "#4a4442", marginBottom: "3px" }}>14-day free trial</div>
-              <div style={{ fontSize: "13px", color: "#9a9290" }}>$9.99/mo · $79/yr</div>
+              <div style={{ fontSize: "10px", color: "#4a4442", marginBottom: "3px" }}>14-day free trial</div>
+              <div style={{ fontSize: "12px", color: "#9a9290" }}>$9.99/mo · $79/yr</div>
             </div>
           </div>
         </div>

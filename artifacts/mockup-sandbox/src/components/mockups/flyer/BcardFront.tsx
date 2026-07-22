@@ -19,43 +19,69 @@ export function BcardFront() {
         {/* Top accent bar */}
         <div style={{ height: "5px", background: "linear-gradient(90deg, #f97316, #ea580c)", flexShrink: 0 }} />
 
-        {/* Background basketball watermark */}
-        <svg
-          style={{ position: "absolute", right: "-40px", top: "50%", transform: "translateY(-50%)", opacity: 0.04 }}
-          width="320" height="320" viewBox="0 0 48 48"
-        >
-          <circle cx="24" cy="24" r="22" fill="#f97316" />
-          <path d="M24 2 C24 2 24 46 24 46" stroke="white" strokeWidth="2.5" />
-          <path d="M2 24 C2 24 46 24 46 24" stroke="white" strokeWidth="2.5" />
-          <path d="M6 10 C14 16 14 32 6 38" stroke="white" strokeWidth="2.5" fill="none" />
-          <path d="M42 10 C34 16 34 32 42 38" stroke="white" strokeWidth="2.5" fill="none" />
-        </svg>
+        {/* Icon watermark */}
+        <img
+          src="/__mockup/icon-512.png"
+          alt=""
+          style={{
+            position: "absolute",
+            right: "-60px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: "340px",
+            height: "340px",
+            objectFit: "contain",
+            opacity: 0.07,
+            pointerEvents: "none",
+          }}
+        />
 
         {/* Main content */}
-        <div style={{ padding: "36px 44px 0", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          {/* Logo row */}
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "28px" }}>
+        <div style={{ padding: "36px 44px 0", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", position: "relative" }}>
+          {/* Logo */}
+          <div style={{ marginBottom: "20px" }}>
             <img src="/__mockup/logo.png" alt="StecStats" style={{ height: "48px", width: "auto", objectFit: "contain" }} />
           </div>
 
+          {/* Audience badge */}
+          <div style={{ display: "flex", gap: "8px", marginBottom: "14px" }}>
+            {["For Coaches", "For Parents"].map((label) => (
+              <div
+                key={label}
+                style={{
+                  fontSize: "10px",
+                  fontWeight: "700",
+                  color: "#f97316",
+                  border: "1px solid #f97316",
+                  borderRadius: "20px",
+                  padding: "3px 10px",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                }}
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+
           {/* Tagline */}
-          <div style={{ fontSize: "15px", color: "#9a9290", lineHeight: "1.55", maxWidth: "380px" }}>
+          <div style={{ fontSize: "14px", color: "#9a9290", lineHeight: "1.6", maxWidth: "360px" }}>
             Stats · Video · Live Streaming · Highlight Reels
             <br />
-            <span style={{ color: "#d1ccc9" }}>Everything a coach needs, from one phone.</span>
+            <span style={{ color: "#d1ccc9" }}>One app. Every game. The whole team.</span>
           </div>
         </div>
 
         {/* Bottom row */}
-        <div style={{ padding: "0 44px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ padding: "0 44px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "relative" }}>
           <div>
-            <div style={{ fontSize: "11px", color: "#4a4442", fontWeight: "600", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "6px" }}>
+            <div style={{ fontSize: "11px", color: "#4a4442", fontWeight: "600", textTransform: "uppercase", letterSpacing: "1.5px", marginBottom: "5px" }}>
               Free 14-day trial
             </div>
             <div style={{ fontSize: "20px", fontWeight: "800", color: "#f97316" }}>stecstats.com</div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: "13px", color: "#6b6562" }}>From</div>
+            <div style={{ fontSize: "12px", color: "#6b6562" }}>From</div>
             <div style={{ fontSize: "22px", fontWeight: "800", color: "#ffffff" }}>$9.99<span style={{ fontSize: "13px", fontWeight: "400", color: "#6b6562" }}>/mo</span></div>
           </div>
         </div>
