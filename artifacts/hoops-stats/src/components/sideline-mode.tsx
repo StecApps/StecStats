@@ -14,7 +14,7 @@ interface Player { id: number; name: string; }
 interface SidelineModeProps {
   players: Player[];
   stats: Record<number, StatCounters>;
-  updateStat: (pid: number, field: keyof StatCounters, delta: number) => void;
+  updateStat: (pid: number, field: keyof StatCounters, delta: number, timestampOffsetMs?: number) => void;
   teamName: string;
   opponent: string;
   teamScore: number;
@@ -74,8 +74,10 @@ export default function SidelineMode({
     return () => { document.body.style.overflow = ""; };
   }, []);
 
+  const SIDELINE_TIMESTAMP_OFFSET_MS = -10_000;
+
   const handleStat = (pid: number, field: keyof StatCounters, delta: number, label: string) => {
-    updateStat(pid, field, delta);
+    updateStat(pid, field, delta, SIDELINE_TIMESTAMP_OFFSET_MS);
     setLastAction({ pid, field });
     setFlash(label);
     setTimeout(() => setFlash(null), 800);

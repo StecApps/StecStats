@@ -2222,7 +2222,7 @@ export default function RecordGame() {
     }
   };
 
-  const updateStat = (pid: number, field: keyof StatCounters, increment: number) => {
+  const updateStat = (pid: number, field: keyof StatCounters, increment: number, timestampOffsetMs = 0) => {
     setStats(prev => {
       const pStats = prev[pid] || initialStats(pid);
       const nextVal = Math.max(0, pStats[field] + increment);
@@ -2242,7 +2242,7 @@ export default function RecordGame() {
     });
 
     if (isRecording && !isRecordingPaused) {
-      const videoTimestampMs = Math.max(0, Date.now() - recordingStartRef.current);
+      const videoTimestampMs = Math.max(0, Date.now() - recordingStartRef.current + timestampOffsetMs);
       setEvents(prev => [...prev, { playerId: pid, statField: field, delta: increment, videoTimestampMs }]);
     }
 
