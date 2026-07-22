@@ -239,3 +239,15 @@ id = "kpGkGn5gLQt4oUljuThV_"
 uri = "file://attached_assets/stecstats-google-ads-keywords-upload.csv"
 type = "table"
 title = "StecStats Keywords — Google Ads Upload Ready"
+
+[[outputs]]
+id = "wW2EhZdlG0pktX-MztT8Y"
+uri = "file://screenshots/card-front.jpg"
+type = "image"
+title = "Business Card — FRONT"
+
+[[outputs]]
+id = "yIJVWKVRmeAxjbUQevIxW"
+uri = "file://screenshots/card-back.jpg"
+type = "image"
+title = "Business Card — BACK"
