@@ -187,18 +187,51 @@ export default function PrintCards() {
       `}</style>
       <div style={{ background: "#e0e0e0", minHeight: "100vh", padding: 24, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: "sans-serif" }}>
 
-        <div className="instructions" style={{ width: PAGE_W, background: "#fffbe6", border: "1px solid #f0c040", borderRadius: 6, padding: "14px 18px", marginBottom: 20, fontSize: 13, color: "#555", lineHeight: 1.7 }}>
-          <strong style={{ color: "#333" }}>🖨 How to print front & back on a home printer</strong>
-          <ol style={{ marginTop: 6, paddingLeft: 20 }}>
-            <li>Open <strong>File → Print</strong> (or <kbd style={{ background: "#eee", border: "1px solid #ccc", borderRadius: 3, padding: "0 4px" }}>Cmd+P</kbd> / <kbd style={{ background: "#eee", border: "1px solid #ccc", borderRadius: 3, padding: "0 4px" }}>Ctrl+P</kbd>)</li>
-            <li>Set: Paper = <strong>US Letter</strong>, Orientation = <strong>Portrait</strong>, Margins = <strong>None</strong>, Scale = <strong>100%</strong></li>
-            <li>In <strong>More settings</strong>, enable <strong>"Background graphics"</strong> (required for the dark card background to print)</li>
-            <li>Print <strong>Page 1 only</strong> (fronts)</li>
-            <li>Take the sheet out — flip it <strong>short-edge</strong> (top stays top) — put it back in the tray</li>
-            <li>Print <strong>Page 2 only</strong> (backs)</li>
-            <li>Cut along the crop marks → <strong>8 double-sided cards</strong></li>
-          </ol>
-          <div style={{ marginTop: 8, fontSize: 12, color: "#888" }}>Tip: if backs print upside-down, flip the paper the other way for step 5.</div>
+        {/* Save as PDF button */}
+        <div className="instructions" style={{ width: PAGE_W, marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            onClick={() => window.print()}
+            style={{ background: "#f97316", color: "#fff", border: "none", borderRadius: 8, padding: "12px 28px", fontSize: 15, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 2px 8px rgba(249,115,22,0.4)" }}
+          >
+            <span style={{ fontSize: 18 }}>⬇</span> Save as PDF / Print
+          </button>
+          <span style={{ fontSize: 13, color: "#555" }}>
+            In the dialog that opens → set <strong>Destination</strong> to <strong>"Save as PDF"</strong> to get a file for your print shop.
+          </span>
+        </div>
+
+        {/* Instructions */}
+        <div className="instructions" style={{ width: PAGE_W, marginBottom: 20, display: "flex", gap: 16 }}>
+
+          {/* Print shop */}
+          <div style={{ flex: 1, background: "#f0f7ff", border: "1px solid #bdd7f5", borderRadius: 6, padding: "14px 16px", fontSize: 13, color: "#444", lineHeight: 1.7 }}>
+            <strong style={{ color: "#1e4080", display: "block", marginBottom: 4 }}>🏪 Saving a PDF for a print shop</strong>
+            <ol style={{ margin: 0, paddingLeft: 18 }}>
+              <li>Click <strong>"Save as PDF / Print"</strong> above</li>
+              <li>Change <strong>Destination</strong> → <strong>Save as PDF</strong></li>
+              <li>Margins = <strong>None</strong> · Scale = <strong>100%</strong></li>
+              <li>Open <strong>More settings</strong> → enable <strong>"Background graphics"</strong></li>
+              <li>Click <strong>Save</strong> — you get a 2-page PDF</li>
+              <li>Hand <strong>both pages</strong> to the shop and ask for <strong>double-sided, cut to 3.5" × 2"</strong></li>
+            </ol>
+            <div style={{ marginTop: 8, fontSize: 11, color: "#6b8ab0" }}>Crop marks are included on every card so the shop knows exactly where to cut.</div>
+          </div>
+
+          {/* Home printer */}
+          <div style={{ flex: 1, background: "#fffbe6", border: "1px solid #f0c040", borderRadius: 6, padding: "14px 16px", fontSize: 13, color: "#555", lineHeight: 1.7 }}>
+            <strong style={{ color: "#7a5c00", display: "block", marginBottom: 4 }}>🖨 Printing at home (front & back)</strong>
+            <ol style={{ margin: 0, paddingLeft: 18 }}>
+              <li>Click <strong>"Save as PDF / Print"</strong> above</li>
+              <li>Margins = <strong>None</strong> · Scale = <strong>100%</strong></li>
+              <li><strong>More settings</strong> → enable <strong>"Background graphics"</strong></li>
+              <li>Print <strong>Page 1 only</strong> (fronts)</li>
+              <li>Flip the sheet <strong>short-edge</strong> (top stays top), put back in tray</li>
+              <li>Print <strong>Page 2 only</strong> (backs)</li>
+              <li>Cut along the crop marks → <strong>8 double-sided cards</strong></li>
+            </ol>
+            <div style={{ marginTop: 8, fontSize: 11, color: "#a07a00" }}>Tip: if backs print upside-down, flip the paper the other way in step 5.</div>
+          </div>
+
         </div>
 
         <PrintPage label="Page 1 — FRONTS" note="Print this page first">
