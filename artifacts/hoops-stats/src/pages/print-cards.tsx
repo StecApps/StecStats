@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 
 const LOGO = "/logo.png";
 const ICON = "/icon-512.png";
-const QR = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=https://stecstats.com&bgcolor=ffffff&color=0a0807&margin=0";
 const QR_SM = "https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=https://stecstats.com&bgcolor=ffffff&color=0a0807&margin=0";
 
 const CARD_W = 336;
@@ -15,15 +14,35 @@ const PAGE_CONTENT_H = 1023;
 const H_PAD = Math.round((PAGE_W - COLS * CARD_W - (COLS - 1) * GUTTER) / 2);
 const V_PAD = Math.round((PAGE_CONTENT_H - ROWS * CARD_H - (ROWS - 1) * GUTTER) / 2);
 
-const s: Record<string, React.CSSProperties> = {
-  bar: { height: 3, background: "linear-gradient(90deg,#f97316,#ea580c)", flexShrink: 0 },
-  card: { position: "absolute", width: CARD_W, height: CARD_H, background: "#0a0807", overflow: "hidden", display: "flex", flexDirection: "column", fontFamily: "'Helvetica Neue',Arial,sans-serif" },
-  watermark: { position: "absolute", objectFit: "contain", pointerEvents: "none" },
+const cardBase: React.CSSProperties = {
+  position: "absolute",
+  width: CARD_W,
+  height: CARD_H,
+  background: "#0a0807",
+  overflow: "hidden",
+  display: "flex",
+  flexDirection: "column",
+  fontFamily: "'Helvetica Neue',Arial,sans-serif",
+  WebkitPrintColorAdjust: "exact",
+  printColorAdjust: "exact",
+} as React.CSSProperties;
+
+const bar: React.CSSProperties = {
+  height: 4,
+  background: "linear-gradient(90deg,#f97316,#ea580c)",
+  flexShrink: 0,
+  WebkitPrintColorAdjust: "exact",
+  printColorAdjust: "exact",
+} as React.CSSProperties;
+
+const watermark: React.CSSProperties = {
+  position: "absolute",
+  objectFit: "contain",
+  pointerEvents: "none",
 };
 
 function CropMarks({ x, y }: { x: number; y: number }) {
-  const c = "#aaa";
-  const thin = { background: c, position: "absolute" } as React.CSSProperties;
+  const thin = { background: "#999", position: "absolute" } as React.CSSProperties;
   return (
     <>
       <div style={{ ...thin, left: x, top: y - 8, width: 0.5, height: 6 }} />
@@ -42,32 +61,36 @@ function CardFront({ x, y }: { x: number; y: number }) {
   return (
     <>
       <CropMarks x={x} y={y} />
-      <div style={{ ...s.card, left: x, top: y }}>
-        <div style={s.bar} />
-        <img src={ICON} alt="" style={{ ...s.watermark, right: -30, top: "50%", transform: "translateY(-50%)", width: 180, height: 180, opacity: 0.18 }} />
+      <div style={{ ...cardBase, left: x, top: y }}>
+        <div style={bar} />
+        <img src={ICON} alt="" style={{ ...watermark, right: -30, top: "50%", transform: "translateY(-50%)", width: 180, height: 180, opacity: 0.18 }} />
         <div style={{ padding: "12px 16px 0", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", position: "relative" }}>
-          <img src={LOGO} alt="StecStats" style={{ height: 22, objectFit: "contain", marginBottom: 7 }} />
-          <div style={{ display: "flex", gap: 5, marginBottom: 6 }}>
+          {/* Logo — bumped from 22 → 28px */}
+          <img src={LOGO} alt="StecStats" style={{ height: 28, objectFit: "contain", objectPosition: "left", marginBottom: 8 }} />
+          <div style={{ display: "flex", gap: 5, marginBottom: 7 }}>
             {["For Coaches", "For Parents"].map(l => (
-              <div key={l} style={{ fontSize: 6, fontWeight: 700, color: "#f97316", border: "1px solid #f97316", borderRadius: 10, padding: "2px 6px", textTransform: "uppercase", letterSpacing: 0.3 }}>{l}</div>
+              <div key={l} style={{ fontSize: 6.5, fontWeight: 700, color: "#f97316", border: "1.5px solid #f97316", borderRadius: 10, padding: "2px 6px", textTransform: "uppercase", letterSpacing: 0.3 }}>{l}</div>
             ))}
           </div>
-          <div style={{ fontSize: 8, color: "#9a9290", lineHeight: 1.5 }}>
+          {/* Description — boosted from #9a9290 → #b8b4b2, tagline from #d1ccc9 → #ffffff */}
+          <div style={{ fontSize: 8.5, color: "#b8b4b2", lineHeight: 1.55 }}>
             Stats · Video · Live Streaming · Highlight Reels<br />
-            <span style={{ color: "#d1ccc9" }}>One app. Every game. The whole team.</span>
+            <span style={{ color: "#ffffff", fontWeight: 600 }}>One app. Every game. The whole team.</span>
           </div>
         </div>
         <div style={{ padding: "0 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-end", position: "relative" }}>
           <div>
-            <div style={{ fontSize: 6, color: "#4a4442", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 2 }}>Free 14-day trial</div>
+            {/* Label — boosted from #4a4442 → #8a8685 */}
+            <div style={{ fontSize: 6.5, color: "#8a8685", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 2 }}>Free 14-day trial</div>
             <div style={{ fontSize: 11, fontWeight: 800, color: "#f97316" }}>stecstats.com</div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 6, color: "#6b6562" }}>From</div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "#fff" }}>$9.99<span style={{ fontSize: 7, fontWeight: 400, color: "#6b6562" }}>/mo</span></div>
+            {/* "From" label — boosted from #6b6562 → #9a9694 */}
+            <div style={{ fontSize: 6.5, color: "#9a9694" }}>From</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#ffffff" }}>$9.99<span style={{ fontSize: 8, fontWeight: 400, color: "#9a9694" }}>/mo</span></div>
           </div>
         </div>
-        <div style={s.bar} />
+        <div style={bar} />
       </div>
     </>
   );
@@ -77,12 +100,13 @@ function CardBack({ x, y }: { x: number; y: number }) {
   return (
     <>
       <CropMarks x={x} y={y} />
-      <div style={{ ...s.card, left: x, top: y }}>
-        <div style={s.bar} />
-        <img src={ICON} alt="" style={{ ...s.watermark, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 180, height: 180, opacity: 0.15 }} />
+      <div style={{ ...cardBase, left: x, top: y }}>
+        <div style={bar} />
+        <img src={ICON} alt="" style={{ ...watermark, left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 180, height: 180, opacity: 0.15 }} />
         <div style={{ flex: 1, display: "flex", alignItems: "center", padding: "0 16px", position: "relative" }}>
           <div style={{ flex: 1, paddingRight: 12 }}>
-            <img src={LOGO} alt="StecStats" style={{ height: 16, objectFit: "contain", marginBottom: 6 }} />
+            {/* Logo — bumped from 16 → 20px */}
+            <img src={LOGO} alt="StecStats" style={{ height: 20, objectFit: "contain", objectPosition: "left", marginBottom: 7 }} />
             {[
               { icon: "📊", text: "Live stat tracking — every player" },
               { icon: "📹", text: "Auto game video upload" },
@@ -91,22 +115,25 @@ function CardBack({ x, y }: { x: number; y: number }) {
             ].map(item => (
               <div key={item.text} style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}>
                 <span style={{ fontSize: 9 }}>{item.icon}</span>
-                <span style={{ fontSize: 7, color: "#d1ccc9" }}>{item.text}</span>
+                {/* Bullet text — boosted from #d1ccc9 → #ffffff */}
+                <span style={{ fontSize: 7.5, color: "#ffffff" }}>{item.text}</span>
               </div>
             ))}
           </div>
-          <div style={{ width: 1, height: 120, background: "#1e1a18", flexShrink: 0 }} />
+          {/* Divider — slightly lighter so it's visible */}
+          <div style={{ width: 1, height: 120, background: "#2e2a28", flexShrink: 0 }} />
           <div style={{ paddingLeft: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
             <div style={{ background: "#fff", padding: 4, borderRadius: 4 }}>
               <img src={QR_SM} width={60} height={60} alt="QR" style={{ display: "block" }} />
             </div>
             <div style={{ fontSize: 8, fontWeight: 700, color: "#f97316" }}>stecstats.com</div>
-            <div style={{ fontSize: 7, color: "#d1ccc9", textAlign: "center" }}>401-365-0933</div>
-            <div style={{ fontSize: 6, color: "#9a9290", textAlign: "center" }}>Sstec@stecstats.com</div>
-            <div style={{ fontSize: 5, color: "#6b6562", textAlign: "center" }}>14-day free · $9.99/mo</div>
+            {/* Contact — boosted from #d1ccc9 → #ffffff, email from #9a9290 → #c8c4c2 */}
+            <div style={{ fontSize: 7.5, color: "#ffffff", textAlign: "center", fontWeight: 600 }}>401-365-0933</div>
+            <div style={{ fontSize: 6.5, color: "#c8c4c2", textAlign: "center" }}>Sstec@stecstats.com</div>
+            <div style={{ fontSize: 6, color: "#9a9694", textAlign: "center" }}>14-day free · $9.99/mo</div>
           </div>
         </div>
-        <div style={s.bar} />
+        <div style={bar} />
       </div>
     </>
   );
@@ -142,8 +169,6 @@ function CardGrid({ front }: { front: boolean }) {
 }
 
 export default function PrintCards() {
-  const printedRef = useRef(false);
-
   useEffect(() => {
     document.title = "StecStats – Print Business Cards";
   }, []);
@@ -157,6 +182,7 @@ export default function PrintCards() {
           .instructions { display: none !important; }
           body { background: white !important; padding: 0 !important; }
           .print-page { margin: 0 !important; page-break-after: always; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
       <div style={{ background: "#e0e0e0", minHeight: "100vh", padding: 24, display: "flex", flexDirection: "column", alignItems: "center", fontFamily: "sans-serif" }}>
@@ -166,12 +192,13 @@ export default function PrintCards() {
           <ol style={{ marginTop: 6, paddingLeft: 20 }}>
             <li>Open <strong>File → Print</strong> (or <kbd style={{ background: "#eee", border: "1px solid #ccc", borderRadius: 3, padding: "0 4px" }}>Cmd+P</kbd> / <kbd style={{ background: "#eee", border: "1px solid #ccc", borderRadius: 3, padding: "0 4px" }}>Ctrl+P</kbd>)</li>
             <li>Set: Paper = <strong>US Letter</strong>, Orientation = <strong>Portrait</strong>, Margins = <strong>None</strong>, Scale = <strong>100%</strong></li>
+            <li>In <strong>More settings</strong>, enable <strong>"Background graphics"</strong> (required for the dark card background to print)</li>
             <li>Print <strong>Page 1 only</strong> (fronts)</li>
             <li>Take the sheet out — flip it <strong>short-edge</strong> (top stays top) — put it back in the tray</li>
             <li>Print <strong>Page 2 only</strong> (backs)</li>
             <li>Cut along the crop marks → <strong>8 double-sided cards</strong></li>
           </ol>
-          <div style={{ marginTop: 8, fontSize: 12, color: "#888" }}>Tip: if backs print upside-down, flip the paper the other way for step 4.</div>
+          <div style={{ marginTop: 8, fontSize: 12, color: "#888" }}>Tip: if backs print upside-down, flip the paper the other way for step 5.</div>
         </div>
 
         <PrintPage label="Page 1 — FRONTS" note="Print this page first">
