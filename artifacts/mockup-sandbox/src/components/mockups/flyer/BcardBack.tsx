@@ -82,7 +82,7 @@ export function BcardBack() {
           {/* Divider */}
           <div style={{ width: "1px", height: "200px", background: "#1e1a18", flexShrink: 0 }} />
 
-          {/* Right: QR + URL + price */}
+          {/* Right: contact + QR */}
           <div style={{ paddingLeft: "40px", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
             <div style={{ background: "#ffffff", padding: "8px", borderRadius: "8px" }}>
               <img
@@ -95,8 +95,12 @@ export function BcardBack() {
             </div>
             <div style={{ fontSize: "14px", fontWeight: "700", color: "#f97316" }}>stecstats.com</div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: "10px", color: "#4a4442", marginBottom: "3px" }}>14-day free trial</div>
-              <div style={{ fontSize: "12px", color: "#9a9290" }}>$9.99/mo · $79/yr</div>
+              <div style={{ fontSize: "11px", color: "#d1ccc9", marginBottom: "3px" }}>401-365-0933</div>
+              <div style={{ fontSize: "10px", color: "#9a9290" }}>Sstec@stecstats.com</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "9px", color: "#4a4442" }}>14-day free trial</div>
+              <div style={{ fontSize: "10px", color: "#6b6562" }}>$9.99/mo · $79/yr</div>
             </div>
           </div>
         </div>

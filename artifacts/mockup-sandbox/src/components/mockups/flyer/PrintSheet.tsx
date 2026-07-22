@@ -96,7 +96,9 @@ function CardBack() {
             <img src="https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=https://stecstats.com&bgcolor=ffffff&color=0a0807&margin=0" alt="QR" width={60} height={60} style={{ display: "block" }} />
           </div>
           <div style={{ fontSize: "8px", fontWeight: "700", color: "#f97316" }}>stecstats.com</div>
-          <div style={{ fontSize: "6px", color: "#6b6562", textAlign: "center" }}>14-day free trial<br />$9.99/mo · $79/yr</div>
+          <div style={{ fontSize: "6px", color: "#d1ccc9", textAlign: "center", marginBottom: "2px" }}>401-365-0933</div>
+          <div style={{ fontSize: "5px", color: "#9a9290", textAlign: "center", marginBottom: "3px" }}>Sstec@stecstats.com</div>
+          <div style={{ fontSize: "5px", color: "#6b6562", textAlign: "center" }}>14-day free trial · $9.99/mo</div>
         </div>
       </div>
       <div style={{ height: "3px", background: "linear-gradient(90deg,#f97316,#ea580c)", flexShrink: 0 }} />
