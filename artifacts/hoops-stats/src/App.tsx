@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, Component, useSyncExternalStore } from "react";
+import PrintCards from "./pages/print-cards";
 import type { ReactNode, ErrorInfo } from "react";
 import { Switch, Route, Redirect, useLocation, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -636,6 +637,7 @@ function ClerkProviderWithRoutes() {
           <Switch>
             <Route path="/watch/:code" component={WatchStream} />
             <Route path="/pricing" component={Pricing} />
+            <Route path="/print-cards" component={PrintCards} />
             <Route path="/admin" component={AdminFeedback} />
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in/*?" component={SignInPage} />
