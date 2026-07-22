@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { backgroundUpload, PENDING_VIDEO_UPLOAD_KEY } from "@/lib/backgroundUpload";
 import { uploadVideoBlob } from "@/lib/videoUpload";
 import FilmRoom from "@/components/film-room";
+import SidelineMode from "@/components/sideline-mode";
 import { 
   useListPlayers, 
   useListTeams,
@@ -447,6 +448,7 @@ export default function RecordGame() {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isRepairing, setIsRepairing] = useState(false);
   const [repairError, setRepairError] = useState<string | null>(null);
+  const [sidelineMode, setSidelineMode] = useState(false);
   const highlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
   const lowlightBlobCacheRef = useRef<{ path: string; blob: Blob } | null>(null);
   const [isPreparingShare, setIsPreparingShare] = useState(false);
@@ -2703,6 +2705,18 @@ export default function RecordGame() {
 
   return (
     <div className="flex flex-col space-y-6 pb-40 md:pb-24">
+      {sidelineMode && isRecording && (
+        <SidelineMode
+          players={(players ?? []).filter(p => selectedPlayerIds.includes(p.id))}
+          stats={stats}
+          updateStat={updateStat}
+          teamName={teams?.find(t => t.id.toString() === teamId)?.name ?? "Team"}
+          opponent={opponent}
+          teamScore={teamScore}
+          opponentScore={opponentScore}
+          onClose={() => setSidelineMode(false)}
+        />
+      )}
       <Dialog open={showRecoveryPrompt} onOpenChange={(open) => { if (!open) handleDiscardDraft(); }}>
         <DialogContent>
           <DialogHeader>
@@ -2724,6 +2738,17 @@ export default function RecordGame() {
           <span className="w-1.5 h-8 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.6)]" />
           {isEditing ? "Edit Game" : "Record Game"}
         </h1>
+        {isRecording && selectedPlayerIds.length > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto border-primary/50 text-primary hover:bg-primary hover:text-primary-foreground font-bold uppercase tracking-wide gap-2"
+            onClick={() => setSidelineMode(true)}
+          >
+            <Radio className="w-3.5 h-3.5 animate-pulse" />
+            Sideline Mode
+          </Button>
+        )}
       </div>
 
       <Card className="border-border/60 bg-card/40">
