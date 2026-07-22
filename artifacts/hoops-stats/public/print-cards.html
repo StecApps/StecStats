@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StecStats – Print Business Cards</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background: #e0e0e0;
+      padding: 24px;
+    }
+
+    .instructions {
+      max-width: 816px;
+      margin: 0 auto 20px;
+      background: #fffbe6;
+      border: 1px solid #f0c040;
+      border-radius: 6px;
+      padding: 14px 18px;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.6;
+    }
+    .instructions strong { color: #333; }
+    .instructions ol { margin-top: 4px; padding-left: 18px; }
+
+    /* ── Print page ── */
+    .print-page {
+      width: 816px; /* 8.5in at 96dpi */
+      height: 1056px; /* 11in at 96dpi */
+      background: white;
+      margin: 0 auto 32px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .page-label {
+      background: #f5f5f5;
+      border-bottom: 1px solid #ddd;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #444;
+      font-family: monospace;
+      display: flex;
+      justify-content: space-between;
+    }
+    .page-label span { font-weight: 400; color: #888; }
+
+    .card-area {
+      position: relative;
+      width: 100%;
+      /* 1056 - 33px label bar */
+      height: 1023px;
+    }
+
+    /* ── Individual card ── */
+    .card {
+      position: absolute;
+      width: 336px;  /* 3.5in */
+      height: 192px; /* 2in */
+      background: #0a0807;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .bar { height: 3px; background: linear-gradient(90deg, #f97316, #ea580c); flex-shrink: 0; }
+
+    .watermark {
+      position: absolute;
+      object-fit: contain;
+      pointer-events: none;
+    }
+
+    /* ── Front card ── */
+    .front .watermark { right: -30px; top: 50%; transform: translateY(-50%); width: 180px; height: 180px; opacity: 0.18; }
+    .front .body { padding: 12px 16px 0; flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; }
+    .front .logo-img { height: 22px; object-fit: contain; margin-bottom: 7px; }
+    .front .badges { display: flex; gap: 5px; margin-bottom: 6px; }
+    .front .badge {
+      font-size: 6px; font-weight: 700; color: #f97316;
+      border: 1px solid #f97316; border-radius: 10px;
+      padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    .front .tagline { font-size: 8px; color: #9a9290; line-height: 1.5; }
+    .front .tagline em { color: #d1ccc9; font-style: normal; }
+    .front .footer { padding: 0 16px 10px; display: flex; justify-content: space-between; align-items: flex-end; position: relative; }
+    .front .url { font-size: 11px; font-weight: 800; color: #f97316; }
+    .front .trial { font-size: 6px; color: #4a4442; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 2px; }
+    .front .price { font-size: 12px; font-weight: 800; color: #fff; }
+    .front .price-unit { font-size: 7px; font-weight: 400; color: #6b6562; }
+
+    /* ── Back card ── */
+    .back .watermark { left: 50%; top: 50%; transform: translate(-50%, -50%); width: 180px; height: 180px; opacity: 0.15; }
+    .back .body { flex: 1; display: flex; align-items: center; padding: 0 16px; position: relative; gap: 0; }
+    .back .left { flex: 1; padding-right: 12px; }
+    .back .logo-img { height: 16px; object-fit: contain; margin-bottom: 6px; }
+    .back .bullet { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+    .back .bullet-icon { font-size: 9px; }
+    .back .bullet-text { font-size: 7px; color: #d1ccc9; line-height: 1.3; }
+    .back .divider { width: 1px; height: 120px; background: #1e1a18; flex-shrink: 0; }
+    .back .right { padding-left: 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .back .qr-wrap { background: #fff; padding: 4px; border-radius: 4px; }
+    .back .qr-url { font-size: 8px; font-weight: 700; color: #f97316; }
+    .back .contact { font-size: 6px; color: #d1ccc9; text-align: center; }
+    .back .contact-email { font-size: 5px; color: #9a9290; text-align: center; }
+    .back .pricing-note { font-size: 5px; color: #6b6562; text-align: center; }
+
+    /* ── Crop marks ── */
+    .crop { position: absolute; background: #aaa; }
+    .crop-vt { width: 0.5px; height: 6px; }
+    .crop-hz { height: 0.5px; width: 6px; }
+
+    /* ── Print media ── */
+    @media print {
+      @page { size: letter portrait; margin: 0; }
+      body { background: white; padding: 0; }
+      .instructions { display: none; }
+      .print-page { margin: 0; page-break-after: always; }
+      .page-label { display: none; }
+      .card-area { height: 1056px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="instructions">
+  <strong>🖨 How to print front &amp; back on a home printer</strong><br />
+  <ol>
+    <li>Open <strong>File → Print</strong> (or <kbd>Cmd+P</kbd> / <kbd>Ctrl+P</kbd>)</li>
+    <li>Set paper size to <strong>US Letter</strong>, orientation <strong>Portrait</strong>, margins <strong>None</strong></li>
+    <li>Print <strong>Page 1</strong> (fronts) only first</li>
+    <li>Take the sheet out, flip it <strong>short-edge</strong> (top stays top), put it back in the paper tray</li>
+    <li>Print <strong>Page 2</strong> (backs) only</li>
+    <li>Cut along the crop marks — you'll have <strong>8 double-sided cards</strong></li>
+  </ol>
+  <br />
+  <em>Tip: if the backs come out upside-down, try flipping the paper the other way and reprinting Page 2.</em>
+</div>
+
+<!-- PAGE 1 — FRONTS -->
+<div class="print-page" id="page1">
+  <div class="page-label">StecStats · Page 1 — FRONTS <span>Print this page first</span></div>
+  <div class="card-area" id="fronts"></div>
+</div>
+
+<!-- PAGE 2 — BACKS -->
+<div class="print-page" id="page2">
+  <div class="page-label">StecStats · Page 2 — BACKS <span>Flip sheet, place back in tray, then print</span></div>
+  <div class="card-area" id="backs"></div>
+</div>
+
+<script>
+  const CARD_W = 336, CARD_H = 192, COLS = 2, ROWS = 4, GUTTER = 24;
+  const PAGE_W = 816, PAGE_H = 1023;
+  const H_PAD = Math.round((PAGE_W - COLS * CARD_W - (COLS - 1) * GUTTER) / 2);
+  const V_PAD = Math.round((PAGE_H - ROWS * CARD_H - (ROWS - 1) * GUTTER) / 2);
+
+  const LOGO = '/logo.png';
+  const ICON = '/icon-512.png';
+  const QR   = 'https://api.qrserver.com/v1/create-qr-code/?size=60x60&data=https://stecstats.com&bgcolor=ffffff&color=0a0807&margin=0';
+
+  function cropMarks(x, y) {
+    return `
+      <div class="crop crop-vt" style="left:${x}px;top:${y - 8}px"></div>
+      <div class="crop crop-hz" style="left:${x - 8}px;top:${y}px"></div>
+      <div class="crop crop-vt" style="left:${x + CARD_W}px;top:${y - 8}px"></div>
+      <div class="crop crop-hz" style="left:${x + CARD_W + 2}px;top:${y}px"></div>
+      <div class="crop crop-vt" style="left:${x}px;top:${y + CARD_H + 2}px"></div>
+      <div class="crop crop-hz" style="left:${x - 8}px;top:${y + CARD_H}px"></div>
+      <div class="crop crop-vt" style="left:${x + CARD_W}px;top:${y + CARD_H + 2}px"></div>
+      <div class="crop crop-hz" style="left:${x + CARD_W + 2}px;top:${y + CARD_H}px"></div>
+    `;
+  }
+
+  function frontCard(x, y) {
+    return `
+      ${cropMarks(x, y)}
+      <div class="card front" style="left:${x}px;top:${y}px">
+        <div class="bar"></div>
+        <img class="watermark" src="${ICON}" alt="" />
+        <div class="body">
+          <img class="logo-img" src="${LOGO}" alt="StecStats" />
+          <div class="badges">
+            <div class="badge">For Coaches</div>
+            <div class="badge">For Parents</div>
+          </div>
+          <div class="tagline">
+            Stats · Video · Live Streaming · Highlight Reels<br>
+            <em>One app. Every game. The whole team.</em>
+          </div>
+        </div>
+        <div class="footer">
+          <div>
+            <div class="trial">Free 14-day trial</div>
+            <div class="url">stecstats.com</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:6px;color:#6b6562">From</div>
+            <div class="price">$9.99<span class="price-unit">/mo</span></div>
+          </div>
+        </div>
+        <div class="bar"></div>
+      </div>`;
+  }
+
+  function backCard(x, y) {
+    return `
+      ${cropMarks(x, y)}
+      <div class="card back" style="left:${x}px;top:${y}px">
+        <div class="bar"></div>
+        <img class="watermark" src="${ICON}" alt="" />
+        <div class="body">
+          <div class="left">
+            <img class="logo-img" src="${LOGO}" alt="StecStats" />
+            <div class="bullet"><span class="bullet-icon">📊</span><span class="bullet-text">Live stat tracking — every player</span></div>
+            <div class="bullet"><span class="bullet-icon">📹</span><span class="bullet-text">Auto game video upload</span></div>
+            <div class="bullet"><span class="bullet-icon">📡</span><span class="bullet-text">Live stream so parents never miss a game</span></div>
+            <div class="bullet"><span class="bullet-icon">🏆</span><span class="bullet-text">Highlight reels in minutes</span></div>
+          </div>
+          <div class="divider"></div>
+          <div class="right">
+            <div class="qr-wrap"><img src="${QR}" width="60" height="60" alt="QR" /></div>
+            <div class="qr-url">stecstats.com</div>
+            <div class="contact">401-365-0933</div>
+            <div class="contact-email">Sstec@stecstats.com</div>
+            <div class="pricing-note">14-day free trial · $9.99/mo</div>
+          </div>
+        </div>
+        <div class="bar"></div>
+      </div>`;
+  }
+
+  let frontsHTML = '', backsHTML = '';
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const x = H_PAD + col * (CARD_W + GUTTER);
+      const y = V_PAD + row * (CARD_H + GUTTER);
+      frontsHTML += frontCard(x, y);
+      backsHTML  += backCard(x, y);
+    }
+  }
+
+  document.getElementById('fronts').innerHTML = frontsHTML;
+  document.getElementById('backs').innerHTML  = backsHTML;
+</script>
+</body>
+</html>
