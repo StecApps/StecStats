@@ -38,7 +38,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { getIceServers, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
-import { getSportProfile } from "@/lib/sport-profiles";
+import { getSportProfile, SPORT_EMOJI } from "@/lib/sport-profiles";
 
 type StatCounters = {
   playerId: number;
@@ -2644,6 +2644,9 @@ export default function RecordGame() {
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin" /></div>;
   }
 
+  const sportProfile = getSportProfile(teams?.find(t => t.id.toString() === teamId)?.sport);
+  const sportIcon = SPORT_EMOJI[sportProfile.id];
+
   const rosterChips = (
     <div className="flex flex-wrap gap-2">
       {players?.map(p => {
@@ -2656,14 +2659,13 @@ export default function RecordGame() {
             onClick={() => handleTogglePlayer(p.id)}
           >
             {isSelected && <Check className="w-4 h-4 mr-2" />}
+            <span className="mr-1">{sportIcon}</span>
             {p.name}
           </Button>
         );
       })}
     </div>
   );
-
-  const sportProfile = getSportProfile(teams?.find(t => t.id.toString() === teamId)?.sport);
 
   const statTrackerCards = selectedPlayerIds.map(pid => {
     const player = players?.find(p => p.id === pid);
@@ -2673,7 +2675,9 @@ export default function RecordGame() {
     return (
       <Card key={pid} className="border-secondary/20 shadow-md overflow-hidden @container">
         <div className="bg-muted/60 border-b border-border/60 px-4 py-2 tablet-landscape-lg:px-3 tablet-landscape-lg:py-1.5 flex justify-between items-center">
-          <h3 className="font-display font-bold text-xl tablet-landscape-lg:text-base uppercase tracking-wide text-foreground">{player?.name}</h3>
+          <h3 className="font-display font-bold text-xl tablet-landscape-lg:text-base uppercase tracking-wide text-foreground">
+            <span className="mr-1.5">{sportIcon}</span>{player?.name}
+          </h3>
           <div className="font-display font-bold text-2xl tablet-landscape-lg:text-lg text-primary">{score} {sportProfile.scoreLabel}</div>
         </div>
         <CardContent className="p-4 tablet-landscape-lg:p-2.5 grid grid-cols-2 @lg:grid-cols-4 @4xl:grid-cols-8 gap-4 tablet-landscape-lg:gap-2 bg-card">

@@ -46,6 +46,11 @@ export interface SportProfile {
   singleStats: { label: string; field: keyof StatCounters }[];
 }
 
+export const SPORT_EMOJI: Record<SportId, string> = {
+  basketball: "🏀",
+  soccer: "⚽",
+};
+
 export const BASKETBALL_PROFILE: SportProfile = {
   id: "basketball",
   name: "Basketball",
