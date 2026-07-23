@@ -21,4 +21,10 @@ export interface PlayerGameStatLine {
   steals: number;
   turnovers: number;
   blocks: number;
+  goals?: number;
+  shots?: number;
+  shotsOffTarget?: number;
+  saves?: number;
+  yellowCards?: number;
+  redCards?: number;
 }

@@ -825,6 +825,7 @@ function CombinedSeasonsSummary({
 function TeamFormDialog({ trigger, team, onSaved }: { trigger: React.ReactNode, team?: { id: number, name: string }, onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(team?.name || "");
+  const [sport, setSport] = useState<"basketball" | "soccer">("basketball");
   const createTeam = useCreateTeam();
   const updateTeam = useUpdateTeam();
   const { toast } = useToast();
@@ -836,11 +837,12 @@ function TeamFormDialog({ trigger, team, onSaved }: { trigger: React.ReactNode, 
         await updateTeam.mutateAsync({ teamId: team.id, data: { name: name.trim() } });
         toast({ title: "Team updated" });
       } else {
-        await createTeam.mutateAsync({ data: { name: name.trim() } });
+        await createTeam.mutateAsync({ data: { name: name.trim(), sport } });
         toast({ title: "Team added" });
       }
       setOpen(false);
       setName(team ? name : "");
+      setSport("basketball");
       onSaved();
     } catch (err) {
       const description = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : undefined;
@@ -860,6 +862,22 @@ function TeamFormDialog({ trigger, team, onSaved }: { trigger: React.ReactNode, 
             <Label>Team / Season Name</Label>
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Travel 24-25'" />
           </div>
+          {!team && (
+            <div className="space-y-2">
+              <Label>Sport</Label>
+              <div className="flex gap-2">
+                {(["basketball", "soccer"] as const).map(s => (
+                  <Button
+                    key={s}
+                    type="button"
+                    variant={sport === s ? "default" : "outline"}
+                    className="flex-1 capitalize"
+                    onClick={() => setSport(s)}
+                  >{s}</Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

@@ -15,4 +15,5 @@ export interface BillingStatus {
   currentPeriodEnd?: Date | null;
   trialEnd?: Date | null;
   cancelAtPeriodEnd: boolean;
+  hasSoccer?: boolean;
 }

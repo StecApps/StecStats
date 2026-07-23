@@ -15,4 +15,5 @@ export type CreateCheckoutSessionInputTier = typeof CreateCheckoutSessionInputTi
 export const CreateCheckoutSessionInputTier = {
   pro: 'pro',
   premium: 'premium',
+  soccer: 'soccer',
 } as const;

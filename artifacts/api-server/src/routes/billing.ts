@@ -28,6 +28,7 @@ router.get("/billing/status", requireAuth, async (req, res) => {
       currentPeriodEnd: entitlements.currentPeriodEnd,
       trialEnd: entitlements.trialEnd,
       cancelAtPeriodEnd: entitlements.cancelAtPeriodEnd,
+      hasSoccer: entitlements.hasSoccer,
     }),
   );
 });
@@ -40,8 +41,11 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
 
   // Look up the product/price fresh from Stripe rather than hardcoding price
   // ids, so re-seeding (e.g. in a new environment) doesn't require a code
-  // change. Product names: "STEC STATS Pro" and "STEC STATS Premium".
-  const productName = tier === "premium" ? "STEC STATS Premium" : "STEC STATS Pro";
+  // change. Product names: "STEC STATS Pro", "STEC STATS Premium", "STEC STATS Soccer".
+  const productName =
+    tier === "premium" ? "STEC STATS Premium" :
+    tier === "soccer"  ? "STEC STATS Soccer"  :
+    "STEC STATS Pro";
   const products = await stripe.products.search({ query: `name:'${productName}' AND active:'true'` });
   const product = products.data[0];
   if (!product) {

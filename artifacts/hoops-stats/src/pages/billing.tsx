@@ -100,7 +100,7 @@ export default function Billing() {
     }
   }, [search, toast]);
 
-  const handleUpgrade = async (interval: "month" | "year", tier: "pro" | "premium" = "pro") => {
+  const handleUpgrade = async (interval: "month" | "year", tier: "pro" | "premium" | "soccer" = "pro") => {
     try {
       const res = await checkout.mutateAsync({ data: { interval, tier } });
       try { localStorage.removeItem(FAILED_CHECKOUT_KEY); } catch {}
@@ -130,6 +130,7 @@ export default function Billing() {
   const plan = status?.plan ?? "free";
   const isPro = plan === "pro";
   const isPremium = plan === "premium";
+  const hasSoccer = status?.hasSoccer ?? false;
   const isTrialing = status?.status === "trialing";
   const trialEnd = formatDate(status?.trialEnd);
   const periodEnd = formatDate(status?.currentPeriodEnd);
@@ -268,6 +269,58 @@ export default function Billing() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Soccer add-on — shown to Pro/Premium users who don't have it yet */}
+      {(isPro || isPremium) && !hasSoccer && (
+        <Card className="border-green-700/40 bg-green-950/20">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⚽</span>
+              <CardTitle className="font-display text-xl uppercase tracking-wide">Soccer Add-on</CardTitle>
+              <Badge variant="outline" className="text-green-400 border-green-600/50 text-[0.6rem]">$5/mo</Badge>
+            </div>
+            <CardDescription>Track goals, shots, saves, cards and more. Adds a full soccer stat sheet to every game you record.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ul className="space-y-2">
+              {["Goals, assists & shots", "Saves (goalkeeper stats)", "Yellow & red cards", "Sideline quick-tap for soccer", "Works alongside your basketball teams"].map(f => (
+                <li key={f} className="flex items-center gap-2 text-sm">
+                  <Check className="w-4 h-4 text-green-500 shrink-0" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <Button
+              className="w-full font-display uppercase tracking-wide bg-green-700 hover:bg-green-600 text-white"
+              onClick={() => handleUpgrade("month", "soccer")}
+              disabled={checkout.isPending}
+              data-testid="button-add-soccer"
+            >
+              {checkout.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <span className="mr-2">⚽</span>}
+              Add Soccer — $5/month
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {(isPro || isPremium) && hasSoccer && (
+        <Card className="border-green-700/40">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <span className="text-xl">⚽</span>
+              <CardTitle className="font-display text-xl uppercase tracking-wide">Soccer Add-on</CardTitle>
+              <Badge variant="default" className="bg-green-700 text-white">Active</Badge>
+            </div>
+            <CardDescription>Soccer stat tracking is enabled on your account. Manage it through your billing portal.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={handleManageBilling} disabled={portal.isPending}>
+              {portal.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Manage Soccer subscription
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Upgrade options — show when not on premium yet */}
       {!isPremium && (

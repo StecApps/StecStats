@@ -9,6 +9,7 @@ export interface Entitlements {
   currentPeriodEnd: Date | null;
   trialEnd: Date | null;
   cancelAtPeriodEnd: boolean;
+  hasSoccer: boolean;
 }
 
 // Any subscription in one of these Stripe statuses grants paid access.
@@ -31,6 +32,7 @@ const OWNER_PREMIUM: Entitlements = {
   currentPeriodEnd: null,
   trialEnd: null,
   cancelAtPeriodEnd: false,
+  hasSoccer: true,
 };
 
 /**
@@ -44,8 +46,11 @@ const OWNER_PREMIUM: Entitlements = {
  *   - Any other active subscription → "pro"
  *   - No active subscription → "free"
  *
+ * Soccer add-on: any active subscription whose product name contains "Soccer"
+ * sets hasSoccer = true (independent of the base plan tier).
+ *
  * Pass `email` to grant the designated project owner free permanent Premium
- * access.
+ * access (hasSoccer also granted).
  */
 export async function getEntitlements(
   stripeCustomerId: string | null,
@@ -54,11 +59,11 @@ export async function getEntitlements(
   if (isOwner(email)) return OWNER_PREMIUM;
 
   if (!stripeCustomerId) {
-    return { plan: "free", status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false };
+    return { plan: "free", status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
   }
 
-  // Join subscription → subscription_items → prices → products so we can
-  // determine which tier (Pro vs Premium) the subscriber is on.
+  // Fetch ALL active subscriptions so we can check both base plan and add-ons
+  // (e.g. Basketball Pro + Soccer add-on are separate subscriptions).
   const result = await db.execute(sql`
     SELECT
       sub.status,
@@ -74,21 +79,20 @@ export async function getEntitlements(
     LEFT JOIN stripe.products prod ON prod.id = pr.product
     WHERE sub.customer = ${stripeCustomerId}
     ORDER BY sub.created DESC
-    LIMIT 1
   `);
 
-  const row = result.rows[0] as
-    | {
-        status: string;
-        current_period_end: number | string | null;
-        trial_end: number | string | null;
-        cancel_at_period_end: boolean | null;
-        product_name: string | null;
-      }
-    | undefined;
+  type Row = {
+    status: string;
+    current_period_end: number | string | null;
+    trial_end: number | string | null;
+    cancel_at_period_end: boolean | null;
+    product_name: string | null;
+  };
 
-  if (!row) {
-    return { plan: "free", status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false };
+  const rows = result.rows as Row[];
+
+  if (rows.length === 0) {
+    return { plan: "free", status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
   }
 
   const toDate = (value: number | string | null): Date | null => {
@@ -97,18 +101,32 @@ export async function getEntitlements(
     return Number.isFinite(num) ? new Date(num * 1000) : null;
   };
 
+  // Use the most recent subscription for billing dates / status display.
+  const primary = rows[0];
+
   let plan: Plan = "free";
-  if (ACTIVE_STATUSES.has(row.status)) {
-    const productName = (row.product_name ?? "").toLowerCase();
-    plan = productName.includes("premium") ? "premium" : "pro";
+  let hasSoccer = false;
+
+  for (const row of rows) {
+    if (!ACTIVE_STATUSES.has(row.status)) continue;
+    const name = (row.product_name ?? "").toLowerCase();
+    if (name.includes("soccer")) {
+      hasSoccer = true;
+    } else if (name.includes("premium")) {
+      plan = "premium";
+    } else {
+      // Any other active paid sub (Pro, etc.) grants at least Pro.
+      if (plan === "free") plan = "pro";
+    }
   }
 
   return {
     plan,
-    status: row.status,
-    currentPeriodEnd: toDate(row.current_period_end),
-    trialEnd: toDate(row.trial_end),
-    cancelAtPeriodEnd: row.cancel_at_period_end ?? false,
+    hasSoccer,
+    status: primary.status,
+    currentPeriodEnd: toDate(primary.current_period_end),
+    trialEnd: toDate(primary.trial_end),
+    cancelAtPeriodEnd: primary.cancel_at_period_end ?? false,
   };
 }
 

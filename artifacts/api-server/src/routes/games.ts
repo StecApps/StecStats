@@ -254,6 +254,12 @@ async function serializeGame(gameId: number, ownerId: number) {
       steals: stat.steals,
       turnovers: stat.turnovers,
       blocks: stat.blocks,
+      goals: stat.goals,
+      shots: stat.shots,
+      shotsOffTarget: stat.shotsOffTarget,
+      saves: stat.saves,
+      yellowCards: stat.yellowCards,
+      redCards: stat.redCards,
     })),
     events: eventRows.map((event) => ({
       playerId: event.playerId,

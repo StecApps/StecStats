@@ -38,20 +38,17 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { getIceServers, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
+import { getSportProfile } from "@/lib/sport-profiles";
 
 type StatCounters = {
   playerId: number;
-  ftMade: number;
-  ftAttempted: number;
-  twoMade: number;
-  twoAttempted: number;
-  threeMade: number;
-  threeAttempted: number;
-  assists: number;
-  rebounds: number;
-  steals: number;
-  turnovers: number;
-  blocks: number;
+  ftMade: number; ftAttempted: number;
+  twoMade: number; twoAttempted: number;
+  threeMade: number; threeAttempted: number;
+  assists: number; rebounds: number; steals: number;
+  turnovers: number; blocks: number;
+  goals: number; shots: number; shotsOffTarget: number;
+  saves: number; yellowCards: number; redCards: number;
 };
 
 type GameEventEntry = {
@@ -86,13 +83,17 @@ const DRAFT_STORAGE_KEY = "stec:record-draft";
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const initialStats = (playerId: number): StatCounters => ({
-  playerId, ftMade: 0, ftAttempted: 0, twoMade: 0, twoAttempted: 0, threeMade: 0, threeAttempted: 0, assists: 0, rebounds: 0, steals: 0, turnovers: 0, blocks: 0
+  playerId, ftMade: 0, ftAttempted: 0, twoMade: 0, twoAttempted: 0, threeMade: 0, threeAttempted: 0,
+  assists: 0, rebounds: 0, steals: 0, turnovers: 0, blocks: 0,
+  goals: 0, shots: 0, shotsOffTarget: 0, saves: 0, yellowCards: 0, redCards: 0,
 });
 
 const STAT_LABELS: Record<string, string> = {
   ftMade: "FT Made", ftAttempted: "FT Miss", twoMade: "2PT Made", twoAttempted: "2PT Miss",
   threeMade: "3PT Made", threeAttempted: "3PT Miss", assists: "Assist", rebounds: "Rebound",
   steals: "Steal", turnovers: "Turnover", blocks: "Block",
+  goals: "Goal", shots: "Shot On Target", shotsOffTarget: "Shot Off Target",
+  saves: "Save", yellowCards: "Yellow Card", redCards: "Red Card",
 };
 
 function formatMs(ms: number): string {
@@ -418,6 +419,7 @@ export default function RecordGame() {
   const [stats, setStats] = useState<Record<number, StatCounters>>({});
 
   const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamSport, setNewTeamSport] = useState<"basketball" | "soccer">("basketball");
   const [isAddTeamOpen, setIsAddTeamOpen] = useState(false);
 
   const [newPlayerName, setNewPlayerName] = useState("");
@@ -821,7 +823,10 @@ export default function RecordGame() {
           twoMade: s.twoMade, twoAttempted: s.twoAttempted,
           threeMade: s.threeMade, threeAttempted: s.threeAttempted,
           assists: s.assists, rebounds: s.rebounds,
-          steals: s.steals, turnovers: s.turnovers, blocks: s.blocks
+          steals: s.steals, turnovers: s.turnovers, blocks: s.blocks,
+          goals: s.goals ?? 0, shots: s.shots ?? 0,
+          shotsOffTarget: s.shotsOffTarget ?? 0, saves: s.saves ?? 0,
+          yellowCards: s.yellowCards ?? 0, redCards: s.redCards ?? 0,
         };
       });
       setStats(statsObj);
@@ -2572,12 +2577,16 @@ export default function RecordGame() {
   const handleCreateTeam = async () => {
     if (!newTeamName) return;
     try {
-      const t = await createTeam.mutateAsync({ data: { name: newTeamName } });
+      const t = await createTeam.mutateAsync({ data: { name: newTeamName, sport: newTeamSport } });
       await refetchTeams();
       setTeamId(t.id.toString());
       setIsAddTeamOpen(false);
       setNewTeamName("");
-    } catch(err) {}
+      setNewTeamSport("basketball");
+    } catch(err: unknown) {
+      const msg = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : "Failed to create team";
+      toast({ title: "Error creating team", description: msg, variant: "destructive" });
+    }
   };
 
   const handleCreatePlayer = async () => {
@@ -2614,33 +2623,49 @@ export default function RecordGame() {
     </div>
   );
 
+  const sportProfile = getSportProfile(teams?.find(t => t.id.toString() === teamId)?.sport);
+
   const statTrackerCards = selectedPlayerIds.map(pid => {
     const player = players?.find(p => p.id === pid);
     const s = stats[pid] || initialStats(pid);
-    const pts = (s.twoMade * 2) + (s.threeMade * 3) + s.ftMade;
+    const score = sportProfile.computeScore(s);
 
     return (
       <Card key={pid} className="border-secondary/20 shadow-md overflow-hidden @container">
         <div className="bg-muted/60 border-b border-border/60 px-4 py-2 tablet-landscape-lg:px-3 tablet-landscape-lg:py-1.5 flex justify-between items-center">
           <h3 className="font-display font-bold text-xl tablet-landscape-lg:text-base uppercase tracking-wide text-foreground">{player?.name}</h3>
-          <div className="font-display font-bold text-2xl tablet-landscape-lg:text-lg text-primary">{pts} PTS</div>
+          <div className="font-display font-bold text-2xl tablet-landscape-lg:text-lg text-primary">{score} {sportProfile.scoreLabel}</div>
         </div>
         <CardContent className="p-4 tablet-landscape-lg:p-2.5 grid grid-cols-2 @lg:grid-cols-4 @4xl:grid-cols-8 gap-4 tablet-landscape-lg:gap-2 bg-card">
-          <StatCounter label="2PT" made={s.twoMade} attempt={s.twoAttempted}
-            onMake={() => updateStat(pid, 'twoMade', 1)} onMiss={() => updateStat(pid, 'twoAttempted', 1)}
-            onUndoMake={() => updateStat(pid, 'twoMade', -1)} onUndoMiss={() => updateStat(pid, 'twoAttempted', -1)} />
-          <StatCounter label="3PT" made={s.threeMade} attempt={s.threeAttempted}
-            onMake={() => updateStat(pid, 'threeMade', 1)} onMiss={() => updateStat(pid, 'threeAttempted', 1)}
-            onUndoMake={() => updateStat(pid, 'threeMade', -1)} onUndoMiss={() => updateStat(pid, 'threeAttempted', -1)} />
-          <StatCounter label="FT" made={s.ftMade} attempt={s.ftAttempted}
-            onMake={() => updateStat(pid, 'ftMade', 1)} onMiss={() => updateStat(pid, 'ftAttempted', 1)}
-            onUndoMake={() => updateStat(pid, 'ftMade', -1)} onUndoMiss={() => updateStat(pid, 'ftAttempted', -1)} />
-
-          <SingleStatCounter label="REB" value={s.rebounds} onInc={() => updateStat(pid, 'rebounds', 1)} onDec={() => updateStat(pid, 'rebounds', -1)} />
-          <SingleStatCounter label="AST" value={s.assists} onInc={() => updateStat(pid, 'assists', 1)} onDec={() => updateStat(pid, 'assists', -1)} />
-          <SingleStatCounter label="STL" value={s.steals} onInc={() => updateStat(pid, 'steals', 1)} onDec={() => updateStat(pid, 'steals', -1)} />
-          <SingleStatCounter label="BLK" value={s.blocks} onInc={() => updateStat(pid, 'blocks', 1)} onDec={() => updateStat(pid, 'blocks', -1)} />
-          <SingleStatCounter label="TO" value={s.turnovers} onInc={() => updateStat(pid, 'turnovers', 1)} onDec={() => updateStat(pid, 'turnovers', -1)} />
+          {sportProfile.id === "basketball" ? (
+            <>
+              <StatCounter label="2PT" made={s.twoMade} attempt={s.twoAttempted}
+                onMake={() => updateStat(pid, 'twoMade', 1)} onMiss={() => updateStat(pid, 'twoAttempted', 1)}
+                onUndoMake={() => updateStat(pid, 'twoMade', -1)} onUndoMiss={() => updateStat(pid, 'twoAttempted', -1)} />
+              <StatCounter label="3PT" made={s.threeMade} attempt={s.threeAttempted}
+                onMake={() => updateStat(pid, 'threeMade', 1)} onMiss={() => updateStat(pid, 'threeAttempted', 1)}
+                onUndoMake={() => updateStat(pid, 'threeMade', -1)} onUndoMiss={() => updateStat(pid, 'threeAttempted', -1)} />
+              <StatCounter label="FT" made={s.ftMade} attempt={s.ftAttempted}
+                onMake={() => updateStat(pid, 'ftMade', 1)} onMiss={() => updateStat(pid, 'ftAttempted', 1)}
+                onUndoMake={() => updateStat(pid, 'ftMade', -1)} onUndoMiss={() => updateStat(pid, 'ftAttempted', -1)} />
+              <SingleStatCounter label="REB" value={s.rebounds} onInc={() => updateStat(pid, 'rebounds', 1)} onDec={() => updateStat(pid, 'rebounds', -1)} />
+              <SingleStatCounter label="AST" value={s.assists} onInc={() => updateStat(pid, 'assists', 1)} onDec={() => updateStat(pid, 'assists', -1)} />
+              <SingleStatCounter label="STL" value={s.steals} onInc={() => updateStat(pid, 'steals', 1)} onDec={() => updateStat(pid, 'steals', -1)} />
+              <SingleStatCounter label="BLK" value={s.blocks} onInc={() => updateStat(pid, 'blocks', 1)} onDec={() => updateStat(pid, 'blocks', -1)} />
+              <SingleStatCounter label="TO" value={s.turnovers} onInc={() => updateStat(pid, 'turnovers', 1)} onDec={() => updateStat(pid, 'turnovers', -1)} />
+            </>
+          ) : (
+            <>
+              <SingleStatCounter label="GOAL" value={s.goals} onInc={() => updateStat(pid, 'goals', 1)} onDec={() => updateStat(pid, 'goals', -1)} />
+              <SingleStatCounter label="AST" value={s.assists} onInc={() => updateStat(pid, 'assists', 1)} onDec={() => updateStat(pid, 'assists', -1)} />
+              <SingleStatCounter label="SHT" value={s.shots} onInc={() => updateStat(pid, 'shots', 1)} onDec={() => updateStat(pid, 'shots', -1)} />
+              <SingleStatCounter label="OFF" value={s.shotsOffTarget} onInc={() => updateStat(pid, 'shotsOffTarget', 1)} onDec={() => updateStat(pid, 'shotsOffTarget', -1)} />
+              <SingleStatCounter label="SAVE" value={s.saves} onInc={() => updateStat(pid, 'saves', 1)} onDec={() => updateStat(pid, 'saves', -1)} />
+              <SingleStatCounter label="TO" value={s.turnovers} onInc={() => updateStat(pid, 'turnovers', 1)} onDec={() => updateStat(pid, 'turnovers', -1)} />
+              <SingleStatCounter label="YC" value={s.yellowCards} onInc={() => updateStat(pid, 'yellowCards', 1)} onDec={() => updateStat(pid, 'yellowCards', -1)} />
+              <SingleStatCounter label="RC" value={s.redCards} onInc={() => updateStat(pid, 'redCards', 1)} onDec={() => updateStat(pid, 'redCards', -1)} />
+            </>
+          )}
         </CardContent>
       </Card>
     );
@@ -2715,6 +2740,7 @@ export default function RecordGame() {
           teamScore={teamScore}
           opponentScore={opponentScore}
           onClose={() => setSidelineMode(false)}
+          sportProfile={sportProfile}
         />
       )}
       <Dialog open={showRecoveryPrompt} onOpenChange={(open) => { if (!open) handleDiscardDraft(); }}>
@@ -2766,8 +2792,29 @@ export default function RecordGame() {
                 <DialogTrigger asChild><Button variant="outline" size="icon"><Plus className="w-4 h-4" /></Button></DialogTrigger>
                 <DialogContent>
                   <DialogHeader><DialogTitle>New Team/Season</DialogTitle></DialogHeader>
-                  <Input value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="e.g. 2024 Summer League" />
-                  <DialogFooter><Button onClick={handleCreateTeam}>Add</Button></DialogFooter>
+                  <div className="space-y-4 py-2">
+                    <Input value={newTeamName} onChange={e => setNewTeamName(e.target.value)} placeholder="e.g. 2024 Summer League" />
+                    <div className="space-y-1.5">
+                      <Label className="text-sm">Sport</Label>
+                      <div className="flex gap-2">
+                        {(["basketball", "soccer"] as const).map(s => (
+                          <Button
+                            key={s}
+                            type="button"
+                            variant={newTeamSport === s ? "default" : "outline"}
+                            className="flex-1 capitalize"
+                            onClick={() => setNewTeamSport(s)}
+                          >{s}</Button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button onClick={handleCreateTeam} disabled={!newTeamName.trim() || createTeam.isPending}>
+                      {createTeam.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      Add
+                    </Button>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>

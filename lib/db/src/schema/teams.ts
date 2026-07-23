@@ -6,6 +6,7 @@ import { usersTable } from "./users";
 export const teamsTable = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  sport: text("sport").notNull().default("basketball"),
   // See players.ts for why this is nullable at the DB level.
   ownerId: integer("owner_id").references(() => usersTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),

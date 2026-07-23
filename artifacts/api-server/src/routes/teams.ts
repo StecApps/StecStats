@@ -66,6 +66,16 @@ router.post("/teams", requireAuth, async (req, res) => {
   const ownerId = req.appUser!.id;
 
   const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+
+  // Soccer teams require the Soccer add-on subscription.
+  if (body.sport === "soccer" && !entitlements.hasSoccer) {
+    res.status(403).json({
+      error: "Soccer stat tracking requires the Soccer add-on ($5/mo). Add it from the Billing page.",
+      code: "SOCCER_UPGRADE_REQUIRED",
+    });
+    return;
+  }
+
   if (entitlements.plan === "free") {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -218,6 +228,12 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
       steals: stat.steals,
       turnovers: stat.turnovers,
       blocks: stat.blocks,
+      goals: stat.goals,
+      shots: stat.shots,
+      shotsOffTarget: stat.shotsOffTarget,
+      saves: stat.saves,
+      yellowCards: stat.yellowCards,
+      redCards: stat.redCards,
     })),
     events: (eventsByGame.get(game.id) ?? []).map((event) => ({
       playerId: event.playerId,

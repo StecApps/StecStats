@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export type TeamInputSport = 'basketball' | 'soccer';
+
 export interface TeamInput {
   /** @minLength 1 */
   name: string;
+  sport?: TeamInputSport;
 }

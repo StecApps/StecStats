@@ -87,12 +87,14 @@ export interface PlayerTeamGroup {
 export interface Team {
   id: number;
   name: string;
+  sport: string;
   createdAt: string;
 }
 
 export interface TeamInput {
   /** @minLength 1 */
   name: string;
+  sport?: 'basketball' | 'soccer';
 }
 
 export interface TeamUpdate {
@@ -115,6 +117,12 @@ export interface PlayerGameStatLine {
   steals: number;
   turnovers: number;
   blocks: number;
+  goals?: number;
+  shots?: number;
+  shotsOffTarget?: number;
+  saves?: number;
+  yellowCards?: number;
+  redCards?: number;
 }
 
 export interface PlayerGameStatInput {
@@ -325,6 +333,7 @@ export interface BillingStatus {
   currentPeriodEnd?: string | null;
   trialEnd?: string | null;
   cancelAtPeriodEnd: boolean;
+  hasSoccer?: boolean;
 }
 
 /**
@@ -347,6 +356,7 @@ export type CreateCheckoutSessionInputTier = typeof CreateCheckoutSessionInputTi
 export const CreateCheckoutSessionInputTier = {
   pro: 'pro',
   premium: 'premium',
+  soccer: 'soccer',
 } as const;
 
 export interface CreateCheckoutSessionInput {

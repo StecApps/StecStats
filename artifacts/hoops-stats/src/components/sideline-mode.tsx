@@ -1,13 +1,6 @@
 import { useState, useEffect } from "react";
 import { X, Undo2 } from "lucide-react";
-
-type StatCounters = {
-  ftMade: number; ftAttempted: number;
-  twoMade: number; twoAttempted: number;
-  threeMade: number; threeAttempted: number;
-  assists: number; rebounds: number; steals: number;
-  turnovers: number; blocks: number;
-};
+import type { SportProfile, StatCounters } from "@/lib/sport-profiles";
 
 interface Player { id: number; name: string; }
 
@@ -20,37 +13,13 @@ interface SidelineModeProps {
   teamScore: number;
   opponentScore: number;
   onClose: () => void;
+  sportProfile: SportProfile;
 }
-
-type QuickAction = {
-  label: string;
-  sublabel?: string;
-  field: keyof StatCounters;
-  delta: 1 | -1;
-  color: string;
-  bg: string;
-};
-
-const QUICK_ACTIONS: QuickAction[] = [
-  { label: "2PT", sublabel: "Made",  field: "twoMade",      delta: 1,  color: "#fff",    bg: "#16a34a" },
-  { label: "3PT", sublabel: "Made",  field: "threeMade",    delta: 1,  color: "#fff",    bg: "#15803d" },
-  { label: "FT",  sublabel: "Made",  field: "ftMade",       delta: 1,  color: "#fff",    bg: "#166534" },
-  { label: "2PT", sublabel: "Miss",  field: "twoAttempted", delta: 1,  color: "#fff",    bg: "#b91c1c" },
-  { label: "3PT", sublabel: "Miss",  field: "threeAttempted",delta: 1, color: "#fff",    bg: "#991b1b" },
-  { label: "FT",  sublabel: "Miss",  field: "ftAttempted",  delta: 1,  color: "#fff",    bg: "#7f1d1d" },
-  { label: "AST", sublabel: undefined,field: "assists",     delta: 1,  color: "#fff",    bg: "#1d4ed8" },
-  { label: "REB", sublabel: undefined,field: "rebounds",    delta: 1,  color: "#fff",    bg: "#0e7490" },
-  { label: "TO",  sublabel: undefined,field: "turnovers",   delta: 1,  color: "#fff",    bg: "#c2410c" },
-  { label: "STL", sublabel: undefined,field: "steals",      delta: 1,  color: "#fff",    bg: "#6d28d9" },
-  { label: "BLK", sublabel: undefined,field: "blocks",      delta: 1,  color: "#fff",    bg: "#4338ca" },
-];
-
-function pts(s: StatCounters) { return s.twoMade * 2 + s.threeMade * 3 + s.ftMade; }
 
 export default function SidelineMode({
   players, stats, updateStat,
   teamName, opponent, teamScore, opponentScore,
-  onClose,
+  onClose, sportProfile,
 }: SidelineModeProps) {
   const [activePid, setActivePid] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<{ pid: number; field: keyof StatCounters } | null>(null);
@@ -153,8 +122,8 @@ export default function SidelineMode({
           style={{ gridTemplateColumns: `repeat(${Math.min(players.length, 3)}, 1fr)` }}
         >
           {players.map(player => {
-            const s = stats[player.id] || { ftMade:0, ftAttempted:0, twoMade:0, twoAttempted:0, threeMade:0, threeAttempted:0, assists:0, rebounds:0, steals:0, turnovers:0, blocks:0 };
-            const p = pts(s);
+            const s = stats[player.id];
+            const score = s ? sportProfile.computeScore(s) : 0;
             const isActive = activePid === player.id;
             return (
               <button
@@ -169,13 +138,11 @@ export default function SidelineMode({
                 }}
               >
                 <div className="text-base font-bold text-white leading-tight text-center truncate w-full">{player.name}</div>
-                <div className="mt-1.5 text-2xl font-black" style={{ color: isActive ? "#fff" : "#f97316" }}>{p}</div>
-                <div className="text-xs" style={{ color: isActive ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)" }}>pts</div>
-                {(s.rebounds > 0 || s.assists > 0) && (
+                <div className="mt-1.5 text-2xl font-black" style={{ color: isActive ? "#fff" : "#f97316" }}>{score}</div>
+                <div className="text-xs" style={{ color: isActive ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)" }}>{sportProfile.scoreLabel.toLowerCase()}</div>
+                {s && sportProfile.primaryStats.slice(0, 2).some(ps => (s[ps.field] as number) > 0) && (
                   <div className="mt-1 flex gap-2 text-xs" style={{ color: isActive ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)" }}>
-                    {s.rebounds > 0 && <span>{s.rebounds}r</span>}
-                    {s.assists > 0 && <span>{s.assists}a</span>}
-                    {s.steals > 0 && <span>{s.steals}s</span>}
+                    {sportProfile.primaryStats.slice(0, 2).map(ps => (s[ps.field] as number) > 0 ? <span key={ps.field}>{s[ps.field] as number}{ps.label.toLowerCase()}</span> : null)}
                   </div>
                 )}
               </button>
@@ -203,13 +170,13 @@ export default function SidelineMode({
               <div className="w-10 h-1 rounded-full bg-white/20 mb-3" />
               <div className="text-lg font-bold text-white">{activePlayer.name}</div>
               <div className="text-sm text-white/40">
-                {pts(activeStats)} pts · {activeStats.rebounds}r · {activeStats.assists}a
+                {sportProfile.computeScore(activeStats)} {sportProfile.scoreLabel.toLowerCase()} · {sportProfile.primaryStats.slice(0, 2).map(ps => `${activeStats[ps.field]}${ps.label.toLowerCase()}`).join(' · ')}
               </div>
             </div>
 
             {/* Stat buttons - 3 per row */}
             <div className="grid grid-cols-3 gap-2 p-4">
-              {QUICK_ACTIONS.map((action, i) => (
+              {sportProfile.quickActions.map((action, i) => (
                 <button
                   key={i}
                   type="button"

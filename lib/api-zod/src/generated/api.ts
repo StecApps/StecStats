@@ -161,6 +161,7 @@ export const ListPlayerTeamGroupsResponse = zod.array(ListPlayerTeamGroupsRespon
 export const ListTeamsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "sport": zod.string().default("basketball"),
   "createdAt": zod.coerce.date()
 })
 export const ListTeamsResponse = zod.array(ListTeamsResponseItem)
@@ -173,12 +174,14 @@ export const ListTeamsResponse = zod.array(ListTeamsResponseItem)
 
 
 export const CreateTeamBody = zod.object({
-  "name": zod.string().min(1)
+  "name": zod.string().min(1),
+  "sport": zod.enum(["basketball", "soccer"]).optional().default("basketball")
 })
 
 export const CreateTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "sport": zod.string().default("basketball"),
   "createdAt": zod.coerce.date()
 })
 
@@ -193,6 +196,7 @@ export const GetTeamParams = zod.object({
 export const GetTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "sport": zod.string().default("basketball"),
   "createdAt": zod.coerce.date()
 })
 
@@ -208,12 +212,14 @@ export const UpdateTeamParams = zod.object({
 
 
 export const UpdateTeamBody = zod.object({
-  "name": zod.string().min(1).optional()
+  "name": zod.string().min(1).optional(),
+  "sport": zod.enum(["basketball", "soccer"]).optional()
 })
 
 export const UpdateTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
+  "sport": zod.string().default("basketball"),
   "createdAt": zod.coerce.date()
 })
 
@@ -268,7 +274,13 @@ export const ListTeamGamesResponseItem = zod.object({
   "rebounds": zod.number(),
   "steals": zod.number(),
   "turnovers": zod.number(),
-  "blocks": zod.number()
+  "blocks": zod.number(),
+  "goals": zod.number().optional().default(0),
+  "shots": zod.number().optional().default(0),
+  "shotsOffTarget": zod.number().optional().default(0),
+  "saves": zod.number().optional().default(0),
+  "yellowCards": zod.number().optional().default(0),
+  "redCards": zod.number().optional().default(0)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -334,7 +346,13 @@ export const CreateGameBody = zod.object({
   "rebounds": zod.number().min(createGameBodyStatsItemReboundsMin),
   "steals": zod.number().min(createGameBodyStatsItemStealsMin),
   "turnovers": zod.number().min(createGameBodyStatsItemTurnoversMin),
-  "blocks": zod.number().min(createGameBodyStatsItemBlocksMin)
+  "blocks": zod.number().min(createGameBodyStatsItemBlocksMin),
+  "goals": zod.number().min(0).optional().default(0),
+  "shots": zod.number().min(0).optional().default(0),
+  "shotsOffTarget": zod.number().min(0).optional().default(0),
+  "saves": zod.number().min(0).optional().default(0),
+  "yellowCards": zod.number().min(0).optional().default(0),
+  "redCards": zod.number().min(0).optional().default(0)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -377,7 +395,13 @@ export const CreateGameResponse = zod.object({
   "rebounds": zod.number(),
   "steals": zod.number(),
   "turnovers": zod.number(),
-  "blocks": zod.number()
+  "blocks": zod.number(),
+  "goals": zod.number().optional().default(0),
+  "shots": zod.number().optional().default(0),
+  "shotsOffTarget": zod.number().optional().default(0),
+  "saves": zod.number().optional().default(0),
+  "yellowCards": zod.number().optional().default(0),
+  "redCards": zod.number().optional().default(0)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -428,7 +452,13 @@ export const GetGameResponse = zod.object({
   "rebounds": zod.number(),
   "steals": zod.number(),
   "turnovers": zod.number(),
-  "blocks": zod.number()
+  "blocks": zod.number(),
+  "goals": zod.number().optional().default(0),
+  "shots": zod.number().optional().default(0),
+  "shotsOffTarget": zod.number().optional().default(0),
+  "saves": zod.number().optional().default(0),
+  "yellowCards": zod.number().optional().default(0),
+  "redCards": zod.number().optional().default(0)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -498,7 +528,13 @@ export const UpdateGameBody = zod.object({
   "rebounds": zod.number().min(updateGameBodyStatsItemReboundsMin),
   "steals": zod.number().min(updateGameBodyStatsItemStealsMin),
   "turnovers": zod.number().min(updateGameBodyStatsItemTurnoversMin),
-  "blocks": zod.number().min(updateGameBodyStatsItemBlocksMin)
+  "blocks": zod.number().min(updateGameBodyStatsItemBlocksMin),
+  "goals": zod.number().min(0).optional().default(0),
+  "shots": zod.number().min(0).optional().default(0),
+  "shotsOffTarget": zod.number().min(0).optional().default(0),
+  "saves": zod.number().min(0).optional().default(0),
+  "yellowCards": zod.number().min(0).optional().default(0),
+  "redCards": zod.number().min(0).optional().default(0)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -541,7 +577,13 @@ export const UpdateGameResponse = zod.object({
   "rebounds": zod.number(),
   "steals": zod.number(),
   "turnovers": zod.number(),
-  "blocks": zod.number()
+  "blocks": zod.number(),
+  "goals": zod.number().optional().default(0),
+  "shots": zod.number().optional().default(0),
+  "shotsOffTarget": zod.number().optional().default(0),
+  "saves": zod.number().optional().default(0),
+  "yellowCards": zod.number().optional().default(0),
+  "redCards": zod.number().optional().default(0)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -709,7 +751,8 @@ export const GetBillingStatusResponse = zod.object({
   "status": zod.string().nullable().describe('Raw Stripe subscription status (e.g. trialing, active, past_due, canceled), or null if never subscribed.'),
   "currentPeriodEnd": zod.coerce.date().nullish(),
   "trialEnd": zod.coerce.date().nullish(),
-  "cancelAtPeriodEnd": zod.boolean()
+  "cancelAtPeriodEnd": zod.boolean(),
+  "hasSoccer": zod.boolean().optional().default(false)
 })
 
 
@@ -718,7 +761,7 @@ export const GetBillingStatusResponse = zod.object({
  */
 export const CreateCheckoutSessionBody = zod.object({
   "interval": zod.enum(['month', 'year']).describe('Billing interval.'),
-  "tier": zod.enum(['pro', 'premium']).optional().describe('Which plan tier to check out with. Defaults to pro.')
+  "tier": zod.enum(['pro', 'premium', 'soccer']).optional().describe('Which plan tier to check out with. Defaults to pro.')
 })
 
 export const CreateCheckoutSessionResponse = zod.object({
