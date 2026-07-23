@@ -1999,22 +1999,52 @@ export default function RecordGame() {
     viewerIceTimeoutsRef.current.set(viewerId, timeout);
   };
 
+  // Reorder the m=video payload list in an SDP to put H.264 first.
+  // H.264 is hardware-accelerated on most phones and produces noticeably
+  // better image quality than VP8 at the same bitrate.
+  const preferH264inSdp = (sdp: string): string => {
+    const lines = sdp.split('\n');
+    const videoIdx = lines.findIndex(l => l.startsWith('m=video'));
+    if (videoIdx === -1) return sdp;
+    const h264Pts: string[] = [];
+    for (const l of lines) {
+      const m = l.match(/^a=rtpmap:(\d+) H264\//i);
+      if (m) h264Pts.push(m[1]);
+    }
+    if (h264Pts.length === 0) return sdp;
+    const mParts = lines[videoIdx].split(' ');
+    const header = mParts.slice(0, 3);
+    const pts = mParts.slice(3);
+    lines[videoIdx] = [
+      ...header,
+      ...h264Pts.filter(pt => pts.includes(pt)),
+      ...pts.filter(pt => !h264Pts.includes(pt)),
+    ].join(' ');
+    return lines.join('\n');
+  };
+
+  // Apply the bitrate cap and quality hints to all video senders on a pc.
+  // Must be called AFTER the offer/answer exchange completes — calling it
+  // before negotiation silently no-ops in every browser.
+  const applyVideoBitrate = (pc: RTCPeerConnection) => {
+    pc.getSenders().forEach(sender => {
+      if (sender.track?.kind !== "video") return;
+      try {
+        const params = sender.getParameters();
+        if (!params.encodings?.length) return;
+        params.encodings[0].maxBitrate = 6_000_000;   // 6 Mbps — basketball motion needs it
+        params.encodings[0].degradationPreference = "maintain-resolution"; // drop fps, not sharpness
+        sender.setParameters(params).catch(() => {});
+      } catch { /* best-effort */ }
+    });
+  };
+
   const createPeerConnectionForViewer = async (viewerId: string) => {
     const iceServers = await getIceServers();
     const pc = new RTCPeerConnection({ iceServers });
     streamRef.current?.getTracks().forEach(track => {
       if (!streamRef.current) return;
-      const sender = pc.addTrack(track, streamRef.current);
-      if (track.kind === "video") {
-        try {
-          const params = sender.getParameters();
-          params.encodings = params.encodings?.length ? params.encodings : [{}];
-          params.encodings[0].maxBitrate = 4_000_000;
-          sender.setParameters(params).catch(() => {});
-        } catch {
-          // Explicit bitrate hint is best-effort; the browser default still applies if unsupported.
-        }
-      }
+      pc.addTrack(track, streamRef.current);
     });
     pc.onicecandidate = (event) => {
       if (event.candidate && liveWsRef.current?.readyState === WebSocket.OPEN) {
@@ -2068,13 +2098,23 @@ export default function RecordGame() {
       const message = JSON.parse(event.data);
       if (message.type === "new-viewer") {
         const pc = await createPeerConnectionForViewer(message.viewerId);
-        const offer = await pc.createOffer();
+        const rawOffer = await pc.createOffer();
+        // Prefer H.264 before setting as local description so the codec
+        // preference is baked into the offer the viewer receives.
+        const preferredSdp = preferH264inSdp(rawOffer.sdp ?? "");
+        const offer = new RTCSessionDescription({ type: rawOffer.type, sdp: preferredSdp });
         await pc.setLocalDescription(offer);
         ws.send(JSON.stringify({ type: "offer", code, targetId: message.viewerId, sdp: offer }));
         setViewerCount(livePeersRef.current.size);
       } else if (message.type === "answer") {
         const pc = livePeersRef.current.get(message.viewerId);
-        if (pc) await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
+          // Apply bitrate settings NOW — this is the earliest point where
+          // setParameters is guaranteed to work (encodings are populated
+          // after the offer/answer exchange completes).
+          applyVideoBitrate(pc);
+        }
       } else if (message.type === "ice-candidate") {
         const pc = livePeersRef.current.get(message.viewerId);
         if (pc && message.candidate) await pc.addIceCandidate(new RTCIceCandidate(message.candidate));
