@@ -505,7 +505,20 @@ router.get("/games/:gameId/video-signed-url", requireAuth, async (req, res) => {
     where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
   });
   if (!game?.videoObjectPath) return void res.status(404).json({ error: "No video" });
-  const url = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3600);
+
+  // Read the stored content-type so we can force it on the signed URL via
+  // response-content-type. Without this, objects stored as
+  // application/octet-stream (can happen when blob.type is empty on some
+  // devices) cause the browser to download the file instead of playing it.
+  const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
+  const [metadata] = await objectFile.getMetadata();
+  const storedType = (metadata.contentType as string) || "";
+  const contentType = storedType.startsWith("video/") ? storedType : "video/mp4";
+
+  let url = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3600);
+  const sep = url.includes("?") ? "&" : "?";
+  url += `${sep}response-content-type=${encodeURIComponent(contentType)}`;
+
   res.json({ url, expiresAt: Date.now() + 3600 * 1000 });
 });
 
