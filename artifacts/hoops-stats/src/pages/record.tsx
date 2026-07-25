@@ -2379,13 +2379,15 @@ export default function RecordGame() {
       const allParts = [...recordedSegments, ...(blobToUpload ? [blobToUpload] : [])];
       if (allParts.length > 0) {
         const mimeType = (blobToUpload ?? recordedSegments[0]).type || "video/webm";
-        if (mimeType.includes("mp4") && allParts.length > 1) {
-          // Upload each half individually, then merge server-side
+        if (allParts.length > 1) {
+          // Always merge multi-segment recordings server-side via ffmpeg.
+          // Raw blob concatenation is invalid for both MP4 (each segment has
+          // its own moov atom) and WebM (each segment has its own EBML header
+          // with timestamps that restart from 0). ffmpeg's concat demuxer
+          // correctly offsets the second half's timestamps so every event is
+          // seekable and highlights land on the right moment.
           segmentsToMerge = allParts;
           blobToUpload = null;
-        } else {
-          // WebM segments concatenate cleanly as raw blobs
-          blobToUpload = new Blob(allParts, { type: mimeType });
         }
       }
     }
