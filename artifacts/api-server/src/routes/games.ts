@@ -145,15 +145,42 @@ async function detectWebMSplitOffsetGCS(
 ): Promise<number | null> {
   const EBML_MAGIC    = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
   const SEGMENT_ID    = Buffer.from([0x18, 0x53, 0x80, 0x67]);
-  const CHUNK         = 16 * 1024 * 1024;
+  // 64 MB chunks → ~33 reads for a 2.3 GB file (vs 134 with 16 MB).
+  // Fewer HTTP connections = much faster and less chance of a hanging read.
+  const CHUNK         = 64 * 1024 * 1024;
   const VERIFY_WINDOW = 300;
   const MIN_START     = 50 * 1024 * 1024;
+  // Per-chunk timeout: GCS createReadStream can hang indefinitely if the
+  // underlying HTTP connection stalls with no error event.
+  const READ_TIMEOUT_MS = 90_000;
 
   let candidatesFound = 0;
+  let chunkIdx = 0;
   for (let offset = MIN_START; offset < fileSize; offset += CHUNK) {
     const length = Math.min(CHUNK + VERIFY_WINDOW, fileSize - offset);
-    const slice = await readGCSBytes(file, offset, length);
-    if (!slice || slice.length < 4) break;
+
+    // Race the GCS read against a hard timeout so a hung stream doesn't
+    // stall the repair forever.
+    const slice = await Promise.race<Buffer | null>([
+      readGCSBytes(file, offset, length),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), READ_TIMEOUT_MS)),
+    ]);
+
+    if (!slice || slice.length < 4) {
+      log.warn(
+        { chunkIdx, offset, fileSize },
+        "repair-video: GCS scan chunk timed out or returned no data — aborting",
+      );
+      break;
+    }
+
+    if (chunkIdx % 5 === 0) {
+      log.info(
+        { chunkIdx, offsetMB: Math.round(offset / 1024 / 1024), fileSizeMB: Math.round(fileSize / 1024 / 1024) },
+        "repair-video: GCS scan progress",
+      );
+    }
+    chunkIdx++;
 
     let pos = 0;
     while (pos <= slice.length - 4) {
@@ -186,7 +213,7 @@ async function detectWebMSplitOffsetGCS(
     }
   }
   log.info(
-    { candidatesFound },
+    { candidatesFound, chunkIdx },
     candidatesFound === 0
       ? "repair-video: GCS scan — no EBML magic after MIN_START (single continuous recording)"
       : "repair-video: GCS scan — EBML magic(s) found but none passed verify (single recording)",
