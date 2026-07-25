@@ -19,10 +19,10 @@ It reads `prod.name` and checks `productName.includes("premium")`. If the join r
 
 ## Billing checkout wiring
 `POST /billing/checkout` body now accepts `{ interval, tier? }` where `tier` defaults to `"pro"`.
-- `tier = "premium"` → searches Stripe for product name `"STEC STATS Premium"` (exact, case-sensitive Stripe search)
-- `tier = "pro"` → searches for `"STEC STATS Pro"`
+- `tier = "premium"` → searches Stripe for product name `"STECSTATS Premium"` (exact, case-sensitive Stripe search)
+- `tier = "pro"` → searches for `"STECSTATS Pro"`
 
-**How to apply:** When adding a new Premium price in Stripe, name the product exactly "STEC STATS Premium" — the checkout route does an exact name match via Stripe product search API.
+**How to apply:** When adding a new Premium price in Stripe, name the product exactly "STECSTATS Premium" (no space between STEC and STATS) — the checkout route does an exact name match via Stripe product search API. Live prices as of Jul 2026: $9.99/month, $79.00/year.
 
 ## Frontend
 - `billingStatus.plan` can now be `"free" | "pro" | "premium"`.
