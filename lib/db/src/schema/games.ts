@@ -35,8 +35,18 @@ export const gamesTable = pgTable("games", {
   lowlightStatus: text("lowlight_status"),
   lowlightError: text("lowlight_error"),
   lowlightStartedAt: timestamp("lowlight_started_at"),
+  // Version of the reel-generation code that produced the stored reels.
+  // NULL/older than the current GENERATOR_VERSION means the reel was built
+  // with outdated clip-timing logic and must be invalidated so it can be
+  // rebuilt. See GENERATOR_VERSION in highlightGenerator.ts.
+  highlightGeneratorVersion: integer("highlight_generator_version"),
+  lowlightGeneratorVersion: integer("lowlight_generator_version"),
   videoOffsetMs: integer("video_offset_ms"),
   videoProxyObjectPath: text("video_proxy_object_path"),
+  // Version of the proxy-encoding pipeline that produced videoProxyObjectPath.
+  // NULL/stale proxies (e.g. Opus audio that iOS can't play in MP4) are
+  // ignored and rebuilt. See PROXY_VERSION in highlightGenerator.ts.
+  videoProxyVersion: integer("video_proxy_version"),
   // Set by repair-video when two WebM halves are concatenated.
   // half2StartMs = game-clock timestamp of first event in second half.
   // halftimeGapMs = gap to subtract from second-half event timestamps so

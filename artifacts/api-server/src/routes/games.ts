@@ -31,6 +31,7 @@ import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements, isPro } from "../lib/entitlements";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
+import { PROXY_VERSION, ensureGameProxyInBackground } from "../lib/highlightGenerator";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -692,18 +693,36 @@ router.get("/games/:gameId/video-signed-url", requireAuth, async (req, res) => {
   });
   if (!game?.videoObjectPath) return void res.status(404).json({ error: "No video" });
 
-  // Read the stored content-type so we can force it on the signed URL via
-  // response-content-type. Without this, objects stored as
-  // application/octet-stream (can happen when blob.type is empty on some
-  // devices) cause the browser to download the file instead of playing it.
-  const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
+  // Prefer the compressed H.264/AAC "proxy" MP4 for playback when one exists.
+  // The raw recording can be a multi-GB cueless WebM (VP9/Opus) that iOS
+  // Safari cannot play at all and desktop browsers cannot seek in. The proxy
+  // is 720p, faststart, and universally playable.
+  const hasValidProxy =
+    !!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION;
+  if (!hasValidProxy) {
+    // Kick off a background build so this game gets an optimized playback
+    // file. No-ops if a build is already running for this game.
+    ensureGameProxyInBackground(gameId, ownerId);
+  }
+  const playbackPath = hasValidProxy ? game.videoProxyObjectPath! : game.videoObjectPath;
+
+  // GCS V4 signed URLs reject any query parameter that wasn't part of the
+  // signature, so we must NOT append response-content-type to the signed URL
+  // (it returns 403 SignatureDoesNotMatch). Instead, if the object was stored
+  // without a video content-type (can happen when blob.type is empty on some
+  // devices), patch the object's metadata once so the bare signed URL serves
+  // the right Content-Type.
+  const objectFile = await objectStorageService.getObjectEntityFile(playbackPath);
   const [metadata] = await objectFile.getMetadata();
   const storedType = (metadata.contentType as string) || "";
-  const contentType = storedType.startsWith("video/") ? storedType : "video/mp4";
+  const desiredType = hasValidProxy
+    ? "video/mp4"
+    : storedType.startsWith("video/") ? storedType : "video/mp4";
+  if (storedType !== desiredType) {
+    await objectFile.setMetadata({ contentType: desiredType });
+  }
 
-  let url = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 3600);
-  const sep = url.includes("?") ? "&" : "?";
-  url += `${sep}response-content-type=${encodeURIComponent(contentType)}`;
+  const url = await objectStorageService.getObjectEntitySignedURL(playbackPath, 3600);
 
   res.json({ url, expiresAt: Date.now() + 3600 * 1000 });
 });
@@ -1138,6 +1157,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
             .set({
               videoObjectPath:      sourceObjectPath,
               videoProxyObjectPath: null,
+              videoProxyVersion:    null,
               videoHalf2StartMs:    null,
               videoHalftimeGapMs:   null,
             })
@@ -1176,6 +1196,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       .set({
         videoObjectPath: newObjectPath,
         videoProxyObjectPath: null,       // force proxy rebuild from repaired video
+        videoProxyVersion: null,
         highlightStatus: "idle",
         highlightObjectPath: null,
         lowlightStatus: "idle",

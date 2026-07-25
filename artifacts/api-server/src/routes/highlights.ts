@@ -6,6 +6,7 @@ import {
   countEligibleMoments,
   getHighlightCoverage,
   generateHighlight,
+  GENERATOR_VERSION,
 } from "../lib/highlightGenerator";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -55,6 +56,30 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       .where(eq(gamesTable.id, gameId));
   }
 
+  // Invalidate reels built by older clip-timing code (e.g. clips that ended
+  // before the play happened). Reset to idle so the UI offers a fresh
+  // Generate button instead of forever serving the stale cached reel.
+  let highlightObjectPath = game.highlightObjectPath;
+  let highlightStartedAt = game.highlightStartedAt;
+  if (
+    highlightStatus === "ready" &&
+    (game.highlightGeneratorVersion ?? 0) < GENERATOR_VERSION
+  ) {
+    highlightStatus = null;
+    highlightError = null;
+    highlightObjectPath = null;
+    highlightStartedAt = null;
+    await db
+      .update(gamesTable)
+      .set({
+        highlightStatus: null,
+        highlightError: null,
+        highlightObjectPath: null,
+        highlightStartedAt: null,
+      })
+      .where(eq(gamesTable.id, gameId));
+  }
+
   // Legacy games may predate duration probing — self-heal lazily.
   if (game.videoObjectPath && game.videoDurationMs == null) {
     scheduleVideoDurationProbe(gameId, game.videoObjectPath);
@@ -64,9 +89,9 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
   res.json(
     GetGameHighlightResponse.parse({
       status: normalizeStatus(highlightStatus),
-      highlightObjectPath: game.highlightObjectPath ?? null,
+      highlightObjectPath: highlightObjectPath ?? null,
       error: highlightError ?? null,
-      startedAt: isStale ? null : (game.highlightStartedAt?.toISOString() ?? null),
+      startedAt: isStale ? null : (highlightStartedAt?.toISOString() ?? null),
       eligibleMoments,
       onFilmMoments,
     }),

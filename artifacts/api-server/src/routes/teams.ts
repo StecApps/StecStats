@@ -31,6 +31,7 @@ import { gte } from "drizzle-orm";
 import {
   countEligibleMomentsForTeam,
   generateTeamHighlight,
+  GENERATOR_VERSION,
 } from "../lib/highlightGenerator";
 
 const router: IRouter = Router();
@@ -274,11 +275,33 @@ router.get("/teams/:teamId/highlight", requireAuth, async (req, res) => {
       .where(eq(teamsTable.id, teamId));
   }
 
+  // Invalidate reels built by older clip-timing code (e.g. clips that ended
+  // before the play happened). Reset to idle so the UI offers a fresh
+  // Generate button instead of forever serving the stale cached reel.
+  let highlightObjectPath = team.highlightObjectPath;
+  if (
+    highlightStatus === "ready" &&
+    (team.highlightGeneratorVersion ?? 0) < GENERATOR_VERSION
+  ) {
+    highlightStatus = null;
+    highlightError = null;
+    highlightObjectPath = null;
+    await db
+      .update(teamsTable)
+      .set({
+        highlightStatus: null,
+        highlightError: null,
+        highlightObjectPath: null,
+        highlightStartedAt: null,
+      })
+      .where(eq(teamsTable.id, teamId));
+  }
+
   const eligibleMoments = await countEligibleMomentsForTeam(teamId);
   res.json(
     GetTeamHighlightResponse.parse({
       status: normalizeHighlightStatus(highlightStatus),
-      highlightObjectPath: team.highlightObjectPath ?? null,
+      highlightObjectPath: highlightObjectPath ?? null,
       error: highlightError ?? null,
       eligibleMoments,
     }),

@@ -6,6 +6,7 @@ import {
   countLowlightMoments,
   getLowlightCoverage,
   generateLowlight,
+  GENERATOR_VERSION,
 } from "../lib/highlightGenerator";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -43,6 +44,30 @@ router.get("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     await db.update(gamesTable).set({ lowlightStatus, lowlightError }).where(eq(gamesTable.id, gameId));
   }
 
+  // Invalidate reels built by older clip-timing code (e.g. clips that ended
+  // before the play happened). Reset to idle so the UI offers a fresh
+  // Generate button instead of forever serving the stale cached reel.
+  let lowlightObjectPath = game.lowlightObjectPath;
+  let lowlightStartedAt = game.lowlightStartedAt;
+  if (
+    lowlightStatus === "ready" &&
+    (game.lowlightGeneratorVersion ?? 0) < GENERATOR_VERSION
+  ) {
+    lowlightStatus = null;
+    lowlightError = null;
+    lowlightObjectPath = null;
+    lowlightStartedAt = null;
+    await db
+      .update(gamesTable)
+      .set({
+        lowlightStatus: null,
+        lowlightError: null,
+        lowlightObjectPath: null,
+        lowlightStartedAt: null,
+      })
+      .where(eq(gamesTable.id, gameId));
+  }
+
   // Legacy games may predate duration probing — self-heal lazily.
   if (game.videoObjectPath && game.videoDurationMs == null) {
     scheduleVideoDurationProbe(gameId, game.videoObjectPath);
@@ -51,9 +76,9 @@ router.get("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   const { eligibleMoments, onFilmMoments } = await getLowlightCoverage(game);
   res.json({
     status: normalizeStatus(lowlightStatus),
-    lowlightObjectPath: game.lowlightObjectPath ?? null,
+    lowlightObjectPath: lowlightObjectPath ?? null,
     error: lowlightError ?? null,
-    startedAt: isStale ? null : (game.lowlightStartedAt?.toISOString() ?? null),
+    startedAt: isStale ? null : (lowlightStartedAt?.toISOString() ?? null),
     eligibleMoments,
     onFilmMoments,
   });

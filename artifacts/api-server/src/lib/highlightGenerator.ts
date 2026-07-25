@@ -32,6 +32,19 @@ const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 // PRE_SECONDS = 12 gives lead-in context in both modes.
 const PRE_SECONDS = 12;
 const POST_SECONDS = 15;
+
+// Version stamp written to the DB alongside every generated reel. Bump this
+// whenever clip-timing logic changes (PRE/POST_SECONDS, offset handling, …)
+// so reels cached under the old logic are invalidated on read and rebuilt.
+// v2 = POST_SECONDS 2→15 fix (clips used to end before the play happened).
+export const GENERATOR_VERSION = 2;
+
+// Version stamp for the compressed proxy video (videoProxyObjectPath).
+// Bump when the proxy encoding changes in a way that requires a rebuild.
+// v2 = audio transcoded to AAC (Opus-in-MP4 from WebM sources doesn't play
+// on iOS Safari) — also used in the GCS chunk cache key so stale chunks
+// encoded under the old settings are never mixed into a new proxy.
+export const PROXY_VERSION = 2;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
 
@@ -337,8 +350,10 @@ async function createChunkedProxy(
     "Proxy: creating in restart-resilient chunks",
   );
 
+  // Chunk cache key includes PROXY_VERSION so chunks encoded under older
+  // settings (e.g. Opus audio passthrough) are never mixed into a new proxy.
   const gcsChunkPaths = Array.from({ length: numChunks }, (_, i) =>
-    `/objects/uploads/${ownerId}/proxy_chunk_${gameId}_${i}`,
+    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`,
   );
   const existFlags = await Promise.all(
     gcsChunkPaths.map((p) => objectStorageService.checkObjectEntityExists(p)),
@@ -396,7 +411,11 @@ async function createChunkedProxy(
       "-vf",
         `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
         `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
-      "-c:a", "copy",
+      // Always transcode audio to AAC. Live-recorded WebM sources carry Opus,
+      // and Opus-in-MP4 does not play on iOS Safari — the proxy doubles as
+      // the film-room playback file, so it must be universally playable.
+      "-c:a", "aac",
+      "-b:a", "128k",
       "-f", "segment",
       "-segment_time", String(PROXY_CHUNK_DURATION_SEC),
       // Start segment numbering at firstMissing so filenames match GCS keys.
@@ -509,7 +528,7 @@ async function acquireGameProxy(
           const game = await db.query.gamesTable.findFirst({
             where: eq(gamesTable.id, gameId),
           });
-          if (game?.videoProxyObjectPath) {
+          if (game?.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION) {
             logger.info(
               { gameId, objectPath: game.videoProxyObjectPath },
               "Downloading existing proxy video",
@@ -534,7 +553,7 @@ async function acquireGameProxy(
           const proxyObjectPath = await uploadHighlight(destPath, ownerId);
           await db
             .update(gamesTable)
-            .set({ videoProxyObjectPath: proxyObjectPath })
+            .set({ videoProxyObjectPath: proxyObjectPath, videoProxyVersion: PROXY_VERSION })
             .where(eq(gamesTable.id, gameId));
           logger.info({ gameId, proxyObjectPath }, "Proxy persisted in GCS and DB");
           return destPath;
@@ -570,6 +589,39 @@ async function acquireGameProxy(
       }
     },
   };
+}
+
+// Fire-and-forget background proxy builds triggered from the film-room
+// playback route. Guarded so each game only ever has one build in flight.
+const backgroundProxyBuilds = new Set<number>();
+
+/**
+ * Ensure a current-version proxy MP4 exists for a game, building it in the
+ * background if needed. Safe to call on every playback request: no-ops when
+ * a valid proxy already exists in the DB or a build is already running.
+ */
+export function ensureGameProxyInBackground(gameId: number, ownerId: number): void {
+  if (backgroundProxyBuilds.has(gameId)) return;
+  backgroundProxyBuilds.add(gameId);
+  (async () => {
+    const game = await db.query.gamesTable.findFirst({
+      where: eq(gamesTable.id, gameId),
+    });
+    if (!game?.videoObjectPath) return;
+    if (game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION) return;
+    logger.info({ gameId }, "Background proxy build starting (film-room playback)");
+    const { release } = await acquireGameProxy(gameId, ownerId);
+    // The build already uploaded the proxy to GCS and persisted the DB row;
+    // we don't need the local file, so release it immediately.
+    release();
+    logger.info({ gameId }, "Background proxy build complete");
+  })()
+    .catch((err) => {
+      logger.error({ err, gameId }, "Background proxy build failed");
+    })
+    .finally(() => {
+      backgroundProxyBuilds.delete(gameId);
+    });
 }
 
 type Moment = { timeSec: number; caption: string };
@@ -626,7 +678,13 @@ async function setGameStatus(
 ): Promise<void> {
   await db
     .update(gamesTable)
-    .set({ highlightStatus: status, ...extra })
+    .set({
+      highlightStatus: status,
+      // Stamp the generator version on completion so stale reels (built by
+      // older clip-timing code) can be detected and invalidated on read.
+      ...(status === "ready" ? { highlightGeneratorVersion: GENERATOR_VERSION } : {}),
+      ...extra,
+    })
     .where(eq(gamesTable.id, gameId));
 }
 
@@ -637,7 +695,11 @@ async function setGameLowlightStatus(
 ): Promise<void> {
   await db
     .update(gamesTable)
-    .set({ lowlightStatus: status, ...extra })
+    .set({
+      lowlightStatus: status,
+      ...(status === "ready" ? { lowlightGeneratorVersion: GENERATOR_VERSION } : {}),
+      ...extra,
+    })
     .where(eq(gamesTable.id, gameId));
 }
 
@@ -648,7 +710,11 @@ async function setTeamStatus(
 ): Promise<void> {
   await db
     .update(teamsTable)
-    .set({ highlightStatus: status, ...extra })
+    .set({
+      highlightStatus: status,
+      ...(status === "ready" ? { highlightGeneratorVersion: GENERATOR_VERSION } : {}),
+      ...extra,
+    })
     .where(eq(teamsTable.id, teamId));
 }
 

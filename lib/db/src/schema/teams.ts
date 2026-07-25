@@ -18,6 +18,10 @@ export const teamsTable = pgTable("teams", {
   highlightStatus: text("highlight_status"),
   highlightError: text("highlight_error"),
   highlightStartedAt: timestamp("highlight_started_at"),
+  // Version of the reel-generation code that produced the stored reel.
+  // NULL/older than GENERATOR_VERSION (highlightGenerator.ts) means the reel
+  // was built with outdated clip-timing logic and is invalidated on read.
+  highlightGeneratorVersion: integer("highlight_generator_version"),
 });
 
 export const insertTeamSchema = createInsertSchema(teamsTable).omit({

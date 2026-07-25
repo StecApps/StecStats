@@ -40,6 +40,9 @@
 - [Cueless WebM clip extraction from GCS](cueless-webm-extraction.md) — live-recorded WebM has no duration/Cues; never proxy-transcode or remote-seek — event-derived pseudo-duration + one linear `-c copy` pass with windowed outputs.
 - [Highlight/lowlight must use local file, not signed URL](highlight-local-file.md) — generateHighlight/generateLowlight must download source via acquireSourceVideo before passing to ffmpeg; signed URLs fail for Range requests + cueless WebM has no seek index.
 - [Background upload resilience pattern](bg-upload-resilience.md) — IndexedDB session must NOT be deleted until onVideoReady succeeds; save stec:pending-video-upload to localStorage so PendingVideoUploadRecoverer can reassemble + retry on next load.
+- [GCS signed URLs reject appended params](gcs-signed-url-unsigned-params.md) — appending response-content-type/-disposition after signing always 403s; patch object metadata + bare URL instead.
+- [Playwright Chromium can't decode H.264/AAC](playwright-chromium-no-h264.md) — MP4 playback e2e always fails in the sandbox (canPlayType=""); verify via in-page Range fetch instead.
+- [Generator version stamping](generator-version-stamping.md) — stamp a version on ready reels/proxies and reset stale-version rows on read; publishing code never fixes already-generated media.
 - [Split/pause segment loss must be loud](split-recording-silent-loss.md) — half-flush failures were silently dropped (lost a real game's 2nd half); toast destructively + keep the IndexedDB session on failure.
 - [WebM split detector chunk overlap bug](webm-split-detector-overlap.md) — chunk overlap must equal the verify window, not the pattern length; log candidatesFound to tell "no magic" from "verify failed".
 - [openapi.yaml is the only codegen source of truth](openapi-spec-source-of-truth.md) — codegen deletes fields hand-added to generated files; port parallel-task fields into the spec first.

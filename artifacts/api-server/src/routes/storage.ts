@@ -145,15 +145,21 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
     // silently drops large streaming responses after ~1-2 seconds.
     // The auth + ownership check above already ran, so the redirect is safe.
     if (contentType.startsWith("video/")) {
-      const signedUrl = await objectStorageService.getObjectEntitySignedURL(objectPath, 300);
-      let redirectUrl = signedUrl;
+      // GCS V4 signed URLs reject query parameters that weren't part of the
+      // signature, so we must NOT append response-content-disposition/-type
+      // to the redirect URL (it returns 403 SignatureDoesNotMatch). For named
+      // downloads, persist an attachment disposition on the object metadata
+      // instead — browsers ignore Content-Disposition for <video> elements
+      // and fetch(), so inline playback of the same object is unaffected.
       if (downloadName) {
-        const sep = signedUrl.includes("?") ? "&" : "?";
-        const disposition = encodeURIComponent(`attachment; filename="${downloadName.replace(/"/g, "")}"`);
-        redirectUrl += `${sep}response-content-disposition=${disposition}&response-content-type=${encodeURIComponent(contentType)}`;
+        const disposition = `attachment; filename="${downloadName.replace(/"/g, "")}"`;
+        if ((metadata.contentDisposition as string | undefined) !== disposition) {
+          await objectFile.setMetadata({ contentDisposition: disposition });
+        }
       }
+      const signedUrl = await objectStorageService.getObjectEntitySignedURL(objectPath, 300);
       req.log.info({ fileSize, url: req.url }, "storage: redirecting video to signed URL");
-      res.redirect(302, redirectUrl);
+      res.redirect(302, signedUrl);
       return;
     }
 
