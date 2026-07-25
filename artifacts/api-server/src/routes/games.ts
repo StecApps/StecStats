@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, inArray } from "drizzle-orm";
 import { execFile, spawn } from "child_process";
-import { promises as fs, createWriteStream } from "fs";
+import { promises as fs, createWriteStream, createReadStream } from "fs";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import os from "os";
@@ -133,37 +133,43 @@ async function detectSegmentBoundary(file: GCSFile, log: any): Promise<SegmentBo
  * Verified by checking that "webm" or "matroska" appears within the next 120
  * bytes (the DocType string that follows every EBML header).
  */
-async function detectWebMSplitOffset(
-  file: GCSFile,
-  fileSize: number,
-  log: any,
-): Promise<number | null> {
+/**
+ * Scan a LOCAL file (already downloaded to disk) for the byte offset of a
+ * second EBML header — the signature of a raw-concatenated two-half WebM.
+ * Uses fs.read so there are no GCS range-read reliability concerns.
+ */
+async function detectWebMSplitOffsetLocal(filePath: string, log: any): Promise<number | null> {
   const EBML_MAGIC = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
-  const CHUNK = 16 * 1024 * 1024; // 16 MB per GCS read
-  // Skip the first 50 MB — the initial EBML header + first Segment header are tiny;
-  // no valid second EBML header can appear this early.
+  const CHUNK = 16 * 1024 * 1024;
   const MIN_START = 50 * 1024 * 1024;
 
-  for (let offset = MIN_START; offset < fileSize; offset += CHUNK) {
-    // Read CHUNK + 4 at boundaries to avoid splitting the 4-byte signature across reads
-    const length = Math.min(CHUNK + 4, fileSize - offset);
-    const buf = await readGCSBytes(file, offset, length);
-    if (!buf || buf.length < 4) break;
+  const stat = await fs.stat(filePath);
+  const fileSize = stat.size;
+  const fh = await fs.open(filePath, "r");
+  try {
+    for (let offset = MIN_START; offset < fileSize; offset += CHUNK) {
+      const length = Math.min(CHUNK + 4, fileSize - offset);
+      const buf = Buffer.alloc(length);
+      const { bytesRead } = await fh.read(buf, 0, length, offset);
+      if (bytesRead < 4) break;
+      const slice = buf.subarray(0, bytesRead);
 
-    let pos = 0;
-    while (pos <= buf.length - 4) {
-      const idx = buf.indexOf(EBML_MAGIC, pos);
-      if (idx === -1) break;
-      const candidateOffset = offset + idx;
-      // Verify: DocType "webm" or "matroska" must appear within the next 120 bytes
-      const verifySlice = buf.slice(idx, Math.min(buf.length, idx + 120));
-      const verifyStr = verifySlice.toString("binary");
-      if (verifyStr.includes("webm") || verifyStr.includes("matroska")) {
-        log.info({ candidateOffset }, "repair-video: found second EBML header (WebM two-half split)");
-        return candidateOffset;
+      let pos = 0;
+      while (pos <= slice.length - 4) {
+        const idx = slice.indexOf(EBML_MAGIC, pos);
+        if (idx === -1) break;
+        const candidateOffset = offset + idx;
+        const verifySlice = slice.slice(idx, Math.min(slice.length, idx + 120));
+        const verifyStr = verifySlice.toString("binary");
+        if (verifyStr.includes("webm") || verifyStr.includes("matroska")) {
+          log.info({ candidateOffset }, "repair-video: found second EBML header (WebM two-half split)");
+          return candidateOffset;
+        }
+        pos = idx + 1;
       }
-      pos = idx + 1;
     }
+  } finally {
+    await fh.close();
   }
   return null;
 }
@@ -797,17 +803,6 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       "repair-video: scan complete",
     );
 
-    // If no MP4 boundary found and the file is WebM, scan for a second EBML
-    // header — this is the signature of a raw-concatenated two-half WebM
-    // recording (Chrome/Android "Start 2nd Half" path before the server-side
-    // merge fix was deployed).
-    let webmSplitOffset: number | null = null;
-    if (!boundary && srcContentType.includes("webm") && srcFileSize > 0) {
-      log.info({ gameId }, "repair-video: checking for WebM two-half split");
-      webmSplitOffset = await detectWebMSplitOffset(srcFile, srcFileSize, log);
-      log.info({ gameId, webmSplitOffset }, "repair-video: WebM split scan complete");
-    }
-
     const tmpOut = path.join(tmpDir, "final.mp4");
 
     if (boundary) {
@@ -868,71 +863,96 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
           code === 0 ? resolve() : reject(new Error(`ffmpeg concat: ${stderr.slice(-500)}`)));
         proc.on("error", reject);
       });
-    } else if (webmSplitOffset !== null) {
-      // Two-segment path (WebM): the file is a raw concatenation of two WebM
-      // recording sessions. Download each half separately, remux each to a
-      // seekable MP4 (VP9+Opus → MP4 container, -c copy, no re-encode), then
-      // ffmpeg-concat so the second half's timestamps follow the first's.
-      const raw0 = path.join(tmpDir, "raw0.webm");
-      const raw1 = path.join(tmpDir, "raw1.webm");
+    } else {
+      // Non-MP4 or single-segment path.
+      // Download the full source file to disk first. For WebM files we then
+      // scan it locally for a two-half EBML split (GCS range reads are
+      // unreliable after the diagnostic probe has already used the file handle).
+      const isWebM = srcContentType.includes("webm");
+      const rawExt = isWebM ? "webm" : "bin";
+      const rawFull = path.join(tmpDir, `raw.${rawExt}`);
+      log.info({ gameId, isWebM }, "repair-video: downloading full source file");
+      await downloadGCSRange(srcFile, rawFull);
 
-      log.info({ gameId, end: webmSplitOffset - 1 }, "repair-video: downloading WebM seg1");
-      await downloadGCSRange(srcFile, raw0, 0, webmSplitOffset - 1);
+      if (isWebM) {
+        log.info({ gameId }, "repair-video: scanning local WebM file for two-half split");
+        const splitOffset = await detectWebMSplitOffsetLocal(rawFull, log);
+        log.info({ gameId, splitOffset }, "repair-video: local WebM split scan complete");
 
-      log.info({ gameId, start: webmSplitOffset }, "repair-video: downloading WebM seg2");
-      await downloadGCSRange(srcFile, raw1, webmSplitOffset);
+        if (splitOffset !== null) {
+          // Split the local file into two raw WebM halves, remux each to MP4,
+          // then ffmpeg-concat so the second half's timestamps follow the first.
+          const raw0 = path.join(tmpDir, "raw0.webm");
+          const raw1 = path.join(tmpDir, "raw1.webm");
 
-      const procPaths: string[] = [];
-      for (let i = 0; i < 2; i++) {
-        const rawSeg = i === 0 ? raw0 : raw1;
-        const procSeg = path.join(tmpDir, `proc${i}.mp4`);
-        log.info({ gameId, i }, "repair-video: ffmpeg on WebM segment");
+          log.info({ gameId, splitOffset }, "repair-video: splitting WebM into two halves");
+
+          // Use streaming reads so we never allocate GB-sized Buffers
+          await pipeline(createReadStream(rawFull, { start: 0, end: splitOffset - 1 }), createWriteStream(raw0));
+          await pipeline(createReadStream(rawFull, { start: splitOffset }), createWriteStream(raw1));
+          await fs.unlink(rawFull).catch(() => {});
+
+          const procPaths: string[] = [];
+          for (let i = 0; i < 2; i++) {
+            const rawSeg = i === 0 ? raw0 : raw1;
+            const procSeg = path.join(tmpDir, `proc${i}.mp4`);
+            log.info({ gameId, i }, "repair-video: ffmpeg on WebM segment");
+            await new Promise<void>((resolve, reject) => {
+              execFile(
+                "ffmpeg",
+                ["-y", "-i", rawSeg, "-c", "copy", "-movflags", "+faststart", procSeg],
+                { maxBuffer: 5 * 1024 * 1024 },
+                (err, _stdout, stderr) =>
+                  err ? reject(new Error(`ffmpeg webm-seg${i}: ${stderr?.slice(-500)}`)) : resolve(),
+              );
+            });
+            await fs.unlink(rawSeg).catch(() => {});
+            procPaths.push(procSeg);
+          }
+
+          const fileList = path.join(tmpDir, "filelist.txt");
+          await fs.writeFile(fileList, procPaths.map((p) => `file '${p}'`).join("\n"), "utf8");
+          log.info({ gameId }, "repair-video: concatenating WebM 2 segments");
+          await new Promise<void>((resolve, reject) => {
+            const proc = spawn("ffmpeg", [
+              "-f", "concat", "-safe", "0",
+              "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+              "-i", fileList,
+              "-c", "copy", "-movflags", "+faststart",
+              "-y", tmpOut,
+            ]);
+            let stderr = "";
+            proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+            proc.on("close", (code) =>
+              code === 0 ? resolve() : reject(new Error(`ffmpeg webm-concat: ${stderr.slice(-500)}`)));
+            proc.on("error", reject);
+          });
+        } else {
+          // Single WebM segment — just faststart-remux the whole thing
+          log.info({ gameId }, "repair-video: single WebM segment, applying faststart");
+          await new Promise<void>((resolve, reject) => {
+            execFile(
+              "ffmpeg",
+              ["-y", "-i", rawFull, "-c", "copy", "-movflags", "+faststart", tmpOut],
+              { maxBuffer: 5 * 1024 * 1024 },
+              (err, _stdout, stderr) =>
+                err ? reject(new Error(`ffmpeg webm-faststart: ${stderr?.slice(-600)}`)) : resolve(),
+            );
+          });
+        }
+      } else {
+        // Non-WebM single segment: faststart remux
+        log.info({ gameId }, "repair-video: applying faststart");
         await new Promise<void>((resolve, reject) => {
           execFile(
             "ffmpeg",
-            ["-y", "-i", rawSeg, "-c", "copy", "-movflags", "+faststart", procSeg],
+            ["-y", "-i", rawFull, "-c", "copy", "-movflags", "+faststart", tmpOut],
             { maxBuffer: 5 * 1024 * 1024 },
             (err, _stdout, stderr) =>
-              err ? reject(new Error(`ffmpeg webm-seg${i}: ${stderr?.slice(-500)}`)) : resolve(),
+              err ? reject(new Error(`ffmpeg: ${stderr?.slice(-600)}`)) : resolve(),
           );
         });
-        await fs.unlink(rawSeg).catch(() => {});
-        procPaths.push(procSeg);
       }
-
-      // Concat: adjusts timestamps so seg2 follows seg1 seamlessly
-      const fileList = path.join(tmpDir, "filelist.txt");
-      await fs.writeFile(fileList, procPaths.map((p) => `file '${p}'`).join("\n"), "utf8");
-      log.info({ gameId }, "repair-video: concatenating WebM 2 segments");
-      await new Promise<void>((resolve, reject) => {
-        const proc = spawn("ffmpeg", [
-          "-f", "concat", "-safe", "0",
-          "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-          "-i", fileList,
-          "-c", "copy", "-movflags", "+faststart",
-          "-y", tmpOut,
-        ]);
-        let stderr = "";
-        proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
-        proc.on("close", (code) =>
-          code === 0 ? resolve() : reject(new Error(`ffmpeg webm-concat: ${stderr.slice(-500)}`)));
-        proc.on("error", reject);
-      });
-    } else {
-      // Single segment: download the whole file then faststart remux
-      log.info({ gameId }, "repair-video: single segment, downloading");
-      const rawFull = path.join(tmpDir, "raw.bin");
-      await downloadGCSRange(srcFile, rawFull);
-      log.info({ gameId }, "repair-video: applying faststart");
-      await new Promise<void>((resolve, reject) => {
-        execFile(
-          "ffmpeg",
-          ["-y", "-i", rawFull, "-c", "copy", "-movflags", "+faststart", tmpOut],
-          { maxBuffer: 5 * 1024 * 1024 },
-          (err, _stdout, stderr) =>
-            err ? reject(new Error(`ffmpeg: ${stderr?.slice(-600)}`)) : resolve(),
-        );
-      });
     }
 
     log.info({ gameId }, "repair-video: uploading");
