@@ -40,12 +40,43 @@ async function initStripe() {
 
   await runMigrations({ databaseUrl });
 
+  // runMigrations() silently skips when its migrations directory is missing
+  // (e.g. a bundling mistake). Verify the schema actually exists so a broken
+  // build fails loudly here instead of surfacing as a confusing downstream
+  // error — subscriptions are entirely dead without these tables.
+  const check = await db.execute(
+    sql`SELECT to_regclass('stripe.accounts') AS tbl`,
+  );
+  if (!check.rows[0]?.tbl) {
+    // This is a definitive check (the query succeeded; the table is missing),
+    // not a transient DB error — so exit instead of throwing: initStripe's
+    // caller swallows errors into a single log line, and serving traffic with
+    // payments silently dead is exactly the failure mode that broke
+    // production. A failed boot is loud; autoscale surfaces it.
+    logger.error(
+      "Stripe migrations did not run: stripe.accounts table is missing. " +
+        "Check that dist/migrations was included in the build. Exiting.",
+    );
+    process.exit(1);
+  }
+
   const stripeSync = await getStripeSync();
 
   const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
   await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
 
-  await stripeSync.syncBackfill();
+  // NOTE: syncBackfill() with no params hits the library's default switch
+  // branch and syncs NOTHING — { object: "all" } is required for a real
+  // backfill. Only run it when the tables are empty (first boot on a fresh
+  // database): it syncs every historical Stripe object, so running it on
+  // every ~8-min autoscale instance cycle would grow boot latency unboundedly
+  // with the customer base. After the one-time backfill, webhooks keep the
+  // tables in sync.
+  const seeded = await db.execute(sql`SELECT 1 FROM stripe.products LIMIT 1`);
+  if (seeded.rows.length === 0) {
+    logger.info("Stripe tables empty — running one-time full backfill");
+    await stripeSync.syncBackfill({ object: "all" });
+  }
 }
 
 /**
