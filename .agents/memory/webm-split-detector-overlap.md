@@ -27,8 +27,10 @@ Add a `candidatesFound` counter to the final log:
 - `candidatesFound === 0` → genuine single continuous recording (no second EBML header anywhere in the file)
 - `candidatesFound > 0` → magic(s) found but none passed verify — overlap or verification bug
 
-## Game 158 context
+## Game 158 context (resolved)
 
-Game 158 is a 2.3 GB two-half WebM (vp09+opus). The scanner returned null for three consecutive repair attempts. The most likely cause was the chunk-overlap bug above — the second EBML header landed near a 16 MB chunk boundary. After the fix the next repair attempt will log either "segment-id" method (split found) or candidatesFound=0 (confirmed single recording).
+Game 158 confirmed as a **single continuous WebM recording** (candidatesFound=1, false-positive VP9 byte sequence). No second EBML header. The repair was crashing the production server because:
+- Old path: download 2.3 GB (35 min) → scan local file (2.5 min) → ffmpeg on 2.3 GB (7 min crash)
+- New path: GCS stream scan (2-3 min, no download) → single recording detected → DB metadata reset only, no ffmpeg
 
-If it turns out to be a genuine single continuous recording, no halftime gap correction is needed: the game clock runs in real time (wall clock) throughout and pauses during halftime, so `game_clock_timestamp - videoOffsetMs` already gives the correct video position for all events.
+For single-WebM games: `videoOffsetMs ?? 0` is used in the highlight generator, so null defaults to 0 and highlights generate correctly from game clock timestamps directly.

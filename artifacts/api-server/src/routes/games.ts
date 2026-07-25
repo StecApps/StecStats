@@ -134,6 +134,67 @@ async function detectSegmentBoundary(file: GCSFile, log: any): Promise<SegmentBo
  * bytes (the DocType string that follows every EBML header).
  */
 /**
+ * GCS-streaming version of the WebM split detector.  Reads 16 MB chunks
+ * directly from GCS via authenticated createReadStream calls — no full-file
+ * download required.  Uses the same verification logic as the local scanner.
+ */
+async function detectWebMSplitOffsetGCS(
+  file: GCSFile,
+  fileSize: number,
+  log: any,
+): Promise<number | null> {
+  const EBML_MAGIC    = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
+  const SEGMENT_ID    = Buffer.from([0x18, 0x53, 0x80, 0x67]);
+  const CHUNK         = 16 * 1024 * 1024;
+  const VERIFY_WINDOW = 300;
+  const MIN_START     = 50 * 1024 * 1024;
+
+  let candidatesFound = 0;
+  for (let offset = MIN_START; offset < fileSize; offset += CHUNK) {
+    const length = Math.min(CHUNK + VERIFY_WINDOW, fileSize - offset);
+    const slice = await readGCSBytes(file, offset, length);
+    if (!slice || slice.length < 4) break;
+
+    let pos = 0;
+    while (pos <= slice.length - 4) {
+      const idx = slice.indexOf(EBML_MAGIC, pos);
+      if (idx === -1) break;
+      candidatesFound++;
+      const candidateOffset = offset + idx;
+
+      const verifyEnd = Math.min(slice.length, idx + VERIFY_WINDOW);
+      const verifySlice = slice.slice(idx, verifyEnd);
+
+      if (verifySlice.indexOf(SEGMENT_ID) !== -1) {
+        log.info(
+          { candidateOffset, candidatesFound, method: "segment-id" },
+          "repair-video: GCS scan found second EBML+Segment header (two-half split)",
+        );
+        return candidateOffset;
+      }
+
+      const verifyStr = verifySlice.toString("binary");
+      if (verifyStr.includes("webm") || verifyStr.includes("matroska")) {
+        log.info(
+          { candidateOffset, candidatesFound, method: "doctype" },
+          "repair-video: GCS scan found second EBML header via doctype (two-half split)",
+        );
+        return candidateOffset;
+      }
+
+      pos = idx + 1;
+    }
+  }
+  log.info(
+    { candidatesFound },
+    candidatesFound === 0
+      ? "repair-video: GCS scan — no EBML magic after MIN_START (single continuous recording)"
+      : "repair-video: GCS scan — EBML magic(s) found but none passed verify (single recording)",
+  );
+  return null;
+}
+
+/**
  * Scan a LOCAL file (already downloaded to disk) for the byte offset of a
  * second EBML header — the signature of a raw-concatenated two-half WebM.
  * Uses fs.read so there are no GCS range-read reliability concerns.
@@ -916,21 +977,21 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       });
     } else {
       // Non-MP4 or single-segment path.
-      // Download the full source file to disk first. For WebM files we then
-      // scan it locally for a two-half EBML split (GCS range reads are
-      // unreliable after the diagnostic probe has already used the file handle).
       const isWebM = srcContentType.includes("webm");
-      const rawExt = isWebM ? "webm" : "bin";
-      const rawFull = path.join(tmpDir, `raw.${rawExt}`);
-      log.info({ gameId, isWebM }, "repair-video: downloading full source file");
-      await downloadGCSRange(srcFile, rawFull);
 
       if (isWebM) {
-        log.info({ gameId }, "repair-video: scanning local WebM file for two-half split");
-        const splitOffset = await detectWebMSplitOffsetLocal(rawFull, log);
-        log.info({ gameId, splitOffset }, "repair-video: local WebM split scan complete");
+        // Scan GCS directly first — no 2+ GB download until we confirm a split.
+        // GCS createReadStream is reliable for sequential chunk reads.
+        log.info({ gameId, srcFileSize }, "repair-video: GCS-scanning WebM for two-half split");
+        const splitOffset = await detectWebMSplitOffsetGCS(srcFile, srcFileSize, log);
+        log.info({ gameId, splitOffset }, "repair-video: WebM split scan complete");
 
         if (splitOffset !== null) {
+          // Two-half WebM: download the full file then split + remux.
+          const rawFull = path.join(tmpDir, "raw.webm");
+          log.info({ gameId }, "repair-video: downloading full WebM for two-half processing");
+          await downloadGCSRange(srcFile, rawFull);
+
           // Split the local file into two raw WebM halves, remux each to MP4,
           // then ffmpeg-concat so the second half's timestamps follow the first.
           const raw0 = path.join(tmpDir, "raw0.webm");
@@ -1019,20 +1080,33 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
             proc.on("error", reject);
           });
         } else {
-          // Single WebM segment — just faststart-remux the whole thing
-          log.info({ gameId }, "repair-video: single WebM segment, applying faststart");
-          await new Promise<void>((resolve, reject) => {
-            execFile(
-              "ffmpeg",
-              ["-y", "-i", rawFull, ...ffmpegEncodeArgs, tmpOut],
-              { maxBuffer: 5 * 1024 * 1024 },
-              (err, _stdout, stderr) =>
-                err ? reject(new Error(`ffmpeg webm-faststart: ${stderr?.slice(-600)}`)) : resolve(),
-            );
-          });
+          // Single continuous WebM — the original file is already a valid playable
+          // WebM (VP9/Opus). Attempting to ffmpeg-remux a 2+ GB file on the
+          // production server risks an OOM crash before completion.  Instead just
+          // reset the metadata: the player uses the original source directly and
+          // highlights are regenerated from the correct timestamps.
+          log.info({ gameId }, "repair-video: single WebM — skipping ffmpeg, resetting metadata only");
+          await db
+            .update(gamesTable)
+            .set({
+              videoObjectPath:      sourceObjectPath,
+              videoProxyObjectPath: null,
+              highlightStatus:      "idle",
+              highlightObjectPath:  null,
+              lowlightStatus:       "idle",
+              lowlightObjectPath:   null,
+              videoHalf2StartMs:    null,
+              videoHalftimeGapMs:   null,
+            })
+            .where(eq(gamesTable.id, gameId));
+          log.info({ gameId }, "repair-video: done (single WebM metadata reset)");
+          return; // skip the upload step below; tmpDir cleanup runs in finally
         }
       } else {
-        // Non-WebM single segment: faststart remux
+        // Non-WebM single segment: download + faststart remux
+        const rawFull = path.join(tmpDir, "raw.bin");
+        log.info({ gameId }, "repair-video: downloading full source file");
+        await downloadGCSRange(srcFile, rawFull);
         log.info({ gameId }, "repair-video: applying faststart");
         await new Promise<void>((resolve, reject) => {
           execFile(
