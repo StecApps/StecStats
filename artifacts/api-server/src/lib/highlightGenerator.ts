@@ -1200,6 +1200,7 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
  */
 export async function generateHighlight(gameId: number, musicTrackPath?: string): Promise<void> {
   let tmpDir: string | null = null;
+  let releaseSrc: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -1233,31 +1234,32 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
 
-    // Stream clips directly from GCS via a signed URL — no full-file download
-    // and no proxy encoding required.  ffmpeg fast-seeks to each clip's start
-    // timestamp, reads only those bytes from GCS, and encodes the short clip.
-    // For 20-30 clips this is typically done in under 15 minutes regardless of
-    // source file size.
-    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
-      game.videoObjectPath!,
-      4 * 3600,
-    );
+    // Download the source video locally before extraction.
+    // GCS signed URLs are unreliable for mid-file range requests in production,
+    // and live-recorded WebM files have no seek index (Cues), so ffmpeg cannot
+    // random-access them via HTTP. Local file I/O avoids both issues — even a
+    // cueless WebM can be read linearly at disk speed (~200-500 MB/s).
+    logger.info({ gameId }, "Highlight: acquiring source video locally");
+    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath!);
+    releaseSrc = release;
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      srcUrl,
+      srcPath,
     ]);
     const hasAudio = audioStreams.length > 0;
 
     const segPaths = await renderGameSegments(
-      srcUrl, tmpDir, "g", eligible, nameById,
+      srcPath, tmpDir, "g", eligible, nameById,
       game.videoOffsetMs ?? 0, musicTrackPath,
       game.videoHalf2StartMs ?? undefined,
       game.videoHalftimeGapMs ?? undefined,
     );
+    releaseSrc();
+    releaseSrc = null;
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
@@ -1282,6 +1284,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
+    releaseSrc?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -1295,6 +1298,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
  */
 export async function generateLowlight(gameId: number, musicTrackPath?: string): Promise<void> {
   let tmpDir: string | null = null;
+  let releaseSrc: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -1326,28 +1330,30 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
 
-    // Stream clips directly from GCS via a signed URL — no full-file download
-    // and no proxy encoding required.
-    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
-      game.videoObjectPath!,
-      4 * 3600,
-    );
+    // Download the source video locally before extraction.
+    // Same reasoning as generateHighlight: GCS signed URLs fail for mid-file
+    // range requests in production, and cueless WebM files have no seek index.
+    logger.info({ gameId }, "Lowlight: acquiring source video locally");
+    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath!);
+    releaseSrc = release;
 
     const audioStreams = await ffprobe([
       "-v", "error",
       "-select_streams", "a",
       "-show_entries", "stream=index",
       "-of", "csv=p=0",
-      srcUrl,
+      srcPath,
     ]);
     const hasAudio = audioStreams.length > 0;
 
     const segPaths = await renderGameSegments(
-      srcUrl, tmpDir, "ll", eligible, nameById,
+      srcPath, tmpDir, "ll", eligible, nameById,
       game.videoOffsetMs ?? 0, musicTrackPath,
       game.videoHalf2StartMs ?? undefined,
       game.videoHalftimeGapMs ?? undefined,
     );
+    releaseSrc();
+    releaseSrc = null;
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
@@ -1372,6 +1378,7 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
+    releaseSrc?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
