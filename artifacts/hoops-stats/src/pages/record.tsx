@@ -2924,7 +2924,7 @@ export default function RecordGame() {
                 src={recordedPreviewUrl || videoSignedUrl || undefined}
                 controls
                 playsInline
-                preload="metadata"
+                preload="none"
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
                   setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
