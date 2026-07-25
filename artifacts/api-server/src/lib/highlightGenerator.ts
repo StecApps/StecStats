@@ -685,10 +685,21 @@ function buildSegments(
   duration: number,
   nameById: Map<number, string>,
   offsetMs: number = 0,
+  half2StartMs?: number,
+  halftimeGapMs?: number,
 ): Segment[] {
   const segments: Segment[] = [];
   for (const e of eligible) {
-    const adjustedMs = e.videoTimestampMs - offsetMs;
+    const ts = e.videoTimestampMs;
+    // For two-half recordings, the stitched video has the halftime gap removed
+    // by the repair step.  Event timestamps for the second half still contain
+    // the original game-clock values (including the gap), so we subtract the
+    // gap here to convert them to video-file positions.
+    const gapAdj =
+      half2StartMs != null && halftimeGapMs != null && ts >= half2StartMs
+        ? halftimeGapMs
+        : 0;
+    const adjustedMs = ts - offsetMs - gapAdj;
     // Skip events that predate the video (before the recording started).
     if (adjustedMs < 0) continue;
     const tSec = adjustedMs / 1000;
@@ -729,6 +740,8 @@ async function renderGameSegments(
   nameById: Map<number, string>,
   offsetMs: number = 0,
   musicTrackPath?: string,
+  half2StartMs?: number,
+  halftimeGapMs?: number,
 ): Promise<string[]> {
   // Duration detection strategy — designed to be safe for large files (3+ GB).
   //
@@ -940,7 +953,7 @@ async function renderGameSegments(
   ]);
   const hasAudio = audioStreams.length > 0;
 
-  let segments = buildSegments(eligible, duration, nameById, offsetMs);
+  let segments = buildSegments(eligible, duration, nameById, offsetMs, half2StartMs, halftimeGapMs);
   if (segments.length === 0) return [];
 
   // Phase A (remote sources only): single-pass stream-copy extraction.
@@ -1239,7 +1252,12 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcUrl, tmpDir, "g", eligible, nameById, game.videoOffsetMs ?? 0, musicTrackPath);
+    const segPaths = await renderGameSegments(
+      srcUrl, tmpDir, "g", eligible, nameById,
+      game.videoOffsetMs ?? 0, musicTrackPath,
+      game.videoHalf2StartMs ?? undefined,
+      game.videoHalftimeGapMs ?? undefined,
+    );
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
@@ -1324,7 +1342,12 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     ]);
     const hasAudio = audioStreams.length > 0;
 
-    const segPaths = await renderGameSegments(srcUrl, tmpDir, "ll", eligible, nameById, game.videoOffsetMs ?? 0, musicTrackPath);
+    const segPaths = await renderGameSegments(
+      srcUrl, tmpDir, "ll", eligible, nameById,
+      game.videoOffsetMs ?? 0, musicTrackPath,
+      game.videoHalf2StartMs ?? undefined,
+      game.videoHalftimeGapMs ?? undefined,
+    );
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
@@ -1428,7 +1451,12 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
         ]);
         const hasAudio = audioProbe.length > 0;
 
-        const segPaths = await renderGameSegments(srcPath, tmpDir!, `t${game.id}`, eligible, nameById, game.videoOffsetMs ?? 0);
+        const segPaths = await renderGameSegments(
+          srcPath, tmpDir!, `t${game.id}`, eligible, nameById,
+          game.videoOffsetMs ?? 0, undefined,
+          game.videoHalf2StartMs ?? undefined,
+          game.videoHalftimeGapMs ?? undefined,
+        );
         return { segPaths, hasAudio };
       }),
     );

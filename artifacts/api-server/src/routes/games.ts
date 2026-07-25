@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gt, inArray } from "drizzle-orm";
 import { execFile, spawn } from "child_process";
 import { promises as fs, createWriteStream, createReadStream } from "fs";
 import { Readable } from "stream";
@@ -722,6 +722,10 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     }
   }
 
+  // Quality preference — '720p' transcodes to 720p (smaller, faster highlights);
+  // anything else keeps the original codec/resolution via -c copy.
+  const repairQuality = req.body?.quality === '720p' ? '720p' : 'original';
+
   // Kick off the repair asynchronously so we can return 202 immediately.
   // For large files (2-3 GB) the download + ffmpeg + re-upload takes several
   // minutes, far exceeding any HTTP proxy timeout.  The client should poll
@@ -803,6 +807,16 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       "repair-video: scan complete",
     );
 
+    // Encode args for each segment remux.  720p transcodes to H.264/AAC at 720p;
+    // 'original' keeps the existing codec stream via -c copy.
+    // The final concat step always uses -c copy (streams are already at target res).
+    const ffmpegEncodeArgs: string[] = repairQuality === '720p'
+      ? ["-vf", "scale=-2:720", "-c:v", "libx264", "-crf", "23", "-preset", "veryfast", "-c:a", "aac", "-movflags", "+faststart"]
+      : ["-c", "copy", "-movflags", "+faststart"];
+    // Set by the WebM two-half path; stored to DB for highlight timestamp correction.
+    let videoHalf2StartMs: number | null = null;
+    let videoHalftimeGapMs: number | null = null;
+
     const tmpOut = path.join(tmpDir, "final.mp4");
 
     if (boundary) {
@@ -835,7 +849,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
         await new Promise<void>((resolve, reject) => {
           execFile(
             "ffmpeg",
-            ["-y", "-i", rawSeg, "-c", "copy", "-movflags", "+faststart", procSeg],
+            ["-y", "-i", rawSeg, ...ffmpegEncodeArgs, procSeg],
             { maxBuffer: 5 * 1024 * 1024 },
             (err, _stdout, stderr) =>
               err ? reject(new Error(`ffmpeg seg${i}: ${stderr?.slice(-500)}`)) : resolve(),
@@ -900,7 +914,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
             await new Promise<void>((resolve, reject) => {
               execFile(
                 "ffmpeg",
-                ["-y", "-i", rawSeg, "-c", "copy", "-movflags", "+faststart", procSeg],
+                ["-y", "-i", rawSeg, ...ffmpegEncodeArgs, procSeg],
                 { maxBuffer: 5 * 1024 * 1024 },
                 (err, _stdout, stderr) =>
                   err ? reject(new Error(`ffmpeg webm-seg${i}: ${stderr?.slice(-500)}`)) : resolve(),
@@ -908,6 +922,46 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
             });
             await fs.unlink(rawSeg).catch(() => {});
             procPaths.push(procSeg);
+          }
+
+          // Probe proc0 duration and query the first second-half event so we
+          // can store the halftime gap.  This lets the highlight generator
+          // subtract the gap from second-half event timestamps, mapping them
+          // to the correct position in the stitched two-half video.
+          try {
+            const proc0DurStr = await new Promise<string>((resolve, reject) => {
+              execFile(
+                "ffprobe",
+                ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", procPaths[0]],
+                { maxBuffer: 1024 * 1024 },
+                (err, stdout) => err ? reject(err) : resolve(stdout.trim()),
+              );
+            });
+            const proc0DurMs = Math.round(parseFloat(proc0DurStr) * 1000);
+            if (proc0DurMs > 0) {
+              const [firstHalf2Event] = await db
+                .select({ ts: gameEventsTable.videoTimestampMs })
+                .from(gameEventsTable)
+                .where(and(
+                  eq(gameEventsTable.gameId, gameId),
+                  gt(gameEventsTable.videoTimestampMs, proc0DurMs + 5000),
+                ))
+                .orderBy(asc(gameEventsTable.videoTimestampMs))
+                .limit(1);
+              if (firstHalf2Event) {
+                const gap = firstHalf2Event.ts - proc0DurMs;
+                if (gap > 5000) {
+                  videoHalf2StartMs = firstHalf2Event.ts;
+                  videoHalftimeGapMs = gap;
+                  log.info(
+                    { proc0DurMs, videoHalf2StartMs, videoHalftimeGapMs },
+                    "repair-video: halftime gap computed",
+                  );
+                }
+              }
+            }
+          } catch (halfErr) {
+            log.warn({ err: String(halfErr) }, "repair-video: halftime gap computation failed (non-fatal)");
           }
 
           const fileList = path.join(tmpDir, "filelist.txt");
@@ -933,7 +987,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
           await new Promise<void>((resolve, reject) => {
             execFile(
               "ffmpeg",
-              ["-y", "-i", rawFull, "-c", "copy", "-movflags", "+faststart", tmpOut],
+              ["-y", "-i", rawFull, ...ffmpegEncodeArgs, tmpOut],
               { maxBuffer: 5 * 1024 * 1024 },
               (err, _stdout, stderr) =>
                 err ? reject(new Error(`ffmpeg webm-faststart: ${stderr?.slice(-600)}`)) : resolve(),
@@ -946,7 +1000,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
         await new Promise<void>((resolve, reject) => {
           execFile(
             "ffmpeg",
-            ["-y", "-i", rawFull, "-c", "copy", "-movflags", "+faststart", tmpOut],
+            ["-y", "-i", rawFull, ...ffmpegEncodeArgs, tmpOut],
             { maxBuffer: 5 * 1024 * 1024 },
             (err, _stdout, stderr) =>
               err ? reject(new Error(`ffmpeg: ${stderr?.slice(-600)}`)) : resolve(),
@@ -966,10 +1020,13 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       .update(gamesTable)
       .set({
         videoObjectPath: newObjectPath,
+        videoProxyObjectPath: null,       // force proxy rebuild from repaired video
         highlightStatus: "idle",
         highlightObjectPath: null,
         lowlightStatus: "idle",
         lowlightObjectPath: null,
+        videoHalf2StartMs,
+        videoHalftimeGapMs,
       })
       .where(eq(gamesTable.id, gameId));
 

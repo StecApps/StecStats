@@ -37,6 +37,12 @@ export const gamesTable = pgTable("games", {
   lowlightStartedAt: timestamp("lowlight_started_at"),
   videoOffsetMs: integer("video_offset_ms"),
   videoProxyObjectPath: text("video_proxy_object_path"),
+  // Set by repair-video when two WebM halves are concatenated.
+  // half2StartMs = game-clock timestamp of first event in second half.
+  // halftimeGapMs = gap to subtract from second-half event timestamps so
+  //                 they map to the correct position in the stitched video.
+  videoHalf2StartMs: integer("video_half2_start_ms"),
+  videoHalftimeGapMs: integer("video_halftime_gap_ms"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

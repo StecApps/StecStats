@@ -211,6 +211,7 @@ export default function RecordGame() {
     "Almost done — finalizing your reel…";
 
   const [repairSourcePath, setRepairSourcePath] = useState("");
+  const [repairQuality, setRepairQuality] = useState<"original" | "720p">("original");
 
   const handleRepairVideo = async (sourceObjectPath?: string) => {
     if (!gameId) return;
@@ -219,6 +220,7 @@ export default function RecordGame() {
     try {
       const body: Record<string, string> = {};
       if (sourceObjectPath) body.sourceObjectPath = sourceObjectPath;
+      if (repairQuality === "720p") body.quality = "720p";
       const res = await fetch(`/api/games/${gameId}/repair-video`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2989,17 +2991,35 @@ export default function RecordGame() {
               </div>
               {existingVideoObjectPath && !recordedPreviewUrl && gameId && (
                 <div className="pt-1 space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    Video not playing correctly?{" "}
-                    <button
-                      type="button"
-                      className="underline text-primary disabled:opacity-50"
-                      onClick={() => handleRepairVideo()}
-                      disabled={isRepairing}
-                    >
-                      {isRepairing ? "Repairing… (may take a few minutes)" : "Repair video"}
-                    </button>
-                  </p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <p className="text-xs text-muted-foreground">
+                      Video not playing correctly?{" "}
+                      <button
+                        type="button"
+                        className="underline text-primary disabled:opacity-50"
+                        onClick={() => handleRepairVideo()}
+                        disabled={isRepairing}
+                      >
+                        {isRepairing ? "Repairing… (may take a few minutes)" : "Repair video"}
+                      </button>
+                    </p>
+                    <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
+                      <button
+                        type="button"
+                        className={`px-2 py-0.5 ${repairQuality === "original" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                        onClick={() => setRepairQuality("original")}
+                      >
+                        Original quality
+                      </button>
+                      <button
+                        type="button"
+                        className={`px-2 py-0.5 ${repairQuality === "720p" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                        onClick={() => setRepairQuality("720p")}
+                      >
+                        720p
+                      </button>
+                    </div>
+                  </div>
                   <details className="text-xs text-muted-foreground">
                     <summary className="cursor-pointer select-none">Re-repair from original source</summary>
                     <div className="mt-1 flex gap-2 items-center">
