@@ -5,8 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TeamUpdateSport } from './teamUpdateSport';
 
 export interface TeamUpdate {
   /** @minLength 1 */
   name?: string;
+  sport?: TeamUpdateSport;
 }

@@ -42,6 +42,8 @@ export * from './playerUpdate';
 export * from './portalSessionResponse';
 export * from './team';
 export * from './teamInput';
+export * from './teamInputSport';
 export * from './teamUpdate';
+export * from './teamUpdateSport';
 export * from './uploadUrlRequest';
 export * from './uploadUrlResponse';

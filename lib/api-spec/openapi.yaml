@@ -757,10 +757,11 @@ components:
 
     Team:
       type: object
-      required: [id, name, createdAt]
+      required: [id, name, sport, createdAt]
       properties:
         id: { type: integer }
         name: { type: string }
+        sport: { type: string, default: basketball }
         createdAt: { type: string, format: date-time }
 
     TeamInput:
@@ -768,11 +769,13 @@ components:
       required: [name]
       properties:
         name: { type: string, minLength: 1 }
+        sport: { type: string, enum: [basketball, soccer], default: basketball }
 
     TeamUpdate:
       type: object
       properties:
         name: { type: string, minLength: 1 }
+        sport: { type: string, enum: [basketball, soccer] }
 
     PlayerGameStatLine:
       type: object
@@ -806,6 +809,12 @@ components:
         steals: { type: integer }
         turnovers: { type: integer }
         blocks: { type: integer }
+        goals: { type: integer, default: 0 }
+        shots: { type: integer, default: 0 }
+        shotsOffTarget: { type: integer, default: 0 }
+        saves: { type: integer, default: 0 }
+        yellowCards: { type: integer, default: 0 }
+        redCards: { type: integer, default: 0 }
 
     PlayerGameStatInput:
       type: object
@@ -835,6 +844,12 @@ components:
         steals: { type: integer, minimum: 0 }
         turnovers: { type: integer, minimum: 0 }
         blocks: { type: integer, minimum: 0 }
+        goals: { type: integer, minimum: 0, default: 0 }
+        shots: { type: integer, minimum: 0, default: 0 }
+        shotsOffTarget: { type: integer, minimum: 0, default: 0 }
+        saves: { type: integer, minimum: 0, default: 0 }
+        yellowCards: { type: integer, minimum: 0, default: 0 }
+        redCards: { type: integer, minimum: 0, default: 0 }
 
     Game:
       type: object
@@ -861,6 +876,18 @@ components:
         opponentScore: { type: integer }
         videoObjectPath: { type: string, nullable: true }
         videoOffsetMs: { type: integer, nullable: true }
+        videoDurationMs:
+          type: integer
+          nullable: true
+          description: True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film.
+        videoHalf2StartMs:
+          type: integer
+          nullable: true
+          description: Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.
+        videoHalftimeGapMs:
+          type: integer
+          nullable: true
+          description: Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.
         highlightObjectPath: { type: string, nullable: true }
         highlightStatus:
           type: string
@@ -1017,6 +1044,9 @@ components:
           nullable: true
         cancelAtPeriodEnd:
           type: boolean
+        hasSoccer:
+          type: boolean
+          default: false
 
     CreateCheckoutSessionInput:
       type: object
@@ -1028,7 +1058,7 @@ components:
           description: Billing interval.
         tier:
           type: string
-          enum: [pro, premium]
+          enum: [pro, premium, soccer]
           description: Which plan tier to check out with. Defaults to pro.
 
     CheckoutSessionResponse:
@@ -1066,6 +1096,10 @@ components:
         eligibleMoments:
           type: integer
           description: Number of qualifying moments (made shots, rebounds, assists, steals, blocks).
+        onFilmMoments:
+          type: integer
+          nullable: true
+          description: How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.
 
     LowlightStatus:
       type: object
@@ -1084,6 +1118,10 @@ components:
         eligibleMoments:
           type: integer
           description: Number of qualifying moments (missed shots and turnovers).
+        onFilmMoments:
+          type: integer
+          nullable: true
+          description: How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.
 
     GameEvent:
       type: object

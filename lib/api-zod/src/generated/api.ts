@@ -158,10 +158,12 @@ export const ListPlayerTeamGroupsResponse = zod.array(ListPlayerTeamGroupsRespon
 /**
  * @summary List all teams/seasons
  */
+export const listTeamsResponseSportDefault = `basketball`;
+
 export const ListTeamsResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "sport": zod.string().default("basketball"),
+  "sport": zod.string().default(listTeamsResponseSportDefault),
   "createdAt": zod.coerce.date()
 })
 export const ListTeamsResponse = zod.array(ListTeamsResponseItem)
@@ -171,17 +173,19 @@ export const ListTeamsResponse = zod.array(ListTeamsResponseItem)
  * @summary Create a team/season
  */
 
-
+export const createTeamBodySportDefault = `basketball`;
 
 export const CreateTeamBody = zod.object({
   "name": zod.string().min(1),
-  "sport": zod.enum(["basketball", "soccer"]).optional().default("basketball")
+  "sport": zod.enum(['basketball', 'soccer']).default(createTeamBodySportDefault)
 })
+
+export const createTeamResponseSportDefault = `basketball`;
 
 export const CreateTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "sport": zod.string().default("basketball"),
+  "sport": zod.string().default(createTeamResponseSportDefault),
   "createdAt": zod.coerce.date()
 })
 
@@ -193,10 +197,12 @@ export const GetTeamParams = zod.object({
   "teamId": zod.coerce.number()
 })
 
+export const getTeamResponseSportDefault = `basketball`;
+
 export const GetTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "sport": zod.string().default("basketball"),
+  "sport": zod.string().default(getTeamResponseSportDefault),
   "createdAt": zod.coerce.date()
 })
 
@@ -213,13 +219,15 @@ export const UpdateTeamParams = zod.object({
 
 export const UpdateTeamBody = zod.object({
   "name": zod.string().min(1).optional(),
-  "sport": zod.enum(["basketball", "soccer"]).optional()
+  "sport": zod.enum(['basketball', 'soccer']).optional()
 })
+
+export const updateTeamResponseSportDefault = `basketball`;
 
 export const UpdateTeamResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
-  "sport": zod.string().default("basketball"),
+  "sport": zod.string().default(updateTeamResponseSportDefault),
   "createdAt": zod.coerce.date()
 })
 
@@ -241,6 +249,12 @@ export const ListTeamGamesParams = zod.object({
   "teamId": zod.coerce.number()
 })
 
+export const listTeamGamesResponseStatsItemGoalsDefault = 0;
+export const listTeamGamesResponseStatsItemShotsDefault = 0;
+export const listTeamGamesResponseStatsItemShotsOffTargetDefault = 0;
+export const listTeamGamesResponseStatsItemSavesDefault = 0;
+export const listTeamGamesResponseStatsItemYellowCardsDefault = 0;
+export const listTeamGamesResponseStatsItemRedCardsDefault = 0;
 export const listTeamGamesResponseEventsItemVideoTimestampMsMin = 0;
 
 
@@ -256,6 +270,9 @@ export const ListTeamGamesResponseItem = zod.object({
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
   "videoOffsetMs": zod.number().nullish(),
+  "videoDurationMs": zod.number().nullish().describe('True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film.'),
+  "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
+  "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
@@ -275,12 +292,12 @@ export const ListTeamGamesResponseItem = zod.object({
   "steals": zod.number(),
   "turnovers": zod.number(),
   "blocks": zod.number(),
-  "goals": zod.number().optional().default(0),
-  "shots": zod.number().optional().default(0),
-  "shotsOffTarget": zod.number().optional().default(0),
-  "saves": zod.number().optional().default(0),
-  "yellowCards": zod.number().optional().default(0),
-  "redCards": zod.number().optional().default(0)
+  "goals": zod.number().default(listTeamGamesResponseStatsItemGoalsDefault),
+  "shots": zod.number().default(listTeamGamesResponseStatsItemShotsDefault),
+  "shotsOffTarget": zod.number().default(listTeamGamesResponseStatsItemShotsOffTargetDefault),
+  "saves": zod.number().default(listTeamGamesResponseStatsItemSavesDefault),
+  "yellowCards": zod.number().default(listTeamGamesResponseStatsItemYellowCardsDefault),
+  "redCards": zod.number().default(listTeamGamesResponseStatsItemRedCardsDefault)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -322,6 +339,24 @@ export const createGameBodyStatsItemTurnoversMin = 0;
 
 export const createGameBodyStatsItemBlocksMin = 0;
 
+export const createGameBodyStatsItemGoalsDefault = 0;
+export const createGameBodyStatsItemGoalsMin = 0;
+
+export const createGameBodyStatsItemShotsDefault = 0;
+export const createGameBodyStatsItemShotsMin = 0;
+
+export const createGameBodyStatsItemShotsOffTargetDefault = 0;
+export const createGameBodyStatsItemShotsOffTargetMin = 0;
+
+export const createGameBodyStatsItemSavesDefault = 0;
+export const createGameBodyStatsItemSavesMin = 0;
+
+export const createGameBodyStatsItemYellowCardsDefault = 0;
+export const createGameBodyStatsItemYellowCardsMin = 0;
+
+export const createGameBodyStatsItemRedCardsDefault = 0;
+export const createGameBodyStatsItemRedCardsMin = 0;
+
 export const createGameBodyEventsItemVideoTimestampMsMin = 0;
 
 
@@ -347,12 +382,12 @@ export const CreateGameBody = zod.object({
   "steals": zod.number().min(createGameBodyStatsItemStealsMin),
   "turnovers": zod.number().min(createGameBodyStatsItemTurnoversMin),
   "blocks": zod.number().min(createGameBodyStatsItemBlocksMin),
-  "goals": zod.number().min(0).optional().default(0),
-  "shots": zod.number().min(0).optional().default(0),
-  "shotsOffTarget": zod.number().min(0).optional().default(0),
-  "saves": zod.number().min(0).optional().default(0),
-  "yellowCards": zod.number().min(0).optional().default(0),
-  "redCards": zod.number().min(0).optional().default(0)
+  "goals": zod.number().min(createGameBodyStatsItemGoalsMin).default(createGameBodyStatsItemGoalsDefault),
+  "shots": zod.number().min(createGameBodyStatsItemShotsMin).default(createGameBodyStatsItemShotsDefault),
+  "shotsOffTarget": zod.number().min(createGameBodyStatsItemShotsOffTargetMin).default(createGameBodyStatsItemShotsOffTargetDefault),
+  "saves": zod.number().min(createGameBodyStatsItemSavesMin).default(createGameBodyStatsItemSavesDefault),
+  "yellowCards": zod.number().min(createGameBodyStatsItemYellowCardsMin).default(createGameBodyStatsItemYellowCardsDefault),
+  "redCards": zod.number().min(createGameBodyStatsItemRedCardsMin).default(createGameBodyStatsItemRedCardsDefault)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -362,6 +397,12 @@ export const CreateGameBody = zod.object({
 }))
 })
 
+export const createGameResponseStatsItemGoalsDefault = 0;
+export const createGameResponseStatsItemShotsDefault = 0;
+export const createGameResponseStatsItemShotsOffTargetDefault = 0;
+export const createGameResponseStatsItemSavesDefault = 0;
+export const createGameResponseStatsItemYellowCardsDefault = 0;
+export const createGameResponseStatsItemRedCardsDefault = 0;
 export const createGameResponseEventsItemVideoTimestampMsMin = 0;
 
 
@@ -377,6 +418,9 @@ export const CreateGameResponse = zod.object({
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
   "videoOffsetMs": zod.number().nullish(),
+  "videoDurationMs": zod.number().nullish().describe('True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film.'),
+  "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
+  "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
@@ -396,12 +440,12 @@ export const CreateGameResponse = zod.object({
   "steals": zod.number(),
   "turnovers": zod.number(),
   "blocks": zod.number(),
-  "goals": zod.number().optional().default(0),
-  "shots": zod.number().optional().default(0),
-  "shotsOffTarget": zod.number().optional().default(0),
-  "saves": zod.number().optional().default(0),
-  "yellowCards": zod.number().optional().default(0),
-  "redCards": zod.number().optional().default(0)
+  "goals": zod.number().default(createGameResponseStatsItemGoalsDefault),
+  "shots": zod.number().default(createGameResponseStatsItemShotsDefault),
+  "shotsOffTarget": zod.number().default(createGameResponseStatsItemShotsOffTargetDefault),
+  "saves": zod.number().default(createGameResponseStatsItemSavesDefault),
+  "yellowCards": zod.number().default(createGameResponseStatsItemYellowCardsDefault),
+  "redCards": zod.number().default(createGameResponseStatsItemRedCardsDefault)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -419,6 +463,12 @@ export const GetGameParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
+export const getGameResponseStatsItemGoalsDefault = 0;
+export const getGameResponseStatsItemShotsDefault = 0;
+export const getGameResponseStatsItemShotsOffTargetDefault = 0;
+export const getGameResponseStatsItemSavesDefault = 0;
+export const getGameResponseStatsItemYellowCardsDefault = 0;
+export const getGameResponseStatsItemRedCardsDefault = 0;
 export const getGameResponseEventsItemVideoTimestampMsMin = 0;
 
 
@@ -434,6 +484,9 @@ export const GetGameResponse = zod.object({
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
   "videoOffsetMs": zod.number().nullish(),
+  "videoDurationMs": zod.number().nullish().describe('True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film.'),
+  "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
+  "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
@@ -453,12 +506,12 @@ export const GetGameResponse = zod.object({
   "steals": zod.number(),
   "turnovers": zod.number(),
   "blocks": zod.number(),
-  "goals": zod.number().optional().default(0),
-  "shots": zod.number().optional().default(0),
-  "shotsOffTarget": zod.number().optional().default(0),
-  "saves": zod.number().optional().default(0),
-  "yellowCards": zod.number().optional().default(0),
-  "redCards": zod.number().optional().default(0)
+  "goals": zod.number().default(getGameResponseStatsItemGoalsDefault),
+  "shots": zod.number().default(getGameResponseStatsItemShotsDefault),
+  "shotsOffTarget": zod.number().default(getGameResponseStatsItemShotsOffTargetDefault),
+  "saves": zod.number().default(getGameResponseStatsItemSavesDefault),
+  "yellowCards": zod.number().default(getGameResponseStatsItemYellowCardsDefault),
+  "redCards": zod.number().default(getGameResponseStatsItemRedCardsDefault)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -503,6 +556,24 @@ export const updateGameBodyStatsItemTurnoversMin = 0;
 
 export const updateGameBodyStatsItemBlocksMin = 0;
 
+export const updateGameBodyStatsItemGoalsDefault = 0;
+export const updateGameBodyStatsItemGoalsMin = 0;
+
+export const updateGameBodyStatsItemShotsDefault = 0;
+export const updateGameBodyStatsItemShotsMin = 0;
+
+export const updateGameBodyStatsItemShotsOffTargetDefault = 0;
+export const updateGameBodyStatsItemShotsOffTargetMin = 0;
+
+export const updateGameBodyStatsItemSavesDefault = 0;
+export const updateGameBodyStatsItemSavesMin = 0;
+
+export const updateGameBodyStatsItemYellowCardsDefault = 0;
+export const updateGameBodyStatsItemYellowCardsMin = 0;
+
+export const updateGameBodyStatsItemRedCardsDefault = 0;
+export const updateGameBodyStatsItemRedCardsMin = 0;
+
 export const updateGameBodyEventsItemVideoTimestampMsMin = 0;
 
 
@@ -529,12 +600,12 @@ export const UpdateGameBody = zod.object({
   "steals": zod.number().min(updateGameBodyStatsItemStealsMin),
   "turnovers": zod.number().min(updateGameBodyStatsItemTurnoversMin),
   "blocks": zod.number().min(updateGameBodyStatsItemBlocksMin),
-  "goals": zod.number().min(0).optional().default(0),
-  "shots": zod.number().min(0).optional().default(0),
-  "shotsOffTarget": zod.number().min(0).optional().default(0),
-  "saves": zod.number().min(0).optional().default(0),
-  "yellowCards": zod.number().min(0).optional().default(0),
-  "redCards": zod.number().min(0).optional().default(0)
+  "goals": zod.number().min(updateGameBodyStatsItemGoalsMin).default(updateGameBodyStatsItemGoalsDefault),
+  "shots": zod.number().min(updateGameBodyStatsItemShotsMin).default(updateGameBodyStatsItemShotsDefault),
+  "shotsOffTarget": zod.number().min(updateGameBodyStatsItemShotsOffTargetMin).default(updateGameBodyStatsItemShotsOffTargetDefault),
+  "saves": zod.number().min(updateGameBodyStatsItemSavesMin).default(updateGameBodyStatsItemSavesDefault),
+  "yellowCards": zod.number().min(updateGameBodyStatsItemYellowCardsMin).default(updateGameBodyStatsItemYellowCardsDefault),
+  "redCards": zod.number().min(updateGameBodyStatsItemRedCardsMin).default(updateGameBodyStatsItemRedCardsDefault)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -544,6 +615,12 @@ export const UpdateGameBody = zod.object({
 }))
 })
 
+export const updateGameResponseStatsItemGoalsDefault = 0;
+export const updateGameResponseStatsItemShotsDefault = 0;
+export const updateGameResponseStatsItemShotsOffTargetDefault = 0;
+export const updateGameResponseStatsItemSavesDefault = 0;
+export const updateGameResponseStatsItemYellowCardsDefault = 0;
+export const updateGameResponseStatsItemRedCardsDefault = 0;
 export const updateGameResponseEventsItemVideoTimestampMsMin = 0;
 
 
@@ -559,6 +636,9 @@ export const UpdateGameResponse = zod.object({
   "opponentScore": zod.number(),
   "videoObjectPath": zod.string().nullish(),
   "videoOffsetMs": zod.number().nullish(),
+  "videoDurationMs": zod.number().nullish().describe('True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film.'),
+  "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
+  "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
@@ -578,12 +658,12 @@ export const UpdateGameResponse = zod.object({
   "steals": zod.number(),
   "turnovers": zod.number(),
   "blocks": zod.number(),
-  "goals": zod.number().optional().default(0),
-  "shots": zod.number().optional().default(0),
-  "shotsOffTarget": zod.number().optional().default(0),
-  "saves": zod.number().optional().default(0),
-  "yellowCards": zod.number().optional().default(0),
-  "redCards": zod.number().optional().default(0)
+  "goals": zod.number().default(updateGameResponseStatsItemGoalsDefault),
+  "shots": zod.number().default(updateGameResponseStatsItemShotsDefault),
+  "shotsOffTarget": zod.number().default(updateGameResponseStatsItemShotsOffTargetDefault),
+  "saves": zod.number().default(updateGameResponseStatsItemSavesDefault),
+  "yellowCards": zod.number().default(updateGameResponseStatsItemYellowCardsDefault),
+  "redCards": zod.number().default(updateGameResponseStatsItemRedCardsDefault)
 })),
   "events": zod.array(zod.object({
   "playerId": zod.number(),
@@ -616,7 +696,8 @@ export const GetTeamHighlightResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
-  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
+  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.')
 })
 
 
@@ -635,7 +716,8 @@ export const GenerateTeamHighlightResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
-  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
+  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.')
 })
 
 
@@ -651,7 +733,8 @@ export const GetGameHighlightResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
-  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
+  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.')
 })
 
 
@@ -670,7 +753,8 @@ export const GenerateGameHighlightResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
-  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).')
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
+  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.')
 })
 
 
@@ -686,7 +770,8 @@ export const GetGameLowlightResponse = zod.object({
   "lowlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started.'),
-  "eligibleMoments": zod.number().describe('Number of qualifying moments (missed shots and turnovers).')
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (missed shots and turnovers).'),
+  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.')
 })
 
 
@@ -705,7 +790,8 @@ export const GenerateGameLowlightResponse = zod.object({
   "lowlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started.'),
-  "eligibleMoments": zod.number().describe('Number of qualifying moments (missed shots and turnovers).')
+  "eligibleMoments": zod.number().describe('Number of qualifying moments (missed shots and turnovers).'),
+  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.')
 })
 
 
@@ -746,13 +832,15 @@ export const ImportDataResponse = zod.object({
 /**
  * @summary Get the caller's current plan and subscription status
  */
+export const getBillingStatusResponseHasSoccerDefault = false;
+
 export const GetBillingStatusResponse = zod.object({
   "plan": zod.enum(['free', 'pro', 'premium']).describe('Effective plan derived from Stripe subscription status.'),
   "status": zod.string().nullable().describe('Raw Stripe subscription status (e.g. trialing, active, past_due, canceled), or null if never subscribed.'),
   "currentPeriodEnd": zod.coerce.date().nullish(),
   "trialEnd": zod.coerce.date().nullish(),
   "cancelAtPeriodEnd": zod.boolean(),
-  "hasSoccer": zod.boolean().optional().default(false)
+  "hasSoccer": zod.boolean().default(getBillingStatusResponseHasSoccerDefault)
 })
 
 

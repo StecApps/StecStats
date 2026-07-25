@@ -5,8 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-
-export type TeamInputSport = 'basketball' | 'soccer';
+import type { TeamInputSport } from './teamInputSport';
 
 export interface TeamInput {
   /** @minLength 1 */

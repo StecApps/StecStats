@@ -4,8 +4,10 @@ import { db, gamesTable } from "@workspace/db";
 import { GetGameParams } from "@workspace/api-zod";
 import {
   countLowlightMoments,
+  getLowlightCoverage,
   generateLowlight,
 } from "../lib/highlightGenerator";
+import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements, isPro } from "../lib/entitlements";
 import { getMusicTrackPath } from "../lib/musicTracks";
@@ -41,13 +43,19 @@ router.get("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     await db.update(gamesTable).set({ lowlightStatus, lowlightError }).where(eq(gamesTable.id, gameId));
   }
 
-  const eligibleMoments = await countLowlightMoments(gameId);
+  // Legacy games may predate duration probing — self-heal lazily.
+  if (game.videoObjectPath && game.videoDurationMs == null) {
+    scheduleVideoDurationProbe(gameId, game.videoObjectPath);
+  }
+
+  const { eligibleMoments, onFilmMoments } = await getLowlightCoverage(game);
   res.json({
     status: normalizeStatus(lowlightStatus),
     lowlightObjectPath: game.lowlightObjectPath ?? null,
     error: lowlightError ?? null,
     startedAt: isStale ? null : (game.lowlightStartedAt?.toISOString() ?? null),
     eligibleMoments,
+    onFilmMoments,
   });
 });
 

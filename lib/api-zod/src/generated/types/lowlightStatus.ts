@@ -15,4 +15,6 @@ export interface LowlightStatus {
   startedAt?: Date | null;
   /** Number of qualifying moments (missed shots and turnovers). */
   eligibleMoments: number;
+  /** How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown. */
+  onFilmMoments?: number | null;
 }

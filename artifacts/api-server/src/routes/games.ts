@@ -30,6 +30,7 @@ import { ObjectStorageService } from "../lib/objectStorage";
 import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib/objectAcl";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements, isPro } from "../lib/entitlements";
+import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -410,6 +411,9 @@ async function serializeGame(gameId: number, ownerId: number) {
     opponentScore: game.opponentScore,
     videoObjectPath: game.videoObjectPath,
     videoOffsetMs: game.videoOffsetMs ?? null,
+    videoDurationMs: game.videoDurationMs ?? null,
+    videoHalf2StartMs: game.videoHalf2StartMs ?? null,
+    videoHalftimeGapMs: game.videoHalftimeGapMs ?? null,
     highlightObjectPath: game.highlightObjectPath ?? null,
     highlightStatus: game.highlightStatus ?? null,
     highlightError: game.highlightError ?? null,
@@ -528,6 +532,8 @@ router.post("/games", requireAuth, async (req, res) => {
       );
     }
 
+    if (videoObjectPath) scheduleVideoDurationProbe(createdGame.id, videoObjectPath);
+
     return createdGame;
   });
 
@@ -628,6 +634,7 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
               lowlightStatus: "idle",
               lowlightError: null,
               lowlightStartedAt: null,
+              videoDurationMs: null,
             }
           : {}),
       })
@@ -654,6 +661,10 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
       );
     }
   });
+
+  if (videoObjectPath && videoObjectPath !== existing.videoObjectPath) {
+    scheduleVideoDurationProbe(gameId, videoObjectPath);
+  }
 
   const serialized = await serializeGame(gameId, ownerId);
   res.json(UpdateGameResponse.parse(serialized));
@@ -806,8 +817,11 @@ router.patch("/games/:gameId/video", requireAuth, async (req, res) => {
       lowlightStatus: "idle",
       lowlightError: null,
       lowlightStartedAt: null,
+      videoDurationMs: null,
     })
     .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+
+  scheduleVideoDurationProbe(gameId, videoObjectPath);
 
   req.log.info({ gameId, videoObjectPath }, "game video attached via background upload");
   res.json({ ok: true });
@@ -1126,6 +1140,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
               videoHalftimeGapMs:   null,
             })
             .where(eq(gamesTable.id, gameId));
+          scheduleVideoDurationProbe(gameId, sourceObjectPath);
           log.info({ gameId }, "repair-video: done (single WebM metadata reset)");
           return; // skip the upload step below; tmpDir cleanup runs in finally
         }
@@ -1165,8 +1180,11 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
         lowlightObjectPath: null,
         videoHalf2StartMs,
         videoHalftimeGapMs,
+        videoDurationMs: null,
       })
       .where(eq(gamesTable.id, gameId));
+
+    scheduleVideoDurationProbe(gameId, newObjectPath);
 
     log.info({ gameId, newObjectPath }, "repair-video: done");
   } finally {

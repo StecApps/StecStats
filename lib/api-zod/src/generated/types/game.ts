@@ -21,6 +21,12 @@ export interface Game {
   opponentScore: number;
   videoObjectPath?: string | null;
   videoOffsetMs?: number | null;
+  /** True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film. */
+  videoDurationMs?: number | null;
+  /** Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings. */
+  videoHalf2StartMs?: number | null;
+  /** Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline. */
+  videoHalftimeGapMs?: number | null;
   highlightObjectPath?: string | null;
   highlightStatus?: GameHighlightStatus;
   highlightError?: string | null;

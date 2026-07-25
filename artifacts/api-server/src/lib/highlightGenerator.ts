@@ -666,6 +666,72 @@ export async function countEligibleMoments(gameId: number): Promise<number> {
 }
 
 /**
+ * True when the event's timestamp maps to a position inside the recorded
+ * footage. Mirrors the mapping used by buildSegments (offset + halftime gap).
+ */
+function isTimestampOnFilm(
+  ts: number,
+  game: {
+    videoDurationMs: number | null;
+    videoOffsetMs: number | null;
+    videoHalf2StartMs: number | null;
+    videoHalftimeGapMs: number | null;
+  },
+): boolean {
+  const gapAdj =
+    game.videoHalf2StartMs != null &&
+    game.videoHalftimeGapMs != null &&
+    ts >= game.videoHalf2StartMs
+      ? game.videoHalftimeGapMs
+      : 0;
+  const adjustedMs = ts - (game.videoOffsetMs ?? 0) - gapAdj;
+  return adjustedMs >= 0 && adjustedMs < (game.videoDurationMs ?? 0);
+}
+
+/**
+ * Eligible-vs-on-film coverage for a game's highlight moments.
+ * onFilmMoments is null when the video's true duration is unknown.
+ */
+export async function getHighlightCoverage(game: {
+  id: number;
+  videoDurationMs: number | null;
+  videoOffsetMs: number | null;
+  videoHalf2StartMs: number | null;
+  videoHalftimeGapMs: number | null;
+}): Promise<{ eligibleMoments: number; onFilmMoments: number | null }> {
+  const events = await db.query.gameEventsTable.findMany({
+    where: eq(gameEventsTable.gameId, game.id),
+  });
+  const eligible = events.filter((e) => e.delta > 0 && HIGHLIGHT_FIELDS.has(e.statField));
+  const onFilmMoments =
+    game.videoDurationMs != null && game.videoDurationMs > 0
+      ? eligible.filter((e) => isTimestampOnFilm(e.videoTimestampMs ?? 0, game)).length
+      : null;
+  return { eligibleMoments: eligible.length, onFilmMoments };
+}
+
+/**
+ * Eligible-vs-on-film coverage for a game's lowlight moments.
+ */
+export async function getLowlightCoverage(game: {
+  id: number;
+  videoDurationMs: number | null;
+  videoOffsetMs: number | null;
+  videoHalf2StartMs: number | null;
+  videoHalftimeGapMs: number | null;
+}): Promise<{ eligibleMoments: number; onFilmMoments: number | null }> {
+  const events = await db.query.gameEventsTable.findMany({
+    where: eq(gameEventsTable.gameId, game.id),
+  });
+  const eligible = events.filter((e) => isTrueLowlight(e, events));
+  const onFilmMoments =
+    game.videoDurationMs != null && game.videoDurationMs > 0
+      ? eligible.filter((e) => isTimestampOnFilm(e.videoTimestampMs ?? 0, game)).length
+      : null;
+  return { eligibleMoments: eligible.length, onFilmMoments };
+}
+
+/**
  * Count qualifying moments across every video-having game on a team.
  */
 export async function countEligibleMomentsForTeam(teamId: number): Promise<number> {
@@ -742,6 +808,7 @@ async function renderGameSegments(
   musicTrackPath?: string,
   half2StartMs?: number,
   halftimeGapMs?: number,
+  knownDurationMs?: number,
 ): Promise<string[]> {
   // Duration detection strategy — designed to be safe for large files (3+ GB).
   //
@@ -764,7 +831,14 @@ async function renderGameSegments(
   const isUrl = srcPath.startsWith("http://") || srcPath.startsWith("https://");
 
   let duration = NaN;
-  if (isUrl) {
+  if (knownDurationMs != null && knownDurationMs > 0) {
+    // Authoritative duration probed from the stored file (WebM tail cluster
+    // scan / MP4 header) at upload time. More reliable than any ffprobe
+    // cascade — live-recorded WebM has no duration header at all.
+    duration = knownDurationMs / 1000;
+    logger.info({ prefix, duration, source: "stored-probe" },
+      "Using stored video duration");
+  } else if (isUrl) {
     // Remote sources (GCS signed URLs) are typically live-recorded WebM or
     // fMP4 with NO duration header and NO seek index — every duration probe
     // returns N/A, and bitrate estimates are wildly wrong for VBR content.
@@ -1257,6 +1331,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       game.videoOffsetMs ?? 0, musicTrackPath,
       game.videoHalf2StartMs ?? undefined,
       game.videoHalftimeGapMs ?? undefined,
+      game.videoDurationMs ?? undefined,
     );
     releaseSrc();
     releaseSrc = null;
@@ -1351,6 +1426,7 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       game.videoOffsetMs ?? 0, musicTrackPath,
       game.videoHalf2StartMs ?? undefined,
       game.videoHalftimeGapMs ?? undefined,
+      game.videoDurationMs ?? undefined,
     );
     releaseSrc();
     releaseSrc = null;
@@ -1463,6 +1539,7 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
           game.videoOffsetMs ?? 0, undefined,
           game.videoHalf2StartMs ?? undefined,
           game.videoHalftimeGapMs ?? undefined,
+          game.videoDurationMs ?? undefined,
         );
         return { segPaths, hasAudio };
       }),

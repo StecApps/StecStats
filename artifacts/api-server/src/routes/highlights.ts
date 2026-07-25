@@ -4,8 +4,10 @@ import { db, gamesTable } from "@workspace/db";
 import { GetGameParams, GetGameHighlightResponse } from "@workspace/api-zod";
 import {
   countEligibleMoments,
+  getHighlightCoverage,
   generateHighlight,
 } from "../lib/highlightGenerator";
+import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements, isPro } from "../lib/entitlements";
 import { getMusicTrackPath } from "../lib/musicTracks";
@@ -53,7 +55,12 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       .where(eq(gamesTable.id, gameId));
   }
 
-  const eligibleMoments = await countEligibleMoments(gameId);
+  // Legacy games may predate duration probing — self-heal lazily.
+  if (game.videoObjectPath && game.videoDurationMs == null) {
+    scheduleVideoDurationProbe(gameId, game.videoObjectPath);
+  }
+
+  const { eligibleMoments, onFilmMoments } = await getHighlightCoverage(game);
   res.json(
     GetGameHighlightResponse.parse({
       status: normalizeStatus(highlightStatus),
@@ -61,6 +68,7 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       error: highlightError ?? null,
       startedAt: isStale ? null : (game.highlightStartedAt?.toISOString() ?? null),
       eligibleMoments,
+      onFilmMoments,
     }),
   );
 });

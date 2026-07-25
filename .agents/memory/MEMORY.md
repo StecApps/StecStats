@@ -1,7 +1,7 @@
-- [TS segment absolute timestamps](ts-segment-timestamps.md) — fast-seek (-ss before -i) keeps source PTS; add `-reset_timestamps 1` to every mpegts encode or iOS Safari refuses to play the concatenated MP4.
-- [Orval params naming collision](orval-params-collision.md) — an operation combining a path param + query param can produce a TS2308 name collision between zod and type generators; avoid by not mixing them.
+- [TS segment absolute timestamps](ts-segment-timestamps.md) — fast-seek keeps source PTS; add `-reset_timestamps 1` to every mpegts encode or iOS Safari won't play the concat MP4.
+- [Orval params naming collision](orval-params-collision.md) — mixing a path param + query param in one operation can cause a TS2308 name collision between generators.
 - [Frontend API routing convention](api-routing-convention.md) — hoops-stats/monorepo apps call `/api/...` as root-relative paths directly, not prefixed by artifact BASE_URL.
-- [Testing camera/media features](testing-camera-media.md) — Playwright test sandbox has no real camera; expect getUserMedia to fail there, design a graceful error path and verify via DB/API instead of relying on camera E2E.
+- [Testing camera/media features](testing-camera-media.md) — test sandbox has no camera; design a graceful getUserMedia error path and verify via DB/API, not camera E2E.
 - [Live streaming via custom WebRTC signaling](live-streaming-webrtc.md) — in-memory `ws` signaling relay on api-server, now with Metered.ca TURN relay and DB-backed session metadata.
 - [Metered.ca TURN credential-scoped API key](metered-turn-api-key.md) — turn/credentials endpoint needs the credential-scoped apiKey, not the account secret/project key.
 - [Arena scoreboard theme](arena-theme.md) — app is dark-mode-only via `<html class="dark">`; never leave text uncolored on `bg-secondary` (flips white-on-white).
@@ -10,8 +10,8 @@
 - [Dev vs prod database are separate](dev-vs-prod-db.md) — imports into dev don't reach the published site; POST payload to the production /api/import URL to backfill live data.
 - [Canvas camera pipeline](camera-canvas-pipeline.md) — recording draws camera into an offscreen canvas for iOS digital zoom + camera switch; hardware gimbals (DJI) can't be integrated.
 - [Live stream restart resilience](live-stream-restart-resilience.md) — persisted session codes + client auto-reconnect let a broadcast survive an api-server restart mid-game.
-- [broadcaster-left vs stream-ended are different signals](broadcaster-left-vs-stream-ended.md) — broadcaster-left = transient WS drop (should reconnect), stream-ended = intentional stop (show final score); conflating them permanently kicks viewers.
-- [Drizzle schema not pushed in sandbox](drizzle-schema-not-pushed.md) — a fresh/restarted env can have code referencing DB tables that were never pushed; run `drizzle-kit push` before assuming a query bug.
+- [broadcaster-left vs stream-ended are different signals](broadcaster-left-vs-stream-ended.md) — WS drop should reconnect; intentional stop shows final score; conflating them kicks viewers.
+- [Drizzle schema not pushed in sandbox](drizzle-schema-not-pushed.md) — fresh env may reference tables never pushed; run `drizzle-kit push` before assuming a query bug.
 - [Stripe connector credential field names](stripe-connector-credentials.md) — Replit's Stripe connection API returns `settings.secret` (string key itself), not `settings.secret_key` as generic templates show.
 - [@workspace/db is a composite emitDeclarationOnly project](db-composite-declarations.md) — after a schema change, consumers read stale `lib/db/dist/*.d.ts`; rebuild with `tsc -b lib/db --force`, not just deleting tsbuildinfo.
 - [Highlight reel pipeline](highlight-reel.md) — fire-and-forget MP4 of good plays; `processing` must be timeout-recoverable and a game edit must invalidate the stored reel.
@@ -26,10 +26,10 @@
 - [requireAuth in-memory user must be updated after email backfill](requireauth-email-backfill.md) — after `db.update(email)` do `user = {...user, email}` or req.appUser.email stays null and owner/premium checks fail.
 - [runTest needs testClerkAuth flag](clerk-testclerkauth-flag-required.md) — `[Clerk Auth]` test steps without `testClerkAuth: true` hit real Clerk UI and get Cloudflare-blocked, looking like an app bug.
 - [iOS camera always reports portrait dimensions](ios-camera-portrait-quirk.md) — videoWidth/Height are sensor-portrait even in landscape; don't force aspectRatio CSS on video elements.
-- [Pose-based shot-detection false positives](pose-shot-detection-heuristic.md) — raised-arm heuristic needs a per-landmark visibility gate (not just overall pose confidence) and a torso-upright plausibility gate, or it fires on camera-panned-away clutter and on reclining subjects.
+- [Pose-based shot-detection false positives](pose-shot-detection-heuristic.md) — raised-arm heuristic needs per-landmark visibility + torso-upright gates or it fires on clutter.
 - [Fixed mobile bottom nav clips page content](mobile-bottom-nav-clipping.md) — long/scrollable pages need `pb-20 md:pb-0` on their own root div, or the last item is hidden/unclickable under the fixed nav bar.
 - [Orval date-time fields typed Date but arrive as string](orval-datetime-runtime-string.md) — generated client types say `Date`, but customFetch never coerces it; always `new Date(value)` before use.
-- [Live-stream viewer orientation mismatch](viewer-orientation-mismatch.md) — broadcast video shape vs viewer's phone orientation are independent; mismatch shrinks video and makes overlay look misplaced — split matchMedia queries (orientation vs pointer) so desktop viewers aren't told to "rotate their phone".
+- [Live-stream viewer orientation mismatch](viewer-orientation-mismatch.md) — split matchMedia queries (orientation vs pointer) so desktop viewers aren't told to "rotate their phone".
 - [IndexedDB flushing for long MediaRecorder sessions](indexeddb-recorder-chunk-flush.md) — flush chunks to IndexedDB by seq instead of an in-memory array to bound heap growth on long recordings and prevent OOM crashes.
 - [Debounced localStorage autosave + recovery draft](autosave-recovery-draft.md) — snapshot lightweight form/stats state (not blobs) on change, show a resume/discard dialog on mount before autosave can overwrite it; e2e-testable without camera access.
 - [Recording save race condition](recording-save-race.md) — stopRecording() sets isRecording=false sync but onstop fires async; handleSave must await blobAssemblyPromiseRef if recordedBlob is null or game saves with no video.
@@ -39,4 +39,6 @@
 - [Cueless WebM clip extraction from GCS](cueless-webm-extraction.md) — live-recorded WebM has no duration/Cues; never proxy-transcode or remote-seek — event-derived pseudo-duration + one linear `-c copy` pass with windowed outputs.
 - [Highlight/lowlight must use local file, not signed URL](highlight-local-file.md) — generateHighlight/generateLowlight must download source via acquireSourceVideo before passing to ffmpeg; signed URLs fail for Range requests + cueless WebM has no seek index.
 - [Background upload resilience pattern](bg-upload-resilience.md) — IndexedDB session must NOT be deleted until onVideoReady succeeds; save stec:pending-video-upload to localStorage so PendingVideoUploadRecoverer can reassemble + retry on next load.
-- [WebM split detector chunk overlap bug](webm-split-detector-overlap.md) — overlap must equal VERIFY_WINDOW (300 bytes), not 4; Segment ID binary check is more reliable than doctype string; log candidatesFound to distinguish "no magic" vs "verify failed".
+- [WebM split detector chunk overlap bug](webm-split-detector-overlap.md) — chunk overlap must equal the verify window, not the pattern length; log candidatesFound to tell "no magic" from "verify failed".
+- [openapi.yaml is the only codegen source of truth](openapi-spec-source-of-truth.md) — codegen deletes fields hand-added to generated files; port parallel-task fields into the spec first.
+- [Halftime-gap timeline mapping](halftime-gap-timeline-mapping.md) — every timestamp→video-time conversion (server AND FilmRoom) must subtract the removed halftime gap on repaired games.

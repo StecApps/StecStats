@@ -30,4 +30,16 @@ export interface PlayerGameStatInput {
   turnovers: number;
   /** @minimum 0 */
   blocks: number;
+  /** @minimum 0 */
+  goals?: number;
+  /** @minimum 0 */
+  shots?: number;
+  /** @minimum 0 */
+  shotsOffTarget?: number;
+  /** @minimum 0 */
+  saves?: number;
+  /** @minimum 0 */
+  yellowCards?: number;
+  /** @minimum 0 */
+  redCards?: number;
 }

@@ -18,6 +18,16 @@ interface FilmRoomProps {
   events: FilmRoomEvent[];
   players: FilmRoomPlayer[];
   videoOffsetMs?: number;
+  /** True length of the stored video file in ms (server-probed). Used to
+   *  flag stats that happened after the recording stopped and as a duration
+   *  fallback for live-recorded WebM where video.duration is Infinity. */
+  videoDurationMs?: number | null;
+  /** Recording-clock ms where the second half begins, for repaired two-half
+   *  videos whose halftime gap was removed when stitching. */
+  videoHalf2StartMs?: number | null;
+  /** Length of the removed halftime gap in ms. Second-half event timestamps
+   *  must subtract this to map onto the stitched video timeline. */
+  videoHalftimeGapMs?: number | null;
 }
 
 const STAT_LABELS: Record<string, string> = {
@@ -52,8 +62,8 @@ function fmtSec(sec: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 }: FilmRoomProps) {
-  const [duration, setDuration] = useState(0);
+export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0, videoDurationMs = null, videoHalf2StartMs = null, videoHalftimeGapMs = null }: FilmRoomProps) {
+  const [mediaDuration, setMediaDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [activeFilter, setActiveFilter] = useState("all");
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -64,21 +74,57 @@ export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 
     const video = videoRef.current;
     if (!video) return;
 
-    const onMeta = () => setDuration(video.duration || 0);
+    // Live-recorded WebM reports duration = Infinity — treat that as unknown.
+    const readDuration = () => {
+      const d = video.duration;
+      setMediaDuration(Number.isFinite(d) && d > 0 ? d : 0);
+    };
     const onTime = () => setCurrentTime(video.currentTime);
-    video.addEventListener("loadedmetadata", onMeta);
+    video.addEventListener("loadedmetadata", readDuration);
+    video.addEventListener("durationchange", readDuration);
     video.addEventListener("timeupdate", onTime);
-    if (video.readyState >= 1) setDuration(video.duration || 0);
+    if (video.readyState >= 1) readDuration();
     return () => {
-      video.removeEventListener("loadedmetadata", onMeta);
+      video.removeEventListener("loadedmetadata", readDuration);
+      video.removeEventListener("durationchange", readDuration);
       video.removeEventListener("timeupdate", onTime);
     };
   }, [videoRef]);
 
+  // Prefer the browser-reported duration; fall back to the server-probed one.
+  const duration = mediaDuration > 0
+    ? mediaDuration
+    : (videoDurationMs != null && videoDurationMs > 0 ? videoDurationMs / 1000 : 0);
+
+  // The end of the actual footage, in video-time seconds. Prefer the
+  // server-probed value (authoritative even when the browser can't tell).
+  const filmEndSec = videoDurationMs != null && videoDurationMs > 0
+    ? videoDurationMs / 1000
+    : (mediaDuration > 0 ? mediaDuration : null);
+
+  // Convert an event's recording-clock timestamp to a position on the video
+  // timeline. Mirrors the server's buildSegments math: for repaired two-half
+  // videos the stitched file has the halftime gap removed, so second-half
+  // events must subtract that gap on top of the start offset.
+  const toVideoSec = useCallback((videoTimestampMs: number): number => {
+    const gapAdj =
+      videoHalf2StartMs != null && videoHalftimeGapMs != null && videoTimestampMs >= videoHalf2StartMs
+        ? videoHalftimeGapMs
+        : 0;
+    return (videoTimestampMs - videoOffsetMs - gapAdj) / 1000;
+  }, [videoOffsetMs, videoHalf2StartMs, videoHalftimeGapMs]);
+
+  const isOffFilm = useCallback((ev: FilmRoomEvent): boolean => {
+    if (filmEndSec == null || ev.videoTimestampMs == null) return false;
+    return toVideoSec(ev.videoTimestampMs) >= filmEndSec;
+  }, [filmEndSec, toVideoSec]);
+
   const validEvents = events
     .map((ev, origIdx) => ({ ...ev, origIdx }))
-    .filter(ev => ev.videoTimestampMs != null && (ev.videoTimestampMs - videoOffsetMs) / 1000 >= 0)
+    .filter(ev => ev.videoTimestampMs != null && toVideoSec(ev.videoTimestampMs) >= 0)
     .sort((a, b) => (a.videoTimestampMs! - b.videoTimestampMs!));
+
+  const offFilmCount = validEvents.filter(isOffFilm).length;
 
   const filteredEvents = activeFilter === "all"
     ? validEvents
@@ -90,10 +136,11 @@ export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 
   const seekTo = useCallback((ev: FilmRoomEvent) => {
     const video = videoRef.current;
     if (!video || ev.videoTimestampMs == null) return;
-    const sec = Math.max(0, (ev.videoTimestampMs - videoOffsetMs) / 1000 - 8);
+    if (isOffFilm(ev)) return; // no footage exists for this moment
+    const sec = Math.max(0, toVideoSec(ev.videoTimestampMs) - 8);
     video.currentTime = sec;
     video.play().catch(() => {});
-  }, [videoRef, videoOffsetMs]);
+  }, [videoRef, toVideoSec, isOffFilm]);
 
   const handleTimelineClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const video = videoRef.current;
@@ -104,7 +151,7 @@ export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 
   }, [videoRef, duration]);
 
   const currentEventIdx = filteredEvents.findLastIndex(
-    ev => ev.videoTimestampMs != null && (ev.videoTimestampMs - videoOffsetMs) / 1000 <= currentTime + 8
+    ev => ev.videoTimestampMs != null && toVideoSec(ev.videoTimestampMs) <= currentTime + 8
   );
 
   useEffect(() => {
@@ -123,8 +170,20 @@ export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/40 bg-card/60">
         <Play className="w-4 h-4 text-primary" />
         <span className="font-semibold text-sm">Film Room</span>
-        <span className="ml-auto text-xs text-muted-foreground">{validEvents.length} events</span>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {offFilmCount > 0
+            ? `${validEvents.length - offFilmCount} of ${validEvents.length} events on film`
+            : `${validEvents.length} events`}
+        </span>
       </div>
+
+      {/* Missing-footage notice */}
+      {offFilmCount > 0 && (
+        <div className="px-4 py-2 border-b border-border/30 bg-amber-500/10 text-amber-400 text-xs">
+          The recording ended before the game did — {offFilmCount} {offFilmCount === 1 ? "stat was" : "stats were"} logged
+          after the video stopped and {offFilmCount === 1 ? "isn't" : "aren't"} on film.
+        </div>
+      )}
 
       {/* Timeline scrubber */}
       <div className="px-4 py-3 border-b border-border/30 bg-card/20">
@@ -148,7 +207,7 @@ export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 
 
           {/* Category-colored markers */}
           {validEvents.map((ev, i) => {
-            const sec = (ev.videoTimestampMs! - videoOffsetMs) / 1000;
+            const sec = toVideoSec(ev.videoTimestampMs!);
             const pct = duration > 0 ? (sec / duration) * 100 : 0;
             if (pct < 0 || pct > 100) return null;
             const color = getEventColor(ev.statField);
@@ -230,8 +289,9 @@ export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 
         ) : (
           filteredEvents.map((ev, i) => {
             const player = players.find(p => p.id === ev.playerId);
-            const sec = (ev.videoTimestampMs! - videoOffsetMs) / 1000;
-            const isActive = i === currentEventIdx;
+            const sec = toVideoSec(ev.videoTimestampMs!);
+            const offFilm = isOffFilm(ev);
+            const isActive = !offFilm && i === currentEventIdx;
             const color = getEventColor(ev.statField);
             return (
               <button
@@ -239,14 +299,17 @@ export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 
                 ref={isActive ? (el) => { activeRowRef.current = el; } : undefined}
                 type="button"
                 onClick={() => seekTo(ev)}
+                disabled={offFilm}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-colors border-b border-border/20 last:border-0 ${
-                  isActive
-                    ? "bg-primary/10 text-foreground"
-                    : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  offFilm
+                    ? "opacity-45 cursor-not-allowed"
+                    : isActive
+                      ? "bg-primary/10 text-foreground"
+                      : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                 }`}
               >
                 {/* Color pip */}
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: offFilm ? "#6b7280" : color }} />
 
                 {/* Timestamp */}
                 <span className="font-mono text-xs w-10 shrink-0 text-foreground/60">{fmtSec(sec)}</span>
@@ -260,8 +323,12 @@ export default function FilmRoom({ videoRef, events, players, videoOffsetMs = 0 
                   <span>{STAT_LABELS[ev.statField] ?? ev.statField}</span>
                 </span>
 
-                {/* Jump icon */}
-                <Play className={`w-3 h-3 shrink-0 transition-opacity ${isActive ? "opacity-100 text-primary" : "opacity-0 group-hover:opacity-60"}`} />
+                {/* Off-film badge / jump icon */}
+                {offFilm ? (
+                  <span className="text-[10px] uppercase tracking-wide text-amber-400/80 shrink-0">Not on film</span>
+                ) : (
+                  <Play className={`w-3 h-3 shrink-0 transition-opacity ${isActive ? "opacity-100 text-primary" : "opacity-0 group-hover:opacity-60"}`} />
+                )}
               </button>
             );
           })

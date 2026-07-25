@@ -43,6 +43,10 @@ export const gamesTable = pgTable("games", {
   //                 they map to the correct position in the stitched video.
   videoHalf2StartMs: integer("video_half2_start_ms"),
   videoHalftimeGapMs: integer("video_halftime_gap_ms"),
+  // True end of the recorded footage in video-timeline ms, probed from the
+  // stored file (WebM tail cluster scan / MP4 header). Used to detect stat
+  // events that happened after the recording stopped ("off film").
+  videoDurationMs: integer("video_duration_ms"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

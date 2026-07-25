@@ -595,6 +595,8 @@ export default function RecordGame() {
   const didDiscardVideoRef = useRef(false);
   const recordingStartRef = useRef<number>(0);
   const pauseStartTimeRef = useRef<number | null>(null);
+  // Throttle for the "stat logged while recording is paused" toast.
+  const lastPausedStatWarnRef = useRef<number>(0);
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const liveCodeRef = useRef<string | null>(null);
@@ -1881,6 +1883,10 @@ export default function RecordGame() {
     pauseStartTimeRef.current = Date.now();
     setIsRecordingPaused(true);
     // isRecording stays true — camera stays alive, stats still tracked
+    toast({
+      title: "Recording paused",
+      description: "Stats logged while paused won't be on film — they'll still count in the box score.",
+    });
   };
 
   // Resume recording: start a fresh encoder on the same camera stream and
@@ -2291,6 +2297,17 @@ export default function RecordGame() {
     if (isRecording && !isRecordingPaused) {
       const videoTimestampMs = Math.max(0, Date.now() - recordingStartRef.current + timestampOffsetMs);
       setEvents(prev => [...prev, { playerId: pid, statField: field, delta: increment, videoTimestampMs }]);
+    } else if (isRecording && isRecordingPaused && increment > 0) {
+      // Recording is paused — this stat has no footage. Remind the scorer
+      // (throttled so rapid tapping doesn't stack toasts).
+      const now = Date.now();
+      if (now - lastPausedStatWarnRef.current > 15_000) {
+        lastPausedStatWarnRef.current = now;
+        toast({
+          title: "Not on film",
+          description: "Recording is paused — this stat counts, but there's no video for it. Tap Resume to keep filming.",
+        });
+      }
     }
 
     if (isLive && increment > 0 && liveWsRef.current?.readyState === WebSocket.OPEN) {
@@ -2958,6 +2975,9 @@ export default function RecordGame() {
                 events={events}
                 players={players ?? []}
                 videoOffsetMs={videoOffsetMs}
+                videoDurationMs={gameToEdit?.videoDurationMs ?? null}
+                videoHalf2StartMs={gameToEdit?.videoHalf2StartMs ?? null}
+                videoHalftimeGapMs={gameToEdit?.videoHalftimeGapMs ?? null}
               />
               {existingVideoObjectPath && !recordedPreviewUrl && (
                 <div className="max-w-md space-y-1">
@@ -3157,6 +3177,14 @@ export default function RecordGame() {
                 <Sparkles className="w-5 h-5 text-primary" />
                 <span className="font-display font-bold uppercase tracking-wide text-foreground">Highlight Reel</span>
               </div>
+
+              {highlight?.onFilmMoments != null && highlight.onFilmMoments < highlight.eligibleMoments && (
+                <p className="text-xs rounded-md bg-amber-500/10 text-amber-400 px-3 py-2">
+                  The recording ended before the game did — only {highlight.onFilmMoments} of {highlight.eligibleMoments} highlight
+                  moment{highlight.eligibleMoments === 1 ? "" : "s"} {highlight.onFilmMoments === 1 ? "is" : "are"} on film.
+                  The rest happened after the video stopped and can't be in the reel.
+                </p>
+              )}
 
               {highlight && highlight.eligibleMoments === 0 ? (
                 <p className="text-sm text-muted-foreground">
@@ -3375,6 +3403,14 @@ export default function RecordGame() {
                   <span className="font-display font-bold uppercase tracking-wide text-foreground">Lowlight Reel</span>
                   <span className="text-xs text-muted-foreground font-normal normal-case">— misses &amp; turnovers</span>
                 </div>
+
+                {lowlight?.onFilmMoments != null && lowlight.onFilmMoments < lowlight.eligibleMoments && (
+                  <p className="text-xs rounded-md bg-amber-500/10 text-amber-400 px-3 py-2">
+                    The recording ended before the game did — only {lowlight.onFilmMoments} of {lowlight.eligibleMoments} lowlight
+                    moment{lowlight.eligibleMoments === 1 ? "" : "s"} {lowlight.onFilmMoments === 1 ? "is" : "are"} on film.
+                    The rest happened after the video stopped and can't be in the reel.
+                  </p>
+                )}
 
                 {lowlight && lowlight.eligibleMoments === 0 ? (
                   <p className="text-sm text-muted-foreground">

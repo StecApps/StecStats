@@ -27,10 +27,8 @@ Add a `candidatesFound` counter to the final log:
 - `candidatesFound === 0` → genuine single continuous recording (no second EBML header anywhere in the file)
 - `candidatesFound > 0` → magic(s) found but none passed verify — overlap or verification bug
 
-## Game 158 context (resolved)
+## Streaming scan beats download-then-scan
 
-Game 158 confirmed as a **single continuous WebM recording** (candidatesFound=1, false-positive VP9 byte sequence). No second EBML header. The repair was crashing the production server because:
-- Old path: download 2.3 GB (35 min) → scan local file (2.5 min) → ffmpeg on 2.3 GB (7 min crash)
-- New path: GCS stream scan (2-3 min, no download) → single recording detected → DB metadata reset only, no ffmpeg
+For multi-GB stored videos, scan via a GCS read stream (minutes, no disk) instead of downloading the whole file first — the download+local-ffmpeg path can OOM/crash the server. When the scan finds a single continuous recording, only reset DB metadata; skip ffmpeg entirely.
 
 For single-WebM games: `videoOffsetMs ?? 0` is used in the highlight generator, so null defaults to 0 and highlights generate correctly from game clock timestamps directly.

@@ -91,15 +91,32 @@ export interface Team {
   createdAt: string;
 }
 
+export type TeamInputSport = typeof TeamInputSport[keyof typeof TeamInputSport];
+
+
+export const TeamInputSport = {
+  basketball: 'basketball',
+  soccer: 'soccer',
+} as const;
+
 export interface TeamInput {
   /** @minLength 1 */
   name: string;
-  sport?: 'basketball' | 'soccer';
+  sport?: TeamInputSport;
 }
+
+export type TeamUpdateSport = typeof TeamUpdateSport[keyof typeof TeamUpdateSport];
+
+
+export const TeamUpdateSport = {
+  basketball: 'basketball',
+  soccer: 'soccer',
+} as const;
 
 export interface TeamUpdate {
   /** @minLength 1 */
   name?: string;
+  sport?: TeamUpdateSport;
 }
 
 export interface PlayerGameStatLine {
@@ -149,6 +166,18 @@ export interface PlayerGameStatInput {
   turnovers: number;
   /** @minimum 0 */
   blocks: number;
+  /** @minimum 0 */
+  goals?: number;
+  /** @minimum 0 */
+  shots?: number;
+  /** @minimum 0 */
+  shotsOffTarget?: number;
+  /** @minimum 0 */
+  saves?: number;
+  /** @minimum 0 */
+  yellowCards?: number;
+  /** @minimum 0 */
+  redCards?: number;
 }
 
 export type GameResult = typeof GameResult[keyof typeof GameResult];
@@ -188,6 +217,12 @@ export interface Game {
   opponentScore: number;
   videoObjectPath?: string | null;
   videoOffsetMs?: number | null;
+  /** True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film. */
+  videoDurationMs?: number | null;
+  /** Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings. */
+  videoHalf2StartMs?: number | null;
+  /** Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline. */
+  videoHalftimeGapMs?: number | null;
   highlightObjectPath?: string | null;
   highlightStatus?: GameHighlightStatus;
   highlightError?: string | null;
@@ -394,6 +429,8 @@ export interface HighlightStatus {
   startedAt?: string | null;
   /** Number of qualifying moments (made shots, rebounds, assists, steals, blocks). */
   eligibleMoments: number;
+  /** How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown. */
+  onFilmMoments?: number | null;
 }
 
 export type LowlightStatusStatus = typeof LowlightStatusStatus[keyof typeof LowlightStatusStatus];
@@ -414,5 +451,7 @@ export interface LowlightStatus {
   startedAt?: string | null;
   /** Number of qualifying moments (missed shots and turnovers). */
   eligibleMoments: number;
+  /** How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown. */
+  onFilmMoments?: number | null;
 }
 
