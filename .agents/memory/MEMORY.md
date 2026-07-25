@@ -39,6 +39,7 @@
 - [Cueless WebM clip extraction from GCS](cueless-webm-extraction.md) — live-recorded WebM has no duration/Cues; never proxy-transcode or remote-seek — event-derived pseudo-duration + one linear `-c copy` pass with windowed outputs.
 - [Highlight/lowlight must use local file, not signed URL](highlight-local-file.md) — generateHighlight/generateLowlight must download source via acquireSourceVideo before passing to ffmpeg; signed URLs fail for Range requests + cueless WebM has no seek index.
 - [Background upload resilience pattern](bg-upload-resilience.md) — IndexedDB session must NOT be deleted until onVideoReady succeeds; save stec:pending-video-upload to localStorage so PendingVideoUploadRecoverer can reassemble + retry on next load.
+- [Split/pause segment loss must be loud](split-recording-silent-loss.md) — half-flush failures were silently dropped (lost a real game's 2nd half); toast destructively + keep the IndexedDB session on failure.
 - [WebM split detector chunk overlap bug](webm-split-detector-overlap.md) — chunk overlap must equal the verify window, not the pattern length; log candidatesFound to tell "no magic" from "verify failed".
 - [openapi.yaml is the only codegen source of truth](openapi-spec-source-of-truth.md) — codegen deletes fields hand-added to generated files; port parallel-task fields into the spec first.
 - [Halftime-gap timeline mapping](halftime-gap-timeline-mapping.md) — every timestamp→video-time conversion (server AND FilmRoom) must subtract the removed halftime gap on repaired games.

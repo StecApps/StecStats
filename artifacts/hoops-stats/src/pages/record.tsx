@@ -1816,6 +1816,11 @@ export default function RecordGame() {
       recorder.onstop = () => {
         getOrderedChunks(sessionId)
           .then(chunks => {
+            if (chunks.length === 0) {
+              // Keep the IndexedDB session for recovery — do NOT delete it.
+              resolve(null);
+              return;
+            }
             const b = new Blob(chunks, { type: mimeType });
             deleteSession(sessionId).catch(() => {});
             resolve(b);
@@ -1825,7 +1830,17 @@ export default function RecordGame() {
       recorder.stop();
     });
 
-    if (blob) setRecordedSegments(prev => [...prev, blob]);
+    if (blob && blob.size > 0) {
+      setRecordedSegments(prev => [...prev, blob]);
+    } else {
+      // The half's footage could not be read back — never lose this silently.
+      toast({
+        title: "Warning: half footage not saved",
+        description: `The footage for half ${recordedSegments.length + 1} could not be read back from storage. Recording continues, but that half may be missing from the final video. Consider stopping and saving now.`,
+        variant: "destructive",
+        duration: 15000,
+      });
+    }
 
     // Fresh recorder session on the same (still-live) camera stream
     chunkSeqRef.current = 0;
@@ -1869,6 +1884,11 @@ export default function RecordGame() {
       recorder.onstop = () => {
         getOrderedChunks(sessionId)
           .then(chunks => {
+            if (chunks.length === 0) {
+              // Keep the IndexedDB session for recovery — do NOT delete it.
+              resolve(null);
+              return;
+            }
             const b = new Blob(chunks, { type: mimeType });
             deleteSession(sessionId).catch(() => {});
             resolve(b);
@@ -1878,7 +1898,16 @@ export default function RecordGame() {
       recorder.stop();
     });
 
-    if (blob) setRecordedSegments(prev => [...prev, blob]);
+    if (blob && blob.size > 0) {
+      setRecordedSegments(prev => [...prev, blob]);
+    } else {
+      toast({
+        title: "Warning: footage not saved",
+        description: "The footage recorded so far could not be read back from storage and may be missing from the final video.",
+        variant: "destructive",
+        duration: 15000,
+      });
+    }
 
     pauseStartTimeRef.current = Date.now();
     setIsRecordingPaused(true);
