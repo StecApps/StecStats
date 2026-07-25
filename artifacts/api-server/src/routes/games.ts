@@ -139,16 +139,27 @@ async function detectSegmentBoundary(file: GCSFile, log: any): Promise<SegmentBo
  * Uses fs.read so there are no GCS range-read reliability concerns.
  */
 async function detectWebMSplitOffsetLocal(filePath: string, log: any): Promise<number | null> {
-  const EBML_MAGIC = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
-  const CHUNK = 16 * 1024 * 1024;
-  const MIN_START = 50 * 1024 * 1024;
+  const EBML_MAGIC  = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]); // EBML element ID
+  const SEGMENT_ID  = Buffer.from([0x18, 0x53, 0x80, 0x67]); // Segment element ID
+  const CHUNK       = 16 * 1024 * 1024;  // 16 MB reads
+  // The verify window must be large enough to cover the EBML header (typically
+  // 36 bytes for WebM) plus the Segment ID that follows it.  The old value of
+  // 4 was only enough to bridge the EBML magic itself across a chunk boundary;
+  // if the second EBML header landed in the last 116 bytes of any chunk the
+  // doctype string fell outside the read buffer and detection silently failed.
+  // 300 bytes covers the longest realistic EBML header with room to spare.
+  const VERIFY_WINDOW = 300;
+  const MIN_START   = 50 * 1024 * 1024;  // skip the first EBML header
 
   const stat = await fs.stat(filePath);
   const fileSize = stat.size;
+  let candidatesFound = 0;
   const fh = await fs.open(filePath, "r");
   try {
     for (let offset = MIN_START; offset < fileSize; offset += CHUNK) {
-      const length = Math.min(CHUNK + 4, fileSize - offset);
+      // Read CHUNK + VERIFY_WINDOW so that a header found at the very end of
+      // the chunk still has its full verify window available in the buffer.
+      const length = Math.min(CHUNK + VERIFY_WINDOW, fileSize - offset);
       const buf = Buffer.alloc(length);
       const { bytesRead } = await fh.read(buf, 0, length, offset);
       if (bytesRead < 4) break;
@@ -158,16 +169,41 @@ async function detectWebMSplitOffsetLocal(filePath: string, log: any): Promise<n
       while (pos <= slice.length - 4) {
         const idx = slice.indexOf(EBML_MAGIC, pos);
         if (idx === -1) break;
+        candidatesFound++;
         const candidateOffset = offset + idx;
-        const verifySlice = slice.slice(idx, Math.min(slice.length, idx + 120));
-        const verifyStr = verifySlice.toString("binary");
-        if (verifyStr.includes("webm") || verifyStr.includes("matroska")) {
-          log.info({ candidateOffset }, "repair-video: found second EBML header (WebM two-half split)");
+
+        const verifyEnd = Math.min(slice.length, idx + VERIFY_WINDOW);
+        const verifySlice = slice.slice(idx, verifyEnd);
+
+        // Primary check: the Segment element ID must appear within
+        // VERIFY_WINDOW bytes — it always immediately follows the EBML header.
+        if (verifySlice.indexOf(SEGMENT_ID) !== -1) {
+          log.info(
+            { candidateOffset, candidatesFound, method: "segment-id" },
+            "repair-video: found second EBML+Segment header (WebM two-half split)",
+          );
           return candidateOffset;
         }
+
+        // Fallback: doctype string check (handles non-standard header layouts)
+        const verifyStr = verifySlice.toString("binary");
+        if (verifyStr.includes("webm") || verifyStr.includes("matroska")) {
+          log.info(
+            { candidateOffset, candidatesFound, method: "doctype" },
+            "repair-video: found second EBML header via doctype (WebM two-half split)",
+          );
+          return candidateOffset;
+        }
+
         pos = idx + 1;
       }
     }
+    log.info(
+      { candidatesFound },
+      candidatesFound === 0
+        ? "repair-video: no EBML magic found after MIN_START — single continuous recording"
+        : "repair-video: EBML magic(s) found but none passed verify — treating as single recording",
+    );
   } finally {
     await fh.close();
   }
@@ -735,6 +771,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
 
   (async () => {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `repair-${gameId}-`));
+  log.info({ gameId, repairQuality, sourceObjectPath }, "repair-video: starting");
   try {
     // Get the GCS File object — used for authenticated SDK reads/downloads,
     // bypassing signed URLs (which have unreliable range-request support in

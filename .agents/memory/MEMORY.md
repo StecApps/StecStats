@@ -38,3 +38,4 @@
 - [GCS signed-URL range requests unreliable in production](gcs-signed-url-range-requests.md) — mid-file Range reads via fetch+signedUrl return garbage bytes in prod; use file.createReadStream({start,end}) from GCS SDK instead.
 - [Cueless WebM clip extraction from GCS](cueless-webm-extraction.md) — live-recorded WebM has no duration/Cues; never proxy-transcode or remote-seek — event-derived pseudo-duration + one linear `-c copy` pass with windowed outputs.
 - [Background upload resilience pattern](bg-upload-resilience.md) — IndexedDB session must NOT be deleted until onVideoReady succeeds; save stec:pending-video-upload to localStorage so PendingVideoUploadRecoverer can reassemble + retry on next load.
+- [WebM split detector chunk overlap bug](webm-split-detector-overlap.md) — overlap must equal VERIFY_WINDOW (300 bytes), not 4; Segment ID binary check is more reliable than doctype string; log candidatesFound to distinguish "no magic" vs "verify failed".
