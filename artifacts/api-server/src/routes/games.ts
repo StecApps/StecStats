@@ -1127,15 +1127,17 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
           // reset the metadata: the player uses the original source directly and
           // highlights are regenerated from the correct timestamps.
           log.info({ gameId }, "repair-video: single WebM — skipping ffmpeg, resetting metadata only");
+          // Do NOT clear highlight/lowlight reels here: the video file is
+          // unchanged (same path, same content), so any existing reels are
+          // still valid.  Only nullify half2 fields that the scan now
+          // definitively proved don't apply. Clearing reels here caused
+          // users to lose their generated reels after pressing Repair when
+          // the video was already a single continuous recording.
           await db
             .update(gamesTable)
             .set({
               videoObjectPath:      sourceObjectPath,
               videoProxyObjectPath: null,
-              highlightStatus:      "idle",
-              highlightObjectPath:  null,
-              lowlightStatus:       "idle",
-              lowlightObjectPath:   null,
               videoHalf2StartMs:    null,
               videoHalftimeGapMs:   null,
             })

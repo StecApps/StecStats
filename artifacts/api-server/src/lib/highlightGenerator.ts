@@ -21,10 +21,17 @@ const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 
 // Seconds of footage kept before and after each qualifying moment.
-// PRE_SECONDS must cover the user's reaction delay (~3-5s after the play)
-// plus enough lead-in to see the play develop.
+//
+// Sideline mode stores timestamps 10 s BEFORE the user's tap (via
+// SIDELINE_TIMESTAMP_OFFSET_MS = -10_000), so the stored timestamp already
+// points to roughly when the play was developing.  POST_SECONDS must extend
+// far enough past the stored timestamp to capture the play completion and a
+// bit of celebration/result — ~10-13 s forward from the stored moment.
+// Using POST_SECONDS = 15 means the clip ends ~15 s after the stored ts,
+// safely showing the play + 2-5 s of result for both sideline and regular mode.
+// PRE_SECONDS = 12 gives lead-in context in both modes.
 const PRE_SECONDS = 12;
-const POST_SECONDS = 2;
+const POST_SECONDS = 15;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
 
