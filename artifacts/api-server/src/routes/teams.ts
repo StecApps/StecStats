@@ -45,8 +45,13 @@ const FREE_TEAM_LIMIT = 1;
 // already running for the same team (survives concurrent requests).
 const teamHighlightInFlight = new Set<number>();
 // A DB status of "processing" older than this is considered abandoned (e.g.
-// the server restarted mid-job) and may be retried.
-const STALE_PROCESSING_MS = 10 * 60 * 1000;
+// the server restarted mid-job) and may be retried. Must exceed MAX_JOB_MS:
+// a legitimate first run may build per-game proxy videos, which can take an
+// hour+. During deploy overlap the new instance must not stamp "failed" over
+// a job still running on the old instance.
+const STALE_PROCESSING_MS = 140 * 60 * 1000;
+// Hard watchdog for a single season-highlight job (mirrors highlights.ts).
+const MAX_JOB_MS = 130 * 60 * 1000;
 
 function normalizeHighlightStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -351,8 +356,20 @@ router.post("/teams/:teamId/highlight", requireAuth, async (req, res) => {
       .where(eq(teamsTable.id, teamId));
 
     // Fire-and-forget: generation continues after the response is sent.
-    void generateTeamHighlight(teamId)
-      .catch(() => {})
+    void Promise.race([
+      generateTeamHighlight(teamId),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
+    ])
+      .catch(async (err) => {
+        // Only stamp the timeout message when the watchdog actually fired —
+        // any other failure already wrote a specific error in generateTeamHighlight.
+        if ((err as Error)?.message !== "timeout") return;
+        try {
+          await db.update(teamsTable)
+            .set({ highlightStatus: "failed", highlightError: "Generation timed out — tap Try Again to rebuild." })
+            .where(eq(teamsTable.id, teamId));
+        } catch { /* best-effort */ }
+      })
       .finally(() => teamHighlightInFlight.delete(teamId));
   }
 

@@ -159,7 +159,10 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       generateHighlight(gameId, musicTrackPath ?? undefined),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
     ])
-      .catch(async () => {
+      .catch(async (err) => {
+        // Only stamp the timeout message when the watchdog actually fired —
+        // any other failure already wrote a specific error in generateHighlight.
+        if ((err as Error)?.message !== "timeout") return;
         try {
           await db.update(gamesTable)
             .set({ highlightStatus: "failed", highlightError: "Generation timed out — tap Try Again to rebuild." })
@@ -200,7 +203,10 @@ export function resumeHighlightJob(gameId: number): void {
     generateHighlight(gameId),
     new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
   ])
-    .catch(async () => {
+    .catch(async (err) => {
+      // Only stamp the timeout message when the watchdog actually fired —
+      // any other failure already wrote a specific error in generateHighlight.
+      if ((err as Error)?.message !== "timeout") return;
       try {
         await db
           .update(gamesTable)

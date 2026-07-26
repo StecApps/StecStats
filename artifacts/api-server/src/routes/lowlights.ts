@@ -126,7 +126,10 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
       generateLowlight(gameId, musicTrackPath ?? undefined),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
     ])
-      .catch(async () => {
+      .catch(async (err) => {
+        // Only stamp the timeout message when the watchdog actually fired —
+        // any other failure already wrote a specific error in generateLowlight.
+        if ((err as Error)?.message !== "timeout") return;
         try {
           await db.update(gamesTable)
             .set({ lowlightStatus: "failed", lowlightError: "Generation timed out — tap Try Again to rebuild." })
@@ -163,7 +166,10 @@ export function resumeLowlightJob(gameId: number): void {
     generateLowlight(gameId),
     new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
   ])
-    .catch(async () => {
+    .catch(async (err) => {
+      // Only stamp the timeout message when the watchdog actually fired —
+      // any other failure already wrote a specific error in generateLowlight.
+      if ((err as Error)?.message !== "timeout") return;
       try {
         await db
           .update(gamesTable)

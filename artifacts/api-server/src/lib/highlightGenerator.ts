@@ -122,7 +122,11 @@ const STAT_LABELS: Record<string, string> = {
 export class HighlightError extends Error {}
 
 // Maximum time allowed for a single ffmpeg/ffprobe process before SIGKILL.
-const PROCESS_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes per segment
+// 10 minutes per segment. Clip encodes from the 720p proxy finish in seconds;
+// the generous ceiling only matters on the raw-source fallback path, where a
+// deploy-overlap (two instances encoding at once) can slow a clip encode
+// severely — 5 min proved too tight there.
+const PROCESS_TIMEOUT_MS = 10 * 60 * 1000;
 // Stall detection: if no bytes arrive within this window, abort the download.
 const DOWNLOAD_STALL_MS = 60 * 1000; // 60 seconds of no data = stalled
 // Maximum source video size we'll attempt to process.
@@ -574,17 +578,19 @@ async function acquireGameProxy(
             return destPath;
           }
           if (!game?.videoObjectPath) throw new HighlightError("Game has no recorded video");
-          // Generate a signed URL for the source so ffmpeg streams it directly —
-          // no 2.8 GB local download needed.  4-hr TTL covers any restart cycle.
-          const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
-          const [meta] = await objectFile.getMetadata();
-          const fileSizeBytes = Number((meta as { size?: unknown }).size ?? 0);
-          const srcUrl = await objectStorageService.getObjectEntitySignedURL(game.videoObjectPath, 4 * 3600);
-          logger.info(
-            { gameId, fileSizeMB: (fileSizeBytes / 1024 / 1024).toFixed(1) },
-            "Creating proxy video (chunked — streaming source from GCS, no local download)",
-          );
-          await createChunkedProxy(gameId, ownerId, srcUrl, destPath, fileSizeBytes, game.videoDurationMs);
+          // Download the source locally before encoding. Streaming the source
+          // from a GCS signed URL is unreliable in production — mid-file reads
+          // terminate with "End of file", killing the encode at open or on a
+          // resume seek. The download is ref-counted and shared with any
+          // concurrent reel job via sourceVideoCache, and local disk reads
+          // also encode noticeably faster than network streaming.
+          logger.info({ gameId }, "Creating proxy video (chunked) — downloading source locally");
+          const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath);
+          try {
+            await createChunkedProxy(gameId, ownerId, srcPath, destPath, 0, game.videoDurationMs);
+          } finally {
+            release();
+          }
           logger.info({ gameId }, "Proxy created — uploading final proxy to storage");
           const proxyObjectPath = await uploadHighlight(destPath, ownerId);
           await db
@@ -1417,14 +1423,26 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
 
-    // Download the source video locally before extraction.
-    // GCS signed URLs are unreliable for mid-file range requests in production,
-    // and live-recorded WebM files have no seek index (Cues), so ffmpeg cannot
-    // random-access them via HTTP. Local file I/O avoids both issues — even a
-    // cueless WebM can be read linearly at disk speed (~200-500 MB/s).
-    logger.info({ gameId }, "Highlight: acquiring source video locally");
-    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath!);
-    releaseSrc = release;
+    // Cut clips from the compressed, seekable proxy (the same file the film
+    // room plays, already at reel output resolution) instead of the multi-GB
+    // raw source: clip encodes finish in seconds instead of minutes, and the
+    // proxy is a proper indexed MP4 so none of the cueless-source special
+    // paths are needed. Builds the proxy first if it doesn't exist yet
+    // (chunk-resumable, persisted in GCS — shared with film-room playback).
+    // Falls back to the raw source only if the proxy cannot be built.
+    logger.info({ gameId }, "Highlight: acquiring proxy video");
+    let srcPath: string;
+    try {
+      const proxy = await acquireGameProxy(gameId, game.ownerId);
+      srcPath = proxy.proxyPath;
+      releaseSrc = proxy.release;
+    } catch (proxyErr) {
+      logger.warn({ err: proxyErr, gameId },
+        "Highlight: proxy unavailable — falling back to raw source video");
+      const { srcPath: rawPath, release } = await acquireSourceVideo(game.videoObjectPath!);
+      srcPath = rawPath;
+      releaseSrc = release;
+    }
 
     const audioStreams = await ffprobe([
       "-v", "error",
@@ -1514,12 +1532,22 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
 
-    // Download the source video locally before extraction.
-    // Same reasoning as generateHighlight: GCS signed URLs fail for mid-file
-    // range requests in production, and cueless WebM files have no seek index.
-    logger.info({ gameId }, "Lowlight: acquiring source video locally");
-    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath!);
-    releaseSrc = release;
+    // Cut clips from the compressed, seekable proxy instead of the multi-GB
+    // raw source — same reasoning as generateHighlight. Both reel jobs share
+    // one ref-counted proxy download/build via proxyLocalCache.
+    logger.info({ gameId }, "Lowlight: acquiring proxy video");
+    let srcPath: string;
+    try {
+      const proxy = await acquireGameProxy(gameId, game.ownerId);
+      srcPath = proxy.proxyPath;
+      releaseSrc = proxy.release;
+    } catch (proxyErr) {
+      logger.warn({ err: proxyErr, gameId },
+        "Lowlight: proxy unavailable — falling back to raw source video");
+      const { srcPath: rawPath, release } = await acquireSourceVideo(game.videoObjectPath!);
+      srcPath = rawPath;
+      releaseSrc = release;
+    }
 
     const audioStreams = await ffprobe([
       "-v", "error",
@@ -1630,27 +1658,43 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
         const eligible = eventsByGame.get(game.id);
         if (!eligible || eligible.length === 0) return { segPaths: [], hasAudio: false };
 
-        const srcPath = path.join(tmpDir!, `src_${game.id}`);
-        logger.info({ gameId: game.id }, "Downloading source video for team highlight");
-        await downloadSourceVideo(game.videoObjectPath!, srcPath);
+        // Prefer the compressed, seekable per-game proxy (shared with the
+        // film room and per-game reels); fall back to downloading the raw
+        // source only if the proxy cannot be built.
+        let srcPath: string;
+        let releaseProxy: (() => void) | null = null;
+        try {
+          try {
+            const proxy = await acquireGameProxy(game.id, team.ownerId!);
+            srcPath = proxy.proxyPath;
+            releaseProxy = proxy.release;
+          } catch (proxyErr) {
+            logger.warn({ err: proxyErr, gameId: game.id },
+              "Team highlight: proxy unavailable — downloading raw source video");
+            srcPath = path.join(tmpDir!, `src_${game.id}`);
+            await downloadSourceVideo(game.videoObjectPath!, srcPath);
+          }
 
-        const audioProbe = await ffprobe([
-          "-v", "error",
-          "-select_streams", "a",
-          "-show_entries", "stream=index",
-          "-of", "csv=p=0",
-          srcPath,
-        ]);
-        const hasAudio = audioProbe.length > 0;
+          const audioProbe = await ffprobe([
+            "-v", "error",
+            "-select_streams", "a",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            srcPath,
+          ]);
+          const hasAudio = audioProbe.length > 0;
 
-        const segPaths = await renderGameSegments(
-          srcPath, tmpDir!, `t${game.id}`, eligible, nameById,
-          game.videoOffsetMs ?? 0, undefined,
-          game.videoHalf2StartMs ?? undefined,
-          game.videoHalftimeGapMs ?? undefined,
-          game.videoDurationMs ?? undefined,
-        );
-        return { segPaths, hasAudio };
+          const segPaths = await renderGameSegments(
+            srcPath, tmpDir!, `t${game.id}`, eligible, nameById,
+            game.videoOffsetMs ?? 0, undefined,
+            game.videoHalf2StartMs ?? undefined,
+            game.videoHalftimeGapMs ?? undefined,
+            game.videoDurationMs ?? undefined,
+          );
+          return { segPaths, hasAudio };
+        } finally {
+          releaseProxy?.();
+        }
       }),
     );
 
