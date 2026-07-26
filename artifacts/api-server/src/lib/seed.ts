@@ -27,10 +27,13 @@ export async function seedDatabase(): Promise<void> {
 const VIDEO_OFFSET_FIXES: ReadonlyArray<{ gameId: number; videoOffsetMs: number }> = [
   // Game 154: 2nd-half-only video (35 min); 2nd-half timestamps start ~2,205,276 ms.
   { gameId: 154, videoOffsetMs: 1_809_782 },
-  // Game 158: the live stream dropped during the first half, so the recording
-  // only contains the second half onward. Second half started around the
-  // 26-minute mark of the stat clock → stat minute 26 maps to video minute 1.
-  { gameId: 158, videoOffsetMs: 1_500_000 },
+  // Game 158: the live stream dropped during the first half and the recording
+  // resumed mid-second-half (~34 min on the stat clock). Calibrated against the
+  // user's anchor: the first 3pt miss on film (event at stat 37:31.368 =
+  // 2,251,368 ms) is visible at video 3:29 (209,000 ms).
+  // offset = 2,251,368 - 209,000. Verified: all events from that point map
+  // inside the 25:55 footage; the last stat (58:18) lands at video 24:16.
+  { gameId: 158, videoOffsetMs: 2_042_368 },
 ];
 
 export async function applyVideoOffsetFixes(): Promise<void> {
