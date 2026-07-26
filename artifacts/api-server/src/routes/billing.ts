@@ -50,6 +50,12 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
   const products = await stripe.products.search({ query: `name:'${productName}' AND active:'true'` });
   const product = products.data[0];
   if (!product) {
+    // Log all active products so we can diagnose name mismatches in production
+    const allProducts = await stripe.products.list({ active: true, limit: 20 });
+    req.log.error(
+      { searchedName: productName, activeProducts: allProducts.data.map((p) => p.name) },
+      "Stripe product not found — name mismatch?",
+    );
     res.status(400).json({ error: `${tier === "premium" ? "Premium" : "Pro"} plan is not configured yet. Please try again later.` });
     return;
   }
@@ -57,6 +63,10 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
   const prices = await stripe.prices.list({ product: product.id, active: true, limit: 10 });
   const price = prices.data.find((p) => p.recurring?.interval === interval);
   if (!price) {
+    req.log.error(
+      { productId: product.id, productName: product.name, interval, prices: prices.data.map((p) => ({ id: p.id, interval: p.recurring?.interval })) },
+      "Stripe price not found for interval",
+    );
     res.status(400).json({ error: `No active ${interval}ly price found for the ${tier === "premium" ? "Premium" : "Pro"} plan.` });
     return;
   }
