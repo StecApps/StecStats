@@ -351,7 +351,7 @@ export default function Billing() {
                 <CardTitle className="font-display text-xl uppercase tracking-wide">Pro</CardTitle>
                 {isPro && <Badge variant="default">Current</Badge>}
               </div>
-              <CardDescription>14-day free trial, then $6.99/mo or $59/yr</CardDescription>
+              <CardDescription>14-day free trial, then $9.99/mo or $59/yr</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <ul className="space-y-2">
