@@ -6,6 +6,16 @@ import { StripeSync } from "stripe-replit-sync";
  * Not cached -- tokens can rotate, so fetch fresh each time.
  */
 async function getStripeCredentials(): Promise<{ secretKey: string; webhookSecret?: string }> {
+  // Prefer a directly-set secret — this reliably works in both dev and
+  // the deployed production environment. The Replit connector approach
+  // below is kept as a fallback for local development convenience.
+  if (process.env.STRIPE_SECRET_KEY) {
+    return {
+      secretKey: process.env.STRIPE_SECRET_KEY,
+      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    };
+  }
+
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? "repl " + process.env.REPL_IDENTITY
@@ -15,8 +25,8 @@ async function getStripeCredentials(): Promise<{ secretKey: string; webhookSecre
 
   if (!hostname || !xReplitToken) {
     throw new Error(
-      "Missing Replit environment variables. " +
-        "Ensure the Stripe integration is connected via the Integrations tab.",
+      "Stripe secret key not configured. Set STRIPE_SECRET_KEY in Secrets " +
+        "or connect Stripe via the Integrations tab.",
     );
   }
 
