@@ -94,7 +94,7 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
     });
   } catch (err: unknown) {
     const stripeErr = err as { code?: string; type?: string };
-    if (stripeErr?.code === "resource_missing" && stripeErr?.type === "invalid_request_error") {
+    if (stripeErr?.code === "resource_missing") {
       // Customer ID belongs to a different Stripe account (e.g. after switching
       // from test → live or migrating accounts). Clear it and create a fresh one.
       req.log.warn({ staleCustomerId: customerId }, "Stale Stripe customer ID — creating fresh customer");
