@@ -37,6 +37,8 @@ import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { getIceServers, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
+import { AdaptiveQualityController, type AdaptiveLevel } from "@/lib/adaptiveStream";
+import { Gauge } from "lucide-react";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
 import { getSportProfile, SPORT_EMOJI } from "@/lib/sport-profiles";
 
@@ -562,6 +564,8 @@ export default function RecordGame() {
   const [isLive, setIsLive] = useState(false);
   const [liveCode, setLiveCode] = useState<string | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
+  const [liveQuality, setLiveQuality] = useState<AdaptiveLevel | null>(null);
+  const adaptiveRef = useRef<AdaptiveQualityController | null>(null);
   const [isStartingLive, setIsStartingLive] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [zoom, setZoom] = useState(1.3);
@@ -954,6 +958,8 @@ export default function RecordGame() {
       stopMediaPipeline();
       if (recordedPreviewUrl) URL.revokeObjectURL(recordedPreviewUrl);
       liveManualStopRef.current = true;
+      adaptiveRef.current?.stop();
+      adaptiveRef.current = null;
       if (liveReconnectTimeoutRef.current) clearTimeout(liveReconnectTimeoutRef.current);
       viewerIceTimeoutsRef.current.forEach(t => clearTimeout(t));
       viewerIceTimeoutsRef.current.clear();
@@ -2060,20 +2066,26 @@ export default function RecordGame() {
     return lines.join('\n');
   };
 
-  // Apply the bitrate cap and quality hints to all video senders on a pc.
-  // Must be called AFTER the offer/answer exchange completes — calling it
-  // before negotiation silently no-ops in every browser.
-  const applyVideoBitrate = (pc: RTCPeerConnection) => {
-    pc.getSenders().forEach(sender => {
-      if (sender.track?.kind !== "video") return;
-      try {
-        const params = sender.getParameters();
-        if (!params.encodings?.length) return;
-        params.encodings[0].maxBitrate = 6_000_000;   // 6 Mbps — basketball motion needs it
-        params.encodings[0].degradationPreference = "maintain-resolution"; // drop fps, not sharpness
-        sender.setParameters(params).catch(() => {});
-      } catch { /* best-effort */ }
-    });
+  // Adaptive stream quality: instead of a fixed 6 Mbps cap that freezes the
+  // stream whenever the venue uplink dips, a controller watches each viewer
+  // connection's stats and steps the encoder bitrate/resolution down (and
+  // back up) automatically. The local recording is unaffected — it captures
+  // the canvas at full quality on its own pipeline.
+  const ensureAdaptiveController = (): AdaptiveQualityController => {
+    if (!adaptiveRef.current) {
+      adaptiveRef.current = new AdaptiveQualityController(
+        () => livePeersRef.current,
+        (level) => setLiveQuality(level),
+      );
+      adaptiveRef.current.start();
+    }
+    return adaptiveRef.current;
+  };
+
+  const stopAdaptiveController = () => {
+    adaptiveRef.current?.stop();
+    adaptiveRef.current = null;
+    setLiveQuality(null);
   };
 
   const createPeerConnectionForViewer = async (viewerId: string) => {
@@ -2147,10 +2159,10 @@ export default function RecordGame() {
         const pc = livePeersRef.current.get(message.viewerId);
         if (pc) {
           await pc.setRemoteDescription(new RTCSessionDescription(message.sdp));
-          // Apply bitrate settings NOW — this is the earliest point where
+          // Apply quality settings NOW — this is the earliest point where
           // setParameters is guaranteed to work (encodings are populated
           // after the offer/answer exchange completes).
-          applyVideoBitrate(pc);
+          ensureAdaptiveController().applyToPeer(pc);
         }
       } else if (message.type === "ice-candidate") {
         const pc = livePeersRef.current.get(message.viewerId);
@@ -2188,6 +2200,7 @@ export default function RecordGame() {
       setIsLive(false);
 
       if (liveReconnectAttemptsRef.current >= MAX_LIVE_RECONNECT_ATTEMPTS) {
+        stopAdaptiveController();
         setIsReconnectingLive(false);
         setLiveInterrupted(true);
         toast({
@@ -2261,6 +2274,7 @@ export default function RecordGame() {
 
   const stopGoingLive = () => {
     liveManualStopRef.current = true;
+    stopAdaptiveController();
     if (liveReconnectTimeoutRef.current) {
       clearTimeout(liveReconnectTimeoutRef.current);
       liveReconnectTimeoutRef.current = null;
@@ -3661,6 +3675,12 @@ export default function RecordGame() {
                         <Copy className="w-3 h-3 mr-1" /> Invite
                       </Button>
                     </div>
+                    {liveQuality && liveQuality.index > 0 && (
+                      <span className="flex items-center gap-1 text-[10px] font-medium text-amber-300">
+                        <Gauge className="w-3 h-3 shrink-0" />
+                        Auto quality: {liveQuality.label} — keeping the stream smooth
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
