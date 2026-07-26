@@ -41,12 +41,12 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
 
   // Look up the product/price fresh from Stripe rather than hardcoding price
   // ids, so re-seeding (e.g. in a new environment) doesn't require a code
-  // change. Product names in the live Stripe account (no space between STEC
-  // and STATS): "STECSTATS Pro", "STECSTATS Premium", "STECSTATS Soccer".
+  // change. Product names in the live Stripe account (space between STEC
+  // and STATS): "STEC STATS Pro", "STEC STATS Premium", "STEC STATS Soccer".
   const productName =
-    tier === "premium" ? "STECSTATS Premium" :
-    tier === "soccer"  ? "STECSTATS Soccer"  :
-    "STECSTATS Pro";
+    tier === "premium" ? "STEC STATS Premium" :
+    tier === "soccer"  ? "STEC STATS Soccer"  :
+    "STEC STATS Pro";
   const products = await stripe.products.search({ query: `name:'${productName}' AND active:'true'` });
   const product = products.data[0];
   if (!product) {
