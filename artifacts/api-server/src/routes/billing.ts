@@ -82,14 +82,40 @@ router.post("/billing/checkout", requireAuth, async (req, res) => {
   }
 
   const baseUrl = getAppBaseUrl(req);
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    mode: "subscription",
-    line_items: [{ price: price.id, quantity: 1 }],
-    subscription_data: { trial_period_days: 14 },
-    success_url: `${baseUrl}/billing?checkout=success`,
-    cancel_url: `${baseUrl}/billing?checkout=cancel`,
-  });
+  let session;
+  try {
+    session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: "subscription",
+      line_items: [{ price: price.id, quantity: 1 }],
+      subscription_data: { trial_period_days: 14 },
+      success_url: `${baseUrl}/billing?checkout=success`,
+      cancel_url: `${baseUrl}/billing?checkout=cancel`,
+    });
+  } catch (err: unknown) {
+    const stripeErr = err as { code?: string; type?: string };
+    if (stripeErr?.code === "resource_missing" && stripeErr?.type === "invalid_request_error") {
+      // Customer ID belongs to a different Stripe account (e.g. after switching
+      // from test → live or migrating accounts). Clear it and create a fresh one.
+      req.log.warn({ staleCustomerId: customerId }, "Stale Stripe customer ID — creating fresh customer");
+      const freshCustomer = await stripe.customers.create({
+        email: appUser.email ?? undefined,
+        metadata: { appUserId: String(appUser.id) },
+      });
+      customerId = freshCustomer.id;
+      await db.update(usersTable).set({ stripeCustomerId: customerId }).where(eq(usersTable.id, appUser.id));
+      session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: "subscription",
+        line_items: [{ price: price.id, quantity: 1 }],
+        subscription_data: { trial_period_days: 14 },
+        success_url: `${baseUrl}/billing?checkout=success`,
+        cancel_url: `${baseUrl}/billing?checkout=cancel`,
+      });
+    } else {
+      throw err;
+    }
+  }
 
   if (!session.url) {
     res.status(500).json({ error: "Failed to create checkout session" });
