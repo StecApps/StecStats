@@ -3,9 +3,9 @@ import { useGetBillingStatus, useCreateCheckoutSession, useCreateBillingPortalSe
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, Crown, Sparkles, Zap, X, Youtube, Link2Off } from "lucide-react";
+import { Loader2, Check, Crown, Sparkles, Zap, X, Youtube, Link2Off, PartyPopper, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { FAILED_CHECKOUT_KEY, decodeCheckoutIntent } from "@/pages/pricing";
 import type { CheckoutIntent } from "@/pages/pricing";
 
@@ -71,10 +71,15 @@ function useYoutubeStatus() {
 export default function Billing() {
   const { toast } = useToast();
   const search = useSearch();
+  const [, navigate] = useLocation();
   const { data: status, isLoading } = useGetBillingStatus();
   const checkout = useCreateCheckoutSession();
   const portal = useCreateBillingPortalSession();
   const youtube = useYoutubeStatus();
+
+  const params = new URLSearchParams(search);
+  const checkoutResult = params.get("checkout");
+  const isCheckoutSuccess = checkoutResult === "success";
 
   const [resumeIntent, setResumeIntent] = useState<CheckoutIntent | null>(() => {
     try {
@@ -90,14 +95,10 @@ export default function Billing() {
   };
 
   useEffect(() => {
-    const params = new URLSearchParams(search);
-    const checkoutResult = params.get("checkout");
-    if (checkoutResult === "success") {
-      toast({ title: "Welcome!", description: "Your subscription is being activated. This may take a few seconds." });
-    } else if (checkoutResult === "cancel") {
+    if (checkoutResult === "cancel") {
       toast({ title: "Checkout canceled", description: "No changes were made to your plan." });
     }
-  }, [search, toast]);
+  }, [checkoutResult, toast]);
 
   const handleUpgrade = async (interval: "month" | "year", tier: "pro" | "premium" | "soccer" = "pro") => {
     try {
@@ -127,13 +128,87 @@ export default function Billing() {
   }
 
   const plan = status?.plan ?? "free";
+  const isTrialing = status?.status === "trialing";
+  const trialEnd = formatDate(status?.trialEnd);
+
+  if (isCheckoutSuccess) {
+    const isPro = plan === "pro";
+    const isPremium = plan === "premium";
+    const activating = !isPro && !isPremium;
+
+    return (
+      <div className="flex-1 flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center space-y-8">
+          <div className="flex justify-center">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center">
+                {activating
+                  ? <Loader2 className="w-10 h-10 text-primary animate-spin" />
+                  : <PartyPopper className="w-10 h-10 text-primary" />
+                }
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-4xl font-display font-bold uppercase tracking-tight text-secondary">
+              {activating ? "Activating…" : "You're in!"}
+            </h1>
+            <p className="text-muted-foreground text-lg">
+              {activating
+                ? "Your subscription is being confirmed. This only takes a moment."
+                : isPremium
+                  ? "Welcome to STEC STATS Premium."
+                  : isTrialing && trialEnd
+                    ? `Your 14-day free trial starts now. You won't be charged until ${trialEnd}.`
+                    : "Welcome to STEC STATS Pro."}
+            </p>
+          </div>
+
+          {!activating && (
+            <div className="bg-card border border-border rounded-xl p-6 text-left space-y-3">
+              <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                {isPremium ? "Premium" : "Pro"} features unlocked
+              </p>
+              <ul className="space-y-2.5">
+                {(isPremium ? PREMIUM_FEATURES : PRO_FEATURES).map((f) => (
+                  <li key={f} className="flex items-center gap-3 text-sm">
+                    <Check className="w-4 h-4 text-primary shrink-0" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3">
+            {!activating && (
+              <Button
+                size="lg"
+                className="w-full font-display uppercase tracking-wide text-base"
+                onClick={() => navigate("/")}
+              >
+                Go to Dashboard
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground"
+              onClick={() => navigate("/billing")}
+            >
+              {activating ? "Refresh" : "View billing details"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const isPro = plan === "pro";
   const isPremium = plan === "premium";
   const hasSoccer = status?.hasSoccer ?? false;
-  const isTrialing = status?.status === "trialing";
-  const trialEnd = formatDate(status?.trialEnd);
   const periodEnd = formatDate(status?.currentPeriodEnd);
-
   const planLabel = isPremium ? "Premium Plan" : isPro ? "Pro Plan" : "Free Plan";
   const planDescription = isPremium && isTrialing && trialEnd
     ? `You're in your free trial. It ends on ${trialEnd}.`
