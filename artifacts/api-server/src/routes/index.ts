@@ -12,6 +12,7 @@ import billingRouter from "./billing";
 import musicRouter from "./music";
 import youtubeRouter from "./youtube";
 import feedbackRouter from "./feedback";
+import purchaseEventsRouter from "./purchase-events";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(billingRouter);
 router.use(musicRouter);
 router.use(youtubeRouter);
 router.use(feedbackRouter);
+router.use(purchaseEventsRouter);
 
 export default router;

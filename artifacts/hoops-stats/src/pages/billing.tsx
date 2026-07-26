@@ -81,6 +81,20 @@ export default function Billing() {
   const checkoutResult = params.get("checkout");
   const isCheckoutSuccess = checkoutResult === "success";
 
+  const [purchaseEventFired, setPurchaseEventFired] = useState(false);
+
+  useEffect(() => {
+    if (!isCheckoutSuccess || purchaseEventFired || isLoading) return;
+    const plan = status?.plan;
+    if (!plan || plan === "free") return;
+    setPurchaseEventFired(true);
+    fetch("/api/purchase-events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ plan, interval: null }),
+    }).catch(() => {});
+  }, [isCheckoutSuccess, purchaseEventFired, isLoading, status?.plan]);
+
   const [resumeIntent, setResumeIntent] = useState<CheckoutIntent | null>(() => {
     try {
       return decodeCheckoutIntent(localStorage.getItem(FAILED_CHECKOUT_KEY));
