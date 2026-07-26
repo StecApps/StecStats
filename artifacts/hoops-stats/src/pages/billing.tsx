@@ -19,18 +19,17 @@ const PRO_FEATURES = [
   "Unlimited players & seasons",
   "Full career dashboard",
   "Shooting gauges & advanced stats",
-  "Live streaming",
-  "Saved game video",
-  "Season highlight reel",
+  "Live streaming to family & fans",
+  "Saved game video & highlight reels",
+  "YouTube highlight upload with auto box score",
   "Shareable player profile",
 ];
 
 const PREMIUM_FEATURES = [
   "Everything in Pro",
-  "Player tracking photo (per-player)",
-  "Auto-follow during recording",
-  "6-month photo freshness tracking",
-  "Player spotlight clips (coming soon)",
+  "Auto-Follow camera during recording",
+  "Player tracking photos",
+  "More features coming",
 ];
 
 function formatDate(value: string | null | undefined): string | null {
@@ -351,7 +350,7 @@ export default function Billing() {
                 <CardTitle className="font-display text-xl uppercase tracking-wide">Pro</CardTitle>
                 {isPro && <Badge variant="default">Current</Badge>}
               </div>
-              <CardDescription>14-day free trial, then $9.99/mo or $59/yr</CardDescription>
+              <CardDescription>14-day free trial, then $9.99/mo or $79/yr</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <ul className="space-y-2">
@@ -388,46 +387,31 @@ export default function Billing() {
             </CardContent>
           </Card>
 
-          {/* PREMIUM */}
-          <Card className="border-primary shadow-lg ring-1 ring-primary/30">
+          {/* PREMIUM — coming soon */}
+          <Card className="border-muted/50 opacity-80">
             <CardHeader>
               <div className="flex items-center gap-2">
-                <Zap className="w-5 h-5 text-primary fill-primary" />
-                <CardTitle className="font-display text-xl uppercase tracking-wide">Premium</CardTitle>
-                <Badge variant="outline" className="text-primary border-primary/50 text-[0.6rem]">Best</Badge>
+                <Zap className="w-5 h-5 text-muted-foreground" />
+                <CardTitle className="font-display text-xl uppercase tracking-wide text-muted-foreground">Premium</CardTitle>
+                <Badge variant="outline" className="text-muted-foreground border-muted-foreground/40 text-[0.6rem]">Coming Soon</Badge>
               </div>
-              <CardDescription>14-day free trial, then $14.99/mo or $119/yr</CardDescription>
+              <CardDescription>Pro + Auto-Follow — +$5/mo · available soon</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <ul className="space-y-2">
                 {PREMIUM_FEATURES.map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-sm">
-                    <Check className="w-4 h-4 text-primary shrink-0" />
+                  <li key={f} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Check className="w-4 h-4 text-muted-foreground/50 shrink-0" />
                     {f}
                   </li>
                 ))}
               </ul>
-              <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                <Button
-                  className="flex-1 font-display uppercase tracking-wide"
-                  onClick={() => handleUpgrade("month", "premium")}
-                  disabled={checkout.isPending}
-                  data-testid="button-upgrade-premium-monthly"
-                >
-                  {checkout.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Monthly
-                </Button>
-                <Button
-                  variant="secondary"
-                  className="flex-1 font-display uppercase tracking-wide"
-                  onClick={() => handleUpgrade("year", "premium")}
-                  disabled={checkout.isPending}
-                  data-testid="button-upgrade-premium-yearly"
-                >
-                  {checkout.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Yearly
-                </Button>
-              </div>
+              <Button
+                className="w-full font-display uppercase tracking-wide"
+                disabled
+              >
+                Coming Soon
+              </Button>
             </CardContent>
           </Card>
         </div>
