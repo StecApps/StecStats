@@ -15,18 +15,43 @@ export async function seedDatabase(): Promise<void> {
 }
 
 /**
- * One-time fix: game 154 has a 2nd-half-only video (35 min).
- * Events were recorded with a running clock so 2nd-half timestamps start
- * at ~2,205,276 ms. Set the offset once so seeks land correctly.
+ * One-time data fixes for games whose video only covers part of the game.
+ * Events were recorded with a running stat clock, so when the footage starts
+ * mid-game the event timestamps must be shifted by videoOffsetMs to land on
+ * the right spot in the video.
+ *
+ * Each fix is applied only when the game has NO offset yet (videoOffsetMs is
+ * null), so a manual adjustment made later in the UI is never overwritten on
+ * the next boot.
  */
+const VIDEO_OFFSET_FIXES: ReadonlyArray<{ gameId: number; videoOffsetMs: number }> = [
+  // Game 154: 2nd-half-only video (35 min); 2nd-half timestamps start ~2,205,276 ms.
+  { gameId: 154, videoOffsetMs: 1_809_782 },
+  // Game 158: the live stream dropped during the first half, so the recording
+  // only contains the second half onward. Second half started around the
+  // 26-minute mark of the stat clock → stat minute 26 maps to video minute 1.
+  { gameId: 158, videoOffsetMs: 1_500_000 },
+];
+
 export async function applyVideoOffsetFixes(): Promise<void> {
-  try {
-    await db
-      .update(gamesTable)
-      .set({ videoOffsetMs: 1_809_782 })
-      .where(eq(gamesTable.id, 154));
-    logger.info({ gameId: 154, videoOffsetMs: 1_809_782 }, "Applied video offset fix for game 154");
-  } catch (err) {
-    logger.warn({ err }, "Could not apply video offset fix for game 154 (may not exist in this env)");
+  for (const fix of VIDEO_OFFSET_FIXES) {
+    try {
+      const updated = await db
+        .update(gamesTable)
+        .set({ videoOffsetMs: fix.videoOffsetMs })
+        .where(and(eq(gamesTable.id, fix.gameId), isNull(gamesTable.videoOffsetMs)))
+        .returning({ id: gamesTable.id });
+      if (updated.length > 0) {
+        logger.info(
+          { gameId: fix.gameId, videoOffsetMs: fix.videoOffsetMs },
+          "Applied video offset fix",
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, gameId: fix.gameId },
+        "Could not apply video offset fix (game may not exist in this env)",
+      );
+    }
   }
 }

@@ -292,7 +292,17 @@ const PROXY_CHUNK_DURATION_SEC = 360; // 6 minutes
  * Quick duration probe for a source video. Used to determine how many chunks
  * to split the proxy transcode into. Accuracy to ±10% is sufficient.
  */
-async function probeVideoDurationForChunking(srcPath: string, fileSizeBytes: number = 0): Promise<number> {
+async function probeVideoDurationForChunking(
+  srcPath: string,
+  fileSizeBytes: number = 0,
+  durationHintMs: number | null = null,
+): Promise<number> {
+  // Prefer the duration already probed from the container bytes (WebM last
+  // cluster timecode / MP4 mvhd) and stored on the game row. Live-recorded
+  // WebM is cueless, so ffprobe often finds no duration and falls through to
+  // a bitrate guess that can be wildly wrong (e.g. 4x the real length).
+  if (durationHintMs != null && durationHintMs > 0) return durationHintMs / 1000;
+
   const fast = await ffprobe([
     "-v", "error",
     "-analyzeduration", "10000000",
@@ -340,9 +350,13 @@ async function createChunkedProxy(
   srcPath: string,
   destPath: string,
   fileSizeBytes: number = 0,
+  durationHintMs: number | null = null,
 ): Promise<void> {
   const proxyTmpDir = path.dirname(destPath);
-  const duration = await probeVideoDurationForChunking(srcPath, fileSizeBytes);
+  const duration = await probeVideoDurationForChunking(srcPath, fileSizeBytes, durationHintMs);
+  // numChunks is an ESTIMATE — the source may be shorter or longer than the
+  // probe says. The encode below is driven by the segments ffmpeg actually
+  // produces, so a wrong estimate only affects resume bookkeeping.
   const numChunks = Math.max(1, Math.ceil(duration / PROXY_CHUNK_DURATION_SEC));
 
   logger.info(
@@ -352,9 +366,9 @@ async function createChunkedProxy(
 
   // Chunk cache key includes PROXY_VERSION so chunks encoded under older
   // settings (e.g. Opus audio passthrough) are never mixed into a new proxy.
-  const gcsChunkPaths = Array.from({ length: numChunks }, (_, i) =>
-    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`,
-  );
+  const gcsChunkPath = (i: number) =>
+    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
+  const gcsChunkPaths = Array.from({ length: numChunks }, (_, i) => gcsChunkPath(i));
   const existFlags = await Promise.all(
     gcsChunkPaths.map((p) => objectStorageService.checkObjectEntityExists(p)),
   );
@@ -434,21 +448,28 @@ async function createChunkedProxy(
       () => { ffmpegDone = true; },
     );
 
-    // Incremental upload loop.
+    // Incremental upload loop, driven by the segments ffmpeg ACTUALLY writes
+    // (the duration probe is only an estimate — the source can turn out
+    // shorter or longer, so numToEncode must never gate loop exit).
     // ffmpeg appends chunk N's filename to segments.txt when it OPENS chunk N.
     // Chunk N is fully written (safe to upload) only after chunk N+1 is opened
     // (i.e., lines[N+1] exists) or ffmpeg has exited.
+    let producedSegments = 0;
     const uploadLoop = async (): Promise<void> => {
       let nextLocalIdx = 0; // 0 = firstMissing, 1 = firstMissing+1, …
 
       while (true) {
         await new Promise<void>((r) => setTimeout(r, 2000));
 
+        // Capture the done flag BEFORE reading the list so the list is always
+        // at least as fresh as the flag (no missed final segment).
+        const doneAtRead = ffmpegDone;
         const content = await fs.readFile(segmentListPath, "utf-8").catch(() => "");
         const lines = content.trim().split("\n").filter(Boolean);
+        producedSegments = lines.length;
 
-        while (nextLocalIdx < Math.min(lines.length, numToEncode)) {
-          const safe = (nextLocalIdx + 1 < lines.length) || ffmpegDone;
+        while (nextLocalIdx < lines.length) {
+          const safe = (nextLocalIdx + 1 < lines.length) || doneAtRead;
           if (!safe) break; // wait for ffmpeg to move past this chunk
 
           const chunkIdx = firstMissing + nextLocalIdx;
@@ -456,7 +477,7 @@ async function createChunkedProxy(
             const localPath = path.join(proxyTmpDir, lines[nextLocalIdx]);
             logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: uploading to GCS");
             await objectStorageService.uploadLocalFileToObjectPath(
-              localPath, gcsChunkPaths[chunkIdx], "video/mp4",
+              localPath, gcsChunkPath(chunkIdx), "video/mp4",
             );
             logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: saved to GCS");
           } else {
@@ -465,19 +486,34 @@ async function createChunkedProxy(
           nextLocalIdx++;
         }
 
-        if (ffmpegDone && nextLocalIdx >= numToEncode) break;
+        if (doneAtRead && nextLocalIdx >= lines.length) break;
       }
     };
 
     await Promise.all([ffmpegPromise, uploadLoop()]);
+
+    // The REAL chunk count comes from what ffmpeg produced, not the estimate.
+    // producedSegments === 0 with firstMissing > 0 means the resume seek was
+    // past the true end of footage (duration was overestimated on a prior
+    // run) — the chunks already in GCS are the complete set.
+    const actualNumChunks = firstMissing + producedSegments;
+    if (actualNumChunks === 0) {
+      throw new HighlightError("Proxy encode produced no output — source video appears empty or unreadable");
+    }
+    if (actualNumChunks !== numChunks) {
+      logger.warn(
+        { gameId, estimatedChunks: numChunks, actualChunks: actualNumChunks },
+        "Proxy: duration estimate was off — using actual chunk count",
+      );
+    }
 
     // Chunks 0..firstMissing-1 were already in GCS — download them for concat.
     for (let i = 0; i < firstMissing; i++) {
       logger.info({ gameId, chunk: i }, "Proxy chunk: downloading GCS chunk for concat");
       await downloadSourceVideo(gcsChunkPaths[i], chunkLocalPath(i));
     }
-    // Chunks firstMissing..numChunks-1 were just encoded and are already on disk.
-    for (let i = 0; i < numChunks; i++) {
+    // Chunks firstMissing..actualNumChunks-1 were just encoded and are already on disk.
+    for (let i = 0; i < actualNumChunks; i++) {
       chunkLocalPaths.push(chunkLocalPath(i));
     }
   }
@@ -548,7 +584,7 @@ async function acquireGameProxy(
             { gameId, fileSizeMB: (fileSizeBytes / 1024 / 1024).toFixed(1) },
             "Creating proxy video (chunked — streaming source from GCS, no local download)",
           );
-          await createChunkedProxy(gameId, ownerId, srcUrl, destPath, fileSizeBytes);
+          await createChunkedProxy(gameId, ownerId, srcUrl, destPath, fileSizeBytes, game.videoDurationMs);
           logger.info({ gameId }, "Proxy created — uploading final proxy to storage");
           const proxyObjectPath = await uploadHighlight(destPath, ownerId);
           await db

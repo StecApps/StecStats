@@ -19,9 +19,9 @@
 - [Express sub-router auth blackhole](express-subrouter-auth-blackhole.md) — `router.use(requireAuth)` with no path prefix silently blocks sibling routers' public routes mounted later; apply auth per-route instead.
 - [Multi-tenant ownerId scoping patterns](multi-tenant-ownerid-scoping.md) — designated-owner legacy claim (not first-signup), FK-from-body validation, unscoped-join leaks, and object-storage ACL hijack guards.
 - [stripe-replit-sync migration race on first boot](stripe-sync-migration-race.md) — first automatic boot can log "relation stripe.accounts does not exist" even though migrations succeed; confirm tables then just restart.
-- [stripe-replit-sync bundling & backfill pitfalls](stripe-sync-bundling-pitfalls.md) — esbuild bundling silently drops the lib's migrations dir (copy into dist + fatal table check); no-arg syncBackfill() syncs NOTHING — use {object:"all"} gated on empty tables.
+- [stripe-replit-sync bundling & backfill pitfalls](stripe-sync-bundling-pitfalls.md) — esbuild drops the lib's migrations dir; no-arg syncBackfill() syncs NOTHING.
 - [Flaky e2e failure from mid-test workflow restart](flaky-e2e-workflow-restart.md) — api-server can auto-restart during an e2e run, causing a spurious network failure; re-run the test before assuming a real app bug.
-- [Paywall gating must cover every response field/section, not just limits](paywall-full-surface-gating.md) — a "current season only" spec item and Pro-only computed fields (shooting %) need explicit server-side filtering/omission, not just create-limits.
+- [Paywall gating must cover every response field/section, not just limits](paywall-full-surface-gating.md) — Pro-only fields need explicit server-side filtering, not just create-limits.
 - [Premium tier via stripe product name join](premium-tier-entitlements.md) — entitlement and checkout both key off the Stripe product NAME containing "Premium"; renaming the product breaks both.
 - [MediaPipe auto-follow in draw loop](mediapipe-autofollow.md) — 3fps identity tracker only sets a desired target; 60fps draw loop owns all pan/zoom easing, so bad samples nudge, never snap.
 - [requireAuth in-memory user must be updated after email backfill](requireauth-email-backfill.md) — after `db.update(email)` do `user = {...user, email}` or req.appUser.email stays null and owner/premium checks fail.
@@ -38,8 +38,8 @@
 - [iOS MP4 multi-half recording concat](ios-mp4-multi-half-concat.md) — raw Blob([half1,half2]) is invalid MP4; upload halves individually, merge server-side via POST /api/storage/concat-segments (ffmpeg -f concat -c copy); WebM raw-concat is fine.
 - [GCS signed-URL range requests unreliable in production](gcs-signed-url-range-requests.md) — mid-file Range reads via fetch+signedUrl return garbage bytes in prod; use file.createReadStream({start,end}) from GCS SDK instead.
 - [Cueless WebM clip extraction from GCS](cueless-webm-extraction.md) — live-recorded WebM has no duration/Cues; never proxy-transcode or remote-seek — event-derived pseudo-duration + one linear `-c copy` pass with windowed outputs.
-- [Highlight/lowlight must use local file, not signed URL](highlight-local-file.md) — generateHighlight/generateLowlight must download source via acquireSourceVideo before passing to ffmpeg; signed URLs fail for Range requests + cueless WebM has no seek index.
-- [Background upload resilience pattern](bg-upload-resilience.md) — IndexedDB session must NOT be deleted until onVideoReady succeeds; save stec:pending-video-upload to localStorage so PendingVideoUploadRecoverer can reassemble + retry on next load.
+- [Highlight/lowlight must use local file, not signed URL](highlight-local-file.md) — download the source before ffmpeg; signed URLs fail Range reads and cueless WebM can't seek.
+- [Background upload resilience pattern](bg-upload-resilience.md) — never delete the IndexedDB session until the save succeeds; persist a pending-upload marker so recovery can retry on next load.
 - [GCS signed URLs reject appended params](gcs-signed-url-unsigned-params.md) — appending response-content-type/-disposition after signing always 403s; patch object metadata + bare URL instead.
 - [Playwright Chromium can't decode H.264/AAC](playwright-chromium-no-h264.md) — MP4 playback e2e always fails in the sandbox (canPlayType=""); verify via in-page Range fetch instead.
 - [Generator version stamping](generator-version-stamping.md) — stamp a version on ready reels/proxies and reset stale-version rows on read; publishing code never fixes already-generated media.
@@ -47,3 +47,5 @@
 - [WebM split detector chunk overlap bug](webm-split-detector-overlap.md) — chunk overlap must equal the verify window, not the pattern length; log candidatesFound to tell "no magic" from "verify failed".
 - [openapi.yaml is the only codegen source of truth](openapi-spec-source-of-truth.md) — codegen deletes fields hand-added to generated files; port parallel-task fields into the spec first.
 - [Halftime-gap timeline mapping](halftime-gap-timeline-mapping.md) — every timestamp→video-time conversion (server AND FilmRoom) must subtract the removed halftime gap on repaired games.
+- [Chunked encodes must complete on actual output](chunked-encode-actual-output.md) — never gate a chunked-encode loop on an estimated chunk count; cueless WebM bitrate fallback can be 4x off and hang the build forever.
+- [Boot-time data fixes must be conditional](boot-data-fix-conditional.md) — seed-style prod data fixes must only apply when the column is still NULL, or every deploy clobbers the user's manual UI adjustments.
