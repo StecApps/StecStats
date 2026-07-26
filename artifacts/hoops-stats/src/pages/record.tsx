@@ -438,6 +438,7 @@ export default function RecordGame() {
   );
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
+  const [hasRecording, setHasRecording] = useState(false);
   const [recordedSegments, setRecordedSegments] = useState<Blob[]>([]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedPreviewUrl, setRecordedPreviewUrl] = useState<string | null>(null);
@@ -683,7 +684,7 @@ export default function RecordGame() {
   const IDEAL_VIDEO_CONSTRAINTS = recordingQuality === "high"
     ? { width: { ideal: 1920 }, height: { ideal: 1080 }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } }
     : { width: { ideal: 1280 }, height: { ideal: 720  }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } };
-  const VIDEO_BITS_PER_SECOND = recordingQuality === "high" ? 12_000_000 : 4_000_000;
+  const VIDEO_BITS_PER_SECOND = recordingQuality === "high" ? 6_000_000 : 4_000_000;
 
   const lensLabelFromDeviceLabel = (label: string): string => {
     if (/ultra.?wide|0\.5/i.test(label)) return "0.5×";
@@ -1232,7 +1233,14 @@ export default function RecordGame() {
 
   const startDrawLoop = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    const draw = () => {
+    let lastFrameTime = 0;
+    const FRAME_MS = 1000 / 30; // cap at 30fps — camera max is 30fps, drawing more wastes GPU
+    const draw = (timestamp: DOMHighResTimeStamp) => {
+      if (timestamp - lastFrameTime < FRAME_MS) {
+        rafRef.current = requestAnimationFrame(draw);
+        return;
+      }
+      lastFrameTime = timestamp;
       const v = sourceVideoRef.current;
       const c = canvasRef.current;
       if (v && c && v.videoWidth > 0 && v.videoHeight > 0) {
@@ -1708,12 +1716,19 @@ export default function RecordGame() {
         }
       };
       recorder.onstop = () => {
-        getOrderedChunks(sessionId)
+        // Defer blob assembly — don't assemble + create an object URL here.
+        // For a 90-min game the blob can be multiple GB and eagerly allocating
+        // it crashes mobile browser tabs (iOS kills the tab). Instead we set the
+        // promise on blobAssemblyPromiseRef; handleSave awaits it right before
+        // uploading. No in-memory preview URL is created until the user saves.
+        blobAssemblyPromiseRef.current = getOrderedChunks(sessionId)
           .then((chunks) => {
+            if (!chunks.length) return null;
             const blob = new Blob(chunks, { type: mimeType });
             setRecordedBlob(blob);
-            setRecordedPreviewUrl(URL.createObjectURL(blob));
+            return blob;
           })
+          .catch(() => null)
           .finally(() => stopMediaPipeline());
       };
 
@@ -1721,6 +1736,7 @@ export default function RecordGame() {
       recordingStartRef.current = Date.now();
       recorder.start(3000);
       setIsRecording(true);
+      setHasRecording(true);
       shotDetectionUsageRef.current = 0;
       shotDetectionLimitNudgedRef.current = false;
       setShowShotUpgradeNudge(false);
@@ -1785,12 +1801,13 @@ export default function RecordGame() {
       recorder.onstop = () => {
         getOrderedChunks(sessionId ?? "")
           .then((chunks) => {
+            if (!chunks.length) { stopMediaPipeline(); resolve(null); return; }
             const blob = new Blob(chunks, { type: mimeType });
             setRecordedBlob(blob);
-            setRecordedPreviewUrl(URL.createObjectURL(blob));
+            stopMediaPipeline();
             resolve(blob);
           })
-          .finally(() => stopMediaPipeline());
+          .catch(() => { stopMediaPipeline(); resolve(null); });
       };
       recorder.stop();
       setIsRecording(false);
@@ -1971,6 +1988,7 @@ export default function RecordGame() {
     setRecordedPreviewUrl(null);
     setRecordedBlob(null);
     setRecordedSegments([]);
+    setHasRecording(false);
     setExistingVideoObjectPath(null);
     setEvents([]);
     if (recordingSessionIdRef.current) {
@@ -3110,7 +3128,14 @@ export default function RecordGame() {
             </div>
           )}
 
-          {!isRecording && !recordedPreviewUrl && !existingVideoObjectPath && (
+          {!isRecording && hasRecording && !recordedPreviewUrl && !existingVideoObjectPath && !isAssemblingBlob && (
+            <div className="flex items-center gap-2 py-1 text-sm font-medium text-green-500">
+              <Check className="w-4 h-4 shrink-0" />
+              <span>Video captured — save the game below to upload it</span>
+            </div>
+          )}
+
+          {!isRecording && !hasRecording && !recordedPreviewUrl && !existingVideoObjectPath && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted-foreground">Recording quality:</span>
@@ -3134,7 +3159,7 @@ export default function RecordGame() {
               <p className="text-xs text-muted-foreground">
                 {recordingQuality === "standard"
                   ? "720p · ~30 MB/min · highlight reels generate ~3× faster"
-                  : "1080p · ~85 MB/min · larger file, slower reel generation"}
+                  : "1080p · ~45 MB/min · larger file, slower reel generation"}
               </p>
               <Button variant="outline" onClick={startRecording}>
                 <Circle className="w-4 h-4 mr-2 text-red-500" /> Start Recording
