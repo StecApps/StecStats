@@ -16,6 +16,13 @@ import { logger } from "./logger";
 
 const objectStorageService = new ObjectStorageService();
 
+// Per-game abort controllers — registered when a job starts, aborted by
+// cancelHighlightGeneration() when the user taps Cancel on the UI.
+const jobAbortControllers = new Map<number, AbortController>();
+export function cancelHighlightGeneration(gameId: number): void {
+  jobAbortControllers.get(gameId)?.abort();
+}
+
 const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 // Watermark PNG: wordmark with boosted orange + ".com" appended.
 const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
@@ -144,7 +151,7 @@ const MAX_SOURCE_VIDEO_MB = Number(process.env["MAX_SOURCE_VIDEO_MB"] ?? 6000);
  * fixed wall-clock timeout, so large-but-healthy files download fully while
  * truly stalled/truncated GCS objects fail quickly.
  */
-async function downloadSourceVideo(objectPath: string, destPath: string): Promise<void> {
+async function downloadSourceVideo(objectPath: string, destPath: string, signal?: AbortSignal): Promise<void> {
   const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
   // Log file size for diagnostics and guard against oversized videos.
@@ -165,6 +172,8 @@ async function downloadSourceVideo(objectPath: string, destPath: string): Promis
   let lastByteTime = Date.now();
 
   const ac = new AbortController();
+  // Hook external cancel signal — fires immediately if the job was cancelled.
+  signal?.addEventListener("abort", () => ac.abort(), { once: true });
 
   // Rolling stall timer: reset every time a data chunk arrives.
   // If 60s pass with no data, abort.
@@ -224,6 +233,7 @@ const sourceVideoCache = new Map<string, SourceVideoEntry>();
 
 export async function acquireSourceVideo(
   objectPath: string,
+  signal?: AbortSignal,
 ): Promise<{ srcPath: string; release: () => void }> {
   // Check synchronously before any await to be race-condition-safe in Node.js.
   if (!sourceVideoCache.has(objectPath)) {
@@ -234,7 +244,7 @@ export async function acquireSourceVideo(
     const destPath = path.join(tmpDir, "source_video");
     const entry: SourceVideoEntry = {
       promise: fs.mkdir(tmpDir, { recursive: true })
-        .then(() => downloadSourceVideo(objectPath, destPath))
+        .then(() => downloadSourceVideo(objectPath, destPath, signal))
         .then(() => destPath)
         .catch((err) => {
           sourceVideoCache.delete(objectPath);
@@ -554,6 +564,7 @@ const proxyLocalCache = new Map<number, SourceVideoEntry>();
 async function acquireGameProxy(
   gameId: number,
   ownerId: number,
+  signal?: AbortSignal,
 ): Promise<{ proxyPath: string; release: () => void }> {
   if (!proxyLocalCache.has(gameId)) {
     const tmpDir = path.join(
@@ -573,7 +584,7 @@ async function acquireGameProxy(
               { gameId, objectPath: game.videoProxyObjectPath },
               "Downloading existing proxy video",
             );
-            await downloadSourceVideo(game.videoProxyObjectPath, destPath);
+            await downloadSourceVideo(game.videoProxyObjectPath, destPath, signal);
             logger.info({ gameId }, "Proxy download complete");
             return destPath;
           }
@@ -585,7 +596,7 @@ async function acquireGameProxy(
           // concurrent reel job via sourceVideoCache, and local disk reads
           // also encode noticeably faster than network streaming.
           logger.info({ gameId }, "Creating proxy video (chunked) — downloading source locally");
-          const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath);
+          const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
           try {
             await createChunkedProxy(gameId, ownerId, srcPath, destPath, 0, game.videoDurationMs);
           } finally {
@@ -1388,6 +1399,8 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
  * highlightStatus column.
  */
 export async function generateHighlight(gameId: number, musicTrackPath?: string): Promise<void> {
+  const ac = new AbortController();
+  jobAbortControllers.set(gameId, ac);
   let tmpDir: string | null = null;
   let releaseSrc: (() => void) | null = null;
   try {
@@ -1433,13 +1446,13 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     logger.info({ gameId }, "Highlight: acquiring proxy video");
     let srcPath: string;
     try {
-      const proxy = await acquireGameProxy(gameId, game.ownerId);
+      const proxy = await acquireGameProxy(gameId, game.ownerId, ac.signal);
       srcPath = proxy.proxyPath;
       releaseSrc = proxy.release;
     } catch (proxyErr) {
       logger.warn({ err: proxyErr, gameId },
         "Highlight: proxy unavailable — falling back to raw source video");
-      const { srcPath: rawPath, release } = await acquireSourceVideo(game.videoObjectPath!);
+      const { srcPath: rawPath, release } = await acquireSourceVideo(game.videoObjectPath!, ac.signal);
       srcPath = rawPath;
       releaseSrc = release;
     }
@@ -1486,6 +1499,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
+    jobAbortControllers.delete(gameId);
     releaseSrc?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -1499,6 +1513,8 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
  * lowlightStatus column.
  */
 export async function generateLowlight(gameId: number, musicTrackPath?: string): Promise<void> {
+  const ac = new AbortController();
+  jobAbortControllers.set(gameId, ac);
   let tmpDir: string | null = null;
   let releaseSrc: (() => void) | null = null;
   try {
@@ -1538,13 +1554,13 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     logger.info({ gameId }, "Lowlight: acquiring proxy video");
     let srcPath: string;
     try {
-      const proxy = await acquireGameProxy(gameId, game.ownerId);
+      const proxy = await acquireGameProxy(gameId, game.ownerId, ac.signal);
       srcPath = proxy.proxyPath;
       releaseSrc = proxy.release;
     } catch (proxyErr) {
       logger.warn({ err: proxyErr, gameId },
         "Lowlight: proxy unavailable — falling back to raw source video");
-      const { srcPath: rawPath, release } = await acquireSourceVideo(game.videoObjectPath!);
+      const { srcPath: rawPath, release } = await acquireSourceVideo(game.videoObjectPath!, ac.signal);
       srcPath = rawPath;
       releaseSrc = release;
     }
@@ -1591,6 +1607,7 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
+    jobAbortControllers.delete(gameId);
     releaseSrc?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});

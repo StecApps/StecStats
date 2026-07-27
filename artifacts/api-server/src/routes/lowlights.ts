@@ -6,6 +6,7 @@ import {
   countLowlightMoments,
   getLowlightCoverage,
   generateLowlight,
+  cancelHighlightGeneration,
   GENERATOR_VERSION,
 } from "../lib/highlightGenerator";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
@@ -190,6 +191,7 @@ router.delete("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   });
   if (!game) { res.status(404).json({ error: "Game not found" }); return; }
 
+  cancelHighlightGeneration(gameId);
   inFlight.delete(gameId);
   await db.update(gamesTable)
     .set({
