@@ -19,9 +19,12 @@ const router: IRouter = Router();
 // for the same game (survives concurrent requests within this process).
 const inFlight = new Set<number>();
 
-// A DB status of "processing" older than this is considered abandoned (e.g. the
-// server restarted mid-job) and may be retried.
-const STALE_PROCESSING_MS = 140 * 60 * 1000; // 140 minutes — 2-hr game proxy (nice -n 19, all cores) can take ~70 min
+// Jobs not in-flight (e.g. server restarted) are stale after 5 minutes.
+const STALE_PROCESSING_MS = 5 * 60 * 1000;
+// Hard wall: even an in-flight job is considered abandoned after 30 minutes
+// with no completion — guards against silent ffmpeg crashes where the process
+// dies without updating the DB status.
+const HARD_STALE_MS = 30 * 60 * 1000;
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -43,10 +46,10 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
   let highlightStatus = game.highlightStatus;
   let highlightError = game.highlightError;
   const startedAtMs = game.highlightStartedAt ? new Date(game.highlightStartedAt).getTime() : 0;
+  const elapsed = Date.now() - startedAtMs;
   const isStale =
     highlightStatus === "processing" &&
-    !inFlight.has(gameId) &&
-    Date.now() - startedAtMs > STALE_PROCESSING_MS;
+    (elapsed > HARD_STALE_MS || (!inFlight.has(gameId) && elapsed > STALE_PROCESSING_MS));
   if (isStale) {
     highlightStatus = "failed";
     highlightError = "Generation timed out — tap Try Again to rebuild.";
@@ -130,8 +133,10 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
   const startedAtMs = game.highlightStartedAt
     ? new Date(game.highlightStartedAt).getTime()
     : 0;
+  const elapsedMs = Date.now() - startedAtMs;
   const staleProcessing =
-    game.highlightStatus === "processing" && Date.now() - startedAtMs > STALE_PROCESSING_MS;
+    game.highlightStatus === "processing" &&
+    (elapsedMs > HARD_STALE_MS || (!inFlight.has(gameId) && elapsedMs > STALE_PROCESSING_MS));
   const alreadyRunning =
     inFlight.has(gameId) || (game.highlightStatus === "processing" && !staleProcessing);
   // Optional background music — validate the track ID server-side.

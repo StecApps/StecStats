@@ -16,8 +16,8 @@ import { getMusicTrackPath } from "../lib/musicTracks";
 const router: IRouter = Router();
 
 const inFlight = new Set<number>();
-// 10-minute stale window — job is considered abandoned after this.
-const STALE_PROCESSING_MS = 140 * 60 * 1000; // 140 minutes — 2-hr game proxy (nice -n 19, all cores) can take ~70 min
+const STALE_PROCESSING_MS = 5 * 60 * 1000;
+const HARD_STALE_MS = 30 * 60 * 1000;
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -34,10 +34,10 @@ router.get("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   let lowlightStatus = game.lowlightStatus;
   let lowlightError = game.lowlightError;
   const startedAtMs = game.lowlightStartedAt ? new Date(game.lowlightStartedAt).getTime() : 0;
+  const elapsed = Date.now() - startedAtMs;
   const isStale =
     lowlightStatus === "processing" &&
-    !inFlight.has(gameId) &&
-    Date.now() - startedAtMs > STALE_PROCESSING_MS;
+    (elapsed > HARD_STALE_MS || (!inFlight.has(gameId) && elapsed > STALE_PROCESSING_MS));
   if (isStale) {
     lowlightStatus = "failed";
     lowlightError = "Generation timed out — tap Try Again to rebuild.";
@@ -113,7 +113,10 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   const musicTrackPath = musicTrackId ? getMusicTrackPath(musicTrackId) : undefined;
 
   const startedAtMs = game.lowlightStartedAt ? new Date(game.lowlightStartedAt).getTime() : 0;
-  const staleProcessing = game.lowlightStatus === "processing" && Date.now() - startedAtMs > STALE_PROCESSING_MS;
+  const elapsedMs = Date.now() - startedAtMs;
+  const staleProcessing =
+    game.lowlightStatus === "processing" &&
+    (elapsedMs > HARD_STALE_MS || (!inFlight.has(gameId) && elapsedMs > STALE_PROCESSING_MS));
   const alreadyRunning = inFlight.has(gameId) || (game.lowlightStatus === "processing" && !staleProcessing);
   let startedAt = game.lowlightStartedAt;
   if (!alreadyRunning) {

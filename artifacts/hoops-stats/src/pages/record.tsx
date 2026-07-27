@@ -276,6 +276,12 @@ export default function RecordGame() {
     }
   };
 
+  const handleCancelHighlight = async () => {
+    if (!gameId) return;
+    await fetch(`/api/games/${gameId}/highlight`, { method: "DELETE" });
+    await queryClient.invalidateQueries({ queryKey: getGetGameHighlightQueryKey(gameId) });
+  };
+
   const handleDownloadHighlight = () => {
     if (!highlight?.highlightObjectPath) return;
     const cached = highlightBlobCacheRef.current;
@@ -369,6 +375,12 @@ export default function RecordGame() {
     } finally {
       setIsGeneratingLowlight(false);
     }
+  };
+
+  const handleCancelLowlight = async () => {
+    if (!gameId) return;
+    await fetch(`/api/games/${gameId}/lowlight`, { method: "DELETE" });
+    await queryClient.invalidateQueries({ queryKey: getGetGameLowlightQueryKey(gameId) });
   };
 
   const handleDownloadLowlight = () => {
@@ -3259,12 +3271,20 @@ export default function RecordGame() {
                   Tag some made shots, rebounds, assists, steals or blocks during the game to build a highlight reel.
                 </p>
               ) : highlight?.status === "processing" ? (
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <p className="text-sm text-muted-foreground flex items-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" /> {highlightStageText}
                   </p>
                   <Progress value={highlightProgressPct} />
-                  <p className="text-xs text-muted-foreground">This can take a minute — feel free to keep tapping stats while it builds.</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">This can take a minute — feel free to keep tapping stats while it builds.</p>
+                    <button
+                      onClick={handleCancelHighlight}
+                      className="text-xs text-muted-foreground underline underline-offset-2 shrink-0 hover:text-foreground transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
               ) : highlight?.status === "ready" && highlight.highlightObjectPath ? (
                 <div className="space-y-3">
@@ -3485,12 +3505,20 @@ export default function RecordGame() {
                     Tag missed shots or turnovers during the game to build a lowlight reel for review.
                   </p>
                 ) : lowlight?.status === "processing" ? (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <p className="text-sm text-muted-foreground flex items-center gap-2">
                       <Loader2 className="w-4 h-4 animate-spin" /> {lowlightStageText}
                     </p>
                     <Progress value={lowlightProgressPct} />
-                    <p className="text-xs text-muted-foreground">Building your lowlight reel — this can take a minute.</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">Building your lowlight reel — this can take a minute.</p>
+                      <button
+                        onClick={handleCancelLowlight}
+                        className="text-xs text-muted-foreground underline underline-offset-2 shrink-0 hover:text-foreground transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 ) : lowlight?.status === "ready" && lowlight.lowlightObjectPath ? (
                   <div className="space-y-3">
