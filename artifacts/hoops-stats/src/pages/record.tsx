@@ -1000,6 +1000,25 @@ export default function RecordGame() {
     }
   }, [isRecording]);
 
+  // Recovery: when the user returns to the app after backgrounding (iOS
+  // suspends media elements on visibility loss), re-play the source video
+  // and the live preview so the canvas draw loop keeps producing frames.
+  useEffect(() => {
+    if (!isRecording) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      sourceVideoRef.current?.play().catch(() => {});
+      if (livePreviewRef.current && streamRef.current) {
+        if (livePreviewRef.current.srcObject !== streamRef.current) {
+          livePreviewRef.current.srcObject = streamRef.current;
+        }
+        livePreviewRef.current.play().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [isRecording]);
+
   // Audience PIP: when going live, attach the outgoing stream to the small
   // picture-in-picture element so the broadcaster sees the same framing
   // (object-contain, exact aspect ratio) that viewers get.
@@ -1246,6 +1265,7 @@ export default function RecordGame() {
   const startDrawLoop = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     let lastFrameTime = 0;
+    let recoveryFrameCount = 0;
     const FRAME_MS = 1000 / 30; // cap at 30fps — camera max is 30fps, drawing more wastes GPU
     const draw = (timestamp: DOMHighResTimeStamp) => {
       if (timestamp - lastFrameTime < FRAME_MS) {
@@ -1253,6 +1273,19 @@ export default function RecordGame() {
         return;
       }
       lastFrameTime = timestamp;
+      // Every ~3 s (90 frames at 30 fps): if the live preview was paused by
+      // iOS (backgrounding, screen-sleep, system interrupt), re-play it so the
+      // canvas stream keeps reaching the screen. Also nudge the source video
+      // in case it stalled — a stalled source causes a black canvas even
+      // though the stream is still technically attached.
+      recoveryFrameCount++;
+      if (recoveryFrameCount >= 90) {
+        recoveryFrameCount = 0;
+        const lp = livePreviewRef.current;
+        if (lp && lp.paused) lp.play().catch(() => {});
+        const sv = sourceVideoRef.current;
+        if (sv && sv.paused) sv.play().catch(() => {});
+      }
       const v = sourceVideoRef.current;
       const c = canvasRef.current;
       if (v && c && v.videoWidth > 0 && v.videoHeight > 0) {
