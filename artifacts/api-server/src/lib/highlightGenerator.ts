@@ -16,11 +16,22 @@ import { logger } from "./logger";
 
 const objectStorageService = new ObjectStorageService();
 
-// Per-game abort controllers — registered when a job starts, aborted by
-// cancelHighlightGeneration() when the user taps Cancel on the UI.
-const jobAbortControllers = new Map<number, AbortController>();
+// Separate per-game abort controllers for highlight vs lowlight jobs.
+// Using a shared map caused the second job to overwrite the first's
+// controller, so Cancel aborted the wrong signal and the proxy download
+// (which uses the first job's signal) kept running, causing OOM loops.
+const highlightAbortControllers = new Map<number, AbortController>();
+const lowlightAbortControllers = new Map<number, AbortController>();
+export function cancelHighlightJob(gameId: number): void {
+  highlightAbortControllers.get(gameId)?.abort();
+}
+export function cancelLowlightJob(gameId: number): void {
+  lowlightAbortControllers.get(gameId)?.abort();
+}
+/** @deprecated use cancelHighlightJob / cancelLowlightJob */
 export function cancelHighlightGeneration(gameId: number): void {
-  jobAbortControllers.get(gameId)?.abort();
+  cancelHighlightJob(gameId);
+  cancelLowlightJob(gameId);
 }
 
 const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
@@ -365,6 +376,7 @@ async function createChunkedProxy(
   destPath: string,
   fileSizeBytes: number = 0,
   durationHintMs: number | null = null,
+  signal?: AbortSignal,
 ): Promise<void> {
   const proxyTmpDir = path.dirname(destPath);
   const duration = await probeVideoDurationForChunking(srcPath, fileSizeBytes, durationHintMs);
@@ -398,7 +410,7 @@ async function createChunkedProxy(
     // Fast path: download all already-encoded chunks from GCS.
     logger.info({ gameId, numChunks }, "Proxy: all chunks in GCS — downloading");
     for (let i = 0; i < numChunks; i++) {
-      await downloadSourceVideo(gcsChunkPaths[i], chunkLocalPath(i));
+      await downloadSourceVideo(gcsChunkPaths[i], chunkLocalPath(i), signal);
       chunkLocalPaths.push(chunkLocalPath(i));
     }
   } else {
@@ -589,18 +601,45 @@ async function acquireGameProxy(
             return destPath;
           }
           if (!game?.videoObjectPath) throw new HighlightError("Game has no recorded video");
-          // Download the source locally before encoding. Streaming the source
-          // from a GCS signed URL is unreliable in production — mid-file reads
-          // terminate with "End of file", killing the encode at open or on a
-          // resume seek. The download is ref-counted and shared with any
-          // concurrent reel job via sourceVideoCache, and local disk reads
-          // also encode noticeably faster than network streaming.
-          logger.info({ gameId }, "Creating proxy video (chunked) — downloading source locally");
-          const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
-          try {
-            await createChunkedProxy(gameId, ownerId, srcPath, destPath, 0, game.videoDurationMs);
-          } finally {
-            release();
+          // Optimization: if all proxy chunks already exist in GCS we can skip
+          // downloading the 1-2 GB source entirely and jump straight to the
+          // chunk-download + concat path inside createChunkedProxy.  This
+          // prevents the OOM crash loop that occurred when the server kept
+          // restarting after downloading the source + all chunks concurrently.
+          const durationMs = game.videoDurationMs ?? 0;
+          const numChunksGuess = durationMs > 0
+            ? Math.max(1, Math.ceil(durationMs / 1000 / PROXY_CHUNK_DURATION_SEC))
+            : 0;
+          const gcsChunkPath = (i: number) =>
+            `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
+          const allChunksPreExist = numChunksGuess > 0 && (
+            await Promise.all(
+              Array.from({ length: numChunksGuess }, (_, i) =>
+                objectStorageService.checkObjectEntityExists(gcsChunkPath(i)),
+              ),
+            )
+          ).every(Boolean);
+
+          if (allChunksPreExist) {
+            logger.info(
+              { gameId, numChunksGuess },
+              "Proxy: all GCS chunks pre-verified — skipping source download",
+            );
+            await createChunkedProxy(gameId, ownerId, "", destPath, 0, durationMs, signal);
+          } else {
+            // Download the source locally before encoding. Streaming the source
+            // from a GCS signed URL is unreliable in production — mid-file reads
+            // terminate with "End of file", killing the encode at open or on a
+            // resume seek. The download is ref-counted and shared with any
+            // concurrent reel job via sourceVideoCache, and local disk reads
+            // also encode noticeably faster than network streaming.
+            logger.info({ gameId }, "Creating proxy video (chunked) — downloading source locally");
+            const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
+            try {
+              await createChunkedProxy(gameId, ownerId, srcPath, destPath, 0, game.videoDurationMs, signal);
+            } finally {
+              release();
+            }
           }
           logger.info({ gameId }, "Proxy created — uploading final proxy to storage");
           const proxyObjectPath = await uploadHighlight(destPath, ownerId);
@@ -1400,7 +1439,7 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
  */
 export async function generateHighlight(gameId: number, musicTrackPath?: string): Promise<void> {
   const ac = new AbortController();
-  jobAbortControllers.set(gameId, ac);
+  highlightAbortControllers.set(gameId, ac);
   let tmpDir: string | null = null;
   let releaseSrc: (() => void) | null = null;
   try {
@@ -1499,7 +1538,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
-    jobAbortControllers.delete(gameId);
+    highlightAbortControllers.delete(gameId);
     releaseSrc?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -1514,7 +1553,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
  */
 export async function generateLowlight(gameId: number, musicTrackPath?: string): Promise<void> {
   const ac = new AbortController();
-  jobAbortControllers.set(gameId, ac);
+  lowlightAbortControllers.set(gameId, ac);
   let tmpDir: string | null = null;
   let releaseSrc: (() => void) | null = null;
   try {
@@ -1607,7 +1646,7 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
-    jobAbortControllers.delete(gameId);
+    lowlightAbortControllers.delete(gameId);
     releaseSrc?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});

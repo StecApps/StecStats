@@ -6,7 +6,7 @@ import {
   countEligibleMoments,
   getHighlightCoverage,
   generateHighlight,
-  cancelHighlightGeneration,
+  cancelHighlightJob,
   GENERATOR_VERSION,
 } from "../lib/highlightGenerator";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
@@ -230,14 +230,17 @@ router.delete("/games/:gameId/highlight", requireAuth, async (req, res) => {
   });
   if (!game) { res.status(404).json({ error: "Game not found" }); return; }
 
-  cancelHighlightGeneration(gameId);
+  cancelHighlightJob(gameId);
   inFlight.delete(gameId);
+  // Use "failed" (not null) so the status is never "processing" at the
+  // moment of an OOM kill — the auto-resume query only picks up
+  // "processing" games, so "failed" breaks the infinite restart loop.
   await db.update(gamesTable)
     .set({
-      highlightStatus: null,
+      highlightStatus: "failed",
       highlightStartedAt: null,
       highlightObjectPath: null,
-      highlightError: null,
+      highlightError: "Generation was cancelled",
     })
     .where(eq(gamesTable.id, gameId));
 

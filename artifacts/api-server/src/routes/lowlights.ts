@@ -6,7 +6,7 @@ import {
   countLowlightMoments,
   getLowlightCoverage,
   generateLowlight,
-  cancelHighlightGeneration,
+  cancelLowlightJob,
   GENERATOR_VERSION,
 } from "../lib/highlightGenerator";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
@@ -191,14 +191,14 @@ router.delete("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   });
   if (!game) { res.status(404).json({ error: "Game not found" }); return; }
 
-  cancelHighlightGeneration(gameId);
+  cancelLowlightJob(gameId);
   inFlight.delete(gameId);
   await db.update(gamesTable)
     .set({
-      lowlightStatus: null,
+      lowlightStatus: "failed",
       lowlightStartedAt: null,
       lowlightObjectPath: null,
-      lowlightError: null,
+      lowlightError: "Generation was cancelled",
     })
     .where(eq(gamesTable.id, gameId));
 
