@@ -990,6 +990,26 @@ function runFfmpegQueued(args: string[], timeoutMs?: number): Promise<string> {
   return prev.then(() => run("nice", ["-n", "10", "ffmpeg", ...args], timeoutMs)).finally(unlock);
 }
 
+// Module-level reel-generation serializer.
+// Prevents two concurrent reel jobs (e.g. highlight + lowlight kicked off at
+// the same time) from downloading different proxy chunks simultaneously.
+// Each chunk is ~250 MB in RAM-backed /tmp — two jobs can peak at 4 chunks
+// (~1 GB) at once, which OOM-kills the production container and triggers
+// healthcheck restarts that kill the jobs mid-encode.  Serialising the heavy
+// phase (chunk download + extract + encode + upload) keeps peak usage ≤
+// 2 chunks (~550 MB) at all times.
+// The ffmpeg queue above serialises the CPU-bound encode step; this queue
+// additionally serialises the I/O-bound download step.
+let _reelGenerationTail: Promise<void> = Promise.resolve();
+
+function _acquireReelSlot(): [Promise<void>, () => void] {
+  let release!: () => void;
+  const mySlot = new Promise<void>((r) => { release = r; });
+  const prev = _reelGenerationTail;
+  _reelGenerationTail = mySlot;
+  return [prev, release];
+}
+
 async function ffprobe(args: string[]): Promise<string> {
   return (await run("ffprobe", args)).trim();
 }
@@ -1884,6 +1904,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
   const ac = new AbortController();
   highlightAbortControllers.set(gameId, ac);
   let tmpDir: string | null = null;
+  let releaseReelSlot: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -1916,6 +1937,16 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     const nameById = new Map(players.map((p) => [p.id, p.name]));
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
+
+    // Acquire the global reel slot so that highlight + lowlight jobs never
+    // download chunks concurrently.  Peak /tmp stays ≤2 chunks (~550 MB).
+    {
+      const [slotReady, slotRelease] = _acquireReelSlot();
+      releaseReelSlot = slotRelease;
+      logger.info({ gameId }, "Highlight: waiting for reel slot");
+      await slotReady;
+    }
+    if (ac.signal.aborted) throw new HighlightError("Cancelled");
 
     // Cut clips directly from individual proxy chunks in GCS — downloaded on
     // demand and deleted as the render walk moves past them, so peak tmpfs
@@ -1996,6 +2027,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     throw err;
   } finally {
     highlightAbortControllers.delete(gameId);
+    releaseReelSlot?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -2011,6 +2043,7 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
   const ac = new AbortController();
   lowlightAbortControllers.set(gameId, ac);
   let tmpDir: string | null = null;
+  let releaseReelSlot: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -2041,6 +2074,15 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     const nameById = new Map(players.map((p) => [p.id, p.name]));
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
+
+    // Acquire the global reel slot — same OOM-prevention as generateHighlight.
+    {
+      const [slotReady, slotRelease] = _acquireReelSlot();
+      releaseReelSlot = slotRelease;
+      logger.info({ gameId }, "Lowlight: waiting for reel slot");
+      await slotReady;
+    }
+    if (ac.signal.aborted) throw new HighlightError("Cancelled");
 
     // Cut clips directly from individual proxy chunks in GCS — same bounded
     // tmpfs reasoning as generateHighlight. Concurrent highlight + lowlight
@@ -2111,6 +2153,7 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     throw err;
   } finally {
     lowlightAbortControllers.delete(gameId);
+    releaseReelSlot?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
