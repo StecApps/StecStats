@@ -34,6 +34,46 @@ export function cancelHighlightGeneration(gameId: number): void {
   cancelLowlightJob(gameId);
 }
 
+// ---------------------------------------------------------------------------
+// Module-level shared chunk download cache.
+// Concurrent highlight and lowlight jobs for the same game share downloaded
+// proxy chunks rather than each fetching a separate copy — up to 2× fewer GCS
+// downloads per session.  Key = GCS object path (unique per game/version/index).
+// Reference-counted: the file is deleted only after the last job releases it.
+// ---------------------------------------------------------------------------
+interface _SharedChunkEntry {
+  promise: Promise<string>;
+  refs: number;
+  localPath: string;
+}
+const _sharedChunkCache = new Map<string, _SharedChunkEntry>();
+
+async function _acquireSharedChunk(objectPath: string): Promise<string> {
+  let entry = _sharedChunkCache.get(objectPath);
+  if (!entry) {
+    const safe = objectPath.replace(/[^a-zA-Z0-9_.-]/g, "_");
+    const localPath = path.join(os.tmpdir(), `shpchunk_${safe}.mp4`);
+    // Download without a job-specific AbortSignal so that cancelling one job
+    // (e.g. highlight) does not abort a download the sibling job (lowlight)
+    // also needs.  Each job checks its own signal before calling this.
+    const promise = downloadSourceVideo(objectPath, localPath).then(() => localPath);
+    entry = { promise, refs: 0, localPath };
+    _sharedChunkCache.set(objectPath, entry);
+  }
+  entry.refs++;
+  return entry.promise;
+}
+
+async function _releaseSharedChunk(objectPath: string): Promise<void> {
+  const entry = _sharedChunkCache.get(objectPath);
+  if (!entry) return;
+  entry.refs--;
+  if (entry.refs <= 0) {
+    _sharedChunkCache.delete(objectPath);
+    await fs.unlink(entry.localPath).catch(() => {});
+  }
+}
+
 const FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
 // Watermark PNG: wordmark with boosted orange + ".com" appended.
 const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
@@ -1192,18 +1232,18 @@ async function renderGameSegments(
   }
 
   // --- Chunk manager (chunked mode only) -----------------------------------
-  const chunkLocal = new Map<number, string>();
+  // Chunks are acquired from the module-level shared cache so concurrent
+  // highlight and lowlight jobs download each proxy chunk only once.
+  const chunkObjectPaths = chunkedSrc?.chunkObjectPaths ?? [];
   const chunkDurs = new Map<number, number>();
-  const numProxyChunks = chunkedSrc?.chunkObjectPaths.length ?? 0;
+  const numProxyChunks = chunkObjectPaths.length;
+  // Track which indices THIS job has acquired refs for (for cleanup in finally).
+  const acquiredChunks = new Set<number>();
   const ensureChunk = async (i: number): Promise<string> => {
     if (chunkedSrc!.signal?.aborted) throw new HighlightError("Generation cancelled");
-    let p = chunkLocal.get(i);
-    if (!p) {
-      p = path.join(tmpDir, `pchunk_${prefix}_${String(i).padStart(5, "0")}.mp4`);
-      await downloadSourceVideo(chunkedSrc!.chunkObjectPaths[i], p, chunkedSrc!.signal);
-      chunkLocal.set(i, p);
-    }
-    return p;
+    const localPath = await _acquireSharedChunk(chunkObjectPaths[i]);
+    acquiredChunks.add(i);
+    return localPath;
   };
   const chunkDuration = async (i: number): Promise<number> => {
     let d = chunkDurs.get(i);
@@ -1224,10 +1264,9 @@ async function renderGameSegments(
     return d;
   };
   const dropChunk = async (i: number): Promise<void> => {
-    const p = chunkLocal.get(i);
-    if (p) {
-      chunkLocal.delete(i);
-      await fs.unlink(p).catch(() => {});
+    if (acquiredChunks.has(i)) {
+      acquiredChunks.delete(i);
+      await _releaseSharedChunk(chunkObjectPaths[i]);
     }
   };
   // --------------------------------------------------------------------------
@@ -1250,11 +1289,9 @@ async function renderGameSegments(
   // The old MKV remux for large files is deliberately removed — it would write
   // a second copy equal in size to the source, filling the container disk.
   let activeSrcPath = srcPath ?? "";
-  if (chunked) {
-    // All probes (dims, rotation, audio) run on chunk 0 — every chunk shares
-    // the proxy's uniform encode settings (720p h264 + AAC, no rotate tag).
-    activeSrcPath = await ensureChunk(0);
-  }
+  // Chunked mode: proxy chunks are always 720p landscape H264+AAC — per-file
+  // probes are skipped with hardcoded settings below.  activeSrcPath is only
+  // used by the non-chunked code paths and the gated probe calls further down.
   const isUrl =
     !chunked &&
     srcPath != null &&
@@ -1408,57 +1445,96 @@ async function renderGameSegments(
     throw new HighlightError("Could not read the video duration");
   }
 
-  const dims = await ffprobe([
-    "-v", "error",
-    "-select_streams", "v:0",
-    "-show_entries", "stream=width,height",
-    "-of", "csv=s=x:p=0",
-    activeSrcPath,
-  ]);
-  let rawWidth  = parseInt(dims.split("x")[0] ?? "1280", 10) || 1280;
-  let rawHeight = parseInt(dims.split("x")[1] ?? "720",  10) || 720;
+  // Proxy chunks are always 720p landscape H264+AAC (the proxy encode pass
+  // normalises dimensions and strips rotation tags), so all three probes are
+  // skipped for chunked mode and the known settings are hardcoded.
+  let rawWidth  = 1280;
+  let rawHeight = 720;
+  if (!chunked) {
+    const dims = await ffprobe([
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "stream=width,height",
+      "-of", "csv=s=x:p=0",
+      activeSrcPath,
+    ]);
+    rawWidth  = parseInt(dims.split("x")[0] ?? "1280", 10) || 1280;
+    rawHeight = parseInt(dims.split("x")[1] ?? "720",  10) || 720;
+  }
 
   // Some iOS versions incorrectly stamp a `rotate` tag onto canvas-recorded
   // streams.  ffmpeg re-encodes with the raw pixels and ignores the tag by
   // default, so we detect it here and apply a transpose filter to physically
   // rotate the pixels before encoding — giving the highlight reel the correct
   // orientation instead of sideways/stretched output.
-  const rotateMeta = await ffprobe([
-    "-v", "error",
-    "-select_streams", "v:0",
-    "-show_entries", "stream_tags=rotate",
-    "-of", "default=nw=1:nk=1",
-    activeSrcPath,
-  ]).catch(() => "0");
-  const rotationDeg = parseInt(rotateMeta.trim() || "0", 10) || 0;
-
-  // After a 90°/270° transpose the logical width ↔ height swap.
+  // Proxy chunks: no rotation tag (proxy pass already normalised orientation).
   let displayWidth  = rawWidth;
   let displayHeight = rawHeight;
   let transposeFilter: string | null = null;
-  if (rotationDeg === 90) {
-    transposeFilter = "transpose=1";           // 90° CW
-    [displayWidth, displayHeight] = [rawHeight, rawWidth];
-  } else if (rotationDeg === 270 || rotationDeg === -90) {
-    transposeFilter = "transpose=2";           // 90° CCW
-    [displayWidth, displayHeight] = [rawHeight, rawWidth];
-  } else if (rotationDeg === 180) {
-    transposeFilter = "transpose=1,transpose=1"; // 180°
+  if (!chunked) {
+    const rotateMeta = await ffprobe([
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-show_entries", "stream_tags=rotate",
+      "-of", "default=nw=1:nk=1",
+      activeSrcPath,
+    ]).catch(() => "0");
+    const rotationDeg = parseInt(rotateMeta.trim() || "0", 10) || 0;
+    if (rotationDeg === 90) {
+      transposeFilter = "transpose=1";           // 90° CW
+      [displayWidth, displayHeight] = [rawHeight, rawWidth];
+    } else if (rotationDeg === 270 || rotationDeg === -90) {
+      transposeFilter = "transpose=2";           // 90° CCW
+      [displayWidth, displayHeight] = [rawHeight, rawWidth];
+    } else if (rotationDeg === 180) {
+      transposeFilter = "transpose=1,transpose=1"; // 180°
+    }
   }
 
   const height = displayHeight;
 
-  const audioStreams = await ffprobe([
-    "-v", "error",
-    "-select_streams", "a",
-    "-show_entries", "stream=index",
-    "-of", "csv=p=0",
-    activeSrcPath,
-  ]);
-  const hasAudio = audioStreams.length > 0;
+  // Proxy chunks always include an AAC audio stream (the proxy pass adds one
+  // even for silent sources).  Non-chunked sources probe the actual file.
+  let hasAudio: boolean;
+  if (chunked) {
+    hasAudio = true;
+  } else {
+    const audioStreams = await ffprobe([
+      "-v", "error",
+      "-select_streams", "a",
+      "-show_entries", "stream=index",
+      "-of", "csv=p=0",
+      activeSrcPath,
+    ]);
+    hasAudio = audioStreams.length > 0;
+  }
 
   let segments = buildSegments(eligible, duration, nameById, offsetMs, half2StartMs, halftimeGapMs);
   if (segments.length === 0) return { segPaths: [], hasAudio };
+
+  // Chunked mode: pre-compute which chunk indices contain ≥1 segment using
+  // nominal PROXY_CHUNK_DURATION_SEC boundaries.  Chunks outside this set are
+  // skipped (never downloaded) during the walk below.  Actual chunk edges may
+  // differ from nominal by ≤ the keyframe interval (~1–2 s for the veryfast
+  // preset), introducing a small localSeek drift per skipped chunk —
+  // negligible for PRE_SECONDS=12 clips.
+  const neededChunks = new Set<number>();
+  if (chunked) {
+    for (const seg of segments) {
+      const ciStart = Math.max(0, Math.floor(seg.start / PROXY_CHUNK_DURATION_SEC));
+      // +1 margin so a segment whose end lands near a boundary also covers
+      // the next chunk (boundary-spanning case handled by concat-demuxer).
+      const ciEnd = Math.min(
+        numProxyChunks - 1,
+        Math.floor((seg.end + 1) / PROXY_CHUNK_DURATION_SEC),
+      );
+      for (let ci = ciStart; ci <= ciEnd; ci++) neededChunks.add(ci);
+    }
+    logger.info(
+      { prefix, neededChunks: [...neededChunks].sort((a, b) => a - b), total: numProxyChunks },
+      "Chunk walk: skipping empty chunks",
+    );
+  }
 
   // Phase A (remote sources only): single-pass stream-copy extraction.
   // A cueless live-recorded WebM cannot be seeked over HTTP — every -ss
@@ -1644,11 +1720,31 @@ async function renderGameSegments(
     // (360 s), so it spans AT MOST two adjacent chunks; boundary-spanning
     // segments are rendered from a 2-entry concat-demuxer list.
     try {
+      // Walk proxy chunks sequentially.  Chunks absent from neededChunks are
+      // skipped without downloading — chunkStart advances by the nominal
+      // PROXY_CHUNK_DURATION_SEC so we avoid a costly ffprobe just to measure
+      // an empty chunk.  For the last NEEDED chunk, duration is derived from
+      // the stored knownDurationMs to skip that ffprobe too.
       let chunkStart = 0; // absolute start time of chunk ci in the proxy timeline
       let segIdx = 0;
       for (let ci = 0; ci < numProxyChunks && segIdx < segments.length; ci++) {
-        const chunkEnd = chunkStart + (await chunkDuration(ci));
         const isLastChunk = ci === numProxyChunks - 1;
+
+        if (!neededChunks.has(ci)) {
+          // No moments in this chunk — skip the download and advance using the
+          // nominal chunk duration.  Drift vs. actual edges: ≤ keyframe interval
+          // (~1–2 s) per skipped chunk, which is acceptable for PRE=12 s clips.
+          chunkStart += PROXY_CHUNK_DURATION_SEC;
+          continue;
+        }
+
+        // For the last chunk, derive duration from stored total to avoid
+        // downloading it just for ffprobe (the download still happens if the
+        // walk has segments inside it via ensureChunk below).
+        const chunkDur = isLastChunk
+          ? Math.max(0, knownDurationMs! / 1000 - chunkStart)
+          : await chunkDuration(ci);
+        const chunkEnd = chunkStart + chunkDur;
 
         while (segIdx < segments.length && segments[segIdx].start < chunkEnd) {
           const seg = segments[segIdx];
@@ -1694,7 +1790,7 @@ async function renderGameSegments(
         );
       }
     } finally {
-      for (const ci of [...chunkLocal.keys()]) {
+      for (const ci of [...acquiredChunks]) {
         await dropChunk(ci);
       }
     }

@@ -20,4 +20,14 @@ description: Why highlight/lowlight jobs must never build the full local proxy, 
 **Critical: never fall back to raw source when chunks are confirmed in GCS.**
 GCS chunk downloads in production can be extremely slow (~80 KB/s observed — 278 MB chunk takes ~1 hour). If the per-process timeout (30 min) fires during chunk extraction AND chunks are confirmed in GCS, the handler must throw a clean HighlightError ("Please try again") and stop — NOT start downloading the 1.36 GB raw source. Two concurrent raw-source downloads = 2.7 GB on a 2 GB tmpfs = OOM. Track this with a `chunksConfirmed` flag set after `ensureProxyChunksInGcs` returns successfully; check it before every raw-source fallback.
 
+**GCS download speed is the bottleneck for long games.** A 34-min game with 6 ×~250 MB chunks at 290 KB/s average = 86+ min of downloads for two concurrent jobs (highlight + lowlight), far over the 30-min per-process timeout. Two fixes address this:
+
+1. **Skip empty chunks using nominal boundaries.** Pre-compute `neededChunks = Set<number>` from segment timestamps ÷ `PROXY_CHUNK_DURATION_SEC`. Advance `chunkStart` by the nominal duration for skipped chunks (≤2 s drift per skip — negligible for PRE=12 s clips). For game 161: moments are only in chunks 1, 3, 4 — saves 3 wasted downloads per job.
+
+2. **Module-level shared chunk cache (`_sharedChunkCache`).** Highlight and lowlight share downloaded files by GCS object path. Ref-counted: file deleted only when last job releases it. Do NOT pass job-specific AbortSignal to the shared download — cancel one job without aborting the sibling's in-flight download. Combined effect: 3 unique downloads (shared) that run partially in parallel (highlight grabs chunk 3, lowlight grabs chunk 1 simultaneously) → ~29 min wall time instead of 86+ min.
+
+3. **Skip per-file ffprobe probes for chunked mode.** Proxy chunks are always 720p H264+AAC with no rotation tag. Hardcode rawWidth=1280, rawHeight=720, transposeFilter=null, hasAudio=true. Also skip `ensureChunk(0)` for initial probe — that was downloading chunk 0 just for video metadata even when it had no moments.
+
+4. **Derive last-chunk duration from `knownDurationMs`** instead of downloading just for ffprobe.
+
 **Stub-chunk pitfall:** ffmpeg's segment muxer can emit a final ~260-byte moov-only segment; uploading it poisons every future chunk existence probe (count off by one). Treat GCS chunk objects <10 KB as missing (self-heals stale stubs) and never upload a trailing stub.
