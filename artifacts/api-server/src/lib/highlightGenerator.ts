@@ -1010,6 +1010,37 @@ function _acquireReelSlot(): [Promise<void>, () => void] {
   return [prev, release];
 }
 
+// Boot-time cleanup: remove stale reel temp dirs and chunk files left behind
+// by previous server processes that were OOM-killed (SIGKILL) before their
+// finally blocks could run.  /tmp is RAM-backed (tmpfs) and persists across
+// Node.js process restarts within the same container — without this, stale
+// files from each failed run accumulate in /tmp, consuming RAM and eventually
+// causing the next run to also OOM, creating a death spiral.
+//
+// Patterns cleaned:
+//   hl-*   — highlight tmpDirs (mkdtemp prefix)
+//   ll-*   — lowlight tmpDirs
+//   shpchunk_*  — shared proxy chunk cache files
+//   xchunk_*    — cross-chunk concat list fragments (rare leaks)
+(async () => {
+  try {
+    const tmpdir = os.tmpdir();
+    const entries = await fs.readdir(tmpdir).catch(() => [] as string[]);
+    let cleaned = 0;
+    for (const entry of entries) {
+      if (/^(hl|ll)-/.test(entry) || /^(shpchunk|xchunk)_/.test(entry)) {
+        await fs.rm(path.join(tmpdir, entry), { recursive: true, force: true }).catch(() => {});
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      logger.info({ cleaned }, "Boot: removed stale reel tmpfs files from previous run");
+    }
+  } catch {
+    // Non-fatal
+  }
+})();
+
 async function ffprobe(args: string[]): Promise<string> {
   return (await run("ffprobe", args)).trim();
 }
