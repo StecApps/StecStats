@@ -51,6 +51,14 @@ const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 const PRE_SECONDS = 12;
 const POST_SECONDS = 15;
 
+// Hard cap on a single (merged) segment's length. buildSegments merges
+// overlapping moments, and a dense scoring stretch can otherwise chain into
+// one enormous segment. The cap MUST stay below PROXY_CHUNK_DURATION_SEC
+// (360 s) so any segment spans at most 2 proxy chunks — chunk-based
+// extraction keeps at most 2 chunks (~550 MB) in the RAM-backed /tmp at a
+// time, which is what prevents OOM kills in the production container.
+const MAX_SEGMENT_SEC = 300;
+
 // Version stamp written to the DB alongside every generated reel. Bump this
 // whenever clip-timing logic changes (PRE/POST_SECONDS, offset handling, …)
 // so reels cached under the old logic are invalidated on read and rebuilt.
@@ -361,6 +369,165 @@ async function probeVideoDurationForChunking(
 }
 
 /**
+ * Encode missing proxy chunks from srcPath and upload each one to GCS as
+ * soon as ffmpeg closes it (restart-resilient: a platform restart loses at
+ * most the chunk in flight). Returns the ACTUAL number of chunks that now
+ * exist in GCS (pre-existing prefix + newly produced) — the duration-based
+ * estimate can be wrong in either direction.
+ *
+ * When deleteAfterUpload is set, each local chunk file is removed right
+ * after its GCS upload so peak tmpfs usage stays at ~source + one chunk.
+ * (/tmp is RAM-backed in the production container — every temp byte counts
+ * against the ~2 GB memory budget.)
+ */
+async function encodeChunksToGcs(
+  gameId: number,
+  ownerId: number,
+  srcPath: string,
+  workDir: string,
+  existFlags: boolean[],
+  firstMissing: number,
+  deleteAfterUpload: boolean,
+): Promise<number> {
+  const numChunks = existFlags.length;
+  const gcsChunkPath = (i: number) =>
+    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
+  const startSec = firstMissing * PROXY_CHUNK_DURATION_SEC;
+
+  logger.info(
+    { gameId, numChunks, firstMissing, startSec },
+    "Proxy: single-pass segment encode with incremental GCS upload",
+  );
+
+  const segmentPattern = path.join(workDir, "proxy_chunk_%05d.mp4");
+  const segmentListPath = path.join(workDir, "segments.txt");
+  await fs.unlink(segmentListPath).catch(() => {}); // clear stale list from prior run
+
+  // For HTTP/HTTPS sources (GCS signed URLs), range requests are unreliable
+  // in production.  Place -ss AFTER -i so ffmpeg decodes-and-discards rather
+  // than issuing a mid-file Range: bytes= request.  For local file inputs,
+  // keep the fast pre-input seek (lseek is O(1) on disk).
+  const isUrlSource = srcPath.startsWith("http");
+  const ffmpegArgs = [
+    "-y",
+    ...((!isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
+    "-i", srcPath,
+    // Slow (decode-and-discard) seek for URL sources — avoids range requests.
+    ...((isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
+    "-c:v", "libx264",
+    "-preset", "ultrafast",
+    "-crf", "28",
+    "-vf",
+      `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
+      `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+    // Always transcode audio to AAC. Live-recorded WebM sources carry Opus,
+    // and Opus-in-MP4 does not play on iOS Safari — the proxy doubles as
+    // the film-room playback file, so it must be universally playable.
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-f", "segment",
+    "-segment_time", String(PROXY_CHUNK_DURATION_SEC),
+    // Start segment numbering at firstMissing so filenames match GCS keys.
+    "-segment_start_number", String(firstMissing),
+    "-reset_timestamps", "1",
+    "-segment_list", segmentListPath,
+    "-segment_list_type", "flat",
+    segmentPattern,
+  ];
+
+  // ffmpegDone is set in .finally() so the upload loop knows the last
+  // segment (whose entry appears in the list when ffmpeg opens it but is
+  // only fully flushed when ffmpeg exits) is safe to upload.
+  let ffmpegDone = false;
+  const ffmpegPromise = runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000).finally(
+    () => { ffmpegDone = true; },
+  );
+
+  // Incremental upload loop, driven by the segments ffmpeg ACTUALLY writes
+  // (the duration probe is only an estimate — the source can turn out
+  // shorter or longer, so the estimate must never gate loop exit).
+  // ffmpeg appends chunk N's filename to segments.txt when it OPENS chunk N.
+  // Chunk N is fully written (safe to upload) only after chunk N+1 is opened
+  // (i.e., lines[N+1] exists) or ffmpeg has exited.
+  let producedSegments = 0;
+  let discardedTrailingStubs = 0;
+  const uploadLoop = async (): Promise<void> => {
+    let nextLocalIdx = 0; // 0 = firstMissing, 1 = firstMissing+1, …
+
+    while (true) {
+      await new Promise<void>((r) => setTimeout(r, 2000));
+
+      // Capture the done flag BEFORE reading the list so the list is always
+      // at least as fresh as the flag (no missed final segment).
+      const doneAtRead = ffmpegDone;
+      const content = await fs.readFile(segmentListPath, "utf-8").catch(() => "");
+      const lines = content.trim().split("\n").filter(Boolean);
+      producedSegments = lines.length;
+
+      while (nextLocalIdx < lines.length) {
+        const safe = (nextLocalIdx + 1 < lines.length) || doneAtRead;
+        if (!safe) break; // wait for ffmpeg to move past this chunk
+
+        const chunkIdx = firstMissing + nextLocalIdx;
+        const localPath = path.join(workDir, lines[nextLocalIdx]);
+
+        // ffmpeg's segment muxer can emit a final stub segment (moov atom
+        // only, ~260 bytes) when the source ends exactly on a segment
+        // boundary. Never upload it — an unplayable chunk in GCS poisons
+        // every future existence probe for this game.
+        const isFinalSegment = doneAtRead && nextLocalIdx === lines.length - 1;
+        if (isFinalSegment && chunkIdx > 0) {
+          const size = await fs.stat(localPath).then((s) => s.size).catch(() => 0);
+          if (size < MIN_VALID_CHUNK_BYTES) {
+            logger.warn(
+              { gameId, chunk: chunkIdx, size },
+              "Proxy chunk: discarding empty trailing stub segment",
+            );
+            await fs.unlink(localPath).catch(() => {});
+            discardedTrailingStubs = 1;
+            nextLocalIdx++;
+            continue;
+          }
+        }
+        if (!existFlags[chunkIdx]) {
+          logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: uploading to GCS");
+          await objectStorageService.uploadLocalFileToObjectPath(
+            localPath, gcsChunkPath(chunkIdx), "video/mp4",
+          );
+          logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: saved to GCS");
+        } else {
+          logger.info({ gameId, chunk: chunkIdx }, "Proxy chunk: already in GCS, skipping");
+        }
+        if (deleteAfterUpload) {
+          await fs.unlink(localPath).catch(() => {});
+        }
+        nextLocalIdx++;
+      }
+
+      if (doneAtRead && nextLocalIdx >= lines.length) break;
+    }
+  };
+
+  await Promise.all([ffmpegPromise, uploadLoop()]);
+
+  // The REAL chunk count comes from what ffmpeg produced, not the estimate.
+  // producedSegments === 0 with firstMissing > 0 means the resume seek was
+  // past the true end of footage (duration was overestimated on a prior
+  // run) — the chunks already in GCS are the complete set.
+  const actualNumChunks = firstMissing + producedSegments - discardedTrailingStubs;
+  if (actualNumChunks === 0) {
+    throw new HighlightError("Proxy encode produced no output — source video appears empty or unreadable");
+  }
+  if (actualNumChunks !== numChunks) {
+    logger.warn(
+      { gameId, estimatedChunks: numChunks, actualChunks: actualNumChunks },
+      "Proxy: duration estimate was off — using actual chunk count",
+    );
+  }
+  return actualNumChunks;
+}
+
+/**
  * Transcode srcPath → destPath in restart-resilient chunks.
  *
  * Chunks are uploaded to GCS incrementally as ffmpeg finishes each one,
@@ -396,7 +563,7 @@ async function createChunkedProxy(
     `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
   const gcsChunkPaths = Array.from({ length: numChunks }, (_, i) => gcsChunkPath(i));
   const existFlags = await Promise.all(
-    gcsChunkPaths.map((p) => objectStorageService.checkObjectEntityExists(p)),
+    gcsChunkPaths.map((p) => proxyChunkExistsInGcs(p)),
   );
   const allInGcs = existFlags.every(Boolean);
 
@@ -414,124 +581,13 @@ async function createChunkedProxy(
       chunkLocalPaths.push(chunkLocalPath(i));
     }
   } else {
-    // Partial or no chunks in GCS.
-    // Strategy: single-pass ffmpeg segment encode starting from the first
-    // missing chunk (one seek, not N seeks).  While ffmpeg runs, an upload
-    // loop watches the segment-list file that ffmpeg appends to each time it
-    // closes a segment, and pushes each completed chunk to GCS immediately.
-    // This way even a mid-encode platform restart preserves all chunks that
-    // were produced up to that point.
+    // Partial or no chunks in GCS — encode the missing ones (single-pass
+    // segment encode with incremental GCS upload; see encodeChunksToGcs).
+    // Local chunk files are KEPT here because the concat below needs them.
     const firstMissing = existFlags.findIndex((e) => !e);
-    const startSec = firstMissing * PROXY_CHUNK_DURATION_SEC;
-    const numToEncode = numChunks - firstMissing;
-
-    logger.info(
-      { gameId, numChunks, firstMissing, startSec },
-      "Proxy: single-pass segment encode with incremental GCS upload",
+    const actualNumChunks = await encodeChunksToGcs(
+      gameId, ownerId, srcPath, proxyTmpDir, existFlags, firstMissing, false,
     );
-
-    const segmentPattern = path.join(proxyTmpDir, "proxy_chunk_%05d.mp4");
-    const segmentListPath = path.join(proxyTmpDir, "segments.txt");
-    await fs.unlink(segmentListPath).catch(() => {}); // clear stale list from prior run
-
-    // For HTTP/HTTPS sources (GCS signed URLs), range requests are unreliable
-    // in production.  Place -ss AFTER -i so ffmpeg decodes-and-discards rather
-    // than issuing a mid-file Range: bytes= request.  For local file inputs,
-    // keep the fast pre-input seek (lseek is O(1) on disk).
-    const isUrlSource = srcPath.startsWith("http");
-    const ffmpegArgs = [
-      "-y",
-      ...((!isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
-      "-i", srcPath,
-      // Slow (decode-and-discard) seek for URL sources — avoids range requests.
-      ...((isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
-      "-c:v", "libx264",
-      "-preset", "ultrafast",
-      "-crf", "28",
-      "-vf",
-        `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
-        `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
-      // Always transcode audio to AAC. Live-recorded WebM sources carry Opus,
-      // and Opus-in-MP4 does not play on iOS Safari — the proxy doubles as
-      // the film-room playback file, so it must be universally playable.
-      "-c:a", "aac",
-      "-b:a", "128k",
-      "-f", "segment",
-      "-segment_time", String(PROXY_CHUNK_DURATION_SEC),
-      // Start segment numbering at firstMissing so filenames match GCS keys.
-      "-segment_start_number", String(firstMissing),
-      "-reset_timestamps", "1",
-      "-segment_list", segmentListPath,
-      "-segment_list_type", "flat",
-      segmentPattern,
-    ];
-
-    // ffmpegDone is set in .finally() so the upload loop knows the last
-    // segment (whose entry appears in the list when ffmpeg opens it but is
-    // only fully flushed when ffmpeg exits) is safe to upload.
-    let ffmpegDone = false;
-    const ffmpegPromise = runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000).finally(
-      () => { ffmpegDone = true; },
-    );
-
-    // Incremental upload loop, driven by the segments ffmpeg ACTUALLY writes
-    // (the duration probe is only an estimate — the source can turn out
-    // shorter or longer, so numToEncode must never gate loop exit).
-    // ffmpeg appends chunk N's filename to segments.txt when it OPENS chunk N.
-    // Chunk N is fully written (safe to upload) only after chunk N+1 is opened
-    // (i.e., lines[N+1] exists) or ffmpeg has exited.
-    let producedSegments = 0;
-    const uploadLoop = async (): Promise<void> => {
-      let nextLocalIdx = 0; // 0 = firstMissing, 1 = firstMissing+1, …
-
-      while (true) {
-        await new Promise<void>((r) => setTimeout(r, 2000));
-
-        // Capture the done flag BEFORE reading the list so the list is always
-        // at least as fresh as the flag (no missed final segment).
-        const doneAtRead = ffmpegDone;
-        const content = await fs.readFile(segmentListPath, "utf-8").catch(() => "");
-        const lines = content.trim().split("\n").filter(Boolean);
-        producedSegments = lines.length;
-
-        while (nextLocalIdx < lines.length) {
-          const safe = (nextLocalIdx + 1 < lines.length) || doneAtRead;
-          if (!safe) break; // wait for ffmpeg to move past this chunk
-
-          const chunkIdx = firstMissing + nextLocalIdx;
-          if (!existFlags[chunkIdx]) {
-            const localPath = path.join(proxyTmpDir, lines[nextLocalIdx]);
-            logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: uploading to GCS");
-            await objectStorageService.uploadLocalFileToObjectPath(
-              localPath, gcsChunkPath(chunkIdx), "video/mp4",
-            );
-            logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: saved to GCS");
-          } else {
-            logger.info({ gameId, chunk: chunkIdx }, "Proxy chunk: already in GCS, skipping");
-          }
-          nextLocalIdx++;
-        }
-
-        if (doneAtRead && nextLocalIdx >= lines.length) break;
-      }
-    };
-
-    await Promise.all([ffmpegPromise, uploadLoop()]);
-
-    // The REAL chunk count comes from what ffmpeg produced, not the estimate.
-    // producedSegments === 0 with firstMissing > 0 means the resume seek was
-    // past the true end of footage (duration was overestimated on a prior
-    // run) — the chunks already in GCS are the complete set.
-    const actualNumChunks = firstMissing + producedSegments;
-    if (actualNumChunks === 0) {
-      throw new HighlightError("Proxy encode produced no output — source video appears empty or unreadable");
-    }
-    if (actualNumChunks !== numChunks) {
-      logger.warn(
-        { gameId, estimatedChunks: numChunks, actualChunks: actualNumChunks },
-        "Proxy: duration estimate was off — using actual chunk count",
-      );
-    }
 
     // Chunks 0..firstMissing-1 were already in GCS — download them for concat.
     for (let i = 0; i < firstMissing; i++) {
@@ -573,6 +629,118 @@ async function createChunkedProxy(
     for (const p of chunkLocalPaths) {
       await fs.unlink(p).catch(() => {});
     }
+  }
+}
+
+// Chunks smaller than this are unplayable stubs — ffmpeg's segment muxer can
+// emit a final MP4 containing only a moov atom (~260 bytes) when the source
+// ends exactly at a segment boundary, and older encoder versions uploaded
+// them. Treat such objects as missing so they are re-encoded or ignored
+// rather than fed to ffmpeg as inputs.
+const MIN_VALID_CHUNK_BYTES = 10_000;
+
+/** Existence probe for proxy chunks that also rejects tiny stub objects. */
+async function proxyChunkExistsInGcs(objectPath: string): Promise<boolean> {
+  try {
+    const file = await objectStorageService.getObjectEntityFile(objectPath);
+    const [md] = await file.getMetadata();
+    return Number(md.size ?? 0) >= MIN_VALID_CHUNK_BYTES;
+  } catch {
+    return false;
+  }
+}
+
+// Single-flight guard: highlight + lowlight jobs for the same game start at
+// the same millisecond; without this, both would race the existence check
+// and kick off two full source downloads + encodes.
+const chunkEnsureInFlight = new Map<number, Promise<string[]>>();
+
+/**
+ * Ensure every proxy chunk for a game exists in GCS and return their object
+ * paths in playback order. NEVER builds the concatenated full proxy — reel
+ * extraction works directly from individual ~250 MB chunks, so peak tmpfs
+ * usage (RAM-backed in production) stays bounded regardless of game length.
+ * The old download-all-then-concat path needed ~2x the full proxy size in
+ * /tmp and was OOM-killed every time on long games.
+ */
+function ensureProxyChunksInGcs(
+  gameId: number,
+  ownerId: number,
+  game: { videoObjectPath: string | null; videoDurationMs: number | null },
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const inFlight = chunkEnsureInFlight.get(gameId);
+  if (inFlight) return inFlight;
+  const p = doEnsureProxyChunksInGcs(gameId, ownerId, game, signal).finally(() => {
+    chunkEnsureInFlight.delete(gameId);
+  });
+  chunkEnsureInFlight.set(gameId, p);
+  return p;
+}
+
+async function doEnsureProxyChunksInGcs(
+  gameId: number,
+  ownerId: number,
+  game: { videoObjectPath: string | null; videoDurationMs: number | null },
+  signal?: AbortSignal,
+): Promise<string[]> {
+  const durationMs = game.videoDurationMs ?? 0;
+  if (durationMs <= 0) {
+    throw new HighlightError("Video duration unknown — cannot use chunk-based extraction");
+  }
+  const gcsChunkPath = (i: number) =>
+    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
+  const numChunksGuess = Math.max(1, Math.ceil(durationMs / 1000 / PROXY_CHUNK_DURATION_SEC));
+  const existFlags = await Promise.all(
+    Array.from({ length: numChunksGuess }, (_, i) =>
+      proxyChunkExistsInGcs(gcsChunkPath(i)),
+    ),
+  );
+
+  if (existFlags.every(Boolean)) {
+    // The duration-based estimate can undercount (the encode is driven by
+    // the segments ffmpeg actually produced) — probe past it until the
+    // first miss to discover the TRUE chunk count.
+    let count = numChunksGuess;
+    while (
+      count < numChunksGuess + 50 &&
+      (await proxyChunkExistsInGcs(gcsChunkPath(count)))
+    ) {
+      count++;
+    }
+    logger.info({ gameId, count }, "Proxy chunks: all present in GCS");
+    return Array.from({ length: count }, (_, i) => gcsChunkPath(i));
+  }
+
+  if (!game.videoObjectPath) {
+    throw new HighlightError("Game has no recorded video");
+  }
+  const firstMissing = existFlags.findIndex((e) => !e);
+  logger.info(
+    { gameId, numChunksGuess, firstMissing },
+    "Proxy chunks: encoding missing chunks from source",
+  );
+  // Prefix starts with "video-proxy-" so startup orphan cleanup covers it.
+  const workDir = path.join(
+    os.tmpdir(),
+    `video-proxy-enc-${gameId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  await fs.mkdir(workDir, { recursive: true });
+  try {
+    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
+    let actualNumChunks: number;
+    try {
+      // deleteAfterUpload: local chunk files are removed as soon as each one
+      // is safely in GCS — extraction re-downloads only the chunks it needs.
+      actualNumChunks = await encodeChunksToGcs(
+        gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true,
+      );
+    } finally {
+      release();
+    }
+    return Array.from({ length: actualNumChunks }, (_, i) => gcsChunkPath(i));
+  } finally {
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -706,6 +874,22 @@ export function ensureGameProxyInBackground(gameId: number, ownerId: number): vo
     });
     if (!game?.videoObjectPath) return;
     if (game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION) return;
+    // SIZE GATE: building the playback proxy ends with downloading every
+    // chunk and concatenating them locally — on RAM-backed /tmp that peaks
+    // at ~2x the full proxy size and OOM-kills the server for long games.
+    // Short games (≤15 min ≈ ≤3 chunks) stay well within budget; longer
+    // games skip the playback proxy and the film room streams the raw
+    // source instead. (Reel generation never builds the full proxy at all —
+    // it works chunk-by-chunk.)
+    const MAX_PROXY_BUILD_DURATION_SEC = 900;
+    const durSec = (game.videoDurationMs ?? 0) / 1000;
+    if (durSec <= 0 || durSec > MAX_PROXY_BUILD_DURATION_SEC) {
+      logger.info(
+        { gameId, durSec: Math.round(durSec) },
+        "Background proxy build skipped — video too long (or duration unknown) for full local concat on tmpfs",
+      );
+      return;
+    }
     logger.info({ gameId }, "Background proxy build starting (film-room playback)");
     const { release } = await acquireGameProxy(gameId, ownerId);
     // The build already uploaded the proxy to GCS and persisted the DB row;
@@ -953,8 +1137,19 @@ function buildSegments(
     const moment: Moment = { timeSec: t, caption: `${name} \u2014 ${label}` };
     const last = segments[segments.length - 1];
     if (last && start <= last.end) {
-      last.end = Math.max(last.end, end);
-      last.moments.push(moment);
+      const mergedLen = Math.max(last.end, end) - last.start;
+      if (mergedLen <= MAX_SEGMENT_SEC) {
+        last.end = Math.max(last.end, end);
+        last.moments.push(moment);
+      } else if (end - last.end >= 0.5) {
+        // Merging would exceed the cap — start a new segment contiguously at
+        // the previous segment's end so no footage is duplicated or lost.
+        segments.push({ start: last.end, end, moments: [moment] });
+      } else {
+        // Degenerate: the new moment barely extends past the capped segment
+        // (e.g. clamped at video end) — attach the caption without extending.
+        last.moments.push(moment);
+      }
     } else {
       segments.push({ start, end, moments: [moment] });
     }
@@ -969,7 +1164,7 @@ function buildSegments(
  * filename collisions. Returns the list of chunk paths in playback order.
  */
 async function renderGameSegments(
-  srcPath: string,
+  srcPath: string | null,
   tmpDir: string,
   prefix: string,
   eligible: { videoTimestampMs: number; playerId: number; statField: string }[],
@@ -979,7 +1174,62 @@ async function renderGameSegments(
   half2StartMs?: number,
   halftimeGapMs?: number,
   knownDurationMs?: number,
-): Promise<string[]> {
+  // Chunk-based extraction: instead of one full local proxy/source file,
+  // segments are rendered directly from individual GCS proxy chunks that are
+  // downloaded on demand and deleted as soon as the walk moves past them.
+  // Peak tmpfs usage stays at ~2 chunks (~550 MB) no matter how long the
+  // game is — the full-proxy concat needed ~2.8 GB and was OOM-killed.
+  chunkedSrc?: { chunkObjectPaths: string[]; signal?: AbortSignal },
+): Promise<{ segPaths: string[]; hasAudio: boolean }> {
+  const chunked = chunkedSrc != null && chunkedSrc.chunkObjectPaths.length > 0;
+  if (!chunked && srcPath == null) {
+    throw new HighlightError("No video source available for rendering");
+  }
+  if (chunked && (knownDurationMs == null || knownDurationMs <= 0)) {
+    throw new HighlightError("Chunk-based extraction requires a known video duration");
+  }
+
+  // --- Chunk manager (chunked mode only) -----------------------------------
+  const chunkLocal = new Map<number, string>();
+  const chunkDurs = new Map<number, number>();
+  const numProxyChunks = chunkedSrc?.chunkObjectPaths.length ?? 0;
+  const ensureChunk = async (i: number): Promise<string> => {
+    if (chunkedSrc!.signal?.aborted) throw new HighlightError("Generation cancelled");
+    let p = chunkLocal.get(i);
+    if (!p) {
+      p = path.join(tmpDir, `pchunk_${prefix}_${String(i).padStart(5, "0")}.mp4`);
+      await downloadSourceVideo(chunkedSrc!.chunkObjectPaths[i], p, chunkedSrc!.signal);
+      chunkLocal.set(i, p);
+    }
+    return p;
+  };
+  const chunkDuration = async (i: number): Promise<number> => {
+    let d = chunkDurs.get(i);
+    if (d == null) {
+      const local = await ensureChunk(i);
+      const s = await ffprobe([
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=nw=1:nk=1",
+        local,
+      ]);
+      d = parseFloat(s);
+      if (!Number.isFinite(d) || d <= 0) {
+        throw new HighlightError(`Could not read proxy chunk ${i} duration`);
+      }
+      chunkDurs.set(i, d);
+    }
+    return d;
+  };
+  const dropChunk = async (i: number): Promise<void> => {
+    const p = chunkLocal.get(i);
+    if (p) {
+      chunkLocal.delete(i);
+      await fs.unlink(p).catch(() => {});
+    }
+  };
+  // --------------------------------------------------------------------------
+
   // Duration detection strategy — designed to be safe for large files (3+ GB).
   //
   // IMPORTANT: never set -probesize or -analyzeduration to 2147483647 (2 GB).
@@ -997,8 +1247,16 @@ async function renderGameSegments(
   //
   // The old MKV remux for large files is deliberately removed — it would write
   // a second copy equal in size to the source, filling the container disk.
-  let activeSrcPath = srcPath;
-  const isUrl = srcPath.startsWith("http://") || srcPath.startsWith("https://");
+  let activeSrcPath = srcPath ?? "";
+  if (chunked) {
+    // All probes (dims, rotation, audio) run on chunk 0 — every chunk shares
+    // the proxy's uniform encode settings (720p h264 + AAC, no rotate tag).
+    activeSrcPath = await ensureChunk(0);
+  }
+  const isUrl =
+    !chunked &&
+    srcPath != null &&
+    (srcPath.startsWith("http://") || srcPath.startsWith("https://"));
 
   let duration = NaN;
   if (knownDurationMs != null && knownDurationMs > 0) {
@@ -1029,7 +1287,7 @@ async function renderGameSegments(
       "-probesize", "10000000",
       "-show_entries", "format=duration",
       "-of", "default=nw=1:nk=1",
-      srcPath,
+      activeSrcPath,
     ]);
     duration = parseFloat(durationStr);
   }
@@ -1042,7 +1300,7 @@ async function renderGameSegments(
       "-select_streams", "v:0",
       "-show_entries", "stream=duration",
       "-of", "default=nw=1:nk=1",
-      srcPath,
+      activeSrcPath,
     ]);
     duration = parseFloat(streamDurStr);
   }
@@ -1056,7 +1314,7 @@ async function renderGameSegments(
       "-probesize", "500000000",
       "-show_entries", "format=duration",
       "-of", "default=nw=1:nk=1",
-      srcPath,
+      activeSrcPath,
     ]).catch(() => "");
     duration = parseFloat(deepDurStr);
   }
@@ -1070,7 +1328,7 @@ async function renderGameSegments(
       "-select_streams", "v:0",
       "-show_entries", "stream=duration",
       "-of", "default=nw=1:nk=1",
-      srcPath,
+      activeSrcPath,
     ]).catch(() => "");
     duration = parseFloat(deepStreamDurStr);
   }
@@ -1086,7 +1344,7 @@ async function renderGameSegments(
       "-show_entries", "packet=pts_time,size",
       "-of", "csv=p=0",
       "-read_intervals", "%+90",
-      srcPath,
+      activeSrcPath,
     ]).catch(() => "");
     const packets = packetRaw.trim().split("\n")
       .map((l) => { const [t, s] = l.split(","); return { t: parseFloat(t), s: Number(s) }; })
@@ -1096,7 +1354,7 @@ async function renderGameSegments(
       const totalBytes = packets.reduce((acc, p) => acc + p.s, 0);
       if (lastPts > 0 && totalBytes > 0) {
         const empiricalBps = totalBytes / lastPts; // bytes per second
-        const srcStatSize = await fs.stat(srcPath).then((s) => s.size).catch(() => 0);
+        const srcStatSize = await fs.stat(activeSrcPath).then((s) => s.size).catch(() => 0);
         if (srcStatSize > 0) {
           duration = srcStatSize / empiricalBps;
           logger.info({ prefix, duration, source: "empirical-bitrate", packets: packets.length },
@@ -1111,13 +1369,13 @@ async function renderGameSegments(
     // Only safe for small files — remuxing a large file writes a second copy
     // equal in size to the source and will fill the container disk quota.
     // Not applicable for remote URLs — bail out early with a clear error.
-    if (srcPath.startsWith("http://") || srcPath.startsWith("https://")) {
+    if (isUrl) {
       throw new HighlightError(
         "Could not determine the video duration from the source stream. " +
         "The recording may be in an unsupported format.",
       );
     }
-    const srcStatSize = await fs.stat(srcPath).then((s) => s.size).catch(() => 0);
+    const srcStatSize = await fs.stat(activeSrcPath).then((s) => s.size).catch(() => 0);
     const srcMB = srcStatSize / 1024 / 1024;
     if (srcMB > 600) {
       throw new HighlightError(
@@ -1130,7 +1388,7 @@ async function renderGameSegments(
       "-y",
       "-analyzeduration", "150000000",
       "-probesize", "150000000",
-      "-i", srcPath,
+      "-i", activeSrcPath,
       "-c", "copy",
       remuxPath,
     ]);
@@ -1198,7 +1456,7 @@ async function renderGameSegments(
   const hasAudio = audioStreams.length > 0;
 
   let segments = buildSegments(eligible, duration, nameById, offsetMs, half2StartMs, halftimeGapMs);
-  if (segments.length === 0) return [];
+  if (segments.length === 0) return { segPaths: [], hasAudio };
 
   // Phase A (remote sources only): single-pass stream-copy extraction.
   // A cueless live-recorded WebM cannot be seeked over HTTP — every -ss
@@ -1208,13 +1466,13 @@ async function renderGameSegments(
   // window into a small local file. MediaRecorder keyframes are ~2s apart,
   // so a fixed pre-pad guarantees a keyframe lands before the clip start;
   // the precise cut happens in the local re-encode below (renderOne).
-  let segInputs: { path: string; seek: number }[] | null = null;
+  let segInputs: { path: string; seek: number; concatInput?: boolean }[] | null = null;
   if (isUrl) {
     const COPY_PAD_SECONDS = 6;
     const copyArgs: string[] = [
       "-y", "-v", "error",
       "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "10",
-      "-i", srcPath,
+      "-i", activeSrcPath,
     ];
     const wins = segments.map((seg, i) => {
       const winStart = Math.max(0, seg.start - COPY_PAD_SECONDS);
@@ -1239,7 +1497,7 @@ async function renderGameSegments(
     // Drop segments whose window landed past the true end of the recording —
     // the pseudo-duration is event-derived and may exceed the actual video.
     const keptSegments: Segment[] = [];
-    const keptInputs: { path: string; seek: number }[] = [];
+    const keptInputs: { path: string; seek: number; concatInput?: boolean }[] = [];
     for (let i = 0; i < segments.length; i++) {
       const size = await fs.stat(wins[i].path).then((s) => s.size).catch(() => 0);
       if (size > 20_000) {
@@ -1252,7 +1510,7 @@ async function renderGameSegments(
     }
     segments = keptSegments;
     segInputs = keptInputs;
-    if (segments.length === 0) return [];
+    if (segments.length === 0) return { segPaths: [], hasAudio };
   }
 
   // Base caption sizing on OUTPUT dimensions, not source (source may be 4K+).
@@ -1268,7 +1526,13 @@ async function renderGameSegments(
   // two jobs (highlight + lowlight) are often running simultaneously.
   const RENDER_CONCURRENCY = 1;
 
-  const renderOne = async (seg: Segment, i: number): Promise<string> => {
+  const renderOne = async (
+    seg: Segment,
+    i: number,
+    // Chunked mode passes the local chunk file (or a concat list spanning two
+    // chunks) with a seek RELATIVE to that input's own timeline.
+    inputOverride?: { path: string; seek: number; concatInput?: boolean },
+  ): Promise<string> => {
     const segDur = seg.end - seg.start;
 
     const drawFilters = seg.moments.map((m, j) => {
@@ -1328,9 +1592,13 @@ async function renderGameSegments(
     const segPath = path.join(tmpDir, `seg_${prefix}_${i}.ts`);
     // When Phase A ran, encode from the small local intermediate (seek is
     // relative to the window start); otherwise seek directly in the source.
-    const input = segInputs ? segInputs[i] : { path: activeSrcPath, seek: seg.start };
+    const input =
+      inputOverride ?? (segInputs ? segInputs[i] : { path: activeSrcPath, seek: seg.start });
     const args = [
       "-y",
+      // Concat demuxer must be declared before -i; -ss then seeks across the
+      // virtual concatenated timeline (chunks have reset timestamps).
+      ...(input.concatInput ? ["-f", "concat", "-safe", "0"] : []),
       "-ss", input.seek.toFixed(3),
       "-i", input.path,
       "-loop", "1", "-i", LOGO_FILE,
@@ -1362,16 +1630,84 @@ async function renderGameSegments(
     return segPath;
   };
 
+  const segPaths: string[] = [];
+
+  if (chunked) {
+    // Single-pass walk over the proxy chunks. Segments come out of
+    // buildSegments sorted by start time, so one linear pass suffices: each
+    // chunk is downloaded on demand and deleted as soon as the walk moves
+    // past it — at most 2 chunks (~550 MB) are ever resident in tmpfs.
+    //
+    // A segment is capped at MAX_SEGMENT_SEC (300 s) < chunk duration
+    // (360 s), so it spans AT MOST two adjacent chunks; boundary-spanning
+    // segments are rendered from a 2-entry concat-demuxer list.
+    try {
+      let chunkStart = 0; // absolute start time of chunk ci in the proxy timeline
+      let segIdx = 0;
+      for (let ci = 0; ci < numProxyChunks && segIdx < segments.length; ci++) {
+        const chunkEnd = chunkStart + (await chunkDuration(ci));
+        const isLastChunk = ci === numProxyChunks - 1;
+
+        while (segIdx < segments.length && segments[segIdx].start < chunkEnd) {
+          const seg = segments[segIdx];
+          const localSeek = Math.max(0, seg.start - chunkStart);
+          if (seg.end <= chunkEnd + 0.001 || isLastChunk) {
+            // Fully inside this chunk (or clamped by end of footage — ffmpeg
+            // simply stops at EOF and the clip comes out shorter).
+            segPaths.push(
+              await renderOne(seg, segIdx, { path: await ensureChunk(ci), seek: localSeek }),
+            );
+          } else {
+            // Spans the boundary into chunk ci+1 — feed both chunks through
+            // the concat demuxer (chunks start at keyframes with reset
+            // timestamps, so the virtual timeline is seamless).
+            const thisLocal = await ensureChunk(ci);
+            const nextLocal = await ensureChunk(ci + 1);
+            const listPath = path.join(tmpDir, `xchunk_${prefix}_${segIdx}.txt`);
+            await fs.writeFile(
+              listPath, `file '${thisLocal}'\nfile '${nextLocal}'\n`, "utf8",
+            );
+            try {
+              segPaths.push(
+                await renderOne(seg, segIdx, { path: listPath, seek: localSeek, concatInput: true }),
+              );
+            } finally {
+              await fs.unlink(listPath).catch(() => {});
+            }
+          }
+          segIdx++;
+        }
+
+        await dropChunk(ci); // walk has moved past this chunk — free tmpfs now
+        chunkStart = chunkEnd;
+      }
+
+      // Any segments left over start past the end of the last chunk — the
+      // stored duration overshot the real footage. Warn and drop, same as
+      // the remote-source path does for windows past EOF.
+      if (segIdx < segments.length) {
+        logger.warn(
+          { prefix, dropped: segments.length - segIdx },
+          "Dropping segments past end of proxy chunks (stored duration overshot footage)",
+        );
+      }
+    } finally {
+      for (const ci of [...chunkLocal.keys()]) {
+        await dropChunk(ci);
+      }
+    }
+    return { segPaths, hasAudio };
+  }
+
   // Process in ordered batches — results within each batch are parallel but
   // the overall array order matches segment order for the concat step.
-  const segPaths: string[] = [];
   for (let b = 0; b < segments.length; b += RENDER_CONCURRENCY) {
     const batch = segments.slice(b, b + RENDER_CONCURRENCY);
     const results = await Promise.all(batch.map((seg, j) => renderOne(seg, b + j)));
     segPaths.push(...results);
   }
 
-  return segPaths;
+  return { segPaths, hasAudio };
 }
 
 async function concatSegments(
@@ -1446,7 +1782,6 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
   const ac = new AbortController();
   highlightAbortControllers.set(gameId, ac);
   let tmpDir: string | null = null;
-  let releaseSrc: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -1480,45 +1815,43 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-"));
 
-    // Cut clips from the compressed, seekable proxy (the same file the film
-    // room plays, already at reel output resolution) instead of the multi-GB
-    // raw source: clip encodes finish in seconds instead of minutes, and the
-    // proxy is a proper indexed MP4 so none of the cueless-source special
-    // paths are needed. Builds the proxy first if it doesn't exist yet
-    // (chunk-resumable, persisted in GCS — shared with film-room playback).
-    // Falls back to the raw source only if the proxy cannot be built.
-    logger.info({ gameId }, "Highlight: acquiring proxy video");
-    let srcPath: string;
+    // Cut clips directly from individual proxy chunks in GCS — downloaded on
+    // demand and deleted as the render walk moves past them, so peak tmpfs
+    // usage stays ~2 chunks (~550 MB). The full concatenated proxy is NEVER
+    // built locally: /tmp is RAM-backed in production, and the old
+    // download-all-chunks-and-concat path (~2.8 GB peak on a 34-min game)
+    // was OOM-killed every time. Falls back to the raw source only if the
+    // chunk path fails (e.g. video duration unknown).
+    logger.info({ gameId }, "Highlight: preparing proxy chunks");
+    let rendered: { segPaths: string[]; hasAudio: boolean };
     try {
-      const proxy = await acquireGameProxy(gameId, game.ownerId, ac.signal);
-      srcPath = proxy.proxyPath;
-      releaseSrc = proxy.release;
-    } catch (proxyErr) {
-      logger.warn({ err: proxyErr, gameId },
-        "Highlight: proxy unavailable — falling back to raw source video");
-      const { srcPath: rawPath, release } = await acquireSourceVideo(game.videoObjectPath!, ac.signal);
-      srcPath = rawPath;
-      releaseSrc = release;
+      const chunkObjectPaths = await ensureProxyChunksInGcs(gameId, game.ownerId, game, ac.signal);
+      rendered = await renderGameSegments(
+        null, tmpDir, "g", eligible, nameById,
+        game.videoOffsetMs ?? 0, musicTrackPath,
+        game.videoHalf2StartMs ?? undefined,
+        game.videoHalftimeGapMs ?? undefined,
+        game.videoDurationMs ?? undefined,
+        { chunkObjectPaths, signal: ac.signal },
+      );
+    } catch (chunkErr) {
+      if (ac.signal.aborted) throw chunkErr;
+      logger.warn({ err: chunkErr, gameId },
+        "Highlight: chunk-based extraction unavailable — falling back to raw source video");
+      const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath!, ac.signal);
+      try {
+        rendered = await renderGameSegments(
+          srcPath, tmpDir, "g", eligible, nameById,
+          game.videoOffsetMs ?? 0, musicTrackPath,
+          game.videoHalf2StartMs ?? undefined,
+          game.videoHalftimeGapMs ?? undefined,
+          game.videoDurationMs ?? undefined,
+        );
+      } finally {
+        release();
+      }
     }
-
-    const audioStreams = await ffprobe([
-      "-v", "error",
-      "-select_streams", "a",
-      "-show_entries", "stream=index",
-      "-of", "csv=p=0",
-      srcPath,
-    ]);
-    const hasAudio = audioStreams.length > 0;
-
-    const segPaths = await renderGameSegments(
-      srcPath, tmpDir, "g", eligible, nameById,
-      game.videoOffsetMs ?? 0, musicTrackPath,
-      game.videoHalf2StartMs ?? undefined,
-      game.videoHalftimeGapMs ?? undefined,
-      game.videoDurationMs ?? undefined,
-    );
-    releaseSrc();
-    releaseSrc = null;
+    const { segPaths, hasAudio } = rendered;
     if (segPaths.length === 0) {
       throw new HighlightError("No qualifying highlight moments in this game");
     }
@@ -1544,7 +1877,6 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     throw err;
   } finally {
     highlightAbortControllers.delete(gameId);
-    releaseSrc?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -1560,7 +1892,6 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
   const ac = new AbortController();
   lowlightAbortControllers.set(gameId, ac);
   let tmpDir: string | null = null;
-  let releaseSrc: (() => void) | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -1592,41 +1923,39 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ll-"));
 
-    // Cut clips from the compressed, seekable proxy instead of the multi-GB
-    // raw source — same reasoning as generateHighlight. Both reel jobs share
-    // one ref-counted proxy download/build via proxyLocalCache.
-    logger.info({ gameId }, "Lowlight: acquiring proxy video");
-    let srcPath: string;
+    // Cut clips directly from individual proxy chunks in GCS — same bounded
+    // tmpfs reasoning as generateHighlight. Concurrent highlight + lowlight
+    // jobs share one chunk-ensure pass via the single-flight guard.
+    logger.info({ gameId }, "Lowlight: preparing proxy chunks");
+    let rendered: { segPaths: string[]; hasAudio: boolean };
     try {
-      const proxy = await acquireGameProxy(gameId, game.ownerId, ac.signal);
-      srcPath = proxy.proxyPath;
-      releaseSrc = proxy.release;
-    } catch (proxyErr) {
-      logger.warn({ err: proxyErr, gameId },
-        "Lowlight: proxy unavailable — falling back to raw source video");
-      const { srcPath: rawPath, release } = await acquireSourceVideo(game.videoObjectPath!, ac.signal);
-      srcPath = rawPath;
-      releaseSrc = release;
+      const chunkObjectPaths = await ensureProxyChunksInGcs(gameId, game.ownerId, game, ac.signal);
+      rendered = await renderGameSegments(
+        null, tmpDir, "ll", eligible, nameById,
+        game.videoOffsetMs ?? 0, musicTrackPath,
+        game.videoHalf2StartMs ?? undefined,
+        game.videoHalftimeGapMs ?? undefined,
+        game.videoDurationMs ?? undefined,
+        { chunkObjectPaths, signal: ac.signal },
+      );
+    } catch (chunkErr) {
+      if (ac.signal.aborted) throw chunkErr;
+      logger.warn({ err: chunkErr, gameId },
+        "Lowlight: chunk-based extraction unavailable — falling back to raw source video");
+      const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath!, ac.signal);
+      try {
+        rendered = await renderGameSegments(
+          srcPath, tmpDir, "ll", eligible, nameById,
+          game.videoOffsetMs ?? 0, musicTrackPath,
+          game.videoHalf2StartMs ?? undefined,
+          game.videoHalftimeGapMs ?? undefined,
+          game.videoDurationMs ?? undefined,
+        );
+      } finally {
+        release();
+      }
     }
-
-    const audioStreams = await ffprobe([
-      "-v", "error",
-      "-select_streams", "a",
-      "-show_entries", "stream=index",
-      "-of", "csv=p=0",
-      srcPath,
-    ]);
-    const hasAudio = audioStreams.length > 0;
-
-    const segPaths = await renderGameSegments(
-      srcPath, tmpDir, "ll", eligible, nameById,
-      game.videoOffsetMs ?? 0, musicTrackPath,
-      game.videoHalf2StartMs ?? undefined,
-      game.videoHalftimeGapMs ?? undefined,
-      game.videoDurationMs ?? undefined,
-    );
-    releaseSrc();
-    releaseSrc = null;
+    const { segPaths, hasAudio } = rendered;
     if (segPaths.length === 0) {
       throw new HighlightError("No lowlight moments could be rendered");
     }
@@ -1652,7 +1981,6 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     throw err;
   } finally {
     lowlightAbortControllers.delete(gameId);
-    releaseSrc?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -1712,52 +2040,52 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
 
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "hl-team-"));
 
-    // Process each game in parallel: download + remux + segment extraction all
-    // run concurrently so total time ≈ slowest game instead of sum of all games.
-    const gameResults = await Promise.all(
-      videoGames.map(async (game) => {
-        const eligible = eventsByGame.get(game.id);
-        if (!eligible || eligible.length === 0) return { segPaths: [], hasAudio: false };
+    // Process games SEQUENTIALLY, not in parallel. All ffmpeg work is
+    // globally serialized through runFfmpegQueued anyway, so parallelism
+    // bought no wall-clock time — it only multiplied peak tmpfs usage
+    // (N games × resident chunks/sources at once = OOM on RAM-backed /tmp).
+    const gameResults: { segPaths: string[]; hasAudio: boolean }[] = [];
+    for (const game of videoGames) {
+      const eligible = eventsByGame.get(game.id);
+      if (!eligible || eligible.length === 0) {
+        gameResults.push({ segPaths: [], hasAudio: false });
+        continue;
+      }
 
-        // Prefer the compressed, seekable per-game proxy (shared with the
-        // film room and per-game reels); fall back to downloading the raw
-        // source only if the proxy cannot be built.
-        let srcPath: string;
-        let releaseProxy: (() => void) | null = null;
+      // Chunk-based extraction first (bounded tmpfs); fall back to
+      // downloading the raw source only if the chunk path fails.
+      let result: { segPaths: string[]; hasAudio: boolean };
+      try {
+        const chunkObjectPaths = await ensureProxyChunksInGcs(game.id, team.ownerId!, game);
+        result = await renderGameSegments(
+          null, tmpDir!, `t${game.id}`, eligible, nameById,
+          game.videoOffsetMs ?? 0, undefined,
+          game.videoHalf2StartMs ?? undefined,
+          game.videoHalftimeGapMs ?? undefined,
+          game.videoDurationMs ?? undefined,
+          { chunkObjectPaths },
+        );
+      } catch (chunkErr) {
+        logger.warn({ err: chunkErr, gameId: game.id },
+          "Team highlight: chunk-based extraction unavailable — downloading raw source video");
+        const srcPath = path.join(tmpDir!, `src_${game.id}`);
+        await downloadSourceVideo(game.videoObjectPath!, srcPath);
         try {
-          try {
-            const proxy = await acquireGameProxy(game.id, team.ownerId!);
-            srcPath = proxy.proxyPath;
-            releaseProxy = proxy.release;
-          } catch (proxyErr) {
-            logger.warn({ err: proxyErr, gameId: game.id },
-              "Team highlight: proxy unavailable — downloading raw source video");
-            srcPath = path.join(tmpDir!, `src_${game.id}`);
-            await downloadSourceVideo(game.videoObjectPath!, srcPath);
-          }
-
-          const audioProbe = await ffprobe([
-            "-v", "error",
-            "-select_streams", "a",
-            "-show_entries", "stream=index",
-            "-of", "csv=p=0",
-            srcPath,
-          ]);
-          const hasAudio = audioProbe.length > 0;
-
-          const segPaths = await renderGameSegments(
+          result = await renderGameSegments(
             srcPath, tmpDir!, `t${game.id}`, eligible, nameById,
             game.videoOffsetMs ?? 0, undefined,
             game.videoHalf2StartMs ?? undefined,
             game.videoHalftimeGapMs ?? undefined,
             game.videoDurationMs ?? undefined,
           );
-          return { segPaths, hasAudio };
         } finally {
-          releaseProxy?.();
+          // Free the raw source before moving to the next game — keeping N
+          // full sources resident is exactly the OOM pattern being removed.
+          await fs.unlink(srcPath).catch(() => {});
         }
-      }),
-    );
+      }
+      gameResults.push(result);
+    }
 
     // Flatten in game date order (videoGames is already ordered by date + id)
     const allSegPaths = gameResults.flatMap((r) => r.segPaths);

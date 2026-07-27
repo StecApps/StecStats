@@ -1,31 +1,21 @@
 ---
-name: Highlight/Lowlight OOM crash loop
-description: Root causes and fixes for the infinite OOM restart loop when building proxy video for large games
+name: Reel generation on RAM-backed /tmp — chunk-based extraction
+description: Why highlight/lowlight jobs must never build the full local proxy, and the invariants of the chunk-based design
 ---
 
-## The problem
-When highlight + lowlight auto-resume on a server restart, three bugs interact to create an infinite OOM loop:
+# Reel generation must stay chunk-based (never build the full proxy locally)
 
-1. **Shared AbortController map** — `generateHighlight` and `generateLowlight` both call `jobAbortControllers.set(gameId, ac)`. The second overwrites the first. `cancelHighlightGeneration` aborts the *last-set* controller, but the proxy download uses the *first* job's signal → Cancel never actually stops the download.
+**Rule:** In production, `/tmp` is RAM-backed tmpfs (~2 GB budget). Any reel/video job that downloads all proxy chunks and concatenates them locally (~1.4 GB for a 34-min game, ~2x peak with the concat output) gets SIGKILLed. OOM SIGKILL gives no cleanup time (no `finally`, no DB writes), so job status stays `processing`, auto-resume fires on next boot, and the server enters an infinite OOM restart loop.
 
-2. **DELETE set status to `null`** — if the server OOM-kills the process before the DB write commits, status stays `"processing"`. Next restart resumes it. The auto-resume query only picks up `processing` games, so setting `null` doesn't help when the process dies before the write.
+**Design invariants (do not regress):**
+- Reel extraction works directly from individual ~250 MB / 360 s proxy chunks in GCS (`proxy_chunk_v{PROXY_VERSION}_{gameId}_{i}`), holding at most 2 chunks locally (boundary-spanning segments use a 2-entry concat-demuxer list). Peak ≈ 550 MB per job (~1 GB when highlight+lowlight run concurrently).
+- Chunk ensure is single-flight per game — highlight + lowlight start the same millisecond and would otherwise double-download the source.
+- The true chunk count comes from what ffmpeg actually produced, never the duration estimate; discovery over-probes GCS past the guess until first miss.
+- Team highlights process games sequentially, never `Promise.all` — one game's chunks are bounded but N games in parallel are not.
+- `buildSegments` caps segment length (MAX_SEGMENT_SEC=300) so one corrupt event timestamp can't create an unbounded clip.
+- The only remaining full-proxy builder (film-room playback proxy) is size-gated: skip games >900 s or unknown duration. Accepted tradeoff: long WebM-recorded games play the raw source, which iOS Safari may not handle.
+- Raw-source fallback (chunk path failed, not aborted) still downloads the full source — acceptable last resort, but a "chunk-based extraction unavailable" warning in prod logs means OOM risk is back; investigate it.
+- Cancel/DELETE handlers set status `"failed"` (never `null`) so auto-resume can't re-trigger a crashed job even if the process died before a cleanup write.
+- Highlight and lowlight keep SEPARATE AbortController maps — a shared map made Cancel abort the wrong job's signal.
 
-3. **Unnecessary 1.3GB source download** — `acquireGameProxy` always downloads the source video before calling `createChunkedProxy`, even when all 6 proxy chunks already exist in GCS. This caused ~3GB concurrent disk usage (source + chunks + ffmpeg concat output) → disk exhaustion → OOM kill → status still `"processing"` → restart → repeat.
-
-## How OOM kills create the loop
-Node.js `SIGKILL` from OOM gives no cleanup time — no `finally`, no `catch`, no DB writes. If status is `"processing"` at kill time, it stays `"processing"` and `resumeHighlightJob` fires on the next restart unconditionally.
-
-## Fixes applied
-1. Split `jobAbortControllers` into `highlightAbortControllers` + `lowlightAbortControllers`. Export `cancelHighlightJob(gameId)` and `cancelLowlightJob(gameId)` separately. Highlight DELETE calls highlight cancel; lowlight DELETE calls lowlight cancel.
-
-2. DELETE handlers now set status to `"failed"` (not `null`) with `error: "Generation was cancelled"`. `"failed"` is never picked up by the auto-resume query, so the loop breaks even through a crash.
-
-3. In `acquireGameProxy`, before calling `acquireSourceVideo`, pre-check GCS chunk existence using `game.videoDurationMs` to estimate `numChunks`. If all chunks exist, call `createChunkedProxy` with `srcPath=""` and `durationHintMs=game.videoDurationMs` (skips ffprobe). The source download is skipped entirely.
-
-4. Threaded `AbortSignal` into `createChunkedProxy` as an optional param, passed to each `downloadSourceVideo` call in the `allInGcs` branch, so Cancel stops mid-chunk-download.
-
-## How to cancel a stuck game
-Press the Cancel button under either the Highlight or Lowlight section. With these fixes:
-- Cancel on highlight → `cancelHighlightJob` aborts highlight's signal → proxy download stops → both highlight and lowlight fail (shared proxy cache rejects) → both set `"failed"` → no auto-resume
-- Cancel on lowlight → `cancelLowlightJob` aborts lowlight's signal → lowlight fails, but the shared proxy download (running under highlight's signal) continues → highlight may succeed or fail independently
-- For the crash loop: cancel highlight (the first job to call `acquireGameProxy` owns the proxy download signal)
+**Stub-chunk pitfall:** ffmpeg's segment muxer can emit a final ~260-byte moov-only segment; uploading it poisons every future chunk existence probe (count off by one). Treat GCS chunk objects <10 KB as missing (self-heals stale stubs) and never upload a trailing stub.
