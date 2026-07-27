@@ -80,16 +80,21 @@ const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 
 // Seconds of footage kept before and after each qualifying moment.
 //
-// Sideline mode stores timestamps 10 s BEFORE the user's tap (via
-// SIDELINE_TIMESTAMP_OFFSET_MS = -10_000), so the stored timestamp already
-// points to roughly when the play was developing.  POST_SECONDS must extend
-// far enough past the stored timestamp to capture the play completion and a
-// bit of celebration/result — ~10-13 s forward from the stored moment.
-// Using POST_SECONDS = 15 means the clip ends ~15 s after the stored ts,
-// safely showing the play + 2-5 s of result for both sideline and regular mode.
-// PRE_SECONDS = 12 gives lead-in context in both modes.
-const PRE_SECONDS = 12;
-const POST_SECONDS = 15;
+// Stat taps happen AT THE MOMENT the play completes (e.g. the ball goes in).
+// To capture the full play leading up to that moment the clip must look back
+// further than the tap.
+//
+// Regular record mode: the timestamp is the moment of tap, so the clip must
+// reach back 22 s to include the full possession/play (dribble, drive, shot).
+// Sideline mode stores timestamps 10 s BEFORE the tap (via
+// SIDELINE_TIMESTAMP_OFFSET_MS = -10_000), so its stored timestamp already
+// points 10 s earlier — it needs only 12 s of additional look-back (same as
+// before), so the total look-back from the play is also ~22 s.
+//
+// POST_SECONDS: the play is already done by the time of the tap, so we only
+// need a few seconds of celebration/reaction after it.  7 s is enough.
+const PRE_SECONDS = 22;
+const POST_SECONDS = 7;
 
 // Hard cap on a single (merged) segment's length. buildSegments merges
 // overlapping moments, and a dense scoring stretch can otherwise chain into
@@ -103,7 +108,8 @@ const MAX_SEGMENT_SEC = 300;
 // whenever clip-timing logic changes (PRE/POST_SECONDS, offset handling, …)
 // so reels cached under the old logic are invalidated on read and rebuilt.
 // v2 = POST_SECONDS 2→15 fix (clips used to end before the play happened).
-export const GENERATOR_VERSION = 2;
+// v3 = PRE_SECONDS 12→22, POST_SECONDS 15→7 (look back further from tap).
+export const GENERATOR_VERSION = 3;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
