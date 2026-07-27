@@ -148,11 +148,13 @@ const STAT_LABELS: Record<string, string> = {
 export class HighlightError extends Error {}
 
 // Maximum time allowed for a single ffmpeg/ffprobe process before SIGKILL.
-// 10 minutes per segment. Clip encodes from the 720p proxy finish in seconds;
-// the generous ceiling only matters on the raw-source fallback path, where a
-// deploy-overlap (two instances encoding at once) can slow a clip encode
-// severely — 5 min proved too tight there.
-const PROCESS_TIMEOUT_MS = 10 * 60 * 1000;
+// 30 minutes per process. Clip encodes from the 720p proxy finish in seconds
+// under normal conditions, but production GCS chunk downloads can be very slow
+// (~80 KB/s observed), making a single 278 MB chunk take ~60 min end-to-end.
+// The 30-min ceiling keeps the process from hanging forever while giving slow
+// prod networks enough room to complete a chunk download + clip encode without
+// tripping the timeout and triggering the raw-source fallback (see below).
+const PROCESS_TIMEOUT_MS = 30 * 60 * 1000;
 // Stall detection: if no bytes arrive within this window, abort the download.
 const DOWNLOAD_STALL_MS = 60 * 1000; // 60 seconds of no data = stalled
 // Maximum source video size we'll attempt to process.
@@ -1824,8 +1826,16 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     // chunk path fails (e.g. video duration unknown).
     logger.info({ gameId }, "Highlight: preparing proxy chunks");
     let rendered: { segPaths: string[]; hasAudio: boolean };
+    // Track whether ensureProxyChunksInGcs confirmed chunks are in GCS.
+    // If true, the raw-source fallback MUST NOT fire — downloading a 1+ GB raw
+    // source while another job does the same would exceed the 2 GB RAM-backed
+    // /tmp limit and OOM-kill the server. Fail cleanly instead so the user can
+    // retry; on retry the chunks are already in GCS and only the extraction
+    // (not the source download) needs to succeed.
+    let highlightChunksConfirmed = false;
     try {
       const chunkObjectPaths = await ensureProxyChunksInGcs(gameId, game.ownerId, game, ac.signal);
+      highlightChunksConfirmed = true;
       rendered = await renderGameSegments(
         null, tmpDir, "g", eligible, nameById,
         game.videoOffsetMs ?? 0, musicTrackPath,
@@ -1836,6 +1846,15 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       );
     } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
+      if (highlightChunksConfirmed) {
+        // Chunks are confirmed in GCS — raw-source fallback would OOM the server.
+        // Surface a retryable error; chunks stay in GCS for the next attempt.
+        logger.error({ err: chunkErr, gameId },
+          "Highlight: chunk extraction failed with chunks confirmed — refusing raw-source fallback to prevent OOM");
+        throw new HighlightError(
+          "Highlight generation timed out. Please try again.",
+        );
+      }
       logger.warn({ err: chunkErr, gameId },
         "Highlight: chunk-based extraction unavailable — falling back to raw source video");
       const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath!, ac.signal);
@@ -1928,8 +1947,10 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     // jobs share one chunk-ensure pass via the single-flight guard.
     logger.info({ gameId }, "Lowlight: preparing proxy chunks");
     let rendered: { segPaths: string[]; hasAudio: boolean };
+    let lowlightChunksConfirmed = false;
     try {
       const chunkObjectPaths = await ensureProxyChunksInGcs(gameId, game.ownerId, game, ac.signal);
+      lowlightChunksConfirmed = true;
       rendered = await renderGameSegments(
         null, tmpDir, "ll", eligible, nameById,
         game.videoOffsetMs ?? 0, musicTrackPath,
@@ -1940,6 +1961,15 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       );
     } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
+      if (lowlightChunksConfirmed) {
+        // Same OOM-prevention guard as generateHighlight: chunks exist in GCS,
+        // refuse raw-source fallback, fail cleanly for user to retry.
+        logger.error({ err: chunkErr, gameId },
+          "Lowlight: chunk extraction failed with chunks confirmed — refusing raw-source fallback to prevent OOM");
+        throw new HighlightError(
+          "Lowlight generation timed out. Please try again.",
+        );
+      }
       logger.warn({ err: chunkErr, gameId },
         "Lowlight: chunk-based extraction unavailable — falling back to raw source video");
       const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath!, ac.signal);
@@ -2053,10 +2083,13 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
       }
 
       // Chunk-based extraction first (bounded tmpfs); fall back to
-      // downloading the raw source only if the chunk path fails.
+      // downloading the raw source only if the chunk path fails AND chunks
+      // were NOT confirmed in GCS (confirmed chunks + raw fallback = OOM).
       let result: { segPaths: string[]; hasAudio: boolean };
+      let teamChunksConfirmed = false;
       try {
         const chunkObjectPaths = await ensureProxyChunksInGcs(game.id, team.ownerId!, game);
+        teamChunksConfirmed = true;
         result = await renderGameSegments(
           null, tmpDir!, `t${game.id}`, eligible, nameById,
           game.videoOffsetMs ?? 0, undefined,
@@ -2066,6 +2099,13 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
           { chunkObjectPaths },
         );
       } catch (chunkErr) {
+        if (teamChunksConfirmed) {
+          // Chunks exist — refuse raw-source fallback, skip this game cleanly.
+          logger.warn({ err: chunkErr, gameId: game.id },
+            "Team highlight: chunk extraction timed out with chunks confirmed — skipping game (refusing OOM fallback)");
+          gameResults.push({ segPaths: [], hasAudio: false });
+          continue;
+        }
         logger.warn({ err: chunkErr, gameId: game.id },
           "Team highlight: chunk-based extraction unavailable — downloading raw source video");
         const srcPath = path.join(tmpDir!, `src_${game.id}`);
