@@ -81,20 +81,30 @@ async function initStripe() {
 
 /**
  * Delete orphaned video temp dirs left behind when a previous server instance
- * was OOM-killed mid-download (SIGKILL skips finally-blocks, so cleanup code
- * never ran). Without this, each OOM cycle accumulates GB of abandoned files
- * and the disk fills up progressively faster with every restart.
+ * was OOM-killed mid-build (SIGKILL skips finally-blocks so cleanup never
+ * ran). Without this each OOM cycle accumulates GB of abandoned files and
+ * disk fills progressively faster with every restart.
+ *
+ * Prefixes cleaned:
+ *   video-proxy-*  — chunked proxy builds (~1.4 GB each, most dangerous)
+ *   hl-*           — per-clip highlight extraction dirs
+ *   ll-*           — per-clip lowlight extraction dirs
  */
 async function cleanupOrphanedTempDirs(): Promise<void> {
   const tmpDir = os.tmpdir();
   try {
     const entries = await fs.readdir(tmpDir);
     const orphaned = entries.filter(
-      (e) => e.startsWith("hl-") || e.startsWith("ll-") || e.startsWith("video-src-"),
+      (e) =>
+        e.startsWith("video-proxy-") ||
+        e.startsWith("hl-") ||
+        e.startsWith("ll-"),
     );
-    for (const dir of orphaned) {
-      await fs.rm(path.join(tmpDir, dir), { recursive: true, force: true }).catch(() => {});
-    }
+    await Promise.all(
+      orphaned.map((dir) =>
+        fs.rm(path.join(tmpDir, dir), { recursive: true, force: true }).catch(() => {}),
+      ),
+    );
     if (orphaned.length > 0) {
       logger.info({ count: orphaned.length }, "Cleaned up orphaned video temp dirs");
     }
@@ -103,12 +113,6 @@ async function cleanupOrphanedTempDirs(): Promise<void> {
   }
 }
 
-/**
- * On startup, re-trigger any highlight/lowlight jobs that were left in
- * "processing" by a previous server instance (Replit cycles production
- * instances every ~8 min). The 60-minute cutoff matches STALE_PROCESSING_MS
- * so we never pick up jobs that are genuinely too old.
- */
 async function resumeOrphanedJobs(): Promise<void> {
   try {
     // Use 150 min — matches STALE_PROCESSING_MS (140 min) with headroom so

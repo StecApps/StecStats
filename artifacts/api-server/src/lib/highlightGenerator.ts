@@ -560,7 +560,12 @@ async function createChunkedProxy(
         "-safe", "0",
         "-i", concatListPath,
         "-c", "copy",
-        "-movflags", "+faststart",
+        // No +faststart — the local proxy is only used by ffmpeg (which
+        // handles end-of-file moov fine on a local disk).  +faststart
+        // writes a full second copy of the output file before rearranging
+        // the moov atom, adding ~1.4 GB of peak disk usage that has been
+        // causing OOM crashes in production.  The GCS-uploaded proxy for
+        // film-room playback uses a separate faststart pass.
         destPath,
       ],
       10 * 60 * 1000,
