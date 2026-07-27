@@ -28,6 +28,6 @@ GCS chunk downloads in production can be extremely slow (~80 KB/s observed — 2
 
 3. **Skip per-file ffprobe probes for chunked mode.** Proxy chunks are always 720p H264+AAC with no rotation tag. Hardcode rawWidth=1280, rawHeight=720, transposeFilter=null, hasAudio=true. Also skip `ensureChunk(0)` for initial probe — that was downloading chunk 0 just for video metadata even when it had no moments.
 
-4. **Derive last-chunk duration from `knownDurationMs`** instead of downloading just for ffprobe.
+4. **Eliminate ALL ffprobe calls from the chunk walk.** The original `chunkDuration(ci)` call ran ffprobe on each chunk to get its duration. This ffprobe runs under `nice -n 10` and can hang for the full 1800s PROCESS_TIMEOUT_MS when the system is CPU-saturated by concurrent GCS downloads + sibling ffmpeg clip renders. Fix: use `PROXY_CHUNK_DURATION_SEC` (nominal) as the duration for every non-last needed chunk; derive last-chunk duration from `knownDurationMs`. Drift ≤ keyframe interval (~1–2 s per chunk) — negligible for PRE_SECONDS=12 clips. This also makes chunk downloads completely lazy: the first `ensureChunk(ci)` call inside the segment while-loop triggers the download (not before).
 
 **Stub-chunk pitfall:** ffmpeg's segment muxer can emit a final ~260-byte moov-only segment; uploading it poisons every future chunk existence probe (count off by one). Treat GCS chunk objects <10 KB as missing (self-heals stale stubs) and never upload a trailing stub.

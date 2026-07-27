@@ -1738,12 +1738,16 @@ async function renderGameSegments(
           continue;
         }
 
-        // For the last chunk, derive duration from stored total to avoid
-        // downloading it just for ffprobe (the download still happens if the
-        // walk has segments inside it via ensureChunk below).
+        // Use nominal chunk duration for all non-last chunks — this avoids
+        // a `chunkDuration(ci)` call which would download the chunk AND run
+        // an ffprobe just to get the duration.  Proxy chunks are encoded at
+        // PROXY_CHUNK_DURATION_SEC intervals; actual edges may differ by
+        // ≤ keyframe interval (~1–2 s), introducing a small localSeek drift
+        // that is negligible for PRE_SECONDS=12 clips.
+        // For the last chunk, derive from stored total (exact — no probe).
         const chunkDur = isLastChunk
           ? Math.max(0, knownDurationMs! / 1000 - chunkStart)
-          : await chunkDuration(ci);
+          : PROXY_CHUNK_DURATION_SEC;
         const chunkEnd = chunkStart + chunkDur;
 
         while (segIdx < segments.length && segments[segIdx].start < chunkEnd) {
