@@ -127,12 +127,14 @@ export const GENERATOR_VERSION = 5;
 // v2 = audio transcoded to AAC (Opus-in-MP4 from WebM sources doesn't play
 // on iOS Safari) — also used in the GCS chunk cache key so stale chunks
 // encoded under the old settings are never mixed into a new proxy.
-// v3 = added -force_key_frames "expr:gte(t,n_forced*2)" so each chunk
-// boundary is within ≤ 2 s of the nominal PROXY_CHUNK_DURATION_SEC.
-// Without this, the default 250-frame GOP at 30 fps (≈ 8 s) caused up to
-// 24 s of cumulative chunkStart drift for games with many skipped chunks,
-// which stripped the lead-in window from highlight clips.
-export const PROXY_VERSION = 3;
+// v3 = added -force_key_frames "expr:gte(t,n_forced*2)" — REVERTED: the
+// per-frame expression evaluation reduced encoding speed from ~5× to ~0.3×
+// real-time on this server (33 min to encode a 6-min chunk), making the
+// proxy build take ~3.5 h and blow past the 90-min highlight timeout.
+// v4 = use frame-count flags (-g 60 -keyint_min 60 -sc_threshold 0) instead.
+// Same ≤ 2 s drift guarantee at 30 fps (≤ 1 s at 60 fps) with no per-frame
+// overhead — encoding speed stays at the ultrafast-preset baseline (~5× rt).
+export const PROXY_VERSION = 4;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
 
@@ -484,14 +486,20 @@ async function encodeChunksToGcs(
     "-c:v", "libx264",
     "-preset", "ultrafast",
     "-crf", "28",
-    // Force a keyframe at least every 2 seconds so that the segment muxer's
-    // chunk boundaries (which always land on keyframes) are within ≤ 2 s of
-    // the nominal PROXY_CHUNK_DURATION_SEC.  Without this flag, libx264 uses
-    // the default 250-frame GOP (≈ 8 s at 30 fps), so each chunk can exceed
-    // the nominal by up to 8 s.  For a game where n chunks are skipped before
-    // the first needed chunk, that becomes n × 8 s of cumulative chunkStart
-    // error, which directly eats into the PRE_SECONDS lead-in window.
-    "-force_key_frames", "expr:gte(t,n_forced*2)",
+    // Fix keyframe interval at 60 frames so the segment muxer's chunk
+    // boundaries land within ≤ 60 frames (≤ 2 s at 30 fps, ≤ 1 s at 60 fps)
+    // of the nominal PROXY_CHUNK_DURATION_SEC.  Without this, libx264 ultrafast
+    // uses the default 250-frame GOP (≈ 8 s at 30 fps), so each chunk can lag
+    // the nominal by up to 8 s — 3 skipped chunks × 8 s = 24 s of cumulative
+    // chunkStart error, stripping the entire PRE_SECONDS lead-in window.
+    //
+    // Using frame-count flags (-g/-keyint_min) rather than the timestamp
+    // expression (-force_key_frames "expr:...") is critical for speed: the
+    // expression is evaluated per frame and reduced encoding from ~5× to
+    // ~0.3× real-time on this server (33 min to encode a 6-min chunk).
+    "-g", "60",
+    "-keyint_min", "60",
+    "-sc_threshold", "0",
     "-vf",
       `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
       `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
