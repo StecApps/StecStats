@@ -40,6 +40,7 @@
 - [GCS signed-URL range requests unreliable in production](gcs-signed-url-range-requests.md) — mid-file Range reads via fetch+signedUrl return garbage bytes in prod; use file.createReadStream({start,end}) from GCS SDK instead.
 - [Cueless WebM clip extraction from GCS](cueless-webm-extraction.md) — live-recorded WebM has no duration/Cues; never proxy-transcode or remote-seek — event-derived pseudo-duration + one linear `-c copy` pass with windowed outputs.
 - [Highlight/lowlight must use local file, not signed URL](highlight-local-file.md) — download the source before ffmpeg; signed URLs fail Range reads and cueless WebM can't seek.
+- [Proxy chunk keyframe drift strips lead-in](highlight-chunk-drift.md) — no -force_key_frames → default 8s GOP → n×8s drift on skipped chunks eats PRE_SECONDS; always use -force_key_frames "expr:gte(t,n_forced*2)".
 - [Background upload resilience pattern](bg-upload-resilience.md) — never delete the IndexedDB session until the save succeeds; persist a pending-upload marker so recovery can retry on next load.
 - [GCS signed URLs reject appended params](gcs-signed-url-unsigned-params.md) — appending response-content-type/-disposition after signing always 403s; patch object metadata + bare URL instead.
 - [Playwright Chromium can't decode H.264/AAC](playwright-chromium-no-h264.md) — MP4 playback e2e always fails in the sandbox (canPlayType=""); verify via in-page Range fetch instead.

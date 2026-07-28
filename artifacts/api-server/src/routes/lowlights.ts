@@ -18,7 +18,8 @@ const router: IRouter = Router();
 
 const inFlight = new Set<number>();
 const STALE_PROCESSING_MS = 5 * 60 * 1000;
-const HARD_STALE_MS = 30 * 60 * 1000;
+// Must be ≥ PROCESS_TIMEOUT_MS in highlightGenerator.ts (currently 90 min).
+const HARD_STALE_MS = 95 * 60 * 1000;
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;

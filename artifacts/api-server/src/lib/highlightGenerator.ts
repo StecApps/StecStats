@@ -88,8 +88,17 @@ const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 // bit of celebration/result — ~10-13 s forward from the stored moment.
 // Using POST_SECONDS = 15 means the clip ends ~15 s after the stored ts,
 // safely showing the play + 2-5 s of result for both sideline and regular mode.
-// PRE_SECONDS = 12 gives lead-in context in both modes.
-const PRE_SECONDS = 12;
+// PRE_SECONDS = 18: nominal lead-in is 18 s.  The proxy segment muxer cuts
+// each chunk at the next keyframe after PROXY_CHUNK_DURATION_SEC, so actual
+// chunk boundaries can lag the nominal by up to one keyframe interval (≤ 2 s
+// with -force_key_frames every 2 s, ≤ ~8 s with the old default 250-frame GOP
+// at 30 fps).  For a game where n chunks are skipped before the first needed
+// chunk, cumulative drift = n × per-chunk-drift.  Game 161 had 3 skipped
+// chunks with the old 4 s keyframe interval → 12 s drift → 0 s lead-in.
+// 18 s gives 6 s buffer over that observed worst case, and with the new
+// -force_key_frames encoding the drift is ≤ 2 s per skipped chunk so
+// lead-in is guaranteed ≥ 18 - 3×2 = 12 s even for a long game.
+const PRE_SECONDS = 18;
 const POST_SECONDS = 15;
 
 // Hard cap on a single (merged) segment's length. buildSegments merges
@@ -106,14 +115,24 @@ const MAX_SEGMENT_SEC = 300;
 // v2 = POST_SECONDS 2→15 fix (clips used to end before the play happened).
 // v3 = fix chunk-boundary lead-in clipping: seg.start in prev chunk now uses
 //      concat-demuxer path instead of clamping seek to 0 (missing first ~10s).
-export const GENERATOR_VERSION = 4;
+// v4 = streaming GCS upload (no more "other side closed" on large lowlights) +
+//      per-segment diagnostic logging; version bump forces reel regeneration.
+// v5 = PRE_SECONDS 12→18 to absorb cumulative chunkStart drift from skipped
+//      proxy chunks (game 161 had 3 skipped chunks × ~4 s/chunk = 12 s drift,
+//      which consumed the entire 12 s lead-in window).
+export const GENERATOR_VERSION = 5;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
 // v2 = audio transcoded to AAC (Opus-in-MP4 from WebM sources doesn't play
 // on iOS Safari) — also used in the GCS chunk cache key so stale chunks
 // encoded under the old settings are never mixed into a new proxy.
-export const PROXY_VERSION = 2;
+// v3 = added -force_key_frames "expr:gte(t,n_forced*2)" so each chunk
+// boundary is within ≤ 2 s of the nominal PROXY_CHUNK_DURATION_SEC.
+// Without this, the default 250-frame GOP at 30 fps (≈ 8 s) caused up to
+// 24 s of cumulative chunkStart drift for games with many skipped chunks,
+// which stripped the lead-in window from highlight clips.
+export const PROXY_VERSION = 3;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
 
@@ -197,7 +216,10 @@ export class HighlightError extends Error {}
 // The 30-min ceiling keeps the process from hanging forever while giving slow
 // prod networks enough room to complete a chunk download + clip encode without
 // tripping the timeout and triggering the raw-source fallback (see below).
-const PROCESS_TIMEOUT_MS = 30 * 60 * 1000;
+// 90 min covers the worst-case GCS download throttle observed in prod:
+// chunk 4 (242 MB) came in at ~150 KB/s = ~27 min just for that chunk.
+// HARD_STALE_MS in the route files must be kept ≥ this value.
+const PROCESS_TIMEOUT_MS = 90 * 60 * 1000;
 // Stall detection: if no bytes arrive within this window, abort the download.
 const DOWNLOAD_STALL_MS = 60 * 1000; // 60 seconds of no data = stalled
 // Maximum source video size we'll attempt to process.
@@ -462,6 +484,14 @@ async function encodeChunksToGcs(
     "-c:v", "libx264",
     "-preset", "ultrafast",
     "-crf", "28",
+    // Force a keyframe at least every 2 seconds so that the segment muxer's
+    // chunk boundaries (which always land on keyframes) are within ≤ 2 s of
+    // the nominal PROXY_CHUNK_DURATION_SEC.  Without this flag, libx264 uses
+    // the default 250-frame GOP (≈ 8 s at 30 fps), so each chunk can exceed
+    // the nominal by up to 8 s.  For a game where n chunks are skipped before
+    // the first needed chunk, that becomes n × 8 s of cumulative chunkStart
+    // error, which directly eats into the PRE_SECONDS lead-in window.
+    "-force_key_frames", "expr:gte(t,n_forced*2)",
     "-vf",
       `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
       `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,

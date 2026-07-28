@@ -22,10 +22,11 @@ const inFlight = new Set<number>();
 
 // Jobs not in-flight (e.g. server restarted) are stale after 5 minutes.
 const STALE_PROCESSING_MS = 5 * 60 * 1000;
-// Hard wall: even an in-flight job is considered abandoned after 30 minutes
-// with no completion — guards against silent ffmpeg crashes where the process
-// dies without updating the DB status.
-const HARD_STALE_MS = 30 * 60 * 1000;
+// Hard wall: even an in-flight job is considered abandoned after this long
+// with no completion — must be ≥ PROCESS_TIMEOUT_MS in highlightGenerator.ts
+// (currently 90 min) so a legitimately slow GCS download isn't declared stale
+// while the job is still running.
+const HARD_STALE_MS = 95 * 60 * 1000;
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
