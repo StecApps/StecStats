@@ -913,6 +913,27 @@ async function doEnsureProxyChunksInGcs(
   if (!game.videoObjectPath) {
     throw new HighlightError("Game has no recorded video");
   }
+
+  // Duration gate: building proxy chunks requires transcoding the full source
+  // (libx264 re-encode of a VP8/WebM source). On the production container the
+  // CPU throughput is roughly 0.35× real-time, so a 33-min game takes ~94 min
+  // to transcode — exceeding PROCESS_TIMEOUT_MS and causing a stale timeout.
+  //
+  // For long videos, skip the inline proxy build and let the caller fall back
+  // to parallel-download + direct source extraction (which now completes in
+  // ~10–15 min thanks to the parallel range downloader).  The proxy path still
+  // runs for shorter games where it finishes well within the timeout, and any
+  // game whose chunks are ALREADY fully in GCS (existFlags.every(Boolean)) is
+  // served from cache regardless of duration (handled above).
+  const MAX_INLINE_PROXY_DURATION_SEC = 1200; // 20 minutes
+  const durSec = durationMs / 1000;
+  if (durSec > MAX_INLINE_PROXY_DURATION_SEC) {
+    throw new HighlightError(
+      `Video is ${Math.round(durSec / 60)} min — too long for inline proxy build ` +
+      `(limit ${MAX_INLINE_PROXY_DURATION_SEC / 60} min). Using direct source extraction.`,
+    );
+  }
+
   const firstMissing = existFlags.findIndex((e) => !e);
   logger.info(
     { gameId, numChunksGuess, firstMissing },
