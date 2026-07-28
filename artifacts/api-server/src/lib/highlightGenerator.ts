@@ -230,14 +230,81 @@ const DOWNLOAD_STALL_MS = 60 * 1000; // 60 seconds of no data = stalled
 // buffer flags (probesize=2GB), not the video itself. Those are now fixed.
 const MAX_SOURCE_VIDEO_MB = Number(process.env["MAX_SOURCE_VIDEO_MB"] ?? 6000);
 
+// Parallel range download settings.
+// GCS throttles each stream independently after an initial burst (~4 MB/s
+// start → drops to ~0.24 MB/s).  Using N parallel range streams resets the
+// burst window for each range, achieving N× the sustained throughput.
+// Each range is 64 MB so a 1.4 GB file uses ~22 ranges processed 4 at a time.
+const PARALLEL_DOWNLOAD_CONCURRENCY = 4;
+const PARALLEL_RANGE_BYTES = 64 * 1024 * 1024; // 64 MB per range
+// Use parallel download for files above this size (small files stay single-stream).
+const PARALLEL_DOWNLOAD_THRESHOLD_BYTES = 200 * 1024 * 1024; // 200 MB
+
 /**
- * Download a source video from object storage to a local temp file using the
- * GCS SDK streaming API (file.createReadStream). This avoids signed URLs,
- * which fail on range requests in production (IO error: End of file).
+ * Download a single byte range from a GCS file object to the correct offset
+ * in a pre-allocated local file.  Uses a per-range stall timer so a hung
+ * connection is detected quickly even when the overall job has a long timeout.
+ */
+async function downloadRange(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  objectFile: any,
+  destPath: string,
+  start: number,
+  end: number,
+  signal?: AbortSignal,
+): Promise<number> {
+  const ac = new AbortController();
+  signal?.addEventListener("abort", () => ac.abort(), { once: true });
+
+  let stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
+  const resetStall = () => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
+  };
+
+  let bytesReceived = 0;
+  const readStream = objectFile.createReadStream({ start, end });
+  readStream.on("data", (chunk: Buffer) => {
+    bytesReceived += chunk.length;
+    resetStall();
+  });
+
+  try {
+    // Node.js fs.createWriteStream supports a `start` offset so we write
+    // directly into the pre-allocated file at the correct position.
+    await pipeline(
+      readStream,
+      createWriteStream(destPath, { start, flags: "r+" }),
+      { signal: ac.signal },
+    );
+    return bytesReceived;
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new HighlightError(
+        `Video range download stalled at byte ${start.toLocaleString()} ` +
+        `(received ${bytesReceived.toLocaleString()} of ${(end - start + 1).toLocaleString()} bytes). ` +
+        `The stored video may be corrupted or truncated.`
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(stallTimer);
+  }
+}
+
+/**
+ * Download a source video from object storage to a local temp file.
  *
- * Uses a rolling stall-detector (60s with no new bytes = abort) rather than a
- * fixed wall-clock timeout, so large-but-healthy files download fully while
- * truly stalled/truncated GCS objects fail quickly.
+ * For files ≥ PARALLEL_DOWNLOAD_THRESHOLD_BYTES: uses parallel byte-range
+ * downloads (PARALLEL_DOWNLOAD_CONCURRENCY concurrent streams).  GCS throttles
+ * each TCP stream independently after an initial burst — parallel ranges get
+ * independent burst windows and combined throughput is N× the single-stream
+ * sustained rate.
+ *
+ * For smaller files: falls back to the simpler single-stream path.
+ *
+ * Uses the GCS SDK streaming API (file.createReadStream) to avoid signed URLs,
+ * which fail on range requests in production (IO error: End of file).
  */
 async function downloadSourceVideo(objectPath: string, destPath: string, signal?: AbortSignal): Promise<void> {
   const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
@@ -256,6 +323,54 @@ async function downloadSourceVideo(objectPath: string, destPath: string, signal?
     );
   }
 
+  const startTime = Date.now();
+
+  if (fileSizeBytes >= PARALLEL_DOWNLOAD_THRESHOLD_BYTES) {
+    // --- Parallel range download path ---
+    const totalRanges = Math.ceil(fileSizeBytes / PARALLEL_RANGE_BYTES);
+    logger.info(
+      { fileSizeBytes, totalRanges, concurrency: PARALLEL_DOWNLOAD_CONCURRENCY },
+      "Source video: starting parallel range download",
+    );
+
+    // Pre-allocate the file at full size so offset writes don't leave gaps.
+    await fs.writeFile(destPath, Buffer.alloc(0));
+    await fs.truncate(destPath, fileSizeBytes);
+
+    let completedRanges = 0;
+    const progressInterval = setInterval(() => {
+      const pct = ((completedRanges / totalRanges) * 100).toFixed(0);
+      logger.info(
+        { completedRanges, totalRanges, pct, elapsedSec: Math.round((Date.now() - startTime) / 1000) },
+        "Parallel source download progress",
+      );
+    }, 30_000);
+
+    try {
+      for (let base = 0; base < totalRanges; base += PARALLEL_DOWNLOAD_CONCURRENCY) {
+        if (signal?.aborted) throw new HighlightError("Download cancelled");
+
+        const batchSize = Math.min(PARALLEL_DOWNLOAD_CONCURRENCY, totalRanges - base);
+        await Promise.all(
+          Array.from({ length: batchSize }, async (_, offset) => {
+            const rangeIdx = base + offset;
+            const rangeStart = rangeIdx * PARALLEL_RANGE_BYTES;
+            const rangeEnd = Math.min(rangeStart + PARALLEL_RANGE_BYTES - 1, fileSizeBytes - 1);
+            await downloadRange(objectFile, destPath, rangeStart, rangeEnd, signal);
+            completedRanges++;
+          }),
+        );
+      }
+      const elapsedSec = (Date.now() - startTime) / 1000;
+      const mbps = (fileSizeMB / elapsedSec).toFixed(1);
+      logger.info({ fileSizeBytes, elapsedSec: Math.round(elapsedSec), mbps }, "Source video parallel download complete");
+    } finally {
+      clearInterval(progressInterval);
+    }
+    return;
+  }
+
+  // --- Single-stream path (small files) ---
   let bytesReceived = 0;
   let lastByteTime = Date.now();
 
