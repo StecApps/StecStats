@@ -245,6 +245,8 @@ const PARALLEL_DOWNLOAD_THRESHOLD_BYTES = 200 * 1024 * 1024; // 200 MB
  * in a pre-allocated local file.  Uses a per-range stall timer so a hung
  * connection is detected quickly even when the overall job has a long timeout.
  */
+const DOWNLOAD_RANGE_MAX_RETRIES = 4; // resume up to 4 times per range before giving up
+
 async function downloadRange(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   objectFile: any,
@@ -253,43 +255,77 @@ async function downloadRange(
   end: number,
   signal?: AbortSignal,
 ): Promise<number> {
-  const ac = new AbortController();
-  signal?.addEventListener("abort", () => ac.abort(), { once: true });
+  const rangeSize = end - start + 1;
+  let totalBytesReceived = 0; // bytes written so far across all attempts
 
-  let stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
-  const resetStall = () => {
-    clearTimeout(stallTimer);
-    stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
-  };
+  for (let attempt = 0; attempt <= DOWNLOAD_RANGE_MAX_RETRIES; attempt++) {
+    if (signal?.aborted) throw new HighlightError("Download cancelled");
 
-  let bytesReceived = 0;
-  const readStream = objectFile.createReadStream({ start, end });
-  readStream.on("data", (chunk: Buffer) => {
-    bytesReceived += chunk.length;
-    resetStall();
-  });
+    // Resume from wherever the previous attempt left off.
+    const resumeStart = start + totalBytesReceived;
 
-  try {
-    // Node.js fs.createWriteStream supports a `start` offset so we write
-    // directly into the pre-allocated file at the correct position.
-    await pipeline(
-      readStream,
-      createWriteStream(destPath, { start, flags: "r+" }),
-      { signal: ac.signal },
-    );
-    return bytesReceived;
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new HighlightError(
-        `Video range download stalled at byte ${start.toLocaleString()} ` +
-        `(received ${bytesReceived.toLocaleString()} of ${(end - start + 1).toLocaleString()} bytes). ` +
-        `The stored video may be corrupted or truncated.`
+    // Backoff before retry (not before the first attempt).
+    if (attempt > 0) {
+      const backoffMs = Math.min(5_000 * attempt, 20_000);
+      logger.warn(
+        { attempt, resumeStart, totalBytesReceived, rangeSize, backoffMs },
+        "Range download stalled — retrying after backoff",
       );
+      await new Promise((r) => setTimeout(r, backoffMs));
+      if (signal?.aborted) throw new HighlightError("Download cancelled");
     }
-    throw err;
-  } finally {
-    clearTimeout(stallTimer);
+
+    const ac = new AbortController();
+    signal?.addEventListener("abort", () => ac.abort(), { once: true });
+
+    let stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
+    const resetStall = () => {
+      clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => ac.abort(), DOWNLOAD_STALL_MS);
+    };
+
+    let bytesThisAttempt = 0;
+    const readStream = objectFile.createReadStream({ start: resumeStart, end });
+    readStream.on("data", (chunk: Buffer) => {
+      bytesThisAttempt += chunk.length;
+      resetStall();
+    });
+
+    try {
+      // Write directly into the pre-allocated file at the correct offset.
+      await pipeline(
+        readStream,
+        createWriteStream(destPath, { start: resumeStart, flags: "r+" }),
+        { signal: ac.signal },
+      );
+      totalBytesReceived += bytesThisAttempt;
+      return totalBytesReceived;
+    } catch (err: unknown) {
+      totalBytesReceived += bytesThisAttempt;
+      clearTimeout(stallTimer);
+
+      const isStall = err instanceof Error && err.name === "AbortError" && !signal?.aborted;
+      if (!isStall) {
+        // Not a stall (cancelled, or a real stream error) — propagate immediately.
+        throw err;
+      }
+
+      if (attempt === DOWNLOAD_RANGE_MAX_RETRIES) {
+        throw new HighlightError(
+          `Video range download stalled at byte ${start.toLocaleString()} ` +
+          `(received ${totalBytesReceived.toLocaleString()} of ${rangeSize.toLocaleString()} bytes after ${attempt + 1} attempts). ` +
+          `The stored video may be corrupted or truncated.`
+        );
+      }
+      // Loop around for retry.
+      continue;
+    } finally {
+      clearTimeout(stallTimer);
+    }
   }
+
+  // Should be unreachable, but TypeScript needs it.
+  throw new HighlightError("downloadRange: exhausted retries unexpectedly");
 }
 
 /**
