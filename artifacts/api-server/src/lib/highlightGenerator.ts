@@ -99,7 +99,7 @@ const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 // -force_key_frames encoding the drift is ≤ 2 s per skipped chunk so
 // lead-in is guaranteed ≥ 18 - 3×2 = 12 s even for a long game.
 const PRE_SECONDS = 18;
-const POST_SECONDS = 15;
+const POST_SECONDS = 0;
 
 // Hard cap on a single (merged) segment's length. buildSegments merges
 // overlapping moments, and a dense scoring stretch can otherwise chain into
@@ -120,7 +120,7 @@ const MAX_SEGMENT_SEC = 300;
 // v5 = PRE_SECONDS 12→18 to absorb cumulative chunkStart drift from skipped
 //      proxy chunks (game 161 had 3 skipped chunks × ~4 s/chunk = 12 s drift,
 //      which consumed the entire 12 s lead-in window).
-export const GENERATOR_VERSION = 5;
+export const GENERATOR_VERSION = 6;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
