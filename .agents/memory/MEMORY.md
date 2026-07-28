@@ -51,3 +51,4 @@
 - [Chunked encodes must complete on actual output](chunked-encode-actual-output.md) — never gate a chunked-encode loop on an estimated chunk count; cueless WebM bitrate fallback can be 4x off and hang the build forever.
 - [Boot-time data fixes must be conditional](boot-data-fix-conditional.md) — seed-style prod data fixes must only apply when the column is still NULL, or every deploy clobbers the user's manual UI adjustments.
 - [Adaptive live-stream quality](adaptive-live-quality.md) — "maintain-resolution" caused the freeze; adapt with a maintain-framerate ladder; iOS Safari lacks qualityLimitationReason so rely on viewer loss/RTT.
+- [Chunk-boundary lead-in clipping](chunk-boundary-leadin-clipping.md) — when seg.start (t−PRE_SECONDS) falls in chunk N-1, clamp to 0 drops ~12s of footage; use prev+this concat-demuxer path instead.

@@ -103,7 +103,9 @@ const MAX_SEGMENT_SEC = 300;
 // whenever clip-timing logic changes (PRE/POST_SECONDS, offset handling, …)
 // so reels cached under the old logic are invalidated on read and rebuilt.
 // v2 = POST_SECONDS 2→15 fix (clips used to end before the play happened).
-export const GENERATOR_VERSION = 2;
+// v3 = fix chunk-boundary lead-in clipping: seg.start in prev chunk now uses
+//      concat-demuxer path instead of clamping seek to 0 (missing first ~10s).
+export const GENERATOR_VERSION = 3;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
@@ -1572,6 +1574,8 @@ async function renderGameSegments(
   const neededChunks = new Set<number>();
   if (chunked) {
     for (const seg of segments) {
+      // Include the chunk that holds the lead-in (seg.start may be in the
+      // previous chunk when the PRE_SECONDS window crosses a chunk boundary).
       const ciStart = Math.max(0, Math.floor(seg.start / PROXY_CHUNK_DURATION_SEC));
       // +1 margin so a segment whose end lands near a boundary also covers
       // the next chunk (boundary-spanning case handled by concat-demuxer).
@@ -1803,17 +1807,54 @@ async function renderGameSegments(
 
         while (segIdx < segments.length && segments[segIdx].start < chunkEnd) {
           const seg = segments[segIdx];
-          const localSeek = Math.max(0, seg.start - chunkStart);
-          if (seg.end <= chunkEnd + 0.001 || isLastChunk) {
-            // Fully inside this chunk (or clamped by end of footage — ffmpeg
-            // simply stops at EOF and the clip comes out shorter).
-            segPaths.push(
-              await renderOne(seg, segIdx, { path: await ensureChunk(ci), seek: localSeek }),
+          // seg.start may fall in the previous chunk when the PRE_SECONDS
+          // lead-in window crosses a chunk boundary (e.g. the moment is near
+          // the start of this chunk).  In that case localSeek would clamp to 0
+          // and the clip would be missing its lead-in footage.  Detect this and
+          // use the concat-demuxer path with the previous chunk prepended so the
+          // full lead-in is present.
+          const leadInInPrevChunk = seg.start < chunkStart && ci > 0;
+          const localSeek = leadInInPrevChunk
+            ? seg.start - (chunkStart - PROXY_CHUNK_DURATION_SEC) // seek into prev chunk
+            : Math.max(0, seg.start - chunkStart);
+
+          const spansNextChunk = seg.end > chunkEnd + 0.001 && !isLastChunk;
+
+          if (leadInInPrevChunk && !spansNextChunk) {
+            // Lead-in is in chunk ci-1, body/end is fully in chunk ci.
+            const prevLocal = await ensureChunk(ci - 1);
+            const thisLocal = await ensureChunk(ci);
+            const listPath = path.join(tmpDir, `xchunk_${prefix}_${segIdx}.txt`);
+            await fs.writeFile(
+              listPath, `file '${prevLocal}'\nfile '${thisLocal}'\n`, "utf8",
             );
-          } else {
-            // Spans the boundary into chunk ci+1 — feed both chunks through
-            // the concat demuxer (chunks start at keyframes with reset
-            // timestamps, so the virtual timeline is seamless).
+            try {
+              segPaths.push(
+                await renderOne(seg, segIdx, { path: listPath, seek: localSeek, concatInput: true }),
+              );
+            } finally {
+              await fs.unlink(listPath).catch(() => {});
+            }
+          } else if (leadInInPrevChunk && spansNextChunk) {
+            // Rare: lead-in in ci-1, end in ci+1 — three-chunk span.
+            // Use prev+this for seek; ffmpeg will stop reading at seg.end which
+            // may be slightly past the concat boundary but the next chunk is not
+            // needed for the seek anchor, so treat it as clamped at chunkEnd.
+            const prevLocal = await ensureChunk(ci - 1);
+            const thisLocal = await ensureChunk(ci);
+            const listPath = path.join(tmpDir, `xchunk_${prefix}_${segIdx}.txt`);
+            await fs.writeFile(
+              listPath, `file '${prevLocal}'\nfile '${thisLocal}'\n`, "utf8",
+            );
+            try {
+              segPaths.push(
+                await renderOne(seg, segIdx, { path: listPath, seek: localSeek, concatInput: true }),
+              );
+            } finally {
+              await fs.unlink(listPath).catch(() => {});
+            }
+          } else if (spansNextChunk) {
+            // No lead-in issue, but end spans into chunk ci+1.
             const thisLocal = await ensureChunk(ci);
             const nextLocal = await ensureChunk(ci + 1);
             const listPath = path.join(tmpDir, `xchunk_${prefix}_${segIdx}.txt`);
@@ -1827,11 +1868,22 @@ async function renderGameSegments(
             } finally {
               await fs.unlink(listPath).catch(() => {});
             }
+          } else {
+            // Fully inside this chunk (or clamped by end of footage — ffmpeg
+            // simply stops at EOF and the clip comes out shorter).
+            segPaths.push(
+              await renderOne(seg, segIdx, { path: await ensureChunk(ci), seek: localSeek }),
+            );
           }
           segIdx++;
         }
 
-        await dropChunk(ci); // walk has moved past this chunk — free tmpfs now
+        // Drop chunk ci-1 now that the walk has moved past ci — it can no
+        // longer be needed as a lead-in chunk (lead-in for segments in ci+1
+        // might still need ci, so we drop ci-1 rather than ci here).
+        // Chunk ci itself will be dropped on the next iteration when ci+1
+        // becomes the current chunk, or in the finally block at the end.
+        if (ci > 0) await dropChunk(ci - 1);
         chunkStart = chunkEnd;
       }
 
