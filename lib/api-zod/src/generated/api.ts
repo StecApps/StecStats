@@ -796,6 +796,83 @@ export const GenerateGameLowlightResponse = zod.object({
 
 
 /**
+ * Combines 2–10 games recorded on the same team into a single game record.
+ * Stats are summed per player across all games; game events are moved to
+ * the primary game with video timestamps adjusted for each game's recording
+ * length. Secondary games are hidden from listings but not deleted.
+ * If any games have recorded video, the videos are concatenated in
+ * chronological order as a background job.
+ * @summary Merge multiple partial games into one
+ */
+export const mergeGamesBodySecondaryGameIdsMax = 9;
+
+
+
+export const MergeGamesBody = zod.object({
+  "primaryGameId": zod.number().describe('The game that will absorb all others and keep its date\/opponent.'),
+  "secondaryGameIds": zod.array(zod.number()).min(1).max(mergeGamesBodySecondaryGameIdsMax).describe('Games to merge into the primary (hidden after merge, not deleted).')
+})
+
+export const mergeGamesResponseStatsItemGoalsDefault = 0;
+export const mergeGamesResponseStatsItemShotsDefault = 0;
+export const mergeGamesResponseStatsItemShotsOffTargetDefault = 0;
+export const mergeGamesResponseStatsItemSavesDefault = 0;
+export const mergeGamesResponseStatsItemYellowCardsDefault = 0;
+export const mergeGamesResponseStatsItemRedCardsDefault = 0;
+export const mergeGamesResponseEventsItemVideoTimestampMsMin = 0;
+
+
+
+export const MergeGamesResponse = zod.object({
+  "id": zod.number(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "opponent": zod.string(),
+  "date": zod.coerce.date(),
+  "result": zod.enum(['W', 'L']),
+  "teamScore": zod.number(),
+  "opponentScore": zod.number(),
+  "videoObjectPath": zod.string().nullish(),
+  "videoOffsetMs": zod.number().nullish(),
+  "videoDurationMs": zod.number().nullish().describe('True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film.'),
+  "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
+  "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
+  "highlightObjectPath": zod.string().nullish(),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightError": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "stats": zod.array(zod.object({
+  "playerId": zod.number(),
+  "playerName": zod.string(),
+  "ftMade": zod.number(),
+  "ftAttempted": zod.number(),
+  "twoMade": zod.number(),
+  "twoAttempted": zod.number(),
+  "threeMade": zod.number(),
+  "threeAttempted": zod.number(),
+  "points": zod.number(),
+  "assists": zod.number(),
+  "rebounds": zod.number(),
+  "steals": zod.number(),
+  "turnovers": zod.number(),
+  "blocks": zod.number(),
+  "goals": zod.number().default(mergeGamesResponseStatsItemGoalsDefault),
+  "shots": zod.number().default(mergeGamesResponseStatsItemShotsDefault),
+  "shotsOffTarget": zod.number().default(mergeGamesResponseStatsItemShotsOffTargetDefault),
+  "saves": zod.number().default(mergeGamesResponseStatsItemSavesDefault),
+  "yellowCards": zod.number().default(mergeGamesResponseStatsItemYellowCardsDefault),
+  "redCards": zod.number().default(mergeGamesResponseStatsItemRedCardsDefault)
+})),
+  "events": zod.array(zod.object({
+  "playerId": zod.number(),
+  "statField": zod.string(),
+  "delta": zod.number(),
+  "videoTimestampMs": zod.number().min(mergeGamesResponseEventsItemVideoTimestampMsMin)
+}))
+})
+
+
+/**
  * @summary Bulk import players, teams, games and stat lines
  */
 export const ImportDataBody = zod.object({

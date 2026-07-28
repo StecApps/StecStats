@@ -30,6 +30,7 @@ export * from './importInput';
 export * from './importResult';
 export * from './lowlightStatus';
 export * from './lowlightStatusStatus';
+export * from './mergeGamesInput';
 export * from './player';
 export * from './playerGameStatInput';
 export * from './playerGameStatLine';

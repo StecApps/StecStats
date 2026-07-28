@@ -466,6 +466,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /games/merge:
+    post:
+      operationId: mergeGames
+      tags: [games]
+      summary: Merge multiple partial games into one
+      description: |
+        Combines 2–10 games recorded on the same team into a single game record.
+        Stats are summed per player across all games; game events are moved to
+        the primary game with video timestamps adjusted for each game's recording
+        length. Secondary games are hidden from listings but not deleted.
+        If any games have recorded video, the videos are concatenated in
+        chronological order as a background job.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeGamesInput"
+      responses:
+        "200":
+          description: The merged (primary) game
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Game"
+        "400":
+          description: Invalid request (games on different teams, already merged, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: One or more games not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /import:
     post:
       operationId: importData
@@ -903,6 +941,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GameEvent"
+
+    MergeGamesInput:
+      type: object
+      required: [primaryGameId, secondaryGameIds]
+      properties:
+        primaryGameId:
+          type: integer
+          description: The game that will absorb all others and keep its date/opponent.
+        secondaryGameIds:
+          type: array
+          items: { type: integer }
+          minItems: 1
+          maxItems: 9
+          description: Games to merge into the primary (hidden after merge, not deleted).
 
     GameInput:
       type: object

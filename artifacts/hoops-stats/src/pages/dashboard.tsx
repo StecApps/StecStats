@@ -13,6 +13,7 @@ import {
   useUpdateTeam,
   useDeleteTeam,
   useDeleteGame,
+  useMergeGames,
   useGetTeamHighlight,
   useGenerateTeamHighlight,
   useGetBillingStatus,
@@ -28,7 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video, Check } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video, Check, GitMerge, Square, SquareCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -968,8 +969,41 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
 
   const deleteGame = useDeleteGame();
   const deleteTeam = useDeleteTeam();
+  const mergeGamesMutation = useMergeGames();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Multi-select state for game merge
+  const [selectedGameIds, setSelectedGameIds] = useState<Set<number>>(new Set());
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+
+  const toggleGameSelection = (gameId: number) => {
+    setSelectedGameIds(prev => {
+      const next = new Set(prev);
+      if (next.has(gameId)) next.delete(gameId);
+      else next.add(gameId);
+      return next;
+    });
+  };
+
+  const handleMerge = async () => {
+    if (selectedGameIds.size < 2) return;
+    // Primary = earliest selected game (by its position in the sorted list)
+    const allGames = games ?? [];
+    const selectedOrdered = allGames.filter(g => selectedGameIds.has(g.id));
+    const [primary, ...secondaries] = selectedOrdered;
+    try {
+      await mergeGamesMutation.mutateAsync({ data: { primaryGameId: primary.id, secondaryGameIds: secondaries.map(g => g.id) } });
+      queryClient.invalidateQueries({ queryKey: getListTeamGamesQueryKey(team.teamId) });
+      queryClient.invalidateQueries({ queryKey: getGetPlayerSummaryQueryKey(playerId) });
+      queryClient.invalidateQueries({ queryKey: getListPlayerTeamGroupsQueryKey(playerId) });
+      setSelectedGameIds(new Set());
+      setShowMergeDialog(false);
+      toast({ title: "Games merged", description: `${selectedGameIds.size} games combined into one.` });
+    } catch {
+      toast({ title: "Merge failed", description: "Could not merge games. Make sure all selected games are on the same team.", variant: "destructive" });
+    }
+  };
 
   const handleDeleteGame = async (gameId: number) => {
     if (!confirm("Delete this game?")) return;
@@ -1158,10 +1192,28 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
         ) : (
           <>
             <SeasonSummaryBand playerGames={playerGames} playerId={playerId} isPro={isPro} />
+
+            {/* Merge selection banner */}
+            {selectedGameIds.size >= 2 && (
+              <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border-b border-primary/20">
+                <GitMerge className="w-4 h-4 text-primary shrink-0" />
+                <span className="text-sm font-medium text-primary flex-1">
+                  {selectedGameIds.size} games selected — combine them into one
+                </span>
+                <Button size="sm" onClick={() => setShowMergeDialog(true)}>
+                  Merge games
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedGameIds(new Set())}>
+                  Cancel
+                </Button>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="w-8 pl-4"></TableHead>
                   <TableHead className="w-[120px]">Date</TableHead>
                   <TableHead>Opponent</TableHead>
                   <TableHead>Result</TableHead>
@@ -1187,9 +1239,23 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
 
                   const fgMade = stat.twoMade + stat.threeMade;
                   const fgAttempted = stat.twoAttempted + stat.threeAttempted;
+                  const isSelected = selectedGameIds.has(game.id);
 
                   return (
-                    <TableRow key={game.id} className="group">
+                    <TableRow key={game.id} className={`group ${isSelected ? "bg-primary/5" : ""}`}>
+                      <TableCell className="pl-4 pr-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleGameSelection(game.id)}
+                          className="text-muted-foreground/40 hover:text-primary transition-colors"
+                          title={isSelected ? "Deselect" : "Select to merge"}
+                        >
+                          {isSelected
+                            ? <SquareCheck className="h-4 w-4 text-primary" />
+                            : <Square className="h-4 w-4" />
+                          }
+                        </button>
+                      </TableCell>
                       <TableCell className="font-mono text-xs">{new Date(game.date).toLocaleDateString()}</TableCell>
                       <TableCell className="font-medium">{game.opponent}</TableCell>
                       <TableCell>
@@ -1354,6 +1420,54 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
           </div>
         )}
       </AccordionContent>
+
+      {/* Merge games confirmation dialog */}
+      <Dialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitMerge className="w-5 h-5 text-primary" /> Merge {selectedGameIds.size} games into one?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <p className="text-sm text-muted-foreground">
+              Stats will be added together across all selected games. The earliest game keeps its date and opponent name. This can't be undone.
+            </p>
+            {(() => {
+              const allGames = playerGames.filter(g => selectedGameIds.has(g.id));
+              return (
+                <div className="rounded-lg border border-border/60 divide-y divide-border/60 text-sm">
+                  {allGames.map((g, i) => (
+                    <div key={g.id} className="flex items-center gap-3 px-3 py-2">
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${i === 0 ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"}`}>
+                        {i === 0 ? "Primary" : `Part ${i + 1}`}
+                      </span>
+                      <span className="font-medium flex-1">vs {g.opponent}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{new Date(g.date).toLocaleDateString()}</span>
+                      <span className={`font-bold text-xs ${g.result === "W" ? "text-green-500" : "text-red-500"}`}>
+                        {g.teamScore}–{g.opponentScore}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            {games?.filter(g => selectedGameIds.has(g.id) && g.videoObjectPath).length! >= 2 && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Video className="w-3.5 h-3.5 shrink-0" />
+                Videos will be joined in the background — this may take a few minutes.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMergeDialog(false)}>Cancel</Button>
+            <Button onClick={handleMerge} disabled={mergeGamesMutation.isPending}>
+              {mergeGamesMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <GitMerge className="w-4 h-4 mr-2" />}
+              Merge games
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AccordionItem>
   );
 }

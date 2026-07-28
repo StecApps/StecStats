@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -163,8 +163,13 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
             eq(gamesTable.teamId, teamId),
             eq(gamesTable.ownerId, req.appUser!.id),
             gte(gamesTable.date, seasonStart),
+            isNull(gamesTable.mergedIntoGameId),
           )
-        : and(eq(gamesTable.teamId, teamId), eq(gamesTable.ownerId, req.appUser!.id)),
+        : and(
+            eq(gamesTable.teamId, teamId),
+            eq(gamesTable.ownerId, req.appUser!.id),
+            isNull(gamesTable.mergedIntoGameId),
+          ),
     )
     .orderBy(gamesTable.date);
 

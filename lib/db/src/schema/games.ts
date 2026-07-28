@@ -57,6 +57,15 @@ export const gamesTable = pgTable("games", {
   // stored file (WebM tail cluster scan / MP4 header). Used to detect stat
   // events that happened after the recording stopped ("off film").
   videoDurationMs: integer("video_duration_ms"),
+  // When a coach loses internet mid-game and re-creates the game, they end up
+  // with multiple partial game records.  The merge endpoint combines them into
+  // one: secondary games are kept for audit purposes but hidden from listings
+  // by setting mergedIntoGameId → the primary game's id.
+  // Self-referential FK: secondary games point to the primary after a merge.
+  // No .references() here to avoid Drizzle's circular-type inference; the
+  // integer column is enough — the semantic constraint is enforced in the
+  // merge route logic.
+  mergedIntoGameId: integer("merged_into_game_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

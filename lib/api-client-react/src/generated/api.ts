@@ -32,6 +32,7 @@ import type {
   ImportInput,
   ImportResult,
   LowlightStatus,
+  MergeGamesInput,
   Player,
   PlayerInput,
   PlayerSummary,
@@ -1847,6 +1848,82 @@ export const useGenerateGameLowlight = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getGenerateGameLowlightMutationOptions(options));
+    }
+
+export const getMergeGamesUrl = () => {
+
+
+
+
+  return `/api/games/merge`
+}
+
+/**
+ * Combines 2–10 games recorded on the same team into a single game record.
+ * Stats are summed per player across all games; game events are moved to
+ * the primary game with video timestamps adjusted for each game's recording
+ * length. Secondary games are hidden from listings but not deleted.
+ * If any games have recorded video, the videos are concatenated in
+ * chronological order as a background job.
+ * @summary Merge multiple partial games into one
+ */
+export const mergeGames = async (mergeGamesInput: MergeGamesInput, options?: RequestInit): Promise<Game> => {
+
+  return customFetch<Game>(getMergeGamesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mergeGamesInput)
+  }
+);}
+
+
+
+
+export const getMergeGamesMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeGames>>, TError,{data: BodyType<MergeGamesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof mergeGames>>, TError,{data: BodyType<MergeGamesInput>}, TContext> => {
+
+const mutationKey = ['mergeGames'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof mergeGames>>, {data: BodyType<MergeGamesInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  mergeGames(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MergeGamesMutationResult = NonNullable<Awaited<ReturnType<typeof mergeGames>>>
+    export type MergeGamesMutationBody = BodyType<MergeGamesInput>
+    export type MergeGamesMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Merge multiple partial games into one
+ */
+export const useMergeGames = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeGames>>, TError,{data: BodyType<MergeGamesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof mergeGames>>,
+        TError,
+        {data: BodyType<MergeGamesInput>},
+        TContext
+      > => {
+      return useMutation(getMergeGamesMutationOptions(options));
     }
 
 export const getImportDataUrl = () => {

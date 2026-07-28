@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { execFile, spawn } from "child_process";
 import { promises as fs, createWriteStream, createReadStream } from "fs";
 import { Readable } from "stream";
@@ -23,6 +23,8 @@ import {
   UpdateGameBody,
   UpdateGameResponse,
   DeleteGameParams,
+  MergeGamesBody,
+  MergeGamesResponse,
 } from "@workspace/api-zod";
 import { type File as GCSFile } from "@google-cloud/storage";
 import { computePoints } from "../lib/stats";
@@ -678,6 +680,320 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
     .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)));
   res.status(204).send();
 });
+
+/**
+ * Returns the best available duration estimate for a game's video in ms.
+ * Falls back to max event timestamp + 30 s when videoDurationMs is NULL.
+ */
+function estimateDurationMs(game: { videoDurationMs: number | null }, events: { videoTimestampMs: number }[]): number {
+  if (game.videoDurationMs != null && game.videoDurationMs > 0) return game.videoDurationMs;
+  const maxTs = events.reduce((m, e) => Math.max(m, e.videoTimestampMs), 0);
+  return maxTs > 0 ? maxTs + 30_000 : 0;
+}
+
+/**
+ * POST /games/merge
+ *
+ * Combines 2–10 partial games (recorded after internet dropouts) into a single
+ * game record on the same team.  Stats are summed per player; game events are
+ * moved to the primary game with video timestamps shifted by the cumulative
+ * duration of preceding games' recordings.  Secondary games are marked
+ * mergedIntoGameId and hidden from team listings.
+ *
+ * If 2+ games have video, a background ffmpeg concat job produces a merged
+ * video file and updates the primary game's videoObjectPath once done.
+ */
+router.post("/games/merge", requireAuth, async (req, res) => {
+  const body = MergeGamesBody.parse(req.body);
+  const ownerId = req.appUser!.id;
+  const { primaryGameId, secondaryGameIds } = body;
+  const log = req.log;
+
+  if (secondaryGameIds.includes(primaryGameId)) {
+    res.status(400).json({ error: "primaryGameId cannot appear in secondaryGameIds" });
+    return;
+  }
+
+  const allGameIds = [primaryGameId, ...secondaryGameIds];
+
+  const games = await db.query.gamesTable.findMany({
+    where: and(inArray(gamesTable.id, allGameIds), eq(gamesTable.ownerId, ownerId)),
+  });
+
+  if (games.length !== allGameIds.length) {
+    res.status(404).json({ error: "One or more games not found" });
+    return;
+  }
+  if (games.some((g) => g.mergedIntoGameId != null)) {
+    res.status(400).json({ error: "One or more games have already been merged into another game" });
+    return;
+  }
+  const teamIds = new Set(games.map((g) => g.teamId));
+  if (teamIds.size > 1) {
+    res.status(400).json({ error: "All games must be on the same team to merge" });
+    return;
+  }
+
+  // Sort all games chronologically — this defines the video concat order and
+  // determines each game's timestamp offset within the merged recording.
+  const ordered = [...games].sort((a, b) => {
+    const d = a.date.localeCompare(b.date);
+    return d !== 0 ? d : a.createdAt.getTime() - b.createdAt.getTime();
+  });
+
+  // Fetch stats and events for all games in one query each.
+  const [allStats, allEvents] = await Promise.all([
+    db.select().from(playerGameStatsTable).where(inArray(playerGameStatsTable.gameId, allGameIds)),
+    db.query.gameEventsTable.findMany({
+      where: inArray(gameEventsTable.gameId, allGameIds),
+      orderBy: [asc(gameEventsTable.videoTimestampMs)],
+    }),
+  ]);
+
+  const eventsByGame = new Map<number, typeof allEvents>();
+  for (const e of allEvents) {
+    const arr = eventsByGame.get(e.gameId) ?? [];
+    arr.push(e);
+    eventsByGame.set(e.gameId, arr);
+  }
+
+  // Build cumulative video-timeline offsets: each game's events are shifted
+  // forward by the sum of all preceding games' durations.
+  const offsetByGameId = new Map<number, number>();
+  let cumulative = 0;
+  for (const game of ordered) {
+    offsetByGameId.set(game.id, cumulative);
+    cumulative += estimateDurationMs(game, eventsByGame.get(game.id) ?? []);
+  }
+
+  // Sum stats per player across all games.
+  type StatRow = typeof allStats[0];
+  const byPlayer = new Map<number, StatRow>();
+  for (const s of allStats) {
+    const prev = byPlayer.get(s.playerId);
+    if (!prev) {
+      byPlayer.set(s.playerId, { ...s });
+    } else {
+      byPlayer.set(s.playerId, {
+        ...prev,
+        ftMade: prev.ftMade + s.ftMade,
+        ftAttempted: prev.ftAttempted + s.ftAttempted,
+        twoMade: prev.twoMade + s.twoMade,
+        twoAttempted: prev.twoAttempted + s.twoAttempted,
+        threeMade: prev.threeMade + s.threeMade,
+        threeAttempted: prev.threeAttempted + s.threeAttempted,
+        assists: prev.assists + s.assists,
+        rebounds: prev.rebounds + s.rebounds,
+        steals: prev.steals + s.steals,
+        turnovers: prev.turnovers + s.turnovers,
+        blocks: prev.blocks + s.blocks,
+        goals: prev.goals + s.goals,
+        shots: prev.shots + s.shots,
+        shotsOffTarget: prev.shotsOffTarget + s.shotsOffTarget,
+        saves: prev.saves + s.saves,
+        yellowCards: prev.yellowCards + s.yellowCards,
+        redCards: prev.redCards + s.redCards,
+      });
+    }
+  }
+
+  // Merged events: reassigned to primary game with adjusted timestamps.
+  const mergedEvents = allEvents.map((e) => ({
+    gameId: primaryGameId,
+    playerId: e.playerId,
+    statField: e.statField,
+    delta: e.delta,
+    videoTimestampMs: e.videoTimestampMs + (offsetByGameId.get(e.gameId) ?? 0),
+  }));
+
+  const mergedTeamScore = games.reduce((s, g) => s + g.teamScore, 0);
+  const mergedOpponentScore = games.reduce((s, g) => s + g.opponentScore, 0);
+  const mergedResult: "W" | "L" = mergedTeamScore >= mergedOpponentScore ? "W" : "L";
+  const mergedVideoDurationMs = cumulative > 0 ? cumulative : null;
+
+  await db.transaction(async (tx) => {
+    // Update primary game — clear stale reels, update scores + duration.
+    await tx
+      .update(gamesTable)
+      .set({
+        teamScore: mergedTeamScore,
+        opponentScore: mergedOpponentScore,
+        result: mergedResult,
+        videoDurationMs: mergedVideoDurationMs,
+        highlightObjectPath: null,
+        highlightStatus: "idle",
+        highlightError: null,
+        highlightStartedAt: null,
+        highlightGeneratorVersion: null,
+        lowlightObjectPath: null,
+        lowlightStatus: "idle",
+        lowlightError: null,
+        lowlightStartedAt: null,
+        lowlightGeneratorVersion: null,
+        videoProxyObjectPath: null,
+        videoProxyVersion: null,
+      })
+      .where(and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)));
+
+    // Swap in merged stats.
+    await tx.delete(playerGameStatsTable).where(eq(playerGameStatsTable.gameId, primaryGameId));
+    if (byPlayer.size > 0) {
+      await tx.insert(playerGameStatsTable).values(
+        [...byPlayer.values()].map((s) => ({
+          gameId: primaryGameId,
+          playerId: s.playerId,
+          ftMade: s.ftMade,
+          ftAttempted: s.ftAttempted,
+          twoMade: s.twoMade,
+          twoAttempted: s.twoAttempted,
+          threeMade: s.threeMade,
+          threeAttempted: s.threeAttempted,
+          assists: s.assists,
+          rebounds: s.rebounds,
+          steals: s.steals,
+          turnovers: s.turnovers,
+          blocks: s.blocks,
+          goals: s.goals,
+          shots: s.shots,
+          shotsOffTarget: s.shotsOffTarget,
+          saves: s.saves,
+          yellowCards: s.yellowCards,
+          redCards: s.redCards,
+        })),
+      );
+    }
+
+    // Swap in merged + offset events.
+    await tx.delete(gameEventsTable).where(eq(gameEventsTable.gameId, primaryGameId));
+    if (mergedEvents.length > 0) {
+      await tx.insert(gameEventsTable).values(mergedEvents);
+    }
+
+    // Delete secondary games' now-redundant stats and events (data is in primary).
+    await tx.delete(playerGameStatsTable).where(inArray(playerGameStatsTable.gameId, secondaryGameIds));
+    await tx.delete(gameEventsTable).where(inArray(gameEventsTable.gameId, secondaryGameIds));
+
+    // Mark secondary games as merged (hidden from listings, not deleted).
+    await tx
+      .update(gamesTable)
+      .set({ mergedIntoGameId: primaryGameId })
+      .where(and(inArray(gamesTable.id, secondaryGameIds), eq(gamesTable.ownerId, ownerId)));
+  });
+
+  // Background video concat when 2+ games have recordings.
+  const gamesWithVideo = ordered.filter((g) => g.videoObjectPath);
+  if (gamesWithVideo.length >= 2) {
+    startBackgroundVideoConcat(primaryGameId, ownerId, gamesWithVideo, log).catch((err) => {
+      log.error({ err: String(err?.message ?? err) }, "merge-video: background concat failed");
+    });
+  } else if (gamesWithVideo.length === 1 && gamesWithVideo[0].id !== primaryGameId) {
+    // Only a secondary had video — adopt it onto the primary.
+    const donor = gamesWithVideo[0];
+    await db
+      .update(gamesTable)
+      .set({ videoObjectPath: donor.videoObjectPath, videoDurationMs: donor.videoDurationMs })
+      .where(eq(gamesTable.id, primaryGameId));
+    if (donor.videoObjectPath) scheduleVideoDurationProbe(primaryGameId, donor.videoObjectPath);
+  }
+
+  log.info({ primaryGameId, secondaryGameIds }, "merge-games: done");
+  const serialized = await serializeGame(primaryGameId, ownerId);
+  res.json(MergeGamesResponse.parse(serialized));
+});
+
+/**
+ * Concatenate the video files from multiple games into a single file, upload
+ * it, and update the primary game's videoObjectPath.  Runs in the background
+ * after the merge API response has been sent.
+ *
+ * Uses ffmpeg -f concat -c copy so no re-encode is needed regardless of
+ * the source container (WebM or MP4).  The output is the same format as the
+ * first input file.
+ */
+async function startBackgroundVideoConcat(
+  primaryGameId: number,
+  ownerId: number,
+  orderedGames: Array<{ id: number; videoObjectPath: string | null; videoDurationMs: number | null }>,
+  log: any,
+): Promise<void> {
+  const tmpDir = path.join(
+    os.tmpdir(),
+    `merge-video-${primaryGameId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  await fs.mkdir(tmpDir, { recursive: true });
+  try {
+    log.info({ primaryGameId, count: orderedGames.length }, "merge-video: downloading source files");
+
+    // Download each game's video to a local file.
+    const localPaths: string[] = [];
+    for (let i = 0; i < orderedGames.length; i++) {
+      const game = orderedGames[i];
+      if (!game.videoObjectPath) continue;
+      const objectFile = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
+      const [meta] = await objectFile.getMetadata();
+      const ext = String(meta.contentType ?? "").includes("webm") ? "webm" : "mp4";
+      const localPath = path.join(tmpDir, `seg${i}.${ext}`);
+      log.info({ gameId: game.id, localPath }, "merge-video: downloading segment");
+      await new Promise<void>((resolve, reject) => {
+        const ws = createWriteStream(localPath);
+        const rs = objectFile.createReadStream();
+        rs.on("error", reject);
+        ws.on("error", reject);
+        ws.on("finish", resolve);
+        rs.pipe(ws);
+      });
+      localPaths.push(localPath);
+    }
+
+    if (localPaths.length < 2) {
+      log.info({ primaryGameId }, "merge-video: fewer than 2 segments downloaded, skipping concat");
+      return;
+    }
+
+    // Determine output extension from first segment.
+    const firstExt = path.extname(localPaths[0]);
+    const outPath = path.join(tmpDir, `merged${firstExt}`);
+
+    // Build ffmpeg concat list file.
+    const concatListPath = path.join(tmpDir, "concat.txt");
+    const concatContent = localPaths.map((p) => `file '${p}'`).join("\n");
+    await fs.writeFile(concatListPath, concatContent, "utf8");
+
+    log.info({ primaryGameId, outPath }, "merge-video: running ffmpeg concat");
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        "ffmpeg",
+        ["-y", "-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy", outPath],
+        { maxBuffer: 5 * 1024 * 1024, timeout: 10 * 60 * 1000 },
+        (err, _stdout, stderr) =>
+          err ? reject(new Error(`ffmpeg concat: ${stderr?.slice(-600)}`)) : resolve(),
+      );
+    });
+
+    log.info({ primaryGameId }, "merge-video: uploading merged file");
+    const contentType = firstExt === ".webm" ? "video/webm" : "video/mp4";
+    const newObjectPath = await objectStorageService.uploadLocalFileAsObjectEntity(
+      outPath,
+      ownerId,
+      contentType,
+    );
+
+    await db
+      .update(gamesTable)
+      .set({
+        videoObjectPath: newObjectPath,
+        videoProxyObjectPath: null,
+        videoProxyVersion: null,
+        videoDurationMs: null, // will be probed
+      })
+      .where(eq(gamesTable.id, primaryGameId));
+
+    scheduleVideoDurationProbe(primaryGameId, newObjectPath);
+    log.info({ primaryGameId, newObjectPath }, "merge-video: done");
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 /**
  * GET /games/:gameId/video-signed-url

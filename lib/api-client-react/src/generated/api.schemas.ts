@@ -231,6 +231,17 @@ export interface Game {
   events: GameEvent[];
 }
 
+export interface MergeGamesInput {
+  /** The game that will absorb all others and keep its date/opponent. */
+  primaryGameId: number;
+  /**
+     * Games to merge into the primary (hidden after merge, not deleted).
+     * @minItems 1
+     * @maxItems 9
+     */
+  secondaryGameIds: number[];
+}
+
 export type GameInputResult = typeof GameInputResult[keyof typeof GameInputResult];
 
 
