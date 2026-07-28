@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import { promises as fs, createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
+import { randomUUID } from "crypto";
 import os from "os";
 import path from "path";
 import { and, eq, inArray } from "drizzle-orm";
@@ -105,7 +106,7 @@ const MAX_SEGMENT_SEC = 300;
 // v2 = POST_SECONDS 2→15 fix (clips used to end before the play happened).
 // v3 = fix chunk-boundary lead-in clipping: seg.start in prev chunk now uses
 //      concat-demuxer path instead of clamping seek to 0 (missing first ~10s).
-export const GENERATOR_VERSION = 3;
+export const GENERATOR_VERSION = 4;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
@@ -1820,6 +1821,22 @@ async function renderGameSegments(
 
           const spansNextChunk = seg.end > chunkEnd + 0.001 && !isLastChunk;
 
+          // Diagnostic: log exact timing so we can verify lead-in footage is
+          // correctly included for every segment (visible in prod logs).
+          logger.info(
+            {
+              prefix, segIdx, ci,
+              chunkStart: chunkStart.toFixed(1),
+              segStart: seg.start.toFixed(3),
+              segEnd: seg.end.toFixed(3),
+              localSeek: localSeek.toFixed(3),
+              leadInInPrevChunk,
+              spansNextChunk,
+              momentsSec: seg.moments.map((m) => m.timeSec.toFixed(3)),
+            },
+            "Chunk walk: rendering segment",
+          );
+
           if (leadInInPrevChunk && !spansNextChunk) {
             // Lead-in is in chunk ci-1, body/end is fully in chunk ci.
             const prevLocal = await ensureChunk(ci - 1);
@@ -1940,24 +1957,18 @@ async function concatSegments(
 }
 
 async function uploadHighlight(outPath: string, ownerId: number): Promise<string> {
-  const buffer = await fs.readFile(outPath);
+  // Use GCS SDK streaming upload (pipeline → createWriteStream) instead of
+  // reading the whole file into a Buffer and POSTing to a signed URL.
+  // The signed-URL path dropped the connection ("other side closed") on large
+  // lowlight files because undici buffered the entire body before sending and
+  // GCS closed the idle socket.  The SDK path streams the file directly.
+  const objectId = randomUUID();
+  const objectPath = `/objects/uploads/${ownerId}/${objectId}`;
   const MAX_ATTEMPTS = 3;
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL(ownerId);
     try {
-      const putRes = await fetch(uploadURL, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "video/mp4",
-          "Content-Length": String(buffer.byteLength),
-        },
-        body: buffer,
-      });
-      if (!putRes.ok) {
-        throw new HighlightError(`Failed to upload highlight (${putRes.status})`);
-      }
-      const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
+      await objectStorageService.uploadLocalFileToObjectPath(outPath, objectPath, "video/mp4");
       await objectStorageService
         .trySetObjectEntityAclPolicy(objectPath, {
           owner: String(ownerId),
