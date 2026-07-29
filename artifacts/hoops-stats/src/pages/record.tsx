@@ -2401,11 +2401,7 @@ export default function RecordGame() {
     });
 
     if (isRecording && !isRecordingPaused) {
-      // Coaches typically press a stat button 5–10 s after the actual play.
-      // Shift the timestamp back by REACTION_TIME_CORRECTION_MS so the clip
-      // ends near the play rather than near the (late) button press.
-      const REACTION_TIME_CORRECTION_MS = 7_000;
-      const videoTimestampMs = Math.max(0, Date.now() - recordingStartRef.current + timestampOffsetMs - REACTION_TIME_CORRECTION_MS);
+      const videoTimestampMs = Math.max(0, Date.now() - recordingStartRef.current + timestampOffsetMs);
       setEvents(prev => [...prev, { playerId: pid, statField: field, delta: increment, videoTimestampMs }]);
     } else if (isRecording && isRecordingPaused && increment > 0) {
       // Recording is paused — this stat has no footage. Remind the scorer

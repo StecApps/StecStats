@@ -98,8 +98,8 @@ const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 // 18 s gives 6 s buffer over that observed worst case, and with the new
 // -force_key_frames encoding the drift is ≤ 2 s per skipped chunk so
 // lead-in is guaranteed ≥ 18 - 3×2 = 12 s even for a long game.
-const PRE_SECONDS = 18;
-const POST_SECONDS = 0;
+const PRE_SECONDS = 10;
+const POST_SECONDS = 2;
 
 // Hard cap on a single (merged) segment's length. buildSegments merges
 // overlapping moments, and a dense scoring stretch can otherwise chain into
@@ -119,14 +119,10 @@ const MAX_SEGMENT_SEC = 300;
 //      per-segment diagnostic logging; version bump forces reel regeneration.
 // v5 = PRE_SECONDS 12→18 to absorb cumulative chunkStart drift from skipped
 // v6 = POST_SECONDS 15→0 (clips end at button press, no trailing footage).
-// v7 = client-side REACTION_TIME_CORRECTION_MS=-7s applied at record time;
-//      event timestamps now represent the play moment, not the late button
-//      press.  Older events still have the uncorrected (late) timestamps so
-//      regenerating their reels with v7 changes nothing for them — but the
-//      version bump ensures new recordings produce correctly-timed reels.
-//      proxy chunks (game 161 had 3 skipped chunks × ~4 s/chunk = 12 s drift,
-//      which consumed the entire 12 s lead-in window).
-export const GENERATOR_VERSION = 7;
+// v7 = (reverted) brief REACTION_TIME_CORRECTION_MS experiment.
+// v8 = PRE_SECONDS 18→10, POST_SECONDS 0→2: 10 s before the button press +
+//      2 s after so the play and its follow-through are both captured.
+export const GENERATOR_VERSION = 8;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
