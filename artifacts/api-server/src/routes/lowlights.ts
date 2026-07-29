@@ -46,28 +46,47 @@ router.get("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     await db.update(gamesTable).set({ lowlightStatus, lowlightError }).where(eq(gamesTable.id, gameId));
   }
 
-  // Invalidate reels built by older clip-timing code (e.g. clips that ended
-  // before the play happened). Reset to idle so the UI offers a fresh
-  // Generate button instead of forever serving the stale cached reel.
+  // Invalidate reels built by older clip-timing code and auto-kick a fresh
+  // background generation so the user never has to click "Try Again".
   let lowlightObjectPath = game.lowlightObjectPath;
   let lowlightStartedAt = game.lowlightStartedAt;
   if (
     lowlightStatus === "ready" &&
     (game.lowlightGeneratorVersion ?? 0) < GENERATOR_VERSION
   ) {
-    lowlightStatus = null;
-    lowlightError = null;
-    lowlightObjectPath = null;
-    lowlightStartedAt = null;
-    await db
-      .update(gamesTable)
-      .set({
-        lowlightStatus: null,
-        lowlightError: null,
-        lowlightObjectPath: null,
-        lowlightStartedAt: null,
-      })
-      .where(eq(gamesTable.id, gameId));
+    if (game.videoObjectPath && !inFlight.has(gameId)) {
+      const startedAt = new Date();
+      lowlightStatus = "processing";
+      lowlightError = null;
+      lowlightObjectPath = null;
+      lowlightStartedAt = startedAt;
+      inFlight.add(gameId);
+      await db.update(gamesTable)
+        .set({ lowlightStatus: "processing", lowlightError: null, lowlightObjectPath: null, lowlightStartedAt: startedAt })
+        .where(eq(gamesTable.id, gameId));
+      const MAX_JOB_MS = 130 * 60 * 1000;
+      void Promise.race([
+        generateLowlight(gameId),
+        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
+      ])
+        .catch(async (err) => {
+          if ((err as Error)?.message !== "timeout") return;
+          try {
+            await db.update(gamesTable)
+              .set({ lowlightStatus: "failed", lowlightError: "Generation timed out — tap Try Again to rebuild." })
+              .where(eq(gamesTable.id, gameId));
+          } catch { /* best-effort */ }
+        })
+        .finally(() => inFlight.delete(gameId));
+    } else {
+      lowlightStatus = null;
+      lowlightError = null;
+      lowlightObjectPath = null;
+      lowlightStartedAt = null;
+      await db.update(gamesTable)
+        .set({ lowlightStatus: null, lowlightError: null, lowlightObjectPath: null, lowlightStartedAt: null })
+        .where(eq(gamesTable.id, gameId));
+    }
   }
 
   // Legacy games may predate duration probing — self-heal lazily.
