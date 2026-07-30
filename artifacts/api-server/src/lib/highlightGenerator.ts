@@ -98,7 +98,7 @@ const LOGO_FILE = path.resolve(__dirname, "..", "assets", "watermark.png");
 // 18 s gives 6 s buffer over that observed worst case, and with the new
 // -force_key_frames encoding the drift is ≤ 2 s per skipped chunk so
 // lead-in is guaranteed ≥ 18 - 3×2 = 12 s even for a long game.
-const PRE_SECONDS = 10;
+const PRE_SECONDS = 18;
 const POST_SECONDS = 2;
 
 // Hard cap on a single (merged) segment's length. buildSegments merges
@@ -120,9 +120,10 @@ const MAX_SEGMENT_SEC = 300;
 // v5 = PRE_SECONDS 12→18 to absorb cumulative chunkStart drift from skipped
 // v6 = POST_SECONDS 15→0 (clips end at button press, no trailing footage).
 // v7 = (reverted) brief REACTION_TIME_CORRECTION_MS experiment.
-// v8 = PRE_SECONDS 18→10, POST_SECONDS 0→2: 10 s before the button press +
-//      2 s after so the play and its follow-through are both captured.
-export const GENERATOR_VERSION = 8;
+// v8 = PRE_SECONDS 18→10, POST_SECONDS 0→2 (reverted — 10 s was too short).
+// v9 = PRE_SECONDS back to 18, POST_SECONDS 2: 18 s lead-in absorbs reaction
+//      lag; 2 s tail captures the play completing after the button press.
+export const GENERATOR_VERSION = 9;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.

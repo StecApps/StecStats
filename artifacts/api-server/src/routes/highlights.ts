@@ -61,62 +61,27 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       .where(eq(gamesTable.id, gameId));
   }
 
-  // Invalidate reels built by older clip-timing code and auto-kick a fresh
-  // background generation so the user never has to click "Try Again" just
-  // because the server updated its clip-window constants.
+  // Invalidate reels built by older clip-timing code. Reset to idle so the
+  // UI shows a fresh Generate button — the user triggers the rebuild manually.
   let highlightObjectPath = game.highlightObjectPath;
   let highlightStartedAt = game.highlightStartedAt;
   if (
     highlightStatus === "ready" &&
     (game.highlightGeneratorVersion ?? 0) < GENERATOR_VERSION
   ) {
-    if (game.videoObjectPath && !inFlight.has(gameId)) {
-      // Auto-regenerate in the background — treat it exactly like a POST.
-      const startedAt = new Date();
-      highlightStatus = "processing";
-      highlightError = null;
-      highlightObjectPath = null;
-      highlightStartedAt = startedAt;
-      inFlight.add(gameId);
-      await db
-        .update(gamesTable)
-        .set({
-          highlightStatus: "processing",
-          highlightError: null,
-          highlightObjectPath: null,
-          highlightStartedAt: startedAt,
-        })
-        .where(eq(gamesTable.id, gameId));
-      const MAX_JOB_MS = 130 * 60 * 1000;
-      void Promise.race([
-        generateHighlight(gameId),
-        new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
-      ])
-        .catch(async (err) => {
-          if ((err as Error)?.message !== "timeout") return;
-          try {
-            await db.update(gamesTable)
-              .set({ highlightStatus: "failed", highlightError: "Generation timed out — tap Try Again to rebuild." })
-              .where(eq(gamesTable.id, gameId));
-          } catch { /* best-effort */ }
-        })
-        .finally(() => inFlight.delete(gameId));
-    } else {
-      // No video or already running — just reset to idle so the UI shows Generate.
-      highlightStatus = null;
-      highlightError = null;
-      highlightObjectPath = null;
-      highlightStartedAt = null;
-      await db
-        .update(gamesTable)
-        .set({
-          highlightStatus: null,
-          highlightError: null,
-          highlightObjectPath: null,
-          highlightStartedAt: null,
-        })
-        .where(eq(gamesTable.id, gameId));
-    }
+    highlightStatus = null;
+    highlightError = null;
+    highlightObjectPath = null;
+    highlightStartedAt = null;
+    await db
+      .update(gamesTable)
+      .set({
+        highlightStatus: null,
+        highlightError: null,
+        highlightObjectPath: null,
+        highlightStartedAt: null,
+      })
+      .where(eq(gamesTable.id, gameId));
   }
 
   // Legacy games may predate duration probing — self-heal lazily.
