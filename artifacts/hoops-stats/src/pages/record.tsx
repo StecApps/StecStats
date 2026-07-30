@@ -2360,9 +2360,26 @@ export default function RecordGame() {
     setViewerCount(0);
   };
 
-  const copyWatchLink = () => {
+  const shareWatchLink = async () => {
     if (!liveCode) return;
-    navigator.clipboard.writeText(watchUrlForCode(liveCode)).then(() => {
+    const url = watchUrlForCode(liveCode);
+    const teamName = teams?.find(t => t.id.toString() === teamId)?.name ?? "the game";
+    const shareData: ShareData = {
+      title: `Watch ${teamName} live`,
+      text: `Follow along with live stats for ${teamName}!`,
+      url,
+    };
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch (e: unknown) {
+        // User cancelled the share sheet — no toast needed.
+        if (e instanceof Error && e.name === "AbortError") return;
+        // Fall through to clipboard on any other error.
+      }
+    }
+    navigator.clipboard.writeText(url).then(() => {
       toast({ title: "Link copied", description: "Share it with invited viewers." });
     }).catch(() => {});
   };
@@ -3223,8 +3240,8 @@ export default function RecordGame() {
               {liveCode ? (
                 <>
                   <p className="text-xs text-muted-foreground break-all font-mono">{watchUrlForCode(liveCode)}</p>
-                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={copyWatchLink}>
-                    <Copy className="w-3 h-3 mr-1.5" /> Copy link
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={shareWatchLink}>
+                    <Share2 className="w-3 h-3 mr-1.5" /> Share link
                   </Button>
                   <p className="text-xs text-muted-foreground">Share this now — viewers can open it and wait for you to tap Go Live.</p>
                 </>
@@ -3757,8 +3774,8 @@ export default function RecordGame() {
                     </span>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono bg-white/10 rounded px-2 py-0.5">{liveCode}</span>
-                      <Button variant="ghost" size="sm" className="h-6 px-2 text-white hover:bg-white/20" onClick={copyWatchLink}>
-                        <Copy className="w-3 h-3 mr-1" /> Invite
+                      <Button variant="ghost" size="sm" className="h-6 px-2 text-white hover:bg-white/20" onClick={shareWatchLink}>
+                        <Share2 className="w-3 h-3 mr-1" /> Invite
                       </Button>
                     </div>
                     {liveQuality && liveQuality.index > 0 && (
@@ -3923,8 +3940,8 @@ export default function RecordGame() {
               {!isLive && !isReconnectingLive && (
                 <>
                   {liveCode && (
-                    <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={copyWatchLink}>
-                      <Copy className="w-4 h-4 mr-2" /> Copy Link
+                    <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={shareWatchLink}>
+                      <Share2 className="w-4 h-4 mr-2" /> Share Link
                     </Button>
                   )}
                   <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive}>
