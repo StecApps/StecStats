@@ -1,4 +1,5 @@
-export const PENDING_VIDEO_UPLOAD_KEY = "stec:pending-video-upload";
+export const PENDING_VIDEO_UPLOAD_KEY = "stec:pending-video-upload";   // legacy single-slot (still read for back-compat)
+export const PENDING_VIDEO_UPLOADS_KEY = "stec:pending-video-uploads"; // current array-based queue
 
 export type UploadStatus = 'uploading' | 'retrying' | 'attaching' | 'done' | 'failed';
 
@@ -14,7 +15,12 @@ export interface BackgroundUploadState {
 let _state: BackgroundUploadState | null = null;
 const _listeners = new Set<() => void>();
 
-type DoUpload = (onProgress: (pct: number) => void) => Promise<string | null>;
+// Abort controller for the current upload XHR — replaced on each attempt.
+let _abortController: AbortController | null = null;
+
+// DoUpload receives both a progress callback AND an AbortSignal so it can
+// cancel the in-flight XHR immediately when the user taps Cancel.
+type DoUpload = (onProgress: (pct: number) => void, signal: AbortSignal) => Promise<string | null>;
 type OnVideoReady = (objectPath: string) => Promise<void>;
 
 let _retryFns: { gameId: number; opponent: string; doUpload: DoUpload; onVideoReady: OnVideoReady } | null = null;
@@ -33,6 +39,10 @@ function isNetworkError(err: unknown): boolean {
   );
 }
 
+function isCancelled(err: unknown): boolean {
+  return err instanceof Error && (err.message === 'Upload cancelled' || err.name === 'AbortError');
+}
+
 async function runUpload(
   gameId: number,
   opponent: string,
@@ -42,6 +52,7 @@ async function runUpload(
   const MAX_ATTEMPTS = 3;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    _abortController = new AbortController();
     _state = { gameId, opponent, progress: 0, status: 'uploading' };
     notify();
 
@@ -51,16 +62,18 @@ async function runUpload(
           _state = { ..._state, progress: pct };
           notify();
         }
-      });
+      }, _abortController.signal);
 
       if (!objectPath) {
         _state = null;
         _retryFns = null;
+        _abortController = null;
         notify();
         return;
       }
 
       _state = { gameId, opponent, progress: 100, status: 'attaching' };
+      _abortController = null;
       notify();
 
       await onVideoReady(objectPath);
@@ -77,6 +90,15 @@ async function runUpload(
       }, 5000);
       return;
     } catch (err) {
+      _abortController = null;
+      if (isCancelled(err)) {
+        // User explicitly cancelled — reset to idle, keep retry fns so they
+        // can tap Retry if they change their mind.
+        _state = { gameId, opponent, progress: 0, status: 'failed', error: 'Upload cancelled — tap Retry when ready.' };
+        notify();
+        return;
+      }
+
       const errMsg = err instanceof Error ? err.message : 'Upload failed';
 
       if (isNetworkError(err) && attempt < MAX_ATTEMPTS) {
@@ -113,6 +135,15 @@ export const backgroundUpload = {
     return _retryFns !== null;
   },
 
+  /**
+   * Cancel the in-flight XHR immediately. The status transitions to 'failed'
+   * with a "tap Retry" message so the user can resume when they have signal.
+   */
+  cancel() {
+    _abortController?.abort();
+    _abortController = null;
+  },
+
   dismiss() {
     _state = null;
     notify();
@@ -121,7 +152,7 @@ export const backgroundUpload = {
   retry() {
     if (!_retryFns) return;
     const { gameId, opponent, doUpload, onVideoReady } = _retryFns;
-    runUpload(gameId, opponent, doUpload, onVideoReady);
+    void runUpload(gameId, opponent, doUpload, onVideoReady);
   },
 
   async start(

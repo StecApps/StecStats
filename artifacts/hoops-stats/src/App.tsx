@@ -12,7 +12,7 @@ import { Loader2, RefreshCw, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { backgroundUpload, PENDING_VIDEO_UPLOAD_KEY } from "@/lib/backgroundUpload";
+import { backgroundUpload, PENDING_VIDEO_UPLOAD_KEY, PENDING_VIDEO_UPLOADS_KEY } from "@/lib/backgroundUpload";
 import { getOrderedChunks, deleteSession } from "@/lib/recordingStore";
 import { uploadVideoBlob } from "@/lib/videoUpload";
 import NotFound from "@/pages/not-found";
@@ -373,6 +373,17 @@ function VideoUploadBanner() {
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">{state.progress}% · vs {state.opponent}</p>
           </div>
+          {/* Let the user cancel a stalled upload so they can move somewhere
+              with better signal and tap Retry, instead of waiting 10 minutes
+              for the timeout. */}
+          <button
+            onClick={() => backgroundUpload.cancel()}
+            className="text-zinc-500 hover:text-white ml-1 shrink-0"
+            aria-label="Cancel upload"
+            title="Cancel and retry later"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </>
       )}
       {state.status === "attaching" && (
@@ -407,16 +418,18 @@ function VideoUploadBanner() {
           <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-white">Upload failed</p>
-            <p className="text-xs text-zinc-400 truncate">{state.error ?? "Check your connection and try again"}</p>
+            <p className="text-xs text-zinc-400 truncate">{state.error ?? "Check your connection and tap Retry"}</p>
           </div>
-          <button
-            onClick={() => backgroundUpload.retry()}
-            className="flex items-center gap-1 text-orange-400 hover:text-orange-300 ml-1 text-xs font-semibold whitespace-nowrap"
-            aria-label="Retry upload"
-          >
-            <RefreshCw className="w-3 h-3" />
-            Retry
-          </button>
+          {backgroundUpload.hasRetry() && (
+            <button
+              onClick={() => backgroundUpload.retry()}
+              className="flex items-center gap-1 text-orange-400 hover:text-orange-300 ml-1 text-xs font-semibold whitespace-nowrap"
+              aria-label="Retry upload"
+            >
+              <RefreshCw className="w-3 h-3" />
+              Retry
+            </button>
+          )}
           <button
             onClick={() => backgroundUpload.dismiss()}
             className="text-zinc-500 hover:text-white ml-1"
@@ -459,79 +472,123 @@ function SignupConversionTracker() {
   return null;
 }
 
+type PendingEntry = { gameId: number; opponent: string; sessionId: string; mimeType: string | null; savedAt: number };
+
+/** Read all pending entries from the new array key + old single-slot key. */
+function readPendingQueue(): PendingEntry[] {
+  const results: PendingEntry[] = [];
+  try {
+    // New array-based queue (current format).
+    const arr = JSON.parse(localStorage.getItem(PENDING_VIDEO_UPLOADS_KEY) ?? "[]");
+    if (Array.isArray(arr)) results.push(...(arr as PendingEntry[]));
+  } catch { /* ignore */ }
+  try {
+    // Legacy single-slot key — migrate into results if present.
+    const raw = localStorage.getItem(PENDING_VIDEO_UPLOAD_KEY);
+    if (raw) {
+      const entry = JSON.parse(raw) as PendingEntry;
+      if (entry?.gameId && !results.some(e => e.gameId === entry.gameId)) {
+        results.push(entry);
+      }
+      localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY);
+    }
+  } catch { /* ignore */ }
+  return results;
+}
+
+function removePendingEntry(gameId: number) {
+  try {
+    const arr = JSON.parse(localStorage.getItem(PENDING_VIDEO_UPLOADS_KEY) ?? "[]");
+    const filtered = (Array.isArray(arr) ? arr as PendingEntry[] : []).filter(e => e.gameId !== gameId);
+    if (filtered.length === 0) localStorage.removeItem(PENDING_VIDEO_UPLOADS_KEY);
+    else localStorage.setItem(PENDING_VIDEO_UPLOADS_KEY, JSON.stringify(filtered));
+  } catch { /* ignore */ }
+}
+
+/**
+ * On mount, picks up any game recordings that were saved but whose video
+ * upload didn't complete (network drop, page reload, app close). Processes
+ * them in sequence so all games from a multi-game session are recovered, not
+ * just the most-recently saved one.
+ */
 function PendingVideoUploadRecoverer() {
   const startedRef = useRef(false);
 
   useEffect(() => {
     if (startedRef.current) return;
 
-    let raw: string | null = null;
-    try { raw = localStorage.getItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
-    if (!raw) return;
+    const queue = readPendingQueue();
+    if (queue.length === 0) return;
 
-    let pending: { gameId: number; opponent: string; sessionId: string; mimeType: string | null; savedAt: number };
-    try {
-      pending = JSON.parse(raw);
-    } catch {
-      try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
-      return;
-    }
+    // Filter out stale entries (older than 7 days).
+    const now = Date.now();
+    const fresh = queue.filter(e => now - e.savedAt <= PENDING_VIDEO_MAX_AGE_MS);
+    const stale = queue.filter(e => now - e.savedAt > PENDING_VIDEO_MAX_AGE_MS);
+    stale.forEach(e => { removePendingEntry(e.gameId); deleteSession(e.sessionId).catch(() => {}); });
+    if (fresh.length === 0) return;
 
-    if (Date.now() - pending.savedAt > PENDING_VIDEO_MAX_AGE_MS) {
-      try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
-      deleteSession(pending.sessionId).catch(() => {});
-      return;
-    }
-
+    // Don't double-start if backgroundUpload is already running for the first
+    // entry in the queue (e.g. this component unmounted and remounted).
     const current = backgroundUpload.getSnapshot();
-    if (current && current.gameId === pending.gameId) return;
+    const firstUploading = current && fresh.some(e => e.gameId === current.gameId);
+    if (firstUploading) return;
 
     startedRef.current = true;
 
+    // Process all pending entries in sequence. Each awaits the previous so
+    // the upload banner only shows one game at a time.
     (async () => {
-      try {
-        const gameRes = await fetch(`/api/games/${pending.gameId}`);
-        if (!gameRes.ok) {
-          try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
-          deleteSession(pending.sessionId).catch(() => {});
-          return;
-        }
-        const game = await gameRes.json();
-        if (game.videoObjectPath) {
-          try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
-          deleteSession(pending.sessionId).catch(() => {});
-          return;
-        }
+      for (const pending of fresh) {
+        try {
+          const gameRes = await fetch(`/api/games/${pending.gameId}`);
+          if (!gameRes.ok) {
+            removePendingEntry(pending.gameId);
+            deleteSession(pending.sessionId).catch(() => {});
+            continue;
+          }
+          const game = await gameRes.json();
+          if (game.videoObjectPath) {
+            // Already uploaded (possibly by the original in-memory upload).
+            removePendingEntry(pending.gameId);
+            deleteSession(pending.sessionId).catch(() => {});
+            continue;
+          }
 
-        const chunks = await getOrderedChunks(pending.sessionId);
-        if (chunks.length === 0) {
-          try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
-          return;
+          const chunks = await getOrderedChunks(pending.sessionId);
+          if (chunks.length === 0) {
+            removePendingEntry(pending.gameId);
+            continue;
+          }
+
+          const blob = new Blob(chunks, { type: pending.mimeType || "video/webm" });
+          const { gameId, opponent, sessionId } = pending;
+
+          // Await so the next game in the queue only starts after this one
+          // completes or fails. On network failure the banner shows Retry;
+          // once dismissed the loop continues to the next game.
+          await backgroundUpload.start(
+            gameId,
+            opponent,
+            (onProgress, signal) => uploadVideoBlob(blob, onProgress, signal),
+            async (objectPath) => {
+              const patchRes = await fetch(`/api/games/${gameId}/video`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ videoObjectPath: objectPath }),
+              });
+              if (!patchRes.ok) throw new Error("Failed to attach video to game");
+              deleteSession(sessionId).catch(() => {});
+              removePendingEntry(gameId);
+              fetch(`/api/games/${gameId}/highlight`, { method: "POST" }).catch(() => {});
+              fetch(`/api/games/${gameId}/lowlight`, { method: "POST" }).catch(() => {});
+            },
+          );
+        } catch {
+          // Network/parse error on this entry — leave it in localStorage for
+          // the next app load to retry.
         }
-
-        const blob = new Blob(chunks, { type: pending.mimeType || "video/webm" });
-        const { gameId, opponent, sessionId } = pending;
-
-        backgroundUpload.start(
-          gameId,
-          opponent,
-          (onProgress) => uploadVideoBlob(blob, onProgress),
-          async (objectPath) => {
-            const patchRes = await fetch(`/api/games/${gameId}/video`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ videoObjectPath: objectPath }),
-            });
-            if (!patchRes.ok) throw new Error("Failed to attach video to game");
-            deleteSession(sessionId).catch(() => {});
-            try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
-            fetch(`/api/games/${gameId}/highlight`, { method: "POST" }).catch(() => {});
-            fetch(`/api/games/${gameId}/lowlight`, { method: "POST" }).catch(() => {});
-          },
-        );
-      } catch {
-        startedRef.current = false;
       }
+      startedRef.current = false;
     })();
   }, []);
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { backgroundUpload, PENDING_VIDEO_UPLOAD_KEY } from "@/lib/backgroundUpload";
+import { backgroundUpload, PENDING_VIDEO_UPLOADS_KEY } from "@/lib/backgroundUpload";
 import { uploadVideoBlob } from "@/lib/videoUpload";
 import FilmRoom from "@/components/film-room";
 import SidelineMode from "@/components/sideline-mode";
@@ -2583,15 +2583,23 @@ export default function RecordGame() {
 
       // Persist a pending-upload marker so PendingVideoUploadRecoverer can
       // reassemble the footage from IndexedDB and retry on the next app load.
+      // Stored as an ARRAY so multiple games recorded back-to-back in the
+      // same session are all recoverable, not just the most recent one.
       if (capturedSessionId) {
         try {
-          localStorage.setItem(PENDING_VIDEO_UPLOAD_KEY, JSON.stringify({
+          const existing: unknown[] = JSON.parse(localStorage.getItem(PENDING_VIDEO_UPLOADS_KEY) ?? "[]");
+          const entry = {
             gameId: newGameId,
             opponent,
             sessionId: capturedSessionId,
             mimeType: capturedMimeType,
             savedAt: Date.now(),
-          }));
+          };
+          // Deduplicate by gameId in case of a double-save
+          const deduped = (Array.isArray(existing) ? existing : []).filter(
+            (e) => (e as { gameId: number }).gameId !== newGameId,
+          );
+          localStorage.setItem(PENDING_VIDEO_UPLOADS_KEY, JSON.stringify([...deduped, entry]));
         } catch {}
       }
 
@@ -2610,25 +2618,26 @@ export default function RecordGame() {
       backgroundUpload.start(
         capturedGameId,
         capturedOpponent,
-        async (onProgress) => {
+        async (onProgress, signal) => {
           if (capturedSegs) {
             const segPaths: string[] = [];
             for (let i = 0; i < capturedSegs.length; i++) {
               const segPath = await uploadVideoBlob(capturedSegs[i], (pct) => {
                 onProgress(Math.round((i / capturedSegs.length) * 85 + (pct / 100) * (85 / capturedSegs.length)));
-              });
+              }, signal);
               segPaths.push(segPath);
             }
             const concatRes = await fetch('/api/storage/concat-segments', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ segmentPaths: segPaths }),
+              signal,
             });
             if (!concatRes.ok) throw new Error('Failed to merge video halves on server');
             const { videoObjectPath: mergedPath } = await concatRes.json();
             return mergedPath;
           } else if (capturedBlob) {
-            return uploadVideoBlob(capturedBlob, onProgress);
+            return uploadVideoBlob(capturedBlob, onProgress, signal);
           }
           return null;
         },
@@ -2639,9 +2648,17 @@ export default function RecordGame() {
             body: JSON.stringify({ videoObjectPath: objectPath }),
           });
           if (!patchRes.ok) throw new Error('Failed to attach video to game');
-          // Upload succeeded — clean up IndexedDB and the pending marker now.
+          // Upload succeeded — clean up IndexedDB and remove this game's
+          // entry from the pending-uploads array.
           if (capturedSessionId) deleteSession(capturedSessionId).catch(() => {});
-          try { localStorage.removeItem(PENDING_VIDEO_UPLOAD_KEY); } catch {}
+          try {
+            const arr: unknown[] = JSON.parse(localStorage.getItem(PENDING_VIDEO_UPLOADS_KEY) ?? "[]");
+            const filtered = (Array.isArray(arr) ? arr : []).filter(
+              (e) => (e as { gameId: number }).gameId !== capturedGameId,
+            );
+            if (filtered.length === 0) localStorage.removeItem(PENDING_VIDEO_UPLOADS_KEY);
+            else localStorage.setItem(PENDING_VIDEO_UPLOADS_KEY, JSON.stringify(filtered));
+          } catch {}
           // Trigger highlight and lowlight generation (fire-and-forget)
           fetch(`/api/games/${capturedGameId}/highlight`, { method: 'POST' }).catch(() => {});
           fetch(`/api/games/${capturedGameId}/lowlight`, { method: 'POST' }).catch(() => {});
