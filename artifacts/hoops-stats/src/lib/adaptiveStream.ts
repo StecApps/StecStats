@@ -42,10 +42,17 @@ export const QUALITY_LADDER: readonly AdaptiveLevel[] = [
 ];
 
 const TICK_MS = 3_000;
-/** Consecutive bad ticks before stepping down (2 ≈ 6 s). */
-const BAD_TICKS_TO_STEP_DOWN = 2;
+/** Consecutive bad ticks before stepping down (1 ≈ 3 s). */
+const BAD_TICKS_TO_STEP_DOWN = 1;
 /** Consecutive good ticks before stepping up (7 ≈ 21 s). */
 const GOOD_TICKS_TO_STEP_UP = 7;
+/**
+ * Starting quality index. Gym uplinks rarely sustain the top rung (6 Mbps),
+ * so begin at "Balanced" (2 Mbps) and let the controller ramp up after ~21 s
+ * of healthy stats. This prevents the opening freeze while the encoder is
+ * still learning the available bandwidth.
+ */
+const INITIAL_LEVEL_IDX = 2;
 /** Ticks to ignore after a level change (stats lag the encoder). */
 const COOLDOWN_TICKS = 2;
 
@@ -61,7 +68,7 @@ interface TickHealth {
 }
 
 export class AdaptiveQualityController {
-  private levelIdx = 0;
+  private levelIdx = INITIAL_LEVEL_IDX;
   private badStreak = 0;
   private goodStreak = 0;
   private cooldown = 0;

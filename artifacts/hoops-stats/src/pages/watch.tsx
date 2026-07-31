@@ -24,6 +24,7 @@ export default function WatchStream() {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const iceWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [muted, setMuted] = useState(true);
   const userUnmutedRef = useRef(false); // tracks if the viewer explicitly tapped to unmute
   const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
@@ -233,6 +234,11 @@ export default function WatchStream() {
       const s = pc.connectionState;
       if (s === "connected") {
         mediaFailedRef.current = false;
+        // ICE succeeded — cancel the hang watchdog.
+        if (iceWatchdogRef.current) {
+          clearTimeout(iceWatchdogRef.current);
+          iceWatchdogRef.current = null;
+        }
         setState("live");
       } else if (s === "disconnected" || s === "failed") {
         // The broadcaster drives ICE restarts for this connection; while it
@@ -358,6 +364,22 @@ export default function WatchStream() {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           ws.send(JSON.stringify({ type: "answer", code, targetId: message.viewerId, sdp: answer }));
+
+          // ICE hang watchdog: some browsers (especially on restrictive gym
+          // networks) stay in "checking" indefinitely without ever firing
+          // "failed", leaving the viewer stuck on "Joining the stream…"
+          // forever. After 20 s without reaching "connected", close the dead
+          // PC and ask the broadcaster for a fresh offer on the same viewer
+          // slot — avoids burning a WS reconnect attempt.
+          if (iceWatchdogRef.current) clearTimeout(iceWatchdogRef.current);
+          iceWatchdogRef.current = setTimeout(() => {
+            iceWatchdogRef.current = null;
+            if (pc.connectionState === "connected" || pc.connectionState === "closed") return;
+            pc.close();
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "request-offer", code }));
+            }
+          }, 20_000);
         } else if (message.type === "ice-candidate") {
           if (pcRef.current && message.candidate) {
             await pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));
@@ -434,6 +456,7 @@ export default function WatchStream() {
     return () => {
       cancelled = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (iceWatchdogRef.current) clearTimeout(iceWatchdogRef.current);
       pcRef.current?.close();
       wsRef.current?.close();
     };

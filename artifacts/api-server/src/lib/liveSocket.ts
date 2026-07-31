@@ -15,7 +15,8 @@ type ClientMessage =
   | { type: "ice-candidate"; code: string; targetId: string; candidate: unknown }
   | { type: "scoreboard"; code: string; teamScore: number; opponentScore: number }
   | { type: "stat-event"; code: string; playerName: string; label: string }
-  | { type: "peer-connection-failed"; code: string; targetId: string };
+  | { type: "peer-connection-failed"; code: string; targetId: string }
+  | { type: "request-offer"; code: string };
 
 function safeSend(ws: WebSocket, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -185,6 +186,16 @@ export function attachLiveSocketServer(upgradeEmitter: {
           if (target) {
             safeSend(target, { type: "peer-connection-failed" });
           }
+          break;
+        }
+        case "request-offer": {
+          // A viewer's ICE negotiation timed out without reaching "connected"
+          // (common on restrictive gym networks where ICE hangs in "checking"
+          // without ever firing "failed"). Ask the broadcaster to send a
+          // fresh offer to this same viewer ID so we don't create a duplicate
+          // entry in the viewer map.
+          if (role !== "viewer" || !viewerId || !session.broadcaster) break;
+          safeSend(session.broadcaster, { type: "new-viewer", viewerId });
           break;
         }
       }
