@@ -21,6 +21,13 @@ let cachedIceServers: { servers: IceServer[]; expiresAt: number } | null = null;
  */
 let turnAvailable: boolean | null = null;
 
+/**
+ * In-flight deduplication: if a fetch is already in progress, subsequent
+ * concurrent callers await this same Promise instead of each making their own
+ * request (which would cause a burst of Metered.ca API calls after a restart).
+ */
+let inflight: Promise<IceServer[]> | null = null;
+
 /** Returns the most recently resolved TURN availability state. */
 export function getTurnAvailable(): boolean | null {
   return turnAvailable;
@@ -33,6 +40,7 @@ export function getTurnAvailable(): boolean | null {
 export function _testResetIceCache(): void {
   cachedIceServers = null;
   turnAvailable = null;
+  inflight = null;
 }
 
 function hasTurnServer(servers: IceServer[]): boolean {
@@ -55,33 +63,47 @@ export async function getIceServers(): Promise<IceServer[]> {
     return cachedIceServers.servers;
   }
 
-  try {
-    const url = `https://${domain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      logger.warn({ status: res.status }, "Failed to fetch TURN credentials from Metered.ca, falling back to STUN-only");
-      // Invalidate any stale cache so the next caller retries immediately.
-      cachedIceServers = null;
-      turnAvailable = false;
-      return FALLBACK_ICE_SERVERS;
-    }
-    const servers = (await res.json()) as IceServer[];
-    if (!Array.isArray(servers) || servers.length === 0) {
-      cachedIceServers = null;
-      turnAvailable = false;
-      return FALLBACK_ICE_SERVERS;
-    }
-    // Metered credentials are valid for a while; cache for 30 minutes to avoid
-    // hitting rate limits, well under their expiry window.
-    cachedIceServers = { servers, expiresAt: Date.now() + 30 * 60 * 1000 };
-    turnAvailable = hasTurnServer(servers);
-    return servers;
-  } catch (err) {
-    logger.warn({ err }, "Error fetching TURN credentials from Metered.ca, falling back to STUN-only");
-    cachedIceServers = null;
-    turnAvailable = false;
-    return FALLBACK_ICE_SERVERS;
+  // Deduplicate concurrent fetches: if a request is already in-flight, reuse
+  // the same Promise.  This collapses the burst of requests that would
+  // otherwise fire simultaneously right after a process restart (when the
+  // cache is cold) into a single Metered.ca API call.
+  if (inflight) {
+    return inflight;
   }
+
+  inflight = (async () => {
+    try {
+      const url = `https://${domain}/api/v1/turn/credentials?apiKey=${encodeURIComponent(apiKey)}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        logger.warn({ status: res.status }, "Failed to fetch TURN credentials from Metered.ca, falling back to STUN-only");
+        // Invalidate any stale cache so the next caller retries immediately.
+        cachedIceServers = null;
+        turnAvailable = false;
+        return FALLBACK_ICE_SERVERS;
+      }
+      const servers = (await res.json()) as IceServer[];
+      if (!Array.isArray(servers) || servers.length === 0) {
+        cachedIceServers = null;
+        turnAvailable = false;
+        return FALLBACK_ICE_SERVERS;
+      }
+      // Metered credentials are valid for a while; cache for 30 minutes to avoid
+      // hitting rate limits, well under their expiry window.
+      cachedIceServers = { servers, expiresAt: Date.now() + 30 * 60 * 1000 };
+      turnAvailable = hasTurnServer(servers);
+      return servers;
+    } catch (err) {
+      logger.warn({ err }, "Error fetching TURN credentials from Metered.ca, falling back to STUN-only");
+      cachedIceServers = null;
+      turnAvailable = false;
+      return FALLBACK_ICE_SERVERS;
+    } finally {
+      inflight = null;
+    }
+  })();
+
+  return inflight;
 }
 
 /**
