@@ -26,6 +26,15 @@ export function getTurnAvailable(): boolean | null {
   return turnAvailable;
 }
 
+/**
+ * Resets the in-module ICE-server cache and turnAvailable flag.
+ * Exported for unit/integration tests only — do not call in production code.
+ */
+export function _testResetIceCache(): void {
+  cachedIceServers = null;
+  turnAvailable = null;
+}
+
 function hasTurnServer(servers: IceServer[]): boolean {
   return servers.some((s) => {
     const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
