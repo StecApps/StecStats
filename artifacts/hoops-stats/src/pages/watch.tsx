@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2 } from "lucide-react";
+import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2, RefreshCw } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
@@ -25,6 +25,18 @@ export default function WatchStream() {
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const iceWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Connecting-screen elapsed timers and retry counter.
+  // connectingElapsed  — per-attempt seconds (resets on each ICE retry)
+  // connectingTotal    — cumulative seconds since first entering "connecting" (never reset by retries)
+  const [connectingElapsed, setConnectingElapsed] = useState(0);
+  const [connectingTotal, setConnectingTotal] = useState(0);
+  const [iceRetryCount, setIceRetryCount] = useState(0);
+  const iceRetryCountRef = useRef(0); // mirror for use inside closures
+  const connectingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const connectingAttemptStartRef = useRef<number | null>(null); // resets per attempt
+  const connectingFirstStartRef = useRef<number | null>(null);   // set once, never reset
+
   const [muted, setMuted] = useState(true);
   const userUnmutedRef = useRef(false); // tracks if the viewer explicitly tapped to unmute
   const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
@@ -37,6 +49,43 @@ export default function WatchStream() {
   const pinchStartDistRef = useRef<number | null>(null);
   const panStartRef = useRef<{ x: number; y: number } | null>(null);
   const lastTapRef = useRef(0);
+
+  // Format seconds as M:SS for the connecting timer display.
+  const formatElapsed = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
+
+  // Start (or restart) the connecting timers.
+  // isFirstAttempt=true  → also reset the cumulative "total" timer (state just entered "connecting")
+  // isFirstAttempt=false → keep cumulative running; only reset the per-attempt counter
+  const startConnectingTimer = (isFirstAttempt: boolean) => {
+    if (connectingTimerRef.current) clearInterval(connectingTimerRef.current);
+    const attemptStart = Date.now();
+    connectingAttemptStartRef.current = attemptStart;
+    setConnectingElapsed(0);
+    if (isFirstAttempt) {
+      connectingFirstStartRef.current = attemptStart;
+      setConnectingTotal(0);
+    }
+    connectingTimerRef.current = setInterval(() => {
+      const now = Date.now();
+      setConnectingElapsed(Math.floor((now - attemptStart) / 1000));
+      if (connectingFirstStartRef.current !== null) {
+        setConnectingTotal(Math.floor((now - connectingFirstStartRef.current) / 1000));
+      }
+    }, 1000);
+  };
+
+  const stopConnectingTimer = () => {
+    if (connectingTimerRef.current) {
+      clearInterval(connectingTimerRef.current);
+      connectingTimerRef.current = null;
+    }
+    connectingAttemptStartRef.current = null;
+    connectingFirstStartRef.current = null;
+  };
 
   const applyTransform = () => {
     const el = videoWrapRef.current;
@@ -219,6 +268,42 @@ export default function WatchStream() {
       v.play().catch(() => {});
     }
   };
+  // Drive the elapsed timers based on connection state.
+  useEffect(() => {
+    if (state === "connecting") {
+      // Only start the timers if not already running (avoid resetting on
+      // unrelated re-renders). The watchdog resets per-attempt time explicitly.
+      if (connectingTimerRef.current === null) {
+        startConnectingTimer(true /* first attempt */);
+      }
+    } else {
+      stopConnectingTimer();
+      if (state === "live") {
+        // Reset all counters once we're actually connected.
+        setIceRetryCount(0);
+        iceRetryCountRef.current = 0;
+        setConnectingElapsed(0);
+        setConnectingTotal(0);
+      }
+    }
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Manual "Tap to retry" — close the dead PC and ask for a fresh offer.
+  const handleManualRetry = () => {
+    if (iceWatchdogRef.current) {
+      clearTimeout(iceWatchdogRef.current);
+      iceWatchdogRef.current = null;
+    }
+    pcRef.current?.close();
+    pcRef.current = null;
+    iceRetryCountRef.current += 1;
+    setIceRetryCount(iceRetryCountRef.current);
+    startConnectingTimer(false /* preserve cumulative */);
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "request-offer", code }));
+    }
+  };
+
   const [finalSummary, setFinalSummary] = useState<{
     teamScore: number;
     opponentScore: number;
@@ -376,6 +461,11 @@ export default function WatchStream() {
             iceWatchdogRef.current = null;
             if (pc.connectionState === "connected" || pc.connectionState === "closed") return;
             pc.close();
+            // Let the viewer know a retry is happening and reset the per-attempt timer.
+            // Cumulative timer (connectingTotal) keeps running — that gates the retry button.
+            iceRetryCountRef.current += 1;
+            setIceRetryCount(iceRetryCountRef.current);
+            startConnectingTimer(false /* preserve cumulative */);
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "request-offer", code }));
             }
@@ -457,10 +547,11 @@ export default function WatchStream() {
       cancelled = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (iceWatchdogRef.current) clearTimeout(iceWatchdogRef.current);
+      stopConnectingTimer();
       pcRef.current?.close();
       wsRef.current?.close();
     };
-  }, [code]);
+  }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (state === "live") attachStream();
@@ -685,7 +776,27 @@ export default function WatchStream() {
           {state === "connecting" && (
             <>
               <Loader2 className="w-8 h-8 animate-spin" />
-              <p>Joining the stream...</p>
+              {iceRetryCount === 0 ? (
+                <p>Joining the stream…</p>
+              ) : (
+                <p className="text-primary font-semibold">
+                  Retrying… (attempt {iceRetryCount + 1})
+                </p>
+              )}
+              {connectingElapsed >= 5 && (
+                <p className="text-sm text-white/50 tabular-nums">
+                  Still connecting… {formatElapsed(connectingElapsed)}
+                </p>
+              )}
+              {connectingTotal >= 45 && (
+                <button
+                  onClick={handleManualRetry}
+                  className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Tap to retry
+                </button>
+              )}
             </>
           )}
           {state === "waiting-for-broadcaster" && (
