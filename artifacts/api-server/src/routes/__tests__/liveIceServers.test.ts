@@ -78,7 +78,7 @@ import liveRouter from "../live";
 import { _testResetIceCache } from "../../lib/liveStream";
 
 // ---------------------------------------------------------------------------
-// TURN server fixture returned by a "healthy" Metered.ca response
+// TURN server fixtures
 // ---------------------------------------------------------------------------
 const METERED_TURN_RESPONSE = [
   { urls: "stun:global.stun.twilio.com:3478" },
@@ -91,6 +91,22 @@ const METERED_TURN_RESPONSE = [
     urls: "turns:global.relay.metered.ca:443",
     username: "test-user",
     credential: "test-cred",
+  },
+];
+
+/** A second credential set with different username/credential values,
+ *  simulating a fresh Metered.ca issuance after the first set expires. */
+const METERED_TURN_RESPONSE_V2 = [
+  { urls: "stun:global.stun.twilio.com:3478" },
+  {
+    urls: "turn:global.relay.metered.ca:80",
+    username: "refreshed-user",
+    credential: "refreshed-cred",
+  },
+  {
+    urls: "turns:global.relay.metered.ca:443",
+    username: "refreshed-user",
+    credential: "refreshed-cred",
   },
 ];
 
@@ -329,5 +345,61 @@ describe("GET /live/ice-servers", () => {
     expect(body.turnAvailable).toBe(false);
 
     fetchSpy.mockRestore();
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 7: cache expires mid-game → fresh credentials from Metered.ca are
+  // served on the next request, not the stale cached ones.
+  //
+  // Scenario: the server issues credentials at game-start (V1).  After 50
+  // minutes (TURN_CACHE_TTL_MS) the cache entry expires.  The next call to
+  // GET /live/ice-servers must re-fetch from Metered.ca and return the new
+  // credentials (V2), not the ones that were valid at the start of the game.
+  // -------------------------------------------------------------------------
+  it("serves fresh credentials when the cache expires before they are served again", async () => {
+    process.env.METERED_API_KEY = "valid-key";
+    process.env.METERED_DOMAIN = "global.relay.metered.ca";
+
+    // ── Phase 1: prime the cache with V1 credentials ──────────────────────
+    const fetchSpyV1 = mockMeteredFetch(
+      (url) => url.includes("metered.ca"),
+      () =>
+        new Response(JSON.stringify(METERED_TURN_RESPONSE), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const res1 = await fetch(`${baseUrl}/live/ice-servers`);
+    expect(res1.status).toBe(200);
+    const body1 = (await res1.json()) as { iceServers: Array<{ urls: string | string[]; username?: string }> };
+    const firstUsername = body1.iceServers.find((s) => s.username)?.username;
+    expect(firstUsername).toBe("test-user"); // V1 served
+
+    fetchSpyV1.mockRestore();
+
+    // ── Phase 2: simulate cache expiry (e.g. 50 min have passed mid-game) ─
+    _testResetIceCache();
+
+    // ── Phase 3: Metered.ca now issues a fresh credential set (V2) ─────────
+    const fetchSpyV2 = mockMeteredFetch(
+      (url) => url.includes("metered.ca"),
+      () =>
+        new Response(JSON.stringify(METERED_TURN_RESPONSE_V2), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    const res2 = await fetch(`${baseUrl}/live/ice-servers`);
+    expect(res2.status).toBe(200);
+    const body2 = (await res2.json()) as { iceServers: Array<{ urls: string | string[]; username?: string }>; turnAvailable: boolean };
+
+    // The endpoint must return the new credentials, not the stale V1 ones.
+    const refreshedUsername = body2.iceServers.find((s) => s.username)?.username;
+    expect(refreshedUsername).toBe("refreshed-user");
+    expect(body2.turnAvailable).toBe(true);
+
+    fetchSpyV2.mockRestore();
   });
 });

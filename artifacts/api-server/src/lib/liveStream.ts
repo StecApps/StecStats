@@ -11,6 +11,15 @@ export type IceServer = {
 
 const FALLBACK_ICE_SERVERS: IceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
+/**
+ * Metered.ca TURN credentials are valid for 1 hour (3600 s) by default —
+ * confirmed against their /api/v1/turn/credentials documentation.  We cache
+ * for 50 minutes so there is always at least a 10-minute buffer before the
+ * credentials actually expire on the Metered.ca side, ensuring any
+ * broadcaster that requests ICE servers mid-game receives credentials that
+ * are still valid for the remainder of their session.
+ */
+const TURN_CACHE_TTL_MS = 50 * 60 * 1000; // 50 minutes
 let cachedIceServers: { servers: IceServer[]; expiresAt: number } | null = null;
 
 /**
@@ -88,9 +97,9 @@ export async function getIceServers(): Promise<IceServer[]> {
         turnAvailable = false;
         return FALLBACK_ICE_SERVERS;
       }
-      // Metered credentials are valid for a while; cache for 30 minutes to avoid
-      // hitting rate limits, well under their expiry window.
-      cachedIceServers = { servers, expiresAt: Date.now() + 30 * 60 * 1000 };
+      // Cache for TURN_CACHE_TTL_MS (50 min) — safely below the 1-hour
+      // Metered.ca credential lifetime so callers always receive live credentials.
+      cachedIceServers = { servers, expiresAt: Date.now() + TURN_CACHE_TTL_MS };
       turnAvailable = hasTurnServer(servers);
       return servers;
     } catch (err) {
