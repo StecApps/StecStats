@@ -39,6 +39,16 @@ export async function getTurnAvailable(): Promise<boolean> {
   return (cachedIceServerData as IceServerCache | null)?.turnAvailable ?? false;
 }
 
+/**
+ * Bypasses the module-level cache and force-fetches /api/live/ice-servers.
+ * Use this for periodic mid-session TURN health checks so the cached result
+ * from go-live time doesn't mask a relay outage that happened during the game.
+ */
+export async function refreshTurnAvailable(): Promise<boolean> {
+  cachedIceServerData = null;
+  return getTurnAvailable();
+}
+
 export function liveWsUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/api/live/ws`;

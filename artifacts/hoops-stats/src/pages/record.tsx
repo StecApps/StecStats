@@ -36,7 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { getIceServers, getTurnAvailable, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
+import { getIceServers, getTurnAvailable, refreshTurnAvailable, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
 import { AdaptiveQualityController, type AdaptiveLevel } from "@/lib/adaptiveStream";
 import { Gauge } from "lucide-react";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
@@ -832,6 +832,13 @@ export default function RecordGame() {
   const liveManualStopRef = useRef(false);
   const liveReconnectAttemptsRef = useRef(0);
   const liveReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Periodic TURN re-check: fires every 25 minutes while a broadcast is live
+  // so a relay outage that happens mid-game surfaces a visible warning instead
+  // of silently degrading streams.
+  const turnCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // TURN state captured at the moment the coach tapped Go Live, used to
+  // determine whether a mid-game change is a degradation worth warning about.
+  const turnAtGoLiveRef = useRef<boolean | null>(null);
   const viewerIceAttemptsRef = useRef<Map<string, number>>(new Map());
   const viewerIceTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -2214,6 +2221,33 @@ export default function RecordGame() {
         liveReconnectAttemptsRef.current = 0;
         toast({ title: "Live stream reconnected", description: "The broadcast has resumed." });
       }
+
+      // Start (or restart on reconnect) a 25-minute TURN health-check timer.
+      // If TURN was available when the coach tapped Go Live but is now gone,
+      // show a toast warning so they know relay-dependent viewers may drop.
+      if (turnCheckIntervalRef.current) clearInterval(turnCheckIntervalRef.current);
+      turnCheckIntervalRef.current = setInterval(async () => {
+        try {
+          const nowAvailable = await refreshTurnAvailable();
+          setTurnAvailable(nowAvailable);
+          if (turnAtGoLiveRef.current === true && !nowAvailable) {
+            console.warn("[live] TURN relay was available at Go Live but is no longer reachable.");
+            toast({
+              title: "TURN relay unavailable",
+              description: "The streaming relay has gone offline. Viewers behind restrictive networks may lose the stream.",
+              variant: "destructive",
+            });
+          } else if (turnAtGoLiveRef.current === false && nowAvailable) {
+            console.info("[live] TURN relay became available mid-game.");
+            toast({
+              title: "Relay connection restored",
+              description: "The TURN relay is back — restricted-network viewers can reconnect.",
+            });
+          }
+        } catch {
+          // Swallow errors: a failed check shouldn't crash the broadcast.
+        }
+      }, 25 * 60 * 1000);
     };
 
     ws.onmessage = async (event) => {
@@ -2303,6 +2337,9 @@ export default function RecordGame() {
     setLiveInterrupted(false);
     liveManualStopRef.current = false;
     liveReconnectAttemptsRef.current = 0;
+    // Snapshot TURN availability at go-live time so the mid-game health-check
+    // interval can tell whether a change is a degradation worth warning about.
+    turnAtGoLiveRef.current = turnAvailable;
 
     // If a previous broadcast was interrupted, resume the same invite
     // code so viewers who kept the watch page open can reconnect.
@@ -2352,6 +2389,11 @@ export default function RecordGame() {
       clearTimeout(liveReconnectTimeoutRef.current);
       liveReconnectTimeoutRef.current = null;
     }
+    if (turnCheckIntervalRef.current) {
+      clearInterval(turnCheckIntervalRef.current);
+      turnCheckIntervalRef.current = null;
+    }
+    turnAtGoLiveRef.current = null;
     livePeersRef.current.forEach(pc => pc.close());
     livePeersRef.current.clear();
     viewerIceTimeoutsRef.current.forEach(t => clearTimeout(t));
@@ -3989,9 +4031,16 @@ export default function RecordGame() {
                 </>
               )}
               {(isLive || isReconnectingLive) && (
-                <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={stopGoingLive}>
-                  <Radio className="w-4 h-4 mr-2 text-red-500 animate-pulse" /> End Live
-                </Button>
+                <>
+                  <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={stopGoingLive}>
+                    <Radio className="w-4 h-4 mr-2 text-red-500 animate-pulse" /> End Live
+                  </Button>
+                  {turnAvailable === false && (
+                    <span className="text-[11px] text-amber-300 bg-black/50 backdrop-blur-sm rounded px-2 py-1 leading-tight max-w-[160px] text-center">
+                      ⚠️ Relay offline — some viewers may lose the stream
+                    </span>
+                  )}
+                </>
               )}
               {selectedPlayerIds.length > 0 && (
                 <Button
