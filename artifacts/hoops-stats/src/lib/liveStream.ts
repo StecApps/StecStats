@@ -1,21 +1,42 @@
 const FALLBACK_ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
-let cachedIceServers: RTCIceServer[] | null = null;
+type IceServerCache = {
+  servers: RTCIceServer[];
+  turnAvailable: boolean;
+};
+
+let cachedIceServerData: IceServerCache | null = null;
 
 export async function getIceServers(): Promise<RTCIceServer[]> {
-  if (cachedIceServers) return cachedIceServers;
+  if (cachedIceServerData) return cachedIceServerData.servers;
   try {
     const res = await fetch("/api/live/ice-servers");
-    if (!res.ok) return FALLBACK_ICE_SERVERS;
-    const data = await res.json();
-    if (!Array.isArray(data.iceServers) || data.iceServers.length === 0) {
+    if (!res.ok) {
+      cachedIceServerData = { servers: FALLBACK_ICE_SERVERS, turnAvailable: false };
       return FALLBACK_ICE_SERVERS;
     }
-    cachedIceServers = data.iceServers as RTCIceServer[];
-    return cachedIceServers;
+    const data = await res.json();
+    const servers = Array.isArray(data.iceServers) && data.iceServers.length > 0
+      ? (data.iceServers as RTCIceServer[])
+      : FALLBACK_ICE_SERVERS;
+    cachedIceServerData = { servers, turnAvailable: Boolean(data.turnAvailable) };
+    return servers;
   } catch {
+    cachedIceServerData = { servers: FALLBACK_ICE_SERVERS, turnAvailable: false };
     return FALLBACK_ICE_SERVERS;
   }
+}
+
+/**
+ * Returns whether the server has a working TURN relay configured.
+ * Fetches from /api/live/ice-servers if the cache is empty (getIceServers is
+ * a no-op when the cache is warm), then reads the module-level state.
+ */
+export async function getTurnAvailable(): Promise<boolean> {
+  await getIceServers();
+  // Cast to break TypeScript's module-variable narrowing: after the await,
+  // cachedIceServerData is always set (getIceServers always populates it).
+  return (cachedIceServerData as IceServerCache | null)?.turnAvailable ?? false;
 }
 
 export function liveWsUrl(): string {

@@ -36,7 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { getIceServers, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
+import { getIceServers, getTurnAvailable, liveWsUrl, startLiveSession, stopLiveSession, watchUrlForCode } from "@/lib/liveStream";
 import { AdaptiveQualityController, type AdaptiveLevel } from "@/lib/adaptiveStream";
 import { Gauge } from "lucide-react";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
@@ -488,6 +488,14 @@ export default function RecordGame() {
       .catch(() => setIsYoutubeConnected(false));
   }, [isEditing]);
 
+  // Pre-warm the ICE-server cache and surface TURN availability so we can
+  // show a warning badge before the coach taps Go Live.  Only relevant for
+  // Pro users who have access to live streaming.
+  useEffect(() => {
+    if (!isPro) return;
+    getTurnAvailable().then(setTurnAvailable).catch(() => setTurnAvailable(false));
+  }, [isPro]);
+
   useEffect(() => {
     const params = new URLSearchParams(search);
     const ytParam = params.get("youtube");
@@ -580,6 +588,8 @@ export default function RecordGame() {
   const [liveQuality, setLiveQuality] = useState<AdaptiveLevel | null>(null);
   const adaptiveRef = useRef<AdaptiveQualityController | null>(null);
   const [isStartingLive, setIsStartingLive] = useState(false);
+  // null = not yet checked, true = TURN relay active, false = STUN-only
+  const [turnAvailable, setTurnAvailable] = useState<boolean | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [zoom, setZoom] = useState(1.3);
   const [canSwitchCamera, setCanSwitchCamera] = useState(false);
@@ -3280,6 +3290,12 @@ export default function RecordGame() {
                   </Button>
                 </>
               )}
+              {turnAvailable === false && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5 pt-0.5">
+                  <span className="shrink-0">⚠️</span>
+                  <span>Streaming on limited network — viewers behind school or gym firewalls may not connect.</span>
+                </p>
+              )}
             </div>
           )}
 
@@ -3965,6 +3981,11 @@ export default function RecordGame() {
                     {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
                     Go Live
                   </Button>
+                  {turnAvailable === false && (
+                    <span className="text-[11px] text-amber-300 bg-black/50 backdrop-blur-sm rounded px-2 py-1 leading-tight max-w-[160px] text-center">
+                      ⚠️ Limited network — some viewers may not connect
+                    </span>
+                  )}
                 </>
               )}
               {(isLive || isReconnectingLive) && (

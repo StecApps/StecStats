@@ -13,11 +13,32 @@ const FALLBACK_ICE_SERVERS: IceServer[] = [{ urls: "stun:stun.l.google.com:19302
 
 let cachedIceServers: { servers: IceServer[]; expiresAt: number } | null = null;
 
+/**
+ * Whether the last successful TURN credential fetch returned actual TURN
+ * servers (true), whether it fell back to STUN-only (false), or whether no
+ * check has completed yet (null).  Written by getIceServers(); read by the
+ * /live/ice-servers endpoint so the broadcaster UI can warn when TURN is absent.
+ */
+let turnAvailable: boolean | null = null;
+
+/** Returns the most recently resolved TURN availability state. */
+export function getTurnAvailable(): boolean | null {
+  return turnAvailable;
+}
+
+function hasTurnServer(servers: IceServer[]): boolean {
+  return servers.some((s) => {
+    const urls = Array.isArray(s.urls) ? s.urls : [s.urls];
+    return urls.some((u) => u.startsWith("turn:") || u.startsWith("turns:"));
+  });
+}
+
 export async function getIceServers(): Promise<IceServer[]> {
   const apiKey = process.env.METERED_API_KEY;
   const domain = process.env.METERED_DOMAIN;
 
   if (!apiKey || !domain) {
+    turnAvailable = false;
     return FALLBACK_ICE_SERVERS;
   }
 
@@ -30,19 +51,48 @@ export async function getIceServers(): Promise<IceServer[]> {
     const res = await fetch(url);
     if (!res.ok) {
       logger.warn({ status: res.status }, "Failed to fetch TURN credentials from Metered.ca, falling back to STUN-only");
+      // Invalidate any stale cache so the next caller retries immediately.
+      cachedIceServers = null;
+      turnAvailable = false;
       return FALLBACK_ICE_SERVERS;
     }
     const servers = (await res.json()) as IceServer[];
     if (!Array.isArray(servers) || servers.length === 0) {
+      cachedIceServers = null;
+      turnAvailable = false;
       return FALLBACK_ICE_SERVERS;
     }
     // Metered credentials are valid for a while; cache for 30 minutes to avoid
     // hitting rate limits, well under their expiry window.
     cachedIceServers = { servers, expiresAt: Date.now() + 30 * 60 * 1000 };
+    turnAvailable = hasTurnServer(servers);
     return servers;
   } catch (err) {
     logger.warn({ err }, "Error fetching TURN credentials from Metered.ca, falling back to STUN-only");
+    cachedIceServers = null;
+    turnAvailable = false;
     return FALLBACK_ICE_SERVERS;
+  }
+}
+
+/**
+ * Warms the ICE-server cache and logs the TURN availability status.  Call
+ * once at server startup so the very first broadcaster request hits the cache
+ * and so operators know immediately whether TURN is configured correctly.
+ */
+export async function checkTurnAvailability(): Promise<void> {
+  try {
+    const servers = await getIceServers();
+    if (turnAvailable) {
+      logger.info({ turnServers: servers.filter((s) => hasTurnServer([s])).length }, "TURN relay active — streams will work behind restrictive firewalls");
+    } else {
+      logger.warn(
+        "TURN relay NOT available (METERED_API_KEY/METERED_DOMAIN missing or credentials fetch failed) — " +
+          "streams will fall back to STUN-only and may fail on restrictive gym/school networks",
+      );
+    }
+  } catch (err) {
+    logger.error({ err }, "Unexpected error during TURN availability check at startup");
   }
 }
 

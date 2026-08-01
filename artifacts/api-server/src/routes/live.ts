@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { liveStreamRegistry, getIceServers } from "../lib/liveStream";
+import { liveStreamRegistry, getIceServers, getTurnAvailable } from "../lib/liveStream";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlements, isPro } from "../lib/entitlements";
 
@@ -16,7 +16,10 @@ const router: IRouter = Router();
  */
 router.get("/live/ice-servers", async (_req: Request, res: Response) => {
   const iceServers = await getIceServers();
-  res.json({ iceServers });
+  // turnAvailable is set as a side-effect of getIceServers(); read it after
+  // the await so the value reflects the outcome of this exact fetch.
+  const turnAvailable = getTurnAvailable() ?? false;
+  res.json({ iceServers, turnAvailable });
 });
 
 /**

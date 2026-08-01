@@ -7,7 +7,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { seedDatabase, applyVideoOffsetFixes } from "./lib/seed";
 import { attachLiveSocketServer } from "./lib/liveSocket";
-import { liveStreamRegistry } from "./lib/liveStream";
+import { liveStreamRegistry, checkTurnAvailability } from "./lib/liveStream";
 import { getStripeSync } from "./lib/stripeClient";
 import { db } from "@workspace/db";
 import { resumeHighlightJob } from "./routes/highlights";
@@ -166,6 +166,11 @@ Promise.all([
 
   attachLiveSocketServer(server);
   liveStreamRegistry.startCleanupTimer();
+
+  // Check TURN relay availability once at startup and log the result so
+  // operators know immediately if streams will fall back to STUN-only on
+  // restrictive gym/school networks.
+  void checkTurnAvailability();
 
   // Clean up temp dirs orphaned by previous OOM kills, then resume jobs.
   setTimeout(() => {
