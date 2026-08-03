@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/hoops-mobile/"
+title = "Hoops Stats — Coach App"
+description = "Native iOS coach app for basketball teams. Track live game stats, record video, manage player rosters, view season analytics, stream games live, and watch highlight reels. Replaces the web app with a full native iOS experience."
+version = "1.0.0"
+id = "artifacts/hoops-mobile"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/hoops-mobile/" ]
+localPort = 25655
+
+[services.development]
+run = "pnpm --filter @workspace/hoops-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/hoops-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/hoops-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "25655"
+BASE_PATH = "/hoops-mobile/"
