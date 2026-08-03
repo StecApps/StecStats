@@ -27,6 +27,19 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+// Preflight: REVENUECAT_WEBHOOK_SECRET must be set in production.
+// Without it the webhook endpoint rejects every RevenueCat event (purchases,
+// renewals, expirations), silently breaking all mobile entitlements.
+// Fail at boot rather than silently serving broken traffic.
+if (process.env["NODE_ENV"] === "production" && !process.env["REVENUECAT_WEBHOOK_SECRET"]) {
+  // Use console.error here because the logger may not be initialised yet.
+  console.error(
+    "[FATAL] REVENUECAT_WEBHOOK_SECRET is not set in production. " +
+      "All RevenueCat webhook events will be rejected. Set the secret and redeploy.",
+  );
+  process.exit(1);
+}
+
 /**
  * Sets up the `stripe` schema, registers the managed webhook, and backfills
  * existing Stripe data. Order matters: migrations must run before the
