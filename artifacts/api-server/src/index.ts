@@ -8,7 +8,7 @@ import { logger } from "./lib/logger";
 import { seedDatabase, applyVideoOffsetFixes } from "./lib/seed";
 import { attachLiveSocketServer } from "./lib/liveSocket";
 import { liveStreamRegistry, checkTurnAvailability } from "./lib/liveStream";
-import { getStripeSync } from "./lib/stripeClient";
+import { getStripeSync, getStripeCredentials } from "./lib/stripeClient";
 import { db } from "@workspace/db";
 import { resumeHighlightJob } from "./routes/highlights";
 import { resumeLowlightJob } from "./routes/lowlights";
@@ -38,6 +38,27 @@ if (process.env["NODE_ENV"] === "production" && !process.env["REVENUECAT_WEBHOOK
       "All RevenueCat webhook events will be rejected. Set the secret and redeploy.",
   );
   process.exit(1);
+}
+
+// Preflight: fast synchronous check — if STRIPE_SECRET_KEY is absent and the
+// connector env vars are also absent, we can fail immediately without an async
+// fetch. The definitive check (getStripeCredentials()) runs async below and
+// will also catch mis-configured connectors (env vars present but Stripe not
+// actually connected).
+if (process.env["NODE_ENV"] === "production") {
+  const hasDirectKey = Boolean(process.env["STRIPE_SECRET_KEY"]);
+  const hasConnector =
+    Boolean(process.env["REPLIT_CONNECTORS_HOSTNAME"]) &&
+    (Boolean(process.env["REPL_IDENTITY"]) || Boolean(process.env["WEB_REPL_RENEWAL"]));
+
+  if (!hasDirectKey && !hasConnector) {
+    console.error(
+      "[FATAL] No Stripe credentials are configured in production. " +
+        "Set STRIPE_SECRET_KEY in Secrets, or connect Stripe via the Integrations tab. " +
+        "Without this, all billing operations will fail at runtime.",
+    );
+    process.exit(1);
+  }
 }
 
 // Preflight: STRIPE_WEBHOOK_SECRET must be set in production when using the
@@ -176,17 +197,49 @@ async function resumeOrphanedJobs(): Promise<void> {
   }
 }
 
-Promise.all([
-  seedDatabase().catch((err) => {
-    logger.error({ err }, "Error seeding database");
-  }),
-  applyVideoOffsetFixes().catch((err) => {
-    logger.error({ err }, "Error applying video offset fixes");
-  }),
-  initStripe().catch((err) => {
-    logger.error({ err }, "Error initializing Stripe");
-  }),
-]).finally(() => {
+async function boot() {
+  // Definitive Stripe credential check: actually resolve credentials before
+  // accepting any traffic. This catches cases where connector env vars are
+  // present but Stripe is not connected (or the connector fetch fails), which
+  // the synchronous env-var heuristic above cannot detect.
+  if (process.env["NODE_ENV"] === "production") {
+    try {
+      await getStripeCredentials();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(
+        "[FATAL] Could not resolve Stripe credentials at startup. " +
+          "All billing operations will fail. " +
+          "Set STRIPE_SECRET_KEY in Secrets or connect Stripe via the Integrations tab. " +
+          `Error: ${message}`,
+      );
+      process.exit(1);
+    }
+  }
+
+  await Promise.all([
+    seedDatabase().catch((err) => {
+      logger.error({ err }, "Error seeding database");
+    }),
+    applyVideoOffsetFixes().catch((err) => {
+      logger.error({ err }, "Error applying video offset fixes");
+    }),
+    // In production, Stripe init failure is fatal — serving traffic with
+    // billing silently dead is worse than a failed boot. Outside production,
+    // log and continue so local development without Stripe keys still works.
+    initStripe().catch((err) => {
+      if (process.env["NODE_ENV"] === "production") {
+        console.error(
+          "[FATAL] Stripe initialization failed in production. " +
+            "Billing is non-functional. Exiting. Error: " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+        process.exit(1);
+      }
+      logger.error({ err }, "Error initializing Stripe");
+    }),
+  ]);
+
   const server = app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
@@ -208,4 +261,9 @@ Promise.all([
   setTimeout(() => {
     void cleanupOrphanedTempDirs().finally(() => resumeOrphanedJobs());
   }, 5_000);
+}
+
+boot().catch((err) => {
+  console.error("[FATAL] Unexpected error during server boot:", err);
+  process.exit(1);
 });
