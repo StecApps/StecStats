@@ -210,6 +210,69 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
 });
 
 /**
+ * GET /storage/objects-signed-url/*
+ *
+ * Returns a short-lived GCS signed URL for a private object as JSON.
+ * Runs the same auth + ownership check as GET /storage/objects/* so callers
+ * (e.g. mobile video players that cannot send Authorization headers) can fetch
+ * the signed URL via an authenticated API call and then stream directly.
+ */
+router.get("/storage/objects-signed-url/*path", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const raw = req.params.path;
+    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    const objectPath = `/objects/${wildcardPath}`;
+    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+
+    const ownerId = req.appUser!.id;
+
+    const ownedGame = await db.query.gamesTable.findFirst({
+      where: and(
+        eq(gamesTable.ownerId, ownerId),
+        or(
+          eq(gamesTable.videoObjectPath, objectPath),
+          eq(gamesTable.highlightObjectPath, objectPath),
+        ),
+      ),
+    });
+
+    const ownedPlayerPhoto = !ownedGame
+      ? await db.query.playersTable.findFirst({
+          where: and(
+            eq(playersTable.ownerId, ownerId),
+            eq(playersTable.photoObjectPath, objectPath),
+          ),
+        })
+      : null;
+
+    const canAccess =
+      !!ownedGame ||
+      !!ownedPlayerPhoto ||
+      (await objectStorageService.canAccessObjectEntity({
+        userId: String(ownerId),
+        objectFile,
+        requestedPermission: ObjectPermission.READ,
+      }));
+
+    if (!canAccess) {
+      res.status(404).json({ error: "Object not found" });
+      return;
+    }
+
+    // 1-hour signed URL — long enough for full game video playback on mobile.
+    const url = await objectStorageService.getObjectEntitySignedURL(objectPath, 3600);
+    res.json({ url });
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      res.status(404).json({ error: "Object not found" });
+      return;
+    }
+    req.log.error({ err: error }, "Error generating signed URL");
+    res.status(500).json({ error: "Failed to generate signed URL" });
+  }
+});
+
+/**
  * POST /storage/concat-segments
  *
  * Accepts an ordered array of object-storage paths for video segments

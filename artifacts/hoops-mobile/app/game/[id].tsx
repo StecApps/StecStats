@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,21 @@ import {
 import { useLayoutEffect } from 'react';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import { useAuth } from '@clerk/clerk-expo';
+
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : '';
+
+async function fetchSignedUrl(objectPath: string, token: string): Promise<string> {
+  const clean = objectPath.replace(/^\/objects\//, '');
+  const res = await fetch(`${API_BASE}/api/storage/objects-signed-url/${clean}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Could not get signed URL');
+  const { url } = await res.json();
+  return url;
+}
 
 type Tab = 'stats' | 'video' | 'highlights';
 
@@ -55,15 +70,30 @@ const pillStyle = StyleSheet.create({
 });
 
 function VideoSection({ game, colors }: { game: any; colors: any }) {
-  const videoUrl = game.videoObjectPath
-    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/storage/objects/${game.videoObjectPath.replace(/^\/objects\//, '')}`
-    : null;
+  const { getToken } = useAuth();
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
-  const player = useVideoPlayer(videoUrl ?? '', (p) => {
-    if (videoUrl) p.pause();
-  });
+  const player = useVideoPlayer('', () => {});
 
-  if (!videoUrl) {
+  useEffect(() => {
+    if (!game.videoObjectPath) return;
+    let cancelled = false;
+    getToken()
+      .then((token) => {
+        if (!token || cancelled) return;
+        return fetchSignedUrl(game.videoObjectPath, token);
+      })
+      .then((url) => {
+        if (!url || cancelled) return;
+        setSignedUrl(url);
+        player.replace({ uri: url });
+      })
+      .catch(() => { if (!cancelled) setLoadError(true); });
+    return () => { cancelled = true; };
+  }, [game.videoObjectPath]);
+
+  if (!game.videoObjectPath) {
     return (
       <View style={videoStyle.empty}>
         <Ionicons name="videocam-off-outline" size={40} color={colors.mutedForeground} />
@@ -72,6 +102,21 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
         </Text>
       </View>
     );
+  }
+
+  if (loadError) {
+    return (
+      <View style={videoStyle.empty}>
+        <Ionicons name="alert-circle-outline" size={40} color={colors.mutedForeground} />
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
+          Could not load video
+        </Text>
+      </View>
+    );
+  }
+
+  if (!signedUrl) {
+    return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
   }
 
   return (
@@ -94,21 +139,36 @@ const videoStyle = StyleSheet.create({
 });
 
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
+  const { getToken } = useAuth();
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
 
-  const highlightUrl =
-    highlight?.status === 'ready' && highlight.highlightObjectPath
-      ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/storage/objects/${highlight.highlightObjectPath.replace(/^\/objects\//, '')}`
-      : null;
+  const player = useVideoPlayer('', () => {});
 
-  const player = useVideoPlayer(highlightUrl ?? '', (p) => {
-    if (highlightUrl) p.pause();
-  });
+  const objectPath = highlight?.status === 'ready' ? highlight.highlightObjectPath ?? null : null;
+
+  useEffect(() => {
+    if (!objectPath) return;
+    let cancelled = false;
+    getToken()
+      .then((token) => {
+        if (!token || cancelled) return;
+        return fetchSignedUrl(objectPath, token);
+      })
+      .then((url) => {
+        if (!url || cancelled) return;
+        setSignedUrl(url);
+        player.replace({ uri: url });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [objectPath]);
 
   if (!highlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
-  if (highlight.status === 'ready' && highlightUrl) {
+  if (highlight.status === 'ready') {
+    if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
     return (
       <View style={videoStyle.wrap}>
         <VideoView
@@ -146,9 +206,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             await generateMutation.mutateAsync({ gameId });
             refetch();
           }}
-          style={[
-            { backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12, marginTop: 8 },
-          ]}
+          style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12, marginTop: 8 }}
           activeOpacity={0.8}
           disabled={generateMutation.isPending}
         >

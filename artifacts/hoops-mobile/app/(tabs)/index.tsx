@@ -33,10 +33,13 @@ function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
 }
 
-async function uploadPhoto(uri: string, mimeType: string): Promise<string> {
+async function uploadPhoto(uri: string, mimeType: string, token: string): Promise<string> {
   const reqRes = await fetch(`${API_BASE}/api/storage/uploads/request-url`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
     body: JSON.stringify({
       name: `player-photo-${Date.now()}.jpg`,
       size: 0,
@@ -199,7 +202,9 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
           const asset = result.assets[0];
           setUploading(true);
           try {
-            const objectPath = await uploadPhoto(asset.uri, asset.mimeType ?? 'image/jpeg');
+            const token = await getToken();
+            if (!token) throw new Error('Not signed in');
+            const objectPath = await uploadPhoto(asset.uri, asset.mimeType ?? 'image/jpeg', token);
             await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
             qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
           } catch (e) {
