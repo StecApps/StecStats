@@ -39,63 +39,6 @@ const defaultLine = (): StatLine => ({
   steals: 0, turnovers: 0, blocks: 0,
 });
 
-type StatButtonDef = {
-  label: string;
-  sub?: string;
-  color: 'primary' | 'muted' | 'destructive';
-  onPress: (line: StatLine) => Partial<StatLine>;
-  mainField: string;
-};
-
-function makeStatButtons(colors: any): StatButtonDef[] {
-  return [
-    {
-      label: '+2', sub: 'Made', color: 'primary', mainField: 'twoMade',
-      onPress: (s) => ({ twoMade: s.twoMade + 1, twoAttempted: s.twoAttempted + 1 }),
-    },
-    {
-      label: '+3', sub: 'Made', color: 'primary', mainField: 'threeMade',
-      onPress: (s) => ({ threeMade: s.threeMade + 1, threeAttempted: s.threeAttempted + 1 }),
-    },
-    {
-      label: 'Miss', sub: '2pt', color: 'muted', mainField: 'twoAttempted',
-      onPress: (s) => ({ twoAttempted: s.twoAttempted + 1 }),
-    },
-    {
-      label: 'Miss', sub: '3pt', color: 'muted', mainField: 'threeAttempted',
-      onPress: (s) => ({ threeAttempted: s.threeAttempted + 1 }),
-    },
-    {
-      label: 'FT', sub: 'Made', color: 'primary', mainField: 'ftMade',
-      onPress: (s) => ({ ftMade: s.ftMade + 1, ftAttempted: s.ftAttempted + 1 }),
-    },
-    {
-      label: 'FT', sub: 'Miss', color: 'muted', mainField: 'ftAttempted',
-      onPress: (s) => ({ ftAttempted: s.ftAttempted + 1 }),
-    },
-    {
-      label: 'Assist', color: 'primary', mainField: 'assists',
-      onPress: (s) => ({ assists: s.assists + 1 }),
-    },
-    {
-      label: 'Rebound', color: 'primary', mainField: 'rebounds',
-      onPress: (s) => ({ rebounds: s.rebounds + 1 }),
-    },
-    {
-      label: 'Steal', color: 'primary', mainField: 'steals',
-      onPress: (s) => ({ steals: s.steals + 1 }),
-    },
-    {
-      label: 'Block', color: 'primary', mainField: 'blocks',
-      onPress: (s) => ({ blocks: s.blocks + 1 }),
-    },
-    {
-      label: 'Turnover', color: 'destructive', mainField: 'turnovers',
-      onPress: (s) => ({ turnovers: s.turnovers + 1 }),
-    },
-  ];
-}
-
 function calcPoints(line: StatLine): number {
   return line.twoMade * 2 + line.threeMade * 3 + line.ftMade;
 }
@@ -106,40 +49,25 @@ function formatTime(secs: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/**
- * Upload a local file URI to object storage.
- * Returns the objectPath to pass to createGame.
- */
 async function uploadVideoFile(
   uri: string,
   requestUploadUrlFn: (body: { name: string; size: number; contentType: string }) => Promise<{ uploadURL: string; objectPath: string }>,
 ): Promise<string> {
-  // Read the file as a blob to get real size
   const fileResponse = await fetch(uri);
   const blob = await fileResponse.blob();
-
-  // Content type: expo-camera records .mov on iOS and .mp4 on Android
   const contentType = uri.endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
   const ext = uri.endsWith('.mov') ? 'mov' : 'mp4';
-
-  // Request a presigned upload URL from our API
   const { uploadURL, objectPath } = await requestUploadUrlFn({
     name: `game-recording-${Date.now()}.${ext}`,
     size: blob.size || 1,
     contentType,
   });
-
-  // PUT the file blob directly to the presigned URL
   const putRes = await fetch(uploadURL, {
     method: 'PUT',
     headers: { 'Content-Type': contentType },
     body: blob,
   });
-
-  if (!putRes.ok) {
-    throw new Error(`Video upload failed (${putRes.status})`);
-  }
-
+  if (!putRes.ok) throw new Error(`Video upload failed (${putRes.status})`);
   return objectPath;
 }
 
@@ -172,24 +100,18 @@ export default function ScorekeeperScreen() {
   const [saving, setSaving] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
-  const statButtons = makeStatButtons(colors);
 
   // Camera / recording state
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
   const cameraRef = useRef<CameraView>(null);
   const [isRecording, setIsRecording] = useState(false);
-  // Holds the promise returned by recordAsync so we can await it on stop
   const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
   const recordedUriRef = useRef<string | null>(null);
-  // True only after recordAsync has been called AND is still in-flight
   const recordingStartedRef = useRef(false);
-  // True once the CameraView fires onCameraReady
   const cameraReadyRef = useRef(false);
-  // Set when the user taps play before the camera has finished initialising
   const pendingRecordRef = useRef(false);
 
-  // Request camera+mic permissions when recordVideo is enabled
   useEffect(() => {
     if (!recordVideo) return;
     (async () => {
@@ -198,7 +120,6 @@ export default function ScorekeeperScreen() {
     })();
   }, [recordVideo]);
 
-  // Init stats for all players
   useEffect(() => {
     if (!players) return;
     setStats((prev) => {
@@ -222,23 +143,16 @@ export default function ScorekeeperScreen() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [running]);
 
-  // Start camera recording — only called when the camera is confirmed ready
   async function startRecording() {
     if (!cameraRef.current || recordingStartedRef.current) return;
     if (!cameraPermission?.granted || !micPermission?.granted) return;
-    // Mark in-flight — reset on any failure so the user can retry
     recordingStartedRef.current = true;
     setIsRecording(true);
     try {
-      // recordAsync is a long-running promise that resolves after stopRecording()
       recordingPromiseRef.current = cameraRef.current.recordAsync() as Promise<{ uri: string } | undefined>;
       const result = await recordingPromiseRef.current;
-      if (result?.uri) {
-        recordedUriRef.current = result.uri;
-      }
+      if (result?.uri) recordedUriRef.current = result.uri;
     } catch (err: any) {
-      // If recording failed to start (hardware error, OS interruption, etc.)
-      // reset the flag so the next timer-start can retry.
       if (!recordedUriRef.current) {
         recordingStartedRef.current = false;
         recordingPromiseRef.current = null;
@@ -249,10 +163,8 @@ export default function ScorekeeperScreen() {
     }
   }
 
-  // Called by CameraView once the sensor is initialised and ready to record
   function onCameraReady() {
     cameraReadyRef.current = true;
-    // If the user already tapped play while the camera was initialising, start now
     if (pendingRecordRef.current && !recordingStartedRef.current) {
       pendingRecordRef.current = false;
       startRecording();
@@ -263,12 +175,10 @@ export default function ScorekeeperScreen() {
     if (!running) {
       if (seconds === 0) startRef.current = Date.now();
       setRunning(true);
-      // Start recording on first play
       if (recordVideo && !recordingStartedRef.current) {
         if (cameraReadyRef.current) {
           startRecording();
         } else {
-          // Camera still initialising — defer until onCameraReady fires
           pendingRecordRef.current = true;
         }
       }
@@ -278,18 +188,53 @@ export default function ScorekeeperScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }
 
-  function handleStatPress(btn: StatButtonDef) {
+  function nowMs() {
+    return running ? Date.now() - startRef.current : seconds * 1000;
+  }
+
+  // ─── Shooting stat handlers ────────────────────────────────────────────────
+  function handleShoot(
+    action: 'make' | 'miss' | 'undoMake' | 'undoMiss',
+    madeKey: keyof StatLine,
+    attKey: keyof StatLine,
+    statField: string,
+  ) {
     if (!selectedPlayerId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const timestamp = running ? Date.now() - startRef.current : seconds * 1000;
+    const ts = nowMs();
     setStats((prev) => {
       const line = prev[selectedPlayerId] ?? defaultLine();
-      return { ...prev, [selectedPlayerId]: { ...line, ...btn.onPress(line) } };
+      const made = line[madeKey] as number;
+      const att = line[attKey] as number;
+      let nextMade = made;
+      let nextAtt = att;
+      if (action === 'make') { nextMade = made + 1; nextAtt = att + 1; }
+      else if (action === 'miss') { nextAtt = att + 1; }
+      else if (action === 'undoMake') { nextMade = Math.max(0, made - 1); nextAtt = Math.max(0, att - 1); }
+      else if (action === 'undoMiss') {
+        // Only undo a miss if there are more attempts than makes
+        if (att > made) nextAtt = att - 1;
+      }
+      return { ...prev, [selectedPlayerId]: { ...line, [madeKey]: nextMade, [attKey]: nextAtt } };
     });
-    setEvents((prev) => [
-      ...prev,
-      { playerId: selectedPlayerId, statField: btn.mainField, delta: 1, videoTimestampMs: timestamp },
-    ]);
+    if (action === 'make') {
+      setEvents((prev) => [...prev, { playerId: selectedPlayerId, statField, delta: 1, videoTimestampMs: ts }]);
+    }
+  }
+
+  // ─── Counting stat handlers ────────────────────────────────────────────────
+  function handleCount(field: keyof StatLine, delta: 1 | -1) {
+    if (!selectedPlayerId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const ts = nowMs();
+    setStats((prev) => {
+      const line = prev[selectedPlayerId] ?? defaultLine();
+      const current = line[field] as number;
+      return { ...prev, [selectedPlayerId]: { ...line, [field]: Math.max(0, current + delta) } };
+    });
+    if (delta === 1) {
+      setEvents((prev) => [...prev, { playerId: selectedPlayerId, statField: field as string, delta: 1, videoTimestampMs: ts }]);
+    }
   }
 
   const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0);
@@ -302,26 +247,18 @@ export default function ScorekeeperScreen() {
     }
     setSaving(true);
     try {
-      // Stop recording and wait for the file URI
       let videoObjectPath: string | null = null;
       if (recordVideo) {
-        // Stop the camera if it was recording
         if (recordingStartedRef.current) {
           cameraRef.current?.stopRecording();
           setIsRecording(false);
-
-          // Wait for recordAsync to resolve (it resolves after stopRecording)
           if (recordingPromiseRef.current) {
             try {
               const result = await recordingPromiseRef.current;
               if (result?.uri) recordedUriRef.current = result.uri;
-            } catch {
-              // recording may have already stopped cleanly
-            }
+            } catch { /* already stopped cleanly */ }
           }
         }
-
-        // If recording was opted-in but no file was captured, tell the coach explicitly
         if (!recordedUriRef.current) {
           Alert.alert(
             'No video captured',
@@ -335,8 +272,6 @@ export default function ScorekeeperScreen() {
           );
           return;
         }
-
-        // Upload the recorded file
         try {
           videoObjectPath = await uploadVideoFile(
             recordedUriRef.current,
@@ -354,7 +289,6 @@ export default function ScorekeeperScreen() {
           return;
         }
       }
-
       await saveGame(videoObjectPath);
     } catch (err: any) {
       Alert.alert('Save failed', err?.message ?? 'Could not save game');
@@ -403,8 +337,8 @@ export default function ScorekeeperScreen() {
   }
 
   const styles = makeStyles(colors, insets);
-
   const cameraReady = recordVideo && cameraPermission?.granted && micPermission?.granted;
+  const selectedLine = selectedPlayerId ? (stats[selectedPlayerId] ?? defaultLine()) : null;
 
   if (playersLoading) {
     return (
@@ -416,7 +350,7 @@ export default function ScorekeeperScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Header: scores */}
+      {/* Header: scoreboard */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
           <Ionicons name="chevron-down" size={24} color={colors.mutedForeground} />
@@ -445,10 +379,7 @@ export default function ScorekeeperScreen() {
               <Ionicons name={running ? 'pause' : 'play'} size={14} color={running ? colors.mutedForeground : '#fff'} />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => {
-                setHalf((h) => (h === 1 ? 2 : 1));
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }}
+              onPress={() => { setHalf((h) => (h === 1 ? 2 : 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               style={[styles.halfBtn, { borderColor: colors.border }]}
             >
               <Text style={[styles.halfText, { color: colors.mutedForeground }]}>{half === 1 ? '1st' : '2nd'}</Text>
@@ -516,41 +447,107 @@ export default function ScorekeeperScreen() {
         />
       </View>
 
-      {/* Stat buttons */}
-      <View style={styles.grid}>
-        {statButtons.map((btn, i) => {
-          const bgColor =
-            btn.color === 'primary'
-              ? colors.primary + '18'
-              : btn.color === 'destructive'
-              ? colors.destructive + '18'
-              : colors.muted;
-          const textColor =
-            btn.color === 'primary'
-              ? colors.primary
-              : btn.color === 'destructive'
-              ? colors.destructive
-              : colors.mutedForeground;
-          return (
-            <TouchableOpacity
-              key={i}
-              onPress={() => handleStatPress(btn)}
-              activeOpacity={0.7}
-              disabled={!selectedPlayerId}
-              style={[
-                styles.statBtn,
-                { backgroundColor: bgColor, borderColor: textColor + '30' },
-                !selectedPlayerId && { opacity: 0.3 },
-              ]}
-            >
-              <Text style={[styles.statBtnLabel, { color: textColor }]}>{btn.label}</Text>
-              {btn.sub && (
-                <Text style={[styles.statBtnSub, { color: textColor + 'AA' }]}>{btn.sub}</Text>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {/* Stat area */}
+      <ScrollView style={styles.statScroll} contentContainerStyle={styles.statContent} showsVerticalScrollIndicator={false}>
+        {!selectedPlayerId ? (
+          <Text style={[styles.noPlayerText, { color: colors.mutedForeground }]}>Select a player above to track stats</Text>
+        ) : (
+          <>
+            {/* ── Shooting stats ── */}
+            <View style={styles.shootRow}>
+              {([
+                { label: '2PT', madeKey: 'twoMade', attKey: 'twoAttempted', statField: 'twoMade' },
+                { label: '3PT', madeKey: 'threeMade', attKey: 'threeAttempted', statField: 'threeMade' },
+                { label: 'FT',  madeKey: 'ftMade',   attKey: 'ftAttempted',   statField: 'ftMade' },
+              ] as const).map((s) => {
+                const line = selectedLine!;
+                const made = line[s.madeKey as keyof StatLine] as number;
+                const att  = line[s.attKey as keyof StatLine] as number;
+                const hasMiss = att > made;
+                return (
+                  <View key={s.label} style={[styles.shootCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.shootLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+                    <Text style={[styles.shootValue, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+                      {made}/{att}
+                    </Text>
+                    {/* MAKE / MISS */}
+                    <TouchableOpacity
+                      onPress={() => handleShoot('make', s.madeKey as any, s.attKey as any, s.statField)}
+                      style={[styles.makeBtn, { backgroundColor: '#16a34a' }]}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="checkmark" size={13} color="#fff" />
+                      <Text style={styles.shootBtnText}>MAKE</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleShoot('miss', s.madeKey as any, s.attKey as any, s.statField)}
+                      style={[styles.missBtn, { backgroundColor: colors.destructive }]}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close" size={13} color="#fff" />
+                      <Text style={styles.shootBtnText}>MISS</Text>
+                    </TouchableOpacity>
+                    {/* Undo row */}
+                    <View style={styles.undoRow}>
+                      <TouchableOpacity
+                        onPress={() => handleShoot('undoMake', s.madeKey as any, s.attKey as any, s.statField)}
+                        disabled={made === 0}
+                        style={[styles.undoBtn, { borderColor: colors.border, opacity: made === 0 ? 0.3 : 1 }]}
+                      >
+                        <Text style={[styles.undoBtnText, { color: colors.mutedForeground }]}>−Make</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleShoot('undoMiss', s.madeKey as any, s.attKey as any, s.statField)}
+                        disabled={!hasMiss}
+                        style={[styles.undoBtn, { borderColor: colors.border, opacity: hasMiss ? 1 : 0.3 }]}
+                      >
+                        <Text style={[styles.undoBtnText, { color: colors.mutedForeground }]}>−Miss</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* ── Counting stats ── */}
+            <View style={styles.countGrid}>
+              {([
+                { label: 'REB', field: 'rebounds',  color: 'primary' },
+                { label: 'AST', field: 'assists',   color: 'primary' },
+                { label: 'STL', field: 'steals',    color: 'primary' },
+                { label: 'BLK', field: 'blocks',    color: 'primary' },
+                { label: 'TO',  field: 'turnovers', color: 'destructive' },
+              ] as const).map((s) => {
+                const val = (selectedLine![s.field as keyof StatLine] as number);
+                const accent = s.color === 'destructive' ? colors.destructive : colors.primary;
+                return (
+                  <View key={s.label} style={[styles.countCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.countLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+                    <Text style={[styles.countValue, { color: accent, fontFamily: 'Teko_700Bold' }]}>{val}</Text>
+                    <View style={styles.countBtns}>
+                      <TouchableOpacity
+                        onPress={() => handleCount(s.field as keyof StatLine, -1)}
+                        disabled={val === 0}
+                        activeOpacity={0.7}
+                        style={[styles.countBtn, { backgroundColor: colors.muted, opacity: val === 0 ? 0.3 : 1 }]}
+                      >
+                        <Text style={[styles.countBtnText, { color: colors.mutedForeground }]}>−</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleCount(s.field as keyof StatLine, 1)}
+                        activeOpacity={0.7}
+                        style={[styles.countBtn, { backgroundColor: accent + '20', borderColor: accent + '40', borderWidth: 1 }]}
+                      >
+                        <Text style={[styles.countBtnText, { color: accent }]}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        )}
+      </ScrollView>
 
       {/* Save button */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
@@ -571,7 +568,7 @@ export default function ScorekeeperScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Floating camera preview — only rendered when camera permission granted */}
+      {/* Floating camera preview */}
       {cameraReady && (
         <View style={styles.cameraFloat} pointerEvents="none">
           <CameraView
@@ -581,7 +578,6 @@ export default function ScorekeeperScreen() {
             mode="video"
             onCameraReady={onCameraReady}
           />
-          {/* Recording indicator */}
           <View style={styles.recBadge}>
             {isRecording ? (
               <View style={styles.recDot} />
@@ -601,10 +597,7 @@ export default function ScorekeeperScreen() {
             Camera permission needed to record video
           </Text>
           <TouchableOpacity
-            onPress={async () => {
-              await requestCameraPermission();
-              await requestMicPermission();
-            }}
+            onPress={async () => { await requestCameraPermission(); await requestMicPermission(); }}
             style={[styles.permBtn, { backgroundColor: colors.primary }]}
           >
             <Text style={styles.permBtnText}>Allow</Text>
@@ -628,12 +621,10 @@ function makeStyles(colors: any, insets: any) {
     scoreboard: { flexDirection: 'row', alignItems: 'center' },
     scoreCol: { flex: 1, alignItems: 'center' },
     teamLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontFamily: 'Inter_500Medium', maxWidth: 100 },
-    scoreNum: { fontSize: 56, lineHeight: 58 },
+    scoreNum: { fontSize: 52, lineHeight: 54 },
     scoreCenter: { alignItems: 'center', gap: 6, paddingHorizontal: 8 },
     timer: { fontSize: 22, lineHeight: 24 },
-    timerBtn: {
-      width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-    },
+    timerBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
     halfBtn: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
     halfText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
     oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -655,25 +646,78 @@ function makeStyles(colors: any, insets: any) {
     },
     playerChipName: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
     playerChipPts: { fontSize: 12, fontFamily: 'Inter_500Medium' },
-    grid: {
+
+    // ── Stat area ──────────────────────────────────────────────────────────
+    statScroll: { flex: 1 },
+    statContent: { padding: 12, gap: 12 },
+    noPlayerText: { textAlign: 'center', fontFamily: 'Inter_400Regular', fontSize: 14, marginTop: 24 },
+
+    // Shooting row — 3 cards side by side
+    shootRow: { flexDirection: 'row', gap: 8 },
+    shootCard: {
       flex: 1,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+      borderRadius: 12,
+      borderWidth: 1,
       padding: 10,
-      gap: 8,
+      alignItems: 'center',
+      gap: 6,
     },
-    statBtn: {
-      width: '29%',
-      flexGrow: 1,
-      minHeight: 60,
-      borderRadius: 10,
+    shootLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+    shootValue: { fontSize: 22, lineHeight: 24 },
+    makeBtn: {
+      width: '100%',
+      height: 36,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+    },
+    missBtn: {
+      width: '100%',
+      height: 36,
+      borderRadius: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+    },
+    shootBtnText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.3 },
+    undoRow: { flexDirection: 'row', gap: 4, width: '100%' },
+    undoBtn: {
+      flex: 1,
+      height: 24,
+      borderRadius: 6,
       borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 8,
     },
-    statBtnLabel: { fontSize: 15, fontFamily: 'Inter_700Bold' },
-    statBtnSub: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 1 },
+    undoBtnText: { fontSize: 10, fontFamily: 'Inter_500Medium' },
+
+    // Counting grid — 5 cards in a wrap
+    countGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    countCard: {
+      flex: 1,
+      minWidth: '18%',
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 10,
+      alignItems: 'center',
+      gap: 6,
+    },
+    countLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+    countValue: { fontSize: 28, lineHeight: 30 },
+    countBtns: { flexDirection: 'row', gap: 6, width: '100%' },
+    countBtn: {
+      flex: 1,
+      height: 32,
+      borderRadius: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    countBtnText: { fontSize: 18, lineHeight: 20, fontFamily: 'Inter_700Bold' },
+
+    // Footer
     footer: {
       paddingHorizontal: 16,
       paddingTop: 8,
@@ -689,7 +733,8 @@ function makeStyles(colors: any, insets: any) {
       borderRadius: 13,
     },
     saveBtnText: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#fff' },
-    // Floating camera preview (bottom-right corner)
+
+    // Floating camera preview
     cameraFloat: {
       position: 'absolute',
       bottom: 90 + insets.bottom,
@@ -706,9 +751,7 @@ function makeStyles(colors: any, insets: any) {
       shadowOffset: { width: 0, height: 2 },
       elevation: 6,
     },
-    cameraView: {
-      flex: 1,
-    },
+    cameraView: { flex: 1 },
     recBadge: {
       position: 'absolute',
       top: 5,
@@ -721,19 +764,10 @@ function makeStyles(colors: any, insets: any) {
       paddingHorizontal: 5,
       paddingVertical: 2,
     },
-    recDot: {
-      width: 7,
-      height: 7,
-      borderRadius: 4,
-      backgroundColor: '#EF4444',
-    },
-    recText: {
-      fontSize: 9,
-      fontFamily: 'Inter_700Bold',
-      color: '#fff',
-      letterSpacing: 0.5,
-    },
-    // Permission denied banner
+    recDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#EF4444' },
+    recText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.5 },
+
+    // Permission banner
     permBanner: {
       position: 'absolute',
       bottom: 90 + insets.bottom,
@@ -748,11 +782,7 @@ function makeStyles(colors: any, insets: any) {
       paddingVertical: 10,
     },
     permText: { flex: 1, fontSize: 12, fontFamily: 'Inter_400Regular' },
-    permBtn: {
-      borderRadius: 7,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-    },
+    permBtn: { borderRadius: 7, paddingHorizontal: 12, paddingVertical: 6 },
     permBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: '#fff' },
   });
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '@clerk/clerk-expo';
 import {
   useListPlayers,
   useGetPlayerSummary,
@@ -170,7 +171,13 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
   const { data: summary, isLoading } = useGetPlayerSummary(player.id);
   const updatePlayer = useUpdatePlayer();
   const qc = useQueryClient();
+  const { getToken } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    getToken().then((t) => setAuthToken(t ?? null)).catch(() => {});
+  }, []);
 
   async function handlePhotoTap() {
     Alert.alert('Player Photo', undefined, [
@@ -247,7 +254,10 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
           <View style={[heroS.avatar, { borderColor: colors.primary }]}>
             {hasPhoto ? (
               <Image
-                source={{ uri: photoSrc(player.photoObjectPath) }}
+                source={{
+                  uri: photoSrc(player.photoObjectPath),
+                  headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+                }}
                 style={heroS.avatarImg}
                 contentFit="cover"
               />

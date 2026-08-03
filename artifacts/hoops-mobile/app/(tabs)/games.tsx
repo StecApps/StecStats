@@ -118,7 +118,7 @@ export default function GamesScreen() {
 
   const { data: games, isLoading: gamesLoading, refetch } = useListTeamGames(
     team?.id ?? 0,
-    { query: { enabled: !!team } },
+    { query: { enabled: !!team } as any },
   );
 
   const filtered = useMemo(() => {
