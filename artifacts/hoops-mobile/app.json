@@ -42,9 +42,15 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Hoops Stats to access your camera to record game footage.",
-          "microphonePermission": "Allow Hoops Stats to access your microphone to record game audio.",
+          "cameraPermission": "Allow StecStats to access your camera to record game footage.",
+          "microphonePermission": "Allow StecStats to access your microphone to record game audio.",
           "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow StecStats to access your photos to set a player profile picture."
         }
       ],
       [
