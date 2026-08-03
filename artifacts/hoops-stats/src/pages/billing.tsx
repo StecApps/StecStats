@@ -9,6 +9,12 @@ import { useSearch, useLocation } from "wouter";
 import { FAILED_CHECKOUT_KEY, decodeCheckoutIntent } from "@/pages/pricing";
 import type { CheckoutIntent } from "@/pages/pricing";
 
+// ─── Feature lists ────────────────────────────────────────────────────────────
+// KEEP IN SYNC with the mobile app: artifacts/hoops-mobile/app/paywall.tsx
+// and with artifacts/hoops-stats/src/pages/pricing.tsx (FREE + PRO).
+// If you change copy here, change it there too (and vice versa).
+// ──────────────────────────────────────────────────────────────────────────────
+
 const FREE_FEATURES = [
   "1 player",
   "Current season stats",

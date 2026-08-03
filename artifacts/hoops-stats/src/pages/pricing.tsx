@@ -37,6 +37,12 @@ export function decodeCheckoutIntent(raw: string | null): CheckoutIntent | null 
   return null;
 }
 
+// ─── Feature lists ────────────────────────────────────────────────────────────
+// KEEP IN SYNC with the mobile app: artifacts/hoops-mobile/app/paywall.tsx
+// (FREE_FEATURES, PRO_FEATURES, PREMIUM_FEATURES). If you change copy here,
+// change it there too (and vice versa).
+// ──────────────────────────────────────────────────────────────────────────────
+
 const FREE_FEATURES = [
   "1 player",
   "Current season stats",

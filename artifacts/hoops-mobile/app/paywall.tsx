@@ -19,8 +19,15 @@ import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetBillingStatusQueryKey } from '@workspace/api-client-react';
 
+// ─── Feature lists ────────────────────────────────────────────────────────────
+// KEEP IN SYNC with the web app: artifacts/hoops-stats/src/pages/pricing.tsx
+// (FREE_FEATURES, PRO_FEATURES) and artifacts/hoops-stats/src/pages/billing.tsx
+// (PREMIUM_FEATURES). If you change copy here, change it there too (and vice versa).
+// ──────────────────────────────────────────────────────────────────────────────
+
 const FREE_FEATURES = [
-  '1 player, current season stats',
+  '1 player',
+  'Current season stats',
   'Basic box scores',
 ];
 
@@ -36,9 +43,9 @@ const PRO_FEATURES = [
 
 const PREMIUM_FEATURES = [
   'Everything in Pro',
-  'Auto-follow camera — tracks a specific player automatically',
-  'Shot detection',
-  'Premium analytics & scouting reports',
+  'Auto-Follow camera during recording',
+  'Player tracking photos',
+  'More features coming',
 ];
 
 export default function PaywallScreen() {
