@@ -122,9 +122,13 @@ export default function ProfileScreen() {
   const { data: billing } = useGetBillingStatus();
   const { data: teams } = useListTeams();
   const { data: players } = useListPlayers();
-  const { isPremium } = useSubscription();
+  const { isPremium, isPro } = useSubscription();
 
-  const plan = billing?.plan ?? 'free';
+  // On mobile, RevenueCat is the source of truth for active subscriptions.
+  // Fall back to the web billing API plan (Stripe) when RC says free, so that
+  // web-purchased subscriptions also show correctly.
+  const rcPlan = isPremium ? 'premium' : isPro ? 'pro' : null;
+  const plan = rcPlan ?? billing?.plan ?? 'free';
   const team = teams?.[0];
   const initials = (user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? '?')
     .split(' ')

@@ -16,6 +16,8 @@ import { useSubscription } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { useQueryClient } from '@tanstack/react-query';
+import { getGetBillingStatusQueryKey } from '@workspace/api-client-react';
 
 const FEATURES = [
   { icon: 'stats-chart', label: 'Career stats & season history', pro: true },
@@ -30,6 +32,7 @@ export default function PaywallScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { offerings, purchase, restore, isPurchasing, isRestoring, isPro, isPremium, configured } =
     useSubscription();
 
@@ -49,6 +52,9 @@ export default function PaywallScreen() {
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await purchase(selectedPkg);
+      // Invalidate the web billing cache so the profile badge updates if the
+      // server has already synced the entitlement (e.g. via Task-81 webhook).
+      queryClient.invalidateQueries({ queryKey: getGetBillingStatusQueryKey() });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (err: any) {
@@ -61,6 +67,8 @@ export default function PaywallScreen() {
   async function handleRestore() {
     try {
       await restore();
+      // Same invalidation on restore so a previously-purchased plan re-appears.
+      queryClient.invalidateQueries({ queryKey: getGetBillingStatusQueryKey() });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Purchases restored', 'Your subscription has been restored.');
       router.back();
