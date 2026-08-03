@@ -34,27 +34,51 @@ function photoSrc(objectPath: string) {
 }
 
 async function uploadPhoto(uri: string, mimeType: string, token: string): Promise<string> {
-  const reqRes = await fetch(`${API_BASE}/api/storage/uploads/request-url`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      name: `player-photo-${Date.now()}.jpg`,
-      size: 0,
-      contentType: mimeType || 'image/jpeg',
-    }),
-  });
-  if (!reqRes.ok) throw new Error('Could not get upload URL');
+  let reqRes: Response;
+  try {
+    reqRes = await fetch(`${API_BASE}/api/storage/uploads/request-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: `player-photo-${Date.now()}.jpg`,
+        size: 0,
+        contentType: mimeType || 'image/jpeg',
+      }),
+    });
+  } catch {
+    throw new Error('Network error — check your connection and try again.');
+  }
+  if (reqRes.status === 401 || reqRes.status === 403) {
+    throw new Error('Not authorised — please sign out and back in, then try again.');
+  }
+  if (!reqRes.ok) {
+    throw new Error(`Server error (${reqRes.status}) — please try again.`);
+  }
   const { uploadURL, objectPath } = await reqRes.json();
-  const blob = await (await fetch(uri)).blob();
-  const upRes = await fetch(uploadURL, {
-    method: 'PUT',
-    headers: { 'Content-Type': mimeType || 'image/jpeg' },
-    body: blob,
-  });
-  if (!upRes.ok) throw new Error('Upload failed');
+
+  let blob: Blob;
+  try {
+    blob = await (await fetch(uri)).blob();
+  } catch {
+    throw new Error('Could not read the photo — please try a different image.');
+  }
+
+  let upRes: Response;
+  try {
+    upRes = await fetch(uploadURL, {
+      method: 'PUT',
+      headers: { 'Content-Type': mimeType || 'image/jpeg' },
+      body: blob,
+    });
+  } catch {
+    throw new Error('Network error during upload — check your connection and try again.');
+  }
+  if (!upRes.ok) {
+    throw new Error(`Upload failed (${upRes.status}) — please try again.`);
+  }
   return objectPath;
 }
 
@@ -182,6 +206,25 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
     getToken().then((t) => setAuthToken(t ?? null)).catch(() => {});
   }, []);
 
+  async function attemptUpload(asset: ImagePicker.ImagePickerAsset) {
+    setUploading(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not signed in — please sign out and back in.');
+      const objectPath = await uploadPhoto(asset.uri, asset.mimeType ?? 'image/jpeg', token);
+      await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
+      qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Please try again.';
+      Alert.alert('Upload failed', msg, [
+        { text: 'Retry', onPress: () => attemptUpload(asset) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function handlePhotoTap() {
     Alert.alert('Player Photo', undefined, [
       {
@@ -199,19 +242,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
             quality: 0.8,
           });
           if (result.canceled || !result.assets[0]) return;
-          const asset = result.assets[0];
-          setUploading(true);
-          try {
-            const token = await getToken();
-            if (!token) throw new Error('Not signed in');
-            const objectPath = await uploadPhoto(asset.uri, asset.mimeType ?? 'image/jpeg', token);
-            await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
-            qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
-          } catch (e) {
-            Alert.alert('Upload failed', e instanceof Error ? e.message : 'Please try again.');
-          } finally {
-            setUploading(false);
-          }
+          await attemptUpload(result.assets[0]);
         },
       },
       ...(player.photoObjectPath ? [{
