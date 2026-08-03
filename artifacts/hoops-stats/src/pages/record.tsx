@@ -4121,8 +4121,8 @@ export default function RecordGame() {
               <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 py-3 space-y-2 animate-in slide-in-from-top-2 duration-200">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-amber-500">🔒 AI Shot Detection — Upgrade to Pro</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">You've used your {FREE_TASTE_LIMIT} free detections this session. Pro unlocks unlimited AI shot detection, auto-follow tracking, highlight reels, and live streaming.</p>
+                    <p className="text-sm font-bold text-amber-500">🔒 Shot Detection — Upgrade to Pro</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">You've used your {FREE_TASTE_LIMIT} free detections this session. Pro unlocks unlimited shot detection, auto-follow tracking, game highlight reels, and live streaming.</p>
                   </div>
                   <button onClick={() => setShowShotUpgradeNudge(false)} className="text-muted-foreground hover:text-foreground text-lg leading-none px-1 shrink-0">✕</button>
                 </div>
