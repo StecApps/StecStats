@@ -13,6 +13,7 @@ import {
 import { useSignIn, useSignUp } from '@clerk/clerk-expo';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
@@ -123,12 +124,11 @@ export default function AuthScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Logo */}
-        <View style={styles.logoRow}>
-          <View style={styles.logoBadge}>
-            <Ionicons name="basketball" size={32} color={colors.primary} />
-          </View>
-          <Text style={[styles.logoText, { fontFamily: 'Teko_700Bold' }]}>HOOPS</Text>
-        </View>
+        <Image
+          source={require('@/assets/images/logo.png')}
+          style={styles.logo}
+          contentFit="contain"
+        />
 
         <Text style={styles.title}>
           {phase === 'email' ? 'Sign in or create\nan account' : 'Check your email'}
@@ -230,20 +230,7 @@ function makeStyles(colors: ReturnType<typeof import('@/hooks/useColors').useCol
       paddingHorizontal: 28,
       paddingBottom: insets.bottom + 40,
     },
-    logoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 40 },
-    logoBadge: {
-      width: 52,
-      height: 52,
-      borderRadius: 14,
-      backgroundColor: colors.muted,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    logoText: {
-      fontSize: 32,
-      color: colors.foreground,
-      letterSpacing: 2,
-    },
+    logo: { width: 220, height: 52, marginBottom: 40 },
     title: {
       fontSize: 28,
       fontFamily: 'Inter_700Bold',

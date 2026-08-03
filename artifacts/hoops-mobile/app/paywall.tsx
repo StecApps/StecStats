@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useSubscription } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 
 const FEATURES = [
   { icon: 'stats-chart', label: 'Career stats & season history', pro: true },
@@ -83,12 +84,14 @@ export default function PaywallScreen() {
 
         {/* Hero */}
         <View style={styles.hero}>
-          <View style={[styles.heroBadge, { backgroundColor: colors.primary + '20' }]}>
-            <Ionicons name="flash" size={32} color={colors.primary} />
-          </View>
-          <Text style={styles.heroTitle}>Unlock the Full Playbook</Text>
+          <Image
+            source={require('@/assets/images/logo.png')}
+            style={styles.heroLogo}
+            contentFit="contain"
+          />
+          <Text style={styles.heroTitle}>Go Pro with StecStats</Text>
           <Text style={styles.heroSub}>
-            Everything you need to coach smarter — stats, video, and highlights.
+            Career stats, game video, AI highlight reels, and live streaming — everything serious coaches need.
           </Text>
         </View>
 
@@ -207,14 +210,7 @@ function makeStyles(colors: any, insets: any) {
     },
     closeBtn: { alignSelf: 'flex-end', padding: 4, marginBottom: 8 },
     hero: { alignItems: 'center', paddingBottom: 24 },
-    heroBadge: {
-      width: 72,
-      height: 72,
-      borderRadius: 20,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 14,
-    },
+    heroLogo: { width: 200, height: 48, marginBottom: 16 },
     heroTitle: {
       fontSize: 24,
       fontFamily: 'Inter_700Bold',
