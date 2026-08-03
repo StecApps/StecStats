@@ -37,7 +37,7 @@ const PRO_FEATURES = [
 const PREMIUM_FEATURES = [
   'Everything in Pro',
   'Auto-follow camera — tracks a specific player automatically',
-  'AI-powered player detection',
+  'Shot detection',
   'Premium analytics & scouting reports',
 ];
 
