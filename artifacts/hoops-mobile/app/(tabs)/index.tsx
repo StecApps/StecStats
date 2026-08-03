@@ -201,10 +201,16 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
   const { getToken } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
 
   useEffect(() => {
     getToken().then((t) => setAuthToken(t ?? null)).catch(() => {});
   }, []);
+
+  // Reset photo error state whenever the player's photo path changes (different player or photo updated)
+  useEffect(() => {
+    setPhotoLoadFailed(false);
+  }, [player.photoObjectPath]);
 
   async function attemptUpload(asset: ImagePicker.ImagePickerAsset) {
     setUploading(true);
@@ -288,14 +294,15 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
         {/* Tappable avatar */}
         <TouchableOpacity onPress={handlePhotoTap} activeOpacity={0.8} style={heroS.avatarWrap}>
           <View style={[heroS.avatar, { borderColor: colors.primary }]}>
-            {hasPhoto ? (
+            {hasPhoto && authToken !== null && !photoLoadFailed ? (
               <Image
                 source={{
                   uri: photoSrc(player.photoObjectPath),
-                  headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+                  headers: { Authorization: `Bearer ${authToken}` },
                 }}
                 style={heroS.avatarImg}
                 contentFit="cover"
+                onError={() => setPhotoLoadFailed(true)}
               />
             ) : (
               <Text style={[heroS.avatarText, { color: colors.primary, fontFamily: 'Teko_700Bold' }]}>
