@@ -127,6 +127,7 @@ vi.mock("../../middlewares/requireAuth", () => ({
 
 vi.mock("../../lib/entitlements", () => ({
   getEntitlements: vi.fn().mockResolvedValue({ plan: "premium" }),
+  getEntitlementsForUser: vi.fn().mockResolvedValue({ plan: "premium" }),
   isPro: vi.fn().mockReturnValue(true),
 }));
 
