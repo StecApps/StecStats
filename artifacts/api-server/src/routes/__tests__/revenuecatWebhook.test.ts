@@ -1,0 +1,323 @@
+/**
+ * RevenueCat webhook → billing status integration test
+ *
+ * Verifies the full chain:
+ *   INITIAL_PURCHASE webhook → DB update → GET /api/billing/status returns plan:"pro"
+ *   EXPIRATION webhook       → DB update → GET /api/billing/status returns plan:"free"
+ *
+ * The DB is replaced with a stateful in-memory mock so updates made by the
+ * webhook handler are reflected when the billing status endpoint reads
+ * req.appUser.revenueCatEntitlement.  No real database or RevenueCat
+ * credentials are required.
+ */
+
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import express from "express";
+import { createServer, type Server } from "http";
+import type { AddressInfo } from "net";
+
+// ---------------------------------------------------------------------------
+// Stateful in-memory user — shared between the DB mock and the requireAuth
+// mock so webhook writes are visible to the billing route.
+// vi.hoisted() runs before vi.mock() factories, making the ref available.
+// ---------------------------------------------------------------------------
+const { testUserState } = vi.hoisted(() => {
+  const testUserState = {
+    id: 1,
+    clerkUserId: "test_clerk_user_rc_001",
+    email: "rc-test@example.com",
+    stripeCustomerId: null as string | null,
+    youtubeRefreshToken: null as string | null,
+    revenueCatEntitlement: null as string | null,
+    createdAt: new Date(),
+  };
+  return { testUserState };
+});
+
+// ---------------------------------------------------------------------------
+// Module mocks — must be declared before any imports that trigger them.
+// ---------------------------------------------------------------------------
+
+vi.mock("@workspace/db", () => ({
+  db: {
+    // The webhook handler calls:
+    //   db.update(usersTable).set({ revenueCatEntitlement }).where(eq(usersTable.clerkUserId, appUserId))
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockImplementation((data: Partial<typeof testUserState>) => ({
+        where: vi.fn().mockImplementation(async () => {
+          // Apply the update to the shared in-memory user.
+          Object.assign(testUserState, data);
+        }),
+      })),
+    }),
+    // getEntitlements may call db.execute for Stripe tables when stripeCustomerId
+    // is non-null.  Our test user has no Stripe customer, so this should not be
+    // reached, but mock it defensively.
+    execute: vi.fn().mockResolvedValue({ rows: [] }),
+  },
+  usersTable: {
+    // Drizzle column references — only need to exist as objects; the mock
+    // where() above ignores the condition and operates on testUserState by key.
+    clerkUserId: "clerk_user_id",
+    id: "id",
+  },
+}));
+
+vi.mock("../../lib/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
+// requireAuth: inject the current testUserState snapshot so the billing route
+// sees the latest revenueCatEntitlement written by the webhook.
+vi.mock("../../middlewares/requireAuth", () => ({
+  requireAuth: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    // Spread to capture the current state at request time.
+    req.appUser = { ...testUserState };
+    next();
+  },
+}));
+
+// ---------------------------------------------------------------------------
+// Real imports (after mocks are registered)
+// ---------------------------------------------------------------------------
+import { handleRevenueCatWebhook } from "../revenuecat-webhook";
+import billingRouter from "../billing";
+
+// ---------------------------------------------------------------------------
+// Express app shared across all tests
+// ---------------------------------------------------------------------------
+let server: Server;
+let baseUrl: string;
+
+beforeAll(async () => {
+  const app = express();
+
+  // Webhook endpoint: raw body parsing (mirrors app.ts setup).
+  app.post("/api/revenuecat/webhook", express.raw({ type: "*/*" }), handleRevenueCatWebhook);
+
+  // Billing status endpoint: needs express.json() + the billing router.
+  app.use(express.json());
+  app.use("/api", billingRouter);
+
+  server = createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  baseUrl = `http://127.0.0.1:${port}`;
+});
+
+afterAll(async () => {
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  vi.restoreAllMocks();
+});
+
+// Reset entitlement before each test so tests are independent.
+beforeEach(() => {
+  testUserState.revenueCatEntitlement = null;
+  testUserState.stripeCustomerId = null;
+  delete process.env["REVENUECAT_WEBHOOK_SECRET"];
+  delete process.env["NODE_ENV"];
+  delete process.env["OWNER_CLERK_EMAIL"];
+});
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeWebhookBody(eventType: string, entitlementIds: string[] = ["pro"]): Buffer {
+  return Buffer.from(
+    JSON.stringify({
+      event: {
+        type: eventType,
+        app_user_id: testUserState.clerkUserId,
+        entitlement_ids: entitlementIds,
+      },
+    }),
+    "utf8",
+  );
+}
+
+async function postWebhook(body: Buffer, secret?: string): Promise<Response> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (secret) headers["Authorization"] = `Bearer ${secret}`;
+  return fetch(`${baseUrl}/api/revenuecat/webhook`, { method: "POST", body, headers });
+}
+
+async function getBillingStatus(): Promise<{ plan: string; status: string | null }> {
+  const res = await fetch(`${baseUrl}/api/billing/status`);
+  expect(res.status).toBe(200);
+  return res.json() as Promise<{ plan: string; status: string | null }>;
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("RevenueCat webhook → billing status", () => {
+  // -------------------------------------------------------------------------
+  // 1. Baseline: no purchase → plan is "free"
+  // -------------------------------------------------------------------------
+  it("returns plan:free before any purchase event", async () => {
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("free");
+  });
+
+  // -------------------------------------------------------------------------
+  // 2. INITIAL_PURCHASE with entitlement_id "pro" → plan becomes "pro"
+  // -------------------------------------------------------------------------
+  it("grants plan:pro after INITIAL_PURCHASE webhook with pro entitlement", async () => {
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["pro"]));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { received: boolean };
+    expect(body.received).toBe(true);
+
+    // The in-memory user should now carry the entitlement.
+    expect(testUserState.revenueCatEntitlement).toBe("pro");
+
+    // Billing status must reflect the updated entitlement.
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("pro");
+  });
+
+  // -------------------------------------------------------------------------
+  // 3. EXPIRATION → entitlement is cleared → plan reverts to "free"
+  // -------------------------------------------------------------------------
+  it("reverts to plan:free after EXPIRATION webhook", async () => {
+    // Set up a pre-existing pro entitlement (as if a prior purchase occurred).
+    testUserState.revenueCatEntitlement = "pro";
+
+    // Sanity: billing status is pro before expiration.
+    const before = await getBillingStatus();
+    expect(before.plan).toBe("pro");
+
+    // Fire EXPIRATION.
+    const res = await postWebhook(makeWebhookBody("EXPIRATION"));
+    expect(res.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBeNull();
+
+    const after = await getBillingStatus();
+    expect(after.plan).toBe("free");
+  });
+
+  // -------------------------------------------------------------------------
+  // 4. Full round-trip: purchase → active → expire → free
+  // -------------------------------------------------------------------------
+  it("full round-trip: INITIAL_PURCHASE then EXPIRATION reverts to free", async () => {
+    // Step 1: purchase
+    const purchaseRes = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["pro"]));
+    expect(purchaseRes.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBe("pro");
+
+    const afterPurchase = await getBillingStatus();
+    expect(afterPurchase.plan).toBe("pro");
+
+    // Step 2: expire
+    const expireRes = await postWebhook(makeWebhookBody("EXPIRATION"));
+    expect(expireRes.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBeNull();
+
+    const afterExpiry = await getBillingStatus();
+    expect(afterExpiry.plan).toBe("free");
+  });
+
+  // -------------------------------------------------------------------------
+  // 5. RENEWAL keeps plan:pro
+  // -------------------------------------------------------------------------
+  it("keeps plan:pro after RENEWAL webhook", async () => {
+    testUserState.revenueCatEntitlement = "pro";
+
+    const res = await postWebhook(makeWebhookBody("RENEWAL", ["pro"]));
+    expect(res.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBe("pro");
+
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("pro");
+  });
+
+  // -------------------------------------------------------------------------
+  // 6. CANCELLATION does NOT clear entitlement (access until period end)
+  // -------------------------------------------------------------------------
+  it("keeps plan:pro after CANCELLATION (access retained until period end)", async () => {
+    testUserState.revenueCatEntitlement = "pro";
+
+    const res = await postWebhook(makeWebhookBody("CANCELLATION"));
+    expect(res.status).toBe(200);
+
+    // entitlement must NOT be cleared by a cancellation event
+    expect(testUserState.revenueCatEntitlement).toBe("pro");
+
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("pro");
+  });
+
+  // -------------------------------------------------------------------------
+  // 7. BILLING_ISSUE clears entitlement (same as EXPIRATION)
+  // -------------------------------------------------------------------------
+  it("reverts to plan:free after BILLING_ISSUE webhook", async () => {
+    testUserState.revenueCatEntitlement = "pro";
+
+    const res = await postWebhook(makeWebhookBody("BILLING_ISSUE"));
+    expect(res.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBeNull();
+
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("free");
+  });
+
+  // -------------------------------------------------------------------------
+  // 8. Webhook secret validation — wrong secret → 401
+  // -------------------------------------------------------------------------
+  it("rejects webhook with wrong Authorization header when secret is set", async () => {
+    process.env["REVENUECAT_WEBHOOK_SECRET"] = "correct-secret";
+
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["pro"]), "wrong-secret");
+    expect(res.status).toBe(401);
+
+    // Entitlement must not have been updated.
+    expect(testUserState.revenueCatEntitlement).toBeNull();
+  });
+
+  // -------------------------------------------------------------------------
+  // 9. Webhook secret validation — correct secret → 200
+  // -------------------------------------------------------------------------
+  it("accepts webhook with correct Authorization header", async () => {
+    process.env["REVENUECAT_WEBHOOK_SECRET"] = "correct-secret";
+
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["pro"]), "correct-secret");
+    expect(res.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBe("pro");
+
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("pro");
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. Unknown entitlement ID → no grant (no-op, returns 200)
+  // -------------------------------------------------------------------------
+  it("does not grant access for an unrecognised entitlement ID", async () => {
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["basketball_plus"]));
+    expect(res.status).toBe(200);
+
+    // entitlement must remain null — unknown IDs are skipped
+    expect(testUserState.revenueCatEntitlement).toBeNull();
+
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("free");
+  });
+
+  // -------------------------------------------------------------------------
+  // 11. premium entitlement_id → plan becomes "premium"
+  // -------------------------------------------------------------------------
+  it("grants plan:premium after INITIAL_PURCHASE with premium entitlement", async () => {
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["premium"]));
+    expect(res.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBe("premium");
+
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("premium");
+  });
+});
