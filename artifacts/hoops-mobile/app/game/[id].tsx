@@ -265,7 +265,9 @@ export default function GameDetailScreen() {
       {/* Score header */}
       <View style={[styles.scoreCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.scoreBlock}>
-          <Text style={[styles.scoreName, { color: colors.mutedForeground }]}>{game.teamName}</Text>
+          <Text style={[styles.scoreName, { color: colors.mutedForeground }]} numberOfLines={2} ellipsizeMode="tail">
+            {game.teamName}
+          </Text>
           <Text style={[styles.scoreNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
             {game.teamScore}
           </Text>
@@ -281,7 +283,9 @@ export default function GameDetailScreen() {
           </Text>
         </View>
         <View style={styles.scoreBlock}>
-          <Text style={[styles.scoreName, { color: colors.mutedForeground }]}>{game.opponent}</Text>
+          <Text style={[styles.scoreName, { color: colors.mutedForeground }]} numberOfLines={2} ellipsizeMode="tail">
+            {game.opponent}
+          </Text>
           <Text style={[styles.scoreNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
             {game.opponentScore}
           </Text>
@@ -367,9 +371,9 @@ function makeStyles(colors: any, insets: any) {
       paddingHorizontal: 20,
       paddingVertical: 18,
     },
-    scoreBlock: { alignItems: 'center', flex: 1 },
-    scoreName: { fontSize: 12, fontFamily: 'Inter_500Medium', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
-    scoreNum: { fontSize: 48, lineHeight: 50 },
+    scoreBlock: { alignItems: 'center', flex: 1, minWidth: 0 },
+    scoreName: { fontSize: 11, fontFamily: 'Inter_500Medium', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4, textAlign: 'center' },
+    scoreNum: { fontSize: 44, lineHeight: 46 },
     scoreDivider: { alignItems: 'center', gap: 6 },
     resultBadge: { width: 36, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
     resultText: { fontSize: 13, fontFamily: 'Inter_700Bold' },
