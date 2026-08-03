@@ -13,10 +13,11 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useListPlayers, useCreateGame } from '@workspace/api-client-react';
+import { useListPlayers, useCreateGame, useRequestUploadUrl } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 
 interface StatLine {
   ftMade: number; ftAttempted: number;
@@ -105,14 +106,60 @@ function formatTime(secs: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+/**
+ * Upload a local file URI to object storage.
+ * Returns the objectPath to pass to createGame.
+ */
+async function uploadVideoFile(
+  uri: string,
+  requestUploadUrlFn: (body: { name: string; size: number; contentType: string }) => Promise<{ uploadURL: string; objectPath: string }>,
+): Promise<string> {
+  // Read the file as a blob to get real size
+  const fileResponse = await fetch(uri);
+  const blob = await fileResponse.blob();
+
+  // Content type: expo-camera records .mov on iOS and .mp4 on Android
+  const contentType = uri.endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
+  const ext = uri.endsWith('.mov') ? 'mov' : 'mp4';
+
+  // Request a presigned upload URL from our API
+  const { uploadURL, objectPath } = await requestUploadUrlFn({
+    name: `game-recording-${Date.now()}.${ext}`,
+    size: blob.size || 1,
+    contentType,
+  });
+
+  // PUT the file blob directly to the presigned URL
+  const putRes = await fetch(uploadURL, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: blob,
+  });
+
+  if (!putRes.ok) {
+    throw new Error(`Video upload failed (${putRes.status})`);
+  }
+
+  return objectPath;
+}
+
 export default function ScorekeeperScreen() {
-  const { opponent = 'Opponent', teamId = '0', teamName = 'Your Team', date = new Date().toISOString().split('T')[0] } =
-    useLocalSearchParams<{ opponent: string; teamId: string; teamName: string; date: string }>();
+  const {
+    opponent = 'Opponent',
+    teamId = '0',
+    teamName = 'Your Team',
+    date = new Date().toISOString().split('T')[0],
+    recordVideo: recordVideoParam = 'false',
+  } = useLocalSearchParams<{ opponent: string; teamId: string; teamName: string; date: string; recordVideo: string }>();
+
+  const recordVideo = recordVideoParam === 'true';
+
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const qc = useQueryClient();
   const createGame = useCreateGame();
+  const requestUploadUrlMutation = useRequestUploadUrl();
 
   const { data: players, isLoading: playersLoading } = useListPlayers();
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
@@ -126,6 +173,30 @@ export default function ScorekeeperScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
   const statButtons = makeStatButtons(colors);
+
+  // Camera / recording state
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [micPermission, requestMicPermission] = useMicrophonePermissions();
+  const cameraRef = useRef<CameraView>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  // Holds the promise returned by recordAsync so we can await it on stop
+  const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
+  const recordedUriRef = useRef<string | null>(null);
+  // True only after recordAsync has been called AND is still in-flight
+  const recordingStartedRef = useRef(false);
+  // True once the CameraView fires onCameraReady
+  const cameraReadyRef = useRef(false);
+  // Set when the user taps play before the camera has finished initialising
+  const pendingRecordRef = useRef(false);
+
+  // Request camera+mic permissions when recordVideo is enabled
+  useEffect(() => {
+    if (!recordVideo) return;
+    (async () => {
+      if (!cameraPermission?.granted) await requestCameraPermission();
+      if (!micPermission?.granted) await requestMicPermission();
+    })();
+  }, [recordVideo]);
 
   // Init stats for all players
   useEffect(() => {
@@ -151,10 +222,56 @@ export default function ScorekeeperScreen() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [running]);
 
+  // Start camera recording — only called when the camera is confirmed ready
+  async function startRecording() {
+    if (!cameraRef.current || recordingStartedRef.current) return;
+    if (!cameraPermission?.granted || !micPermission?.granted) return;
+    // Mark in-flight — reset on any failure so the user can retry
+    recordingStartedRef.current = true;
+    setIsRecording(true);
+    try {
+      // recordAsync is a long-running promise that resolves after stopRecording()
+      recordingPromiseRef.current = cameraRef.current.recordAsync() as Promise<{ uri: string } | undefined>;
+      const result = await recordingPromiseRef.current;
+      if (result?.uri) {
+        recordedUriRef.current = result.uri;
+      }
+    } catch (err: any) {
+      // If recording failed to start (hardware error, OS interruption, etc.)
+      // reset the flag so the next timer-start can retry.
+      if (!recordedUriRef.current) {
+        recordingStartedRef.current = false;
+        recordingPromiseRef.current = null;
+      }
+      console.warn('Camera recording ended:', err?.message);
+    } finally {
+      setIsRecording(false);
+    }
+  }
+
+  // Called by CameraView once the sensor is initialised and ready to record
+  function onCameraReady() {
+    cameraReadyRef.current = true;
+    // If the user already tapped play while the camera was initialising, start now
+    if (pendingRecordRef.current && !recordingStartedRef.current) {
+      pendingRecordRef.current = false;
+      startRecording();
+    }
+  }
+
   function handleStartStop() {
     if (!running) {
       if (seconds === 0) startRef.current = Date.now();
       setRunning(true);
+      // Start recording on first play
+      if (recordVideo && !recordingStartedRef.current) {
+        if (cameraReadyRef.current) {
+          startRecording();
+        } else {
+          // Camera still initialising — defer until onCameraReady fires
+          pendingRecordRef.current = true;
+        }
+      }
     } else {
       setRunning(false);
     }
@@ -185,6 +302,68 @@ export default function ScorekeeperScreen() {
     }
     setSaving(true);
     try {
+      // Stop recording and wait for the file URI
+      let videoObjectPath: string | null = null;
+      if (recordVideo) {
+        // Stop the camera if it was recording
+        if (recordingStartedRef.current) {
+          cameraRef.current?.stopRecording();
+          setIsRecording(false);
+
+          // Wait for recordAsync to resolve (it resolves after stopRecording)
+          if (recordingPromiseRef.current) {
+            try {
+              const result = await recordingPromiseRef.current;
+              if (result?.uri) recordedUriRef.current = result.uri;
+            } catch {
+              // recording may have already stopped cleanly
+            }
+          }
+        }
+
+        // If recording was opted-in but no file was captured, tell the coach explicitly
+        if (!recordedUriRef.current) {
+          Alert.alert(
+            'No video captured',
+            recordingStartedRef.current
+              ? 'The camera started but did not produce a video file. Save the game without video, or go back and try again.'
+              : 'Recording never started (tap Play first to begin filming). Save the game without video?',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => setSaving(false) },
+              { text: 'Save without video', style: 'default', onPress: () => saveGame(null) },
+            ],
+          );
+          return;
+        }
+
+        // Upload the recorded file
+        try {
+          videoObjectPath = await uploadVideoFile(
+            recordedUriRef.current,
+            (body) => requestUploadUrlMutation.mutateAsync({ data: body }),
+          );
+        } catch (uploadErr: any) {
+          Alert.alert(
+            'Video upload failed',
+            uploadErr?.message ?? 'Could not upload video. Save game without video?',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => setSaving(false) },
+              { text: 'Save without video', style: 'default', onPress: () => saveGame(null) },
+            ],
+          );
+          return;
+        }
+      }
+
+      await saveGame(videoObjectPath);
+    } catch (err: any) {
+      Alert.alert('Save failed', err?.message ?? 'Could not save game');
+      setSaving(false);
+    }
+  }
+
+  async function saveGame(videoObjectPath: string | null) {
+    try {
       const statLines = (players as any[]).map((p) => {
         const line = stats[p.id] ?? defaultLine();
         return { playerId: p.id, ...line };
@@ -200,6 +379,7 @@ export default function ScorekeeperScreen() {
           opponentScore,
           stats: statLines,
           events,
+          ...(videoObjectPath ? { videoObjectPath } : {}),
         },
       });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -223,6 +403,8 @@ export default function ScorekeeperScreen() {
   }
 
   const styles = makeStyles(colors, insets);
+
+  const cameraReady = recordVideo && cameraPermission?.granted && micPermission?.granted;
 
   if (playersLoading) {
     return (
@@ -388,6 +570,47 @@ export default function ScorekeeperScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Floating camera preview — only rendered when camera permission granted */}
+      {cameraReady && (
+        <View style={styles.cameraFloat} pointerEvents="none">
+          <CameraView
+            ref={cameraRef}
+            style={styles.cameraView}
+            facing="back"
+            mode="video"
+            onCameraReady={onCameraReady}
+          />
+          {/* Recording indicator */}
+          <View style={styles.recBadge}>
+            {isRecording ? (
+              <View style={styles.recDot} />
+            ) : (
+              <Ionicons name="videocam" size={10} color="#fff" />
+            )}
+            <Text style={styles.recText}>{isRecording ? 'REC' : 'CAM'}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Permission denied banner */}
+      {recordVideo && (!cameraPermission?.granted || !micPermission?.granted) && (
+        <View style={[styles.permBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Ionicons name="videocam-off" size={16} color={colors.mutedForeground} />
+          <Text style={[styles.permText, { color: colors.mutedForeground }]}>
+            Camera permission needed to record video
+          </Text>
+          <TouchableOpacity
+            onPress={async () => {
+              await requestCameraPermission();
+              await requestMicPermission();
+            }}
+            style={[styles.permBtn, { backgroundColor: colors.primary }]}
+          >
+            <Text style={styles.permBtnText}>Allow</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -466,5 +689,70 @@ function makeStyles(colors: any, insets: any) {
       borderRadius: 13,
     },
     saveBtnText: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#fff' },
+    // Floating camera preview (bottom-right corner)
+    cameraFloat: {
+      position: 'absolute',
+      bottom: 90 + insets.bottom,
+      right: 12,
+      width: 110,
+      height: 80,
+      borderRadius: 10,
+      overflow: 'hidden',
+      borderWidth: 2,
+      borderColor: 'rgba(255,255,255,0.25)',
+      shadowColor: '#000',
+      shadowOpacity: 0.4,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 6,
+    },
+    cameraView: {
+      flex: 1,
+    },
+    recBadge: {
+      position: 'absolute',
+      top: 5,
+      left: 5,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      borderRadius: 6,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+    },
+    recDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: '#EF4444',
+    },
+    recText: {
+      fontSize: 9,
+      fontFamily: 'Inter_700Bold',
+      color: '#fff',
+      letterSpacing: 0.5,
+    },
+    // Permission denied banner
+    permBanner: {
+      position: 'absolute',
+      bottom: 90 + insets.bottom,
+      right: 12,
+      left: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    permText: { flex: 1, fontSize: 12, fontFamily: 'Inter_400Regular' },
+    permBtn: {
+      borderRadius: 7,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+    permBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: '#fff' },
   });
 }

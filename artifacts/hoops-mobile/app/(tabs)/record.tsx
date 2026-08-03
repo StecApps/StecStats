@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  Switch,
 } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +32,7 @@ export default function RecordScreen() {
   const [newTeamName, setNewTeamName] = useState('');
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [creatingTeam, setCreatingTeam] = useState(false);
+  const [recordVideo, setRecordVideo] = useState(false);
 
   const selectedTeam = teams?.[teamIdx] ?? null;
   const canStart = !!opponent.trim() && !!selectedTeam;
@@ -59,6 +61,7 @@ export default function RecordScreen() {
         teamId: String(selectedTeam!.id),
         teamName: selectedTeam!.name,
         date: new Date().toISOString().split('T')[0],
+        recordVideo: recordVideo ? 'true' : 'false',
       },
     });
   }
@@ -175,6 +178,34 @@ export default function RecordScreen() {
         </>
       )}
 
+      {/* Record Video toggle */}
+      <View style={[styles.toggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.toggleLeft}>
+          <View style={[styles.toggleIcon, { backgroundColor: recordVideo ? colors.primary + '20' : colors.muted }]}>
+            <Ionicons
+              name="videocam"
+              size={18}
+              color={recordVideo ? colors.primary : colors.mutedForeground}
+            />
+          </View>
+          <View style={styles.toggleText}>
+            <Text style={[styles.toggleTitle, { color: colors.foreground }]}>Record Video</Text>
+            <Text style={[styles.toggleSub, { color: colors.mutedForeground }]}>
+              Film the game from your phone
+            </Text>
+          </View>
+        </View>
+        <Switch
+          value={recordVideo}
+          onValueChange={(v) => {
+            setRecordVideo(v);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          }}
+          trackColor={{ false: colors.muted, true: colors.primary + '80' }}
+          thumbColor={recordVideo ? colors.primary : colors.mutedForeground}
+        />
+      </View>
+
       {/* Start button */}
       <TouchableOpacity
         onPress={handleStart}
@@ -182,8 +213,8 @@ export default function RecordScreen() {
         activeOpacity={0.8}
         style={[styles.startBtn, { backgroundColor: colors.primary, opacity: canStart ? 1 : 0.35 }]}
       >
-        <Ionicons name="play-circle" size={22} color="#fff" />
-        <Text style={styles.startText}>Start Game</Text>
+        <Ionicons name={recordVideo ? 'videocam' : 'play-circle'} size={22} color="#fff" />
+        <Text style={styles.startText}>{recordVideo ? 'Start & Record' : 'Start Game'}</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -294,6 +325,26 @@ function makeStyles(colors: any, insets: any) {
       justifyContent: 'center',
     },
     addTeamText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 14,
+      marginBottom: 20,
+    },
+    toggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+    toggleIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    toggleText: { flex: 1 },
+    toggleTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 2 },
+    toggleSub: { fontSize: 12, fontFamily: 'Inter_400Regular' },
     startBtn: {
       flexDirection: 'row',
       alignItems: 'center',
