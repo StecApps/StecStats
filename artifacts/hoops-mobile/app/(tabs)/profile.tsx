@@ -13,7 +13,7 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
-import { useGetBillingStatus, useListTeams } from '@workspace/api-client-react';
+import { useGetBillingStatus, useListTeams, useListPlayers } from '@workspace/api-client-react';
 import { useSubscription } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -121,6 +121,7 @@ export default function ProfileScreen() {
   const { user } = useUser();
   const { data: billing } = useGetBillingStatus();
   const { data: teams } = useListTeams();
+  const { data: players } = useListPlayers();
   const { isPremium } = useSubscription();
 
   const plan = billing?.plan ?? 'free';
@@ -188,6 +189,16 @@ export default function ProfileScreen() {
           colors={colors}
         />
       )}
+
+      {/* Roster */}
+      <Text style={styles.sectionTitle}>Roster</Text>
+      <ProfileRow
+        icon="people-outline"
+        label="Manage Players"
+        value={players ? `${players.length} player${players.length === 1 ? '' : 's'}` : undefined}
+        onPress={() => router.push('/roster')}
+        colors={colors}
+      />
 
       {/* Subscription */}
       <Text style={styles.sectionTitle}>Subscription</Text>
