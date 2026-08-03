@@ -10,6 +10,7 @@ _Replace the heading above with the project's name, and this line with one sente
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
+- Required secret: `REVENUECAT_WEBHOOK_SECRET` — shared secret that must match the **Authorization header value** configured in the RevenueCat dashboard (Project → Webhooks → Authorization header, formatted as `Bearer <secret>`). The webhook handler rejects all requests without this header in production. Generate a strong random string (e.g. `openssl rand -hex 32`) and set it in both places. Leaving it unset in production causes the endpoint to return 500 and refuse all RevenueCat events.
 
 ## Stack
 
