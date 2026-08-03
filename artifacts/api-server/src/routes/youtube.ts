@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { db, usersTable, gamesTable, playerGameStatsTable, playersTable } from "@workspace/db";
 import { GetGameParams } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements, isPro } from "../lib/entitlements";
+import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { logger } from "../lib/logger";
 import {
@@ -160,7 +160,7 @@ router.post("/games/:gameId/highlight/upload-youtube", requireAuth, async (req, 
     return;
   }
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  const entitlements = await getEntitlementsForUser(req.appUser!);
   if (!isPro(entitlements)) {
     res.status(403).json({ error: "UPGRADE_REQUIRED", message: "YouTube upload is a Pro feature" });
     return;

@@ -18,7 +18,7 @@ import {
 } from "@workspace/api-zod";
 import { computePoints, safeDiv } from "../lib/stats";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements } from "../lib/entitlements";
+import { getEntitlementsForUser, getEntitlements } from "../lib/entitlements";
 import { getCurrentSeasonStartDate } from "../lib/season";
 import { gte } from "drizzle-orm";
 
@@ -41,7 +41,7 @@ router.post("/players", requireAuth, async (req, res) => {
   const body = CreatePlayerBody.parse(req.body);
   const ownerId = req.appUser!.id;
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  const entitlements = await getEntitlementsForUser(req.appUser!);
   if (entitlements.plan === "free") {
     const [{ count }] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -120,7 +120,7 @@ router.get("/players/:playerId/summary", requireAuth, async (req, res) => {
   // Free plan: "current season only, basic stats" -- no career-spanning
   // data and no shooting-efficiency percentages (Pro-only gauges). This is
   // enforced here server-side; the UI gate is cosmetic only.
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  const entitlements = await getEntitlementsForUser(req.appUser!);
   const isFree = entitlements.plan === "free";
   const seasonStart = getCurrentSeasonStartDate();
 
@@ -218,7 +218,7 @@ router.get("/players/:playerId/teams", requireAuth, async (req, res) => {
 
   // Free plan: "current season only" -- career team/season history beyond
   // the current season is Pro-only. Enforced server-side.
-  const isFree = (await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email)).plan === "free";
+  const isFree = (await getEntitlementsForUser(req.appUser!)).plan === "free";
   const seasonStart = getCurrentSeasonStartDate();
 
   const rows = await db

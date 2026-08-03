@@ -36,6 +36,22 @@ const OWNER_PREMIUM: Entitlements = {
 };
 
 /**
+ * Returns entitlements sourced from a RevenueCat mobile subscription when there
+ * is no Stripe subscription to fall back to. The value stored in
+ * `users.revenue_cat_entitlement` is set by the RC webhook handler whenever a
+ * purchase or cancellation event is received.
+ */
+function rcFallback(revenueCatEntitlement?: string | null): Entitlements {
+  if (revenueCatEntitlement === "premium") {
+    return { plan: "premium", status: "active", currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
+  }
+  if (revenueCatEntitlement === "pro") {
+    return { plan: "pro", status: "active", currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
+  }
+  return { plan: "free", status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
+}
+
+/**
  * Derives the caller's plan from Stripe subscription data synced into the
  * `stripe.*` tables by stripe-replit-sync (webhooks are the source of truth
  * -- we never trust anything the client claims).
@@ -51,15 +67,20 @@ const OWNER_PREMIUM: Entitlements = {
  *
  * Pass `email` to grant the designated project owner free permanent Premium
  * access (hasSoccer also granted).
+ *
+ * Pass `revenueCatEntitlement` (stored from the RC webhook) to grant access
+ * when a coach subscribed via the mobile app without a Stripe subscription.
+ * Stripe always takes precedence; RC is only checked when Stripe returns "free".
  */
 export async function getEntitlements(
   stripeCustomerId: string | null,
   email?: string | null,
+  revenueCatEntitlement?: string | null,
 ): Promise<Entitlements> {
   if (isOwner(email)) return OWNER_PREMIUM;
 
   if (!stripeCustomerId) {
-    return { plan: "free", status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
+    return rcFallback(revenueCatEntitlement);
   }
 
   // Fetch ALL active subscriptions so we can check both base plan and add-ons
@@ -92,7 +113,7 @@ export async function getEntitlements(
   const rows = result.rows as Row[];
 
   if (rows.length === 0) {
-    return { plan: "free", status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
+    return rcFallback(revenueCatEntitlement);
   }
 
   const toDate = (value: number | string | null): Date | null => {
@@ -120,6 +141,17 @@ export async function getEntitlements(
     }
   }
 
+  // If Stripe has subscription history for this customer but none of the
+  // subscriptions are currently active (e.g. they cancelled on web), fall
+  // back to the RevenueCat entitlement stored from the mobile webhook.
+  // Stripe always takes precedence when it is actively paid.
+  if (plan === "free") {
+    const rc = rcFallback(revenueCatEntitlement);
+    if (rc.plan !== "free") {
+      return rc;
+    }
+  }
+
   return {
     plan,
     hasSoccer,
@@ -142,4 +174,21 @@ export async function requirePro(stripeCustomerId: string | null): Promise<boole
 export async function requirePremium(stripeCustomerId: string | null): Promise<boolean> {
   const entitlements = await getEntitlements(stripeCustomerId);
   return entitlements.plan === "premium";
+}
+
+/**
+ * Convenience wrapper that accepts the full local user row so call sites
+ * don't have to remember to pass `revenueCatEntitlement` explicitly.
+ * Use this everywhere a `req.appUser` is available.
+ */
+export async function getEntitlementsForUser(appUser: {
+  stripeCustomerId?: string | null;
+  email?: string | null;
+  revenueCatEntitlement?: string | null;
+}): Promise<Entitlements> {
+  return getEntitlements(
+    appUser.stripeCustomerId ?? null,
+    appUser.email ?? null,
+    appUser.revenueCatEntitlement ?? null,
+  );
 }

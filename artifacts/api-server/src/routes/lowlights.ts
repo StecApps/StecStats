@@ -11,7 +11,7 @@ import {
 } from "../lib/highlightGenerator";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements, isPro } from "../lib/entitlements";
+import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { getMusicTrackPath } from "../lib/musicTracks";
 
 const router: IRouter = Router();
@@ -86,7 +86,7 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   });
   if (!game) { res.status(404).json({ error: "Game not found" }); return; }
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  const entitlements = await getEntitlementsForUser(req.appUser!);
   if (!isPro(entitlements)) {
     res.status(403).json({ error: "UPGRADE_REQUIRED", message: "Lowlight reels are a Pro feature" });
     return;

@@ -8,6 +8,7 @@ import { db, gamesTable } from "@workspace/db";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { WebhookHandlers } from "./lib/webhookHandlers";
+import { handleRevenueCatWebhook } from "./routes/revenuecat-webhook";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
@@ -33,6 +34,15 @@ app.post("/api/admin/games/:gameId/cancel-reels", express.json(), async (req, re
   logger.info({ gameId }, "Admin: reel jobs cancelled");
   res.json({ ok: true });
 });
+
+// RevenueCat webhook — registered before express.json() so the raw Buffer is
+// available if HMAC signature verification is added later. The handler itself
+// parses JSON from the Buffer.
+app.post(
+  "/api/revenuecat/webhook",
+  express.raw({ type: "*/*" }),
+  handleRevenueCatWebhook,
+);
 
 // Stripe webhook route MUST be registered before express.json() below —
 // it needs the raw request Buffer to verify the signature. This webhook is

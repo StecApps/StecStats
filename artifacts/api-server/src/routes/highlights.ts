@@ -11,7 +11,7 @@ import {
 } from "../lib/highlightGenerator";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements, isPro } from "../lib/entitlements";
+import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { getMusicTrackPath } from "../lib/musicTracks";
 
 const router: IRouter = Router();
@@ -112,7 +112,7 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
     return;
   }
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  const entitlements = await getEntitlementsForUser(req.appUser!);
   if (!isPro(entitlements)) {
     res.status(403).json({ error: "UPGRADE_REQUIRED", message: "Game highlight reels are a Pro feature" });
     return;

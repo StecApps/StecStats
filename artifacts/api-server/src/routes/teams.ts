@@ -25,7 +25,7 @@ import {
 } from "@workspace/api-zod";
 import { computePoints } from "../lib/stats";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements, isPro } from "../lib/entitlements";
+import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { getCurrentSeasonStartDate } from "../lib/season";
 import { gte } from "drizzle-orm";
 import {
@@ -71,7 +71,7 @@ router.post("/teams", requireAuth, async (req, res) => {
   const body = CreateTeamBody.parse(req.body);
   const ownerId = req.appUser!.id;
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  const entitlements = await getEntitlementsForUser(req.appUser!);
 
   // Soccer teams require the Soccer add-on subscription.
   if (body.sport === "soccer" && !entitlements.hasSoccer) {
@@ -151,7 +151,7 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
   // Free plan: "current season only" -- a single team record can span
   // multiple real-world seasons of recorded games, so filter by date too.
   // Enforced server-side (source of truth) -- the UI gate is cosmetic only.
-  const isFree = (await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email)).plan === "free";
+  const isFree = (await getEntitlementsForUser(req.appUser!)).plan === "free";
   const seasonStart = getCurrentSeasonStartDate();
 
   const games = await db
@@ -328,7 +328,7 @@ router.post("/teams/:teamId/highlight", requireAuth, async (req, res) => {
     return;
   }
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  const entitlements = await getEntitlementsForUser(req.appUser!);
   if (!isPro(entitlements)) {
     res.status(403).json({ error: "UPGRADE_REQUIRED", message: "Season highlight reels are a Pro feature" });
     return;

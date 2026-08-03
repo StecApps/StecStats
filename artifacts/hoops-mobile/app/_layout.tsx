@@ -22,7 +22,7 @@ import * as SystemUI from 'expo-system-ui';
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import { setBaseUrl, setAuthTokenGetter } from '@workspace/api-client-react';
-import { SubscriptionProvider, initializeRevenueCat } from '@/lib/revenuecat';
+import { SubscriptionProvider, initializeRevenueCat, loginRevenueCat, logoutRevenueCat } from '@/lib/revenuecat';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -58,7 +58,7 @@ const queryClient = new QueryClient({
 
 /** Wires the Clerk session token into the shared API client fetch layer. */
 function ApiAuthSetup() {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn, userId } = useAuth();
 
   useEffect(() => {
     setAuthTokenGetter(async () => {
@@ -66,6 +66,16 @@ function ApiAuthSetup() {
       return (await getToken()) ?? null;
     });
   }, [isSignedIn, getToken]);
+
+  // Link the RevenueCat subscriber to the Clerk user so that server-side
+  // RC webhooks can update the correct user row via app_user_id = clerkUserId.
+  useEffect(() => {
+    if (isSignedIn && userId) {
+      loginRevenueCat(userId);
+    } else if (!isSignedIn) {
+      logoutRevenueCat();
+    }
+  }, [isSignedIn, userId]);
 
   return null;
 }

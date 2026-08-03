@@ -31,7 +31,7 @@ import { computePoints } from "../lib/stats";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib/objectAcl";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getEntitlements, isPro } from "../lib/entitlements";
+import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { PROXY_VERSION, ensureGameProxyInBackground } from "../lib/highlightGenerator";
 
@@ -474,7 +474,7 @@ router.post("/games", requireAuth, async (req, res) => {
   }
 
   if (body.videoObjectPath) {
-    const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+    const entitlements = await getEntitlementsForUser(req.appUser!);
     if (!isPro(entitlements)) {
       res.status(403).json({
         error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",
@@ -585,7 +585,7 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
   }
 
   if (body.videoObjectPath && body.videoObjectPath !== existing.videoObjectPath) {
-    const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+    const entitlements = await getEntitlementsForUser(req.appUser!);
     if (!isPro(entitlements)) {
       res.status(403).json({
         error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",
@@ -1118,7 +1118,7 @@ router.patch("/games/:gameId/video", requireAuth, async (req, res) => {
   });
   if (!game) return void res.status(404).json({ error: "Game not found" });
 
-  const entitlements = await getEntitlements(req.appUser!.stripeCustomerId, req.appUser!.email);
+  const entitlements = await getEntitlementsForUser(req.appUser!);
   if (!isPro(entitlements)) {
     return void res.status(403).json({
       error: "Saved game video is a Pro feature. Upgrade to Pro to save video with your games.",

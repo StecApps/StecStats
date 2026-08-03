@@ -34,6 +34,34 @@ export function initializeRevenueCat() {
   Purchases.configure({ apiKey });
 }
 
+/**
+ * Associates the RevenueCat subscriber with the signed-in Clerk user.
+ * Must be called after sign-in so that server-side webhooks can map RC events
+ * back to the correct user row via `app_user_id` = Clerk user ID.
+ */
+export async function loginRevenueCat(clerkUserId: string): Promise<void> {
+  if (!getRevenueCatApiKey()) return;
+  try {
+    await Purchases.logIn(clerkUserId);
+  } catch (err: any) {
+    console.warn('[RevenueCat] logIn failed:', err?.message ?? err);
+  }
+}
+
+/**
+ * Unlinks the RevenueCat subscriber when the user signs out.
+ * This resets to an anonymous RC user so the next person who signs in
+ * on the same device gets a clean state.
+ */
+export async function logoutRevenueCat(): Promise<void> {
+  if (!getRevenueCatApiKey()) return;
+  try {
+    await Purchases.logOut();
+  } catch (err: any) {
+    console.warn('[RevenueCat] logOut failed:', err?.message ?? err);
+  }
+}
+
 function useSubscriptionContext() {
   const configured = !!getRevenueCatApiKey();
 
