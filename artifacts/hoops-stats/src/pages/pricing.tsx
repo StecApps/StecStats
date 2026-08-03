@@ -37,27 +37,7 @@ export function decodeCheckoutIntent(raw: string | null): CheckoutIntent | null 
   return null;
 }
 
-// ─── Feature lists ────────────────────────────────────────────────────────────
-// KEEP IN SYNC with the mobile app: artifacts/hoops-mobile/app/paywall.tsx
-// (FREE_FEATURES, PRO_FEATURES, PREMIUM_FEATURES). If you change copy here,
-// change it there too (and vice versa).
-// ──────────────────────────────────────────────────────────────────────────────
-
-const FREE_FEATURES = [
-  "1 player",
-  "Current season stats",
-  "Basic box scores",
-];
-
-const PRO_FEATURES = [
-  "Unlimited players & seasons",
-  "Full career dashboard",
-  "Shooting gauges & advanced stats",
-  "Live streaming to family & fans",
-  "Saved game video & highlight reels",
-  "YouTube highlight upload with auto box score",
-  "Shareable player profile",
-];
+import { FREE_FEATURES, PRO_FEATURES } from "@workspace/plan-copy";
 
 export default function Pricing() {
   const [, setLocation] = useLocation();

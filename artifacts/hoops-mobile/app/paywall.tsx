@@ -19,34 +19,7 @@ import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetBillingStatusQueryKey } from '@workspace/api-client-react';
 
-// ─── Feature lists ────────────────────────────────────────────────────────────
-// KEEP IN SYNC with the web app: artifacts/hoops-stats/src/pages/pricing.tsx
-// (FREE_FEATURES, PRO_FEATURES) and artifacts/hoops-stats/src/pages/billing.tsx
-// (PREMIUM_FEATURES). If you change copy here, change it there too (and vice versa).
-// ──────────────────────────────────────────────────────────────────────────────
-
-const FREE_FEATURES = [
-  '1 player',
-  'Current season stats',
-  'Basic box scores',
-];
-
-const PRO_FEATURES = [
-  'Unlimited players & seasons',
-  'Full career dashboard',
-  'Shooting gauges & advanced stats',
-  'Live streaming to family & fans',
-  'Saved game video & highlight reels',
-  'YouTube highlight upload with auto box score',
-  'Shareable player profile',
-];
-
-const PREMIUM_FEATURES = [
-  'Everything in Pro',
-  'Auto-Follow camera during recording',
-  'Player tracking photos',
-  'More features coming',
-];
+import { FREE_FEATURES, PRO_FEATURES, PREMIUM_FEATURES } from '@workspace/plan-copy';
 
 export default function PaywallScreen() {
   const colors = useColors();

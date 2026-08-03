@@ -9,34 +9,7 @@ import { useSearch, useLocation } from "wouter";
 import { FAILED_CHECKOUT_KEY, decodeCheckoutIntent } from "@/pages/pricing";
 import type { CheckoutIntent } from "@/pages/pricing";
 
-// ─── Feature lists ────────────────────────────────────────────────────────────
-// KEEP IN SYNC with the mobile app: artifacts/hoops-mobile/app/paywall.tsx
-// and with artifacts/hoops-stats/src/pages/pricing.tsx (FREE + PRO).
-// If you change copy here, change it there too (and vice versa).
-// ──────────────────────────────────────────────────────────────────────────────
-
-const FREE_FEATURES = [
-  "1 player",
-  "Current season stats",
-  "Basic box scores",
-];
-
-const PRO_FEATURES = [
-  "Unlimited players & seasons",
-  "Full career dashboard",
-  "Shooting gauges & advanced stats",
-  "Live streaming to family & fans",
-  "Saved game video & highlight reels",
-  "YouTube highlight upload with auto box score",
-  "Shareable player profile",
-];
-
-const PREMIUM_FEATURES = [
-  "Everything in Pro",
-  "Auto-Follow camera during recording",
-  "Player tracking photos",
-  "More features coming",
-];
+import { FREE_FEATURES, PRO_FEATURES, PREMIUM_FEATURES } from "@workspace/plan-copy";
 
 function formatDate(value: string | null | undefined): string | null {
   if (!value) return null;
