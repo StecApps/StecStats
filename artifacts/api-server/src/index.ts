@@ -40,6 +40,25 @@ if (process.env["NODE_ENV"] === "production" && !process.env["REVENUECAT_WEBHOOK
   process.exit(1);
 }
 
+// Preflight: STRIPE_WEBHOOK_SECRET must be set in production when using the
+// direct STRIPE_SECRET_KEY path (the preferred and documented production setup).
+// Without it, StripeSync falls back to an empty string for signature
+// verification and rejects every Stripe event — subscription purchases,
+// renewals, and cancellations all fail silently, breaking billing for every user.
+// Fail at boot rather than silently serving broken traffic.
+if (
+  process.env["NODE_ENV"] === "production" &&
+  process.env["STRIPE_SECRET_KEY"] &&
+  !process.env["STRIPE_WEBHOOK_SECRET"]
+) {
+  console.error(
+    "[FATAL] STRIPE_WEBHOOK_SECRET is not set in production. " +
+      "All Stripe webhook events (purchases, renewals, cancellations) will be " +
+      "rejected, breaking billing for every user. Set the secret and redeploy.",
+  );
+  process.exit(1);
+}
+
 /**
  * Sets up the `stripe` schema, registers the managed webhook, and backfills
  * existing Stripe data. Order matters: migrations must run before the
