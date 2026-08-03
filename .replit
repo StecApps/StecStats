@@ -29,6 +29,13 @@ channel = "stable-25_05"
 OWNER_CLERK_EMAIL = "sstec@stecco.org"
 ADMIN_RESET_SECRET = "9886dvuc2jhwxiiimqhn3"
 YOUTUBE_CALLBACK_URL = "https://stecstats.com/api/auth/youtube/callback"
+EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY = "goog_GOxPJHACNzwvNhSSGRdvwVjXnru"
+EXPO_PUBLIC_REVENUECAT_IOS_API_KEY = "appl_TTSbkcTluVOVtQXJqgLnFCOMFCe"
+EXPO_PUBLIC_REVENUECAT_TEST_API_KEY = "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+REVENUECAT_APPLE_APP_STORE_APP_ID = "appd9f226b50a"
+REVENUECAT_GOOGLE_PLAY_STORE_APP_ID = "appd8208d5dd8"
+REVENUECAT_PROJECT_ID = "projd07f5316"
+REVENUECAT_TEST_STORE_APP_ID = "appce03651cb3"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-f1eb7a0b-6a3e-447a-8144-8ac17c074ecd"
