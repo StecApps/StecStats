@@ -1,147 +1,403 @@
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
   Platform,
 } from 'react-native';
+import Svg, { Circle, G } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useListTeams, useListTeamGames, useListPlayers } from '@workspace/api-client-react';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import {
+  useListPlayers,
+  useGetPlayerSummary,
+  useListTeams,
+} from '@workspace/api-client-react';
+import { Ionicons } from '@expo/vector-icons';
 
-function StatCard({ label, value, colors }: { label: string; value: string; colors: any }) {
+// ─── Arc Gauge ─────────────────────────────────────────────────────────────
+function ArcGauge({
+  pct,
+  label,
+  made,
+  attempted,
+  colors,
+}: {
+  pct?: number | null;
+  label: string;
+  made?: number;
+  attempted?: number;
+  colors: any;
+}) {
+  const SIZE = 84;
+  const SW = 7;
+  const r = (SIZE - SW) / 2;
+  const circ = 2 * Math.PI * r;
+  const filled = Math.max(0, Math.min(1, pct ?? 0)) * circ;
+  const pctStr = pct != null && pct > 0 ? (pct * 100).toFixed(1) : '—';
+
   return (
-    <View style={[cardStyles.wrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[cardStyles.value, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
-        {value}
-      </Text>
-      <Text style={[cardStyles.label, { color: colors.mutedForeground }]}>{label}</Text>
+    <View style={gaugeS.wrap}>
+      <View style={{ width: SIZE, height: SIZE }}>
+        <Svg width={SIZE} height={SIZE}>
+          <G rotation="-90" origin={`${SIZE / 2},${SIZE / 2}`}>
+            <Circle
+              cx={SIZE / 2}
+              cy={SIZE / 2}
+              r={r}
+              stroke={colors.muted}
+              strokeWidth={SW}
+              fill="none"
+            />
+            <Circle
+              cx={SIZE / 2}
+              cy={SIZE / 2}
+              r={r}
+              stroke={colors.primary}
+              strokeWidth={SW}
+              fill="none"
+              strokeDasharray={`${filled} ${circ}`}
+              strokeLinecap="round"
+            />
+          </G>
+        </Svg>
+        <View style={gaugeS.center}>
+          <Text style={[gaugeS.pctNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+            {pctStr}
+          </Text>
+          {pct != null && pct > 0 && (
+            <Text style={[gaugeS.pctLabel, { color: colors.mutedForeground }]}>PERCENT</Text>
+          )}
+        </View>
+      </View>
+      <Text style={[gaugeS.gaugeLabel, { color: colors.mutedForeground }]}>{label}</Text>
+      {made != null && attempted != null && (
+        <Text style={[gaugeS.made, { color: colors.mutedForeground }]}>
+          {made} / {attempted}
+        </Text>
+      )}
     </View>
   );
 }
 
-const cardStyles = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: 14,
+const gaugeS = StyleSheet.create({
+  wrap: { alignItems: 'center', flex: 1 },
+  center: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'center',
   },
-  value: { fontSize: 28, lineHeight: 30 },
-  label: { fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', fontFamily: 'Inter_500Medium' },
+  pctNum: { fontSize: 17, lineHeight: 19 },
+  pctLabel: { fontSize: 7, fontFamily: 'Inter_500Medium', letterSpacing: 0.3 },
+  gaugeLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_500Medium',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginTop: 6,
+  },
+  made: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
-function GameRow({ game, colors, onPress }: { game: any; colors: any; onPress: () => void }) {
-  const isWin = game.result === 'W';
-  const date = new Date(game.date);
-  const month = date.toLocaleString('en', { month: 'short' });
-  const day = date.getDate();
-
+// ─── Player Chip ───────────────────────────────────────────────────────────
+function PlayerChip({
+  player,
+  isSelected,
+  onPress,
+  colors,
+}: {
+  player: any;
+  isSelected: boolean;
+  onPress: () => void;
+  colors: any;
+}) {
+  const { data: summary } = useGetPlayerSummary(player.id);
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.7}
-      style={[rowStyles.row, { backgroundColor: colors.card, borderColor: colors.border }]}
+      activeOpacity={0.75}
+      style={[
+        chipS.chip,
+        {
+          backgroundColor: isSelected ? colors.primary : colors.card,
+          borderColor: isSelected ? colors.primary : colors.border,
+        },
+      ]}
     >
-      <View style={[rowStyles.dateBadge, { backgroundColor: colors.muted }]}>
-        <Text style={[rowStyles.dateMonth, { color: colors.mutedForeground }]}>{month}</Text>
-        <Text style={[rowStyles.dateDay, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{day}</Text>
-      </View>
-      <View style={rowStyles.middle}>
-        <Text style={[rowStyles.opponent, { color: colors.foreground }]} numberOfLines={1}>
-          vs {game.opponent}
-        </Text>
-        <Text style={[rowStyles.scores, { color: colors.mutedForeground }]}>
-          {game.teamScore} – {game.opponentScore}
-        </Text>
-      </View>
-      <View style={[rowStyles.badge, { backgroundColor: isWin ? colors.primary + '22' : colors.muted }]}>
-        <Text style={[rowStyles.badgeText, { color: isWin ? colors.primary : colors.mutedForeground }]}>
-          {isWin ? 'W' : 'L'}
-        </Text>
-      </View>
+      <Text style={[chipS.name, { color: isSelected ? '#fff' : colors.foreground }]}>
+        {player.name}
+      </Text>
+      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.7)' : colors.mutedForeground }]}>
+        {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
+      </Text>
     </TouchableOpacity>
   );
 }
 
-const rowStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
+const chipS = StyleSheet.create({
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 22,
     borderWidth: 1,
-    marginBottom: 8,
-    overflow: 'hidden',
+    marginRight: 8,
+    minWidth: 110,
   },
-  dateBadge: {
-    width: 52,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dateMonth: { fontSize: 10, textTransform: 'uppercase', fontFamily: 'Inter_500Medium' },
-  dateDay: { fontSize: 22, lineHeight: 24 },
-  middle: { flex: 1, paddingHorizontal: 12, paddingVertical: 12 },
-  opponent: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 2 },
-  scores: { fontSize: 13, fontFamily: 'Inter_400Regular' },
-  badge: { width: 40, height: 40, borderRadius: 8, marginRight: 12, alignItems: 'center', justifyContent: 'center' },
-  badgeText: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  name: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  sub: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
+// ─── Stat Card ─────────────────────────────────────────────────────────────
+function StatCard({
+  label,
+  value,
+  sub,
+  colors,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  colors: any;
+}) {
+  return (
+    <View style={[statS.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[statS.label, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={[statS.value, { color: colors.primary, fontFamily: 'Teko_700Bold' }]}>
+        {value}
+      </Text>
+      {sub && <Text style={[statS.sub, { color: colors.mutedForeground }]}>{sub}</Text>}
+    </View>
+  );
+}
+
+const statS = StyleSheet.create({
+  card: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    alignItems: 'center',
+  },
+  label: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  value: { fontSize: 30, lineHeight: 32 },
+  sub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
+});
+
+// ─── Mini Stat ──────────────────────────────────────────────────────────────
+function MiniStat({ label, value, total, colors }: { label: string; value: string; total?: string; colors: any }) {
+  return (
+    <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[miniS.label, { color: colors.mutedForeground }]}>{label}</Text>
+      <Text style={[miniS.value, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+        {value}
+      </Text>
+      {total && (
+        <Text style={[miniS.total, { color: colors.mutedForeground }]}>{total} TOTAL</Text>
+      )}
+    </View>
+  );
+}
+
+const miniS = StyleSheet.create({
+  wrap: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    alignItems: 'center',
+  },
+  label: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  value: { fontSize: 26, lineHeight: 28 },
+  total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
+});
+
+// ─── Section Header ────────────────────────────────────────────────────────
+function SectionHeader({ title, colors }: { title: string; colors: any }) {
+  return (
+    <View style={secS.wrap}>
+      <View style={[secS.bar, { backgroundColor: colors.primary }]} />
+      <Text style={[secS.title, { color: colors.foreground }]}>{title}</Text>
+    </View>
+  );
+}
+
+const secS = StyleSheet.create({
+  wrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 20 },
+  bar: { width: 3, height: 18, borderRadius: 2, marginRight: 10 },
+  title: { fontSize: 13, fontFamily: 'Inter_700Bold', letterSpacing: 1, textTransform: 'uppercase' },
+});
+
+// ─── Player Dashboard ──────────────────────────────────────────────────────
+function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
+  const { data: summary, isLoading } = useGetPlayerSummary(player.id);
+
+  if (isLoading || !summary) {
+    return (
+      <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  const fgMade = summary.twoMade + summary.threeMade;
+  const fgAtt = summary.twoAttempted + summary.threeAttempted;
+  const winRate = summary.games > 0 ? Math.round((summary.wins / summary.games) * 100) : 0;
+
+  return (
+    <>
+      {/* Player Hero */}
+      <View style={[heroS.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={heroS.flashRow}>
+          <Ionicons name="flash" size={14} color={colors.primary} />
+          <Text style={[heroS.liveLabel, { color: colors.primary }]}>LIVE PLAYER STATS</Text>
+          <Ionicons name="flash" size={14} color={colors.primary} />
+        </View>
+
+        <View style={[heroS.avatar, { borderColor: colors.primary, backgroundColor: colors.primary + '20' }]}>
+          <Text style={[heroS.avatarText, { color: colors.primary, fontFamily: 'Teko_700Bold' }]}>
+            {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+          </Text>
+        </View>
+
+        <Text style={[heroS.playerName, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+          {player.name.toUpperCase()}
+        </Text>
+
+        <View style={[heroS.scopeBadge, { backgroundColor: colors.muted }]}>
+          <Text style={[heroS.scopeText, { color: colors.mutedForeground }]}>
+            {summary.seasonScope === 'career' ? '● CAREER SUMMARY DASHBOARD' : '● CURRENT SEASON SUMMARY'}
+          </Text>
+        </View>
+      </View>
+
+      {/* 4 Stat Cards */}
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+        <StatCard label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} TOTAL`} colors={colors} />
+        <StatCard label="Games Played" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} colors={colors} />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        <StatCard label="Win Record" value={`${summary.wins}-${summary.losses}`} sub={`${winRate}% WIN RATE`} colors={colors} />
+        <StatCard label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} TOTAL`} colors={colors} />
+      </View>
+
+      {/* Shooting Efficiency */}
+      <SectionHeader title="Shooting Efficiency" colors={colors} />
+      <View style={[shootS.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <ArcGauge
+          pct={fgAtt > 0 ? fgMade / fgAtt : null}
+          label="Field Goal"
+          made={fgMade}
+          attempted={fgAtt}
+          colors={colors}
+        />
+        <View style={[shootS.divider, { backgroundColor: colors.border }]} />
+        <ArcGauge
+          pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null}
+          label="3-Point"
+          made={summary.threeMade}
+          attempted={summary.threeAttempted}
+          colors={colors}
+        />
+        <View style={[shootS.divider, { backgroundColor: colors.border }]} />
+        <ArcGauge
+          pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null}
+          label="Free Throw"
+          made={summary.ftMade}
+          attempted={summary.ftAttempted}
+          colors={colors}
+        />
+      </View>
+
+      {/* Playmaking & Defense */}
+      <SectionHeader title="Playmaking & Defense" colors={colors} />
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+        <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} colors={colors} />
+        <MiniStat label="Steals / GM" value={summary.spg.toFixed(1)} total={String(summary.steals)} colors={colors} />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6 }}>
+        <MiniStat label="Blocks / GM" value={summary.bpg.toFixed(1)} total={String(summary.blocks)} colors={colors} />
+        <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} colors={colors} />
+      </View>
+    </>
+  );
+}
+
+const heroS = StyleSheet.create({
+  card: {
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+  },
+  flashRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
+  liveLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 1.5 },
+  avatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  avatarText: { fontSize: 28, lineHeight: 32 },
+  playerName: { fontSize: 34, lineHeight: 38, letterSpacing: 1 },
+  scopeBadge: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
+});
+
+const shootS = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    gap: 0,
+  },
+  divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 8 },
+});
+
+// ─── Main Screen ────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const { data: teams, isLoading: teamsLoading, refetch: refetchTeams } = useListTeams();
-  const team = teams?.[0] ?? null;
+  const { data: players, isLoading: playersLoading, refetch: refetchPlayers } = useListPlayers();
+  const { data: teams } = useListTeams();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  const { data: games, isLoading: gamesLoading, refetch: refetchGames } = useListTeamGames(
-    team?.id ?? 0,
-    { query: { enabled: !!team } },
-  );
+  const activeId = selectedId ?? (players?.[0] as any)?.id ?? null;
+  const activePlayer = (players as any[])?.find((p) => p.id === activeId) ?? null;
 
-  const { data: players } = useListPlayers();
-
-  const isLoading = teamsLoading || gamesLoading;
-
-  const stats = useMemo(() => {
-    if (!games) return { wins: 0, losses: 0, ppg: '—', record: '0-0' };
-    const wins = games.filter((g: any) => g.result === 'W').length;
-    const losses = games.length - wins;
-    const ppg = games.length > 0
-      ? (games.reduce((s: number, g: any) => s + g.teamScore, 0) / games.length).toFixed(1)
-      : '—';
-    return { wins, losses, ppg, record: `${wins}-${losses}` };
-  }, [games]);
-
-  // Top performers: aggregate points per player across all games
-  const topPerformers = useMemo(() => {
-    if (!games || !players) return [];
-    const totals: Record<number, { name: string; points: number; games: number }> = {};
-    for (const game of games as any[]) {
-      for (const stat of game.stats ?? []) {
-        if (!totals[stat.playerId]) {
-          totals[stat.playerId] = { name: stat.playerName, points: 0, games: 0 };
-        }
-        totals[stat.playerId].points += stat.points ?? 0;
-        totals[stat.playerId].games += 1;
-      }
-    }
-    return Object.values(totals)
-      .sort((a, b) => b.points / b.games - a.points / a.games)
-      .slice(0, 3);
-  }, [games, players]);
-
-  const recentGames = (games as any[])?.slice().reverse().slice(0, 5) ?? [];
+  const isLoading = playersLoading;
 
   const styles = makeStyles(colors, insets);
 
@@ -153,155 +409,78 @@ export default function DashboardScreen() {
     );
   }
 
-  if (!team) {
+  if (!players?.length) {
     return (
       <View style={[styles.root, styles.centered]}>
-        <Ionicons name="basketball-outline" size={48} color={colors.mutedForeground} />
-        <Text style={styles.emptyTitle}>No team yet</Text>
-        <Text style={styles.emptyBody}>Head to the Record tab to start tracking your first game.</Text>
+        <Ionicons name="basketball-outline" size={52} color={colors.mutedForeground} />
+        <Text style={styles.emptyTitle}>No players yet</Text>
+        <Text style={styles.emptySub}>Add players from the Profile tab to start tracking stats.</Text>
       </View>
     );
   }
 
   return (
-    <FlatList
-      style={{ backgroundColor: colors.background }}
-      contentContainerStyle={styles.list}
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
           refreshing={false}
-          onRefresh={() => { refetchTeams(); refetchGames(); }}
+          onRefresh={refetchPlayers}
           tintColor={colors.primary}
         />
       }
-      data={recentGames}
-      keyExtractor={(item: any) => String(item.id)}
-      ListHeaderComponent={
-        <>
-          {/* Header */}
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.teamName}>{team.name}</Text>
-              <Text style={styles.season}>{new Date().getFullYear()} Season</Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.recordBtn, { backgroundColor: colors.primary }]}
-              onPress={() => router.push('/(tabs)/record')}
-              activeOpacity={0.8}
-            >
-              <Feather name="plus" size={18} color="#fff" />
-            </TouchableOpacity>
-          </View>
+    >
+      {/* Player chip selector */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chips}
+      >
+        {(players as any[]).map((p) => (
+          <PlayerChip
+            key={p.id}
+            player={p}
+            isSelected={p.id === activeId}
+            onPress={() => setSelectedId(p.id)}
+            colors={colors}
+          />
+        ))}
+      </ScrollView>
 
-          {/* Season stats strip */}
-          <View style={styles.statsRow}>
-            <StatCard label="Record" value={stats.record} colors={colors} />
-            <View style={{ width: 8 }} />
-            <StatCard label="PPG" value={stats.ppg} colors={colors} />
-            <View style={{ width: 8 }} />
-            <StatCard label="Wins" value={String(stats.wins)} colors={colors} />
-          </View>
-
-          {/* Top performers */}
-          {topPerformers.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Top Performers</Text>
-              {topPerformers.map((p: any, i: number) => (
-                <View key={p.name} style={[styles.performerRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.performerRank, { color: colors.primary, fontFamily: 'Teko_700Bold' }]}>
-                    #{i + 1}
-                  </Text>
-                  <Text style={[styles.performerName, { color: colors.foreground }]}>{p.name}</Text>
-                  <Text style={[styles.performerStat, { color: colors.mutedForeground }]}>
-                    {(p.points / p.games).toFixed(1)} ppg
-                  </Text>
-                </View>
-              ))}
-            </>
-          )}
-
-          {recentGames.length > 0 && (
-            <Text style={styles.sectionTitle}>Recent Games</Text>
-          )}
-        </>
-      }
-      renderItem={({ item }) => (
-        <GameRow
-          game={item}
-          colors={colors}
-          onPress={() => router.push(`/game/${item.id}`)}
-        />
-      )}
-      ListEmptyComponent={
-        <View style={styles.emptyGames}>
-          <Ionicons name="basketball-outline" size={36} color={colors.mutedForeground} />
-          <Text style={[styles.emptyBody, { marginTop: 8 }]}>No games recorded yet</Text>
+      {/* Player stats */}
+      {activePlayer ? (
+        <PlayerDashboard player={activePlayer} colors={colors} />
+      ) : (
+        <View style={styles.centered}>
+          <ActivityIndicator color={colors.primary} />
         </View>
-      }
-    />
+      )}
+    </ScrollView>
   );
 }
 
 function makeStyles(colors: any, insets: any) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
-    centered: { alignItems: 'center', justifyContent: 'center' },
-    list: {
-      paddingTop: insets.top + (Platform.OS === 'web' ? 67 : 0),
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    content: {
+      paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 16 : 24),
       paddingHorizontal: 16,
       paddingBottom: insets.bottom + 100,
     },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingTop: Platform.OS === 'ios' ? 16 : 24,
-      paddingBottom: 20,
+    chips: {
+      paddingBottom: 16,
     },
-    teamName: {
-      fontSize: 24,
-      fontFamily: 'Inter_700Bold',
-      color: colors.foreground,
-    },
-    season: { fontSize: 13, color: colors.mutedForeground, fontFamily: 'Inter_400Regular', marginTop: 2 },
-    recordBtn: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    statsRow: { flexDirection: 'row', marginBottom: 24 },
-    sectionTitle: {
-      fontSize: 12,
-      fontFamily: 'Inter_600SemiBold',
-      color: colors.mutedForeground,
-      letterSpacing: 1,
-      textTransform: 'uppercase',
-      marginBottom: 10,
-      marginTop: 4,
-    },
-    performerRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderRadius: 10,
-      borderWidth: 1,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      marginBottom: 6,
-      gap: 10,
-    },
-    performerRank: { fontSize: 20, width: 30, lineHeight: 22 },
-    performerName: { flex: 1, fontSize: 15, fontFamily: 'Inter_600SemiBold' },
-    performerStat: { fontSize: 14, fontFamily: 'Inter_500Medium' },
     emptyTitle: {
       fontSize: 20,
-      fontFamily: 'Inter_600SemiBold',
+      fontFamily: 'Inter_700Bold',
       color: colors.foreground,
       marginTop: 16,
       marginBottom: 8,
     },
-    emptyBody: {
+    emptySub: {
       fontSize: 14,
       color: colors.mutedForeground,
       textAlign: 'center',
@@ -309,6 +488,5 @@ function makeStyles(colors: any, insets: any) {
       fontFamily: 'Inter_400Regular',
       lineHeight: 20,
     },
-    emptyGames: { alignItems: 'center', paddingTop: 32, paddingBottom: 16 },
   });
 }
