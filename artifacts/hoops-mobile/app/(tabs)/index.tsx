@@ -147,7 +147,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
   const { data: summary, isLoading } = useGetPlayerSummary(player.id);
   const updatePlayer = useUpdatePlayer();
   const qc = useQueryClient();
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
@@ -177,17 +177,18 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
       await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
       qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
       // Remove from the pending queue now that the upload succeeded.
-      if (pendingEntryId) {
-        await dequeuePhoto(pendingEntryId);
+      if (pendingEntryId && userId) {
+        await dequeuePhoto(userId, pendingEntryId);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Please try again.';
       // Persist the failed upload so it can be retried on next app open.
-      const entryId = pendingEntryId ?? await enqueuePhoto(
+      const entryId = pendingEntryId ?? (userId ? await enqueuePhoto(
+        userId,
         asset.uri,
         asset.mimeType ?? 'image/jpeg',
         player.id,
-      );
+      ) : undefined);
       if (retryCount >= MAX_RETRIES) {
         // Cap reached — show a terminal message with no Retry button.
         Alert.alert(

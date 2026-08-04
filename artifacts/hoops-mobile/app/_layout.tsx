@@ -23,6 +23,7 @@ import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import { setBaseUrl, setAuthTokenGetter } from '@workspace/api-client-react';
 import { SubscriptionProvider, initializeRevenueCat, loginRevenueCat, logoutRevenueCat } from '@/lib/revenuecat';
+import { clearPendingPhotos } from '@/lib/pendingPhotoQueue';
 import { PendingPhotoRetry } from '@/components/PendingPhotoRetry';
 
 SplashScreen.preventAutoHideAsync();
@@ -70,17 +71,25 @@ function ApiAuthSetup() {
 
   // Link the RevenueCat subscriber to the Clerk user so that server-side
   // RC webhooks can update the correct user row via app_user_id = clerkUserId.
+  // On sign-out, also clear this coach's pending photo queue so a different
+  // coach signing in on the same device never retries the wrong uploads.
+  const prevUserIdRef = React.useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (isSignedIn && userId) {
       loginRevenueCat(userId);
     } else if (!isSignedIn) {
       logoutRevenueCat();
+      // Clear the queue for the coach who just signed out.
+      const prev = prevUserIdRef.current;
+      if (prev) {
+        clearPendingPhotos(prev).catch(() => {});
+      }
     }
+    prevUserIdRef.current = userId;
   }, [isSignedIn, userId]);
 
   return null;
 }
-
 
 /** Redirects unauthenticated users to the auth screen and vice-versa. */
 function AuthGate() {

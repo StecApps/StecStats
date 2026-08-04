@@ -82,17 +82,17 @@ async function updatePlayerPhoto(
 }
 
 export function usePendingPhotoRetry() {
-  const { isSignedIn, getToken } = useAuth();
+  const { isSignedIn, userId, getToken } = useAuth();
   const qc = useQueryClient();
   const hasRun = useRef(false);
 
   useEffect(() => {
     // Only run once per session, after the user is confirmed signed in.
-    if (!isSignedIn || hasRun.current) return;
+    if (!isSignedIn || !userId || hasRun.current) return;
     hasRun.current = true;
 
     (async () => {
-      const pending = await getPendingPhotoUploads();
+      const pending = await getPendingPhotoUploads(userId);
       if (pending.length === 0) return;
 
       const token = await getToken();
@@ -105,7 +105,7 @@ export function usePendingPhotoRetry() {
         try {
           const objectPath = await uploadPhoto(entry.uri, entry.mimeType, token);
           await updatePlayerPhoto(entry.playerId, objectPath, token);
-          await clearPendingPhotoUpload(entry.playerId);
+          await clearPendingPhotoUpload(userId, entry.playerId);
           successCount++;
         } catch {
           failCount++;
@@ -136,5 +136,5 @@ export function usePendingPhotoRetry() {
         );
       }
     })();
-  }, [isSignedIn]);
+  }, [isSignedIn, userId]);
 }

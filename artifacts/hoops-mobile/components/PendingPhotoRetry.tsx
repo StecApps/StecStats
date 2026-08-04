@@ -16,17 +16,17 @@ import { getPendingPhotos, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { uploadPhoto } from '@/lib/photoUpload';
 
 export function PendingPhotoRetry() {
-  const { isSignedIn, getToken } = useAuth();
+  const { isSignedIn, userId, getToken } = useAuth();
   const updatePlayer = useUpdatePlayer();
   const qc = useQueryClient();
   const hasRun = useRef(false);
 
   useEffect(() => {
-    if (!isSignedIn || hasRun.current) return;
+    if (!isSignedIn || !userId || hasRun.current) return;
     hasRun.current = true;
 
     (async () => {
-      const pending = await getPendingPhotos();
+      const pending = await getPendingPhotos(userId);
       if (pending.length === 0) return;
 
       let failCount = 0;
@@ -43,7 +43,7 @@ export function PendingPhotoRetry() {
             data: { photoObjectPath: objectPath },
           });
           qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
-          await dequeuePhoto(entry.id);
+          await dequeuePhoto(userId, entry.id);
         } catch {
           failCount++;
         }
@@ -57,7 +57,7 @@ export function PendingPhotoRetry() {
         );
       }
     })();
-  }, [isSignedIn]);
+  }, [isSignedIn, userId]);
 
   return null;
 }
