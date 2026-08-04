@@ -114,6 +114,41 @@ test.describe("Onboarding step routing", () => {
     }
   });
 
+  test("E – removing the last player hides the Continue button and shows the add-player form", async ({ page }) => {
+    const email = uniqueEmail("remove-last");
+    const user = await createClerkUser(email, "SomeTestPassword!9x");
+
+    try {
+      await setupClerkTestingToken({ page, userId: user.id });
+      await page.goto("/onboarding");
+
+      // Fresh coach sees the add-player form
+      await expect(page.getByTestId("input-onboarding-player-name")).toBeVisible();
+
+      // Add one player
+      await page.getByTestId("input-onboarding-player-name").fill("Solo Player");
+      await page.getByTestId("button-onboarding-add-player").click();
+
+      // Player appears in the list
+      await expect(page.getByTestId("onboarding-player-list")).toContainText("Solo Player");
+
+      // Continue to Team button is visible
+      await expect(page.getByTestId("button-onboarding-continue-to-team")).toBeVisible();
+
+      // Remove the only player
+      await page.getByTestId("button-remove-player").click();
+
+      // Continue to Team button must be gone
+      await expect(page.getByTestId("button-onboarding-continue-to-team")).not.toBeVisible();
+
+      // Add-player form must be shown (not the upgrade prompt)
+      await expect(page.getByTestId("input-onboarding-player-name")).toBeVisible();
+      await expect(page.getByTestId("onboarding-upgrade-prompt")).not.toBeVisible();
+    } finally {
+      await deleteClerkUser(user.id);
+    }
+  });
+
   test("C – fully onboarded coach navigating to /onboarding is redirected to /dashboard", async ({ page }) => {
     const email = uniqueEmail("done");
     const user = await createClerkUser(email, "SomeTestPassword!9x");
