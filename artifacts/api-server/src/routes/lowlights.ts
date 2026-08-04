@@ -76,6 +76,7 @@ router.get("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     startedAt: isStale ? null : (lowlightStartedAt?.toISOString() ?? null),
     eligibleMoments,
     onFilmMoments,
+    musicTrack: game.lowlightMusicTrack ?? null,
   });
 });
 
@@ -117,7 +118,7 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   if (!alreadyRunning) {
     inFlight.add(gameId);
     startedAt = new Date();
-    await db.update(gamesTable).set({ lowlightStatus: "processing", lowlightError: null, lowlightStartedAt: startedAt }).where(eq(gamesTable.id, gameId));
+    await db.update(gamesTable).set({ lowlightStatus: "processing", lowlightError: null, lowlightStartedAt: startedAt, lowlightMusicTrack: musicTrackId ?? null }).where(eq(gamesTable.id, gameId));
     // Hard timeout — 2-hr game: download + proxy (nice -n 19) + encode + upload
     const MAX_JOB_MS = 130 * 60 * 1000;
     void Promise.race([
@@ -143,6 +144,7 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     error: null,
     startedAt: startedAt?.toISOString() ?? null,
     eligibleMoments,
+    musicTrack: musicTrackId ?? game.lowlightMusicTrack ?? null,
   });
 });
 

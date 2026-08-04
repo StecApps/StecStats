@@ -98,6 +98,7 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       startedAt: isStale ? null : (highlightStartedAt?.toISOString() ?? null),
       eligibleMoments,
       onFilmMoments,
+      musicTrack: game.highlightMusicTrack ?? null,
     }),
   );
 });
@@ -154,6 +155,7 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
         highlightStatus: "processing",
         highlightError: null,
         highlightStartedAt: startedAt,
+        highlightMusicTrack: musicTrackId ?? null,
       })
       .where(eq(gamesTable.id, gameId));
 
@@ -185,6 +187,7 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       error: null,
       startedAt: startedAt?.toISOString() ?? null,
       eligibleMoments,
+      musicTrack: musicTrackId ?? game.highlightMusicTrack ?? null,
     }),
   );
 });

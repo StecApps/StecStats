@@ -1152,6 +1152,10 @@ components:
           type: integer
           nullable: true
           description: How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.
+        musicTrack:
+          type: string
+          nullable: true
+          description: Music track ID used during the most recent reel generation (e.g. "energetic"). Null means no music was used.
 
     LowlightStatus:
       type: object
@@ -1174,6 +1178,10 @@ components:
           type: integer
           nullable: true
           description: How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.
+        musicTrack:
+          type: string
+          nullable: true
+          description: Music track ID used during the most recent reel generation (e.g. "energetic"). Null means no music was used.
 
     GameEvent:
       type: object

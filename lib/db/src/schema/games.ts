@@ -41,6 +41,12 @@ export const gamesTable = pgTable("games", {
   // rebuilt. See GENERATOR_VERSION in highlightGenerator.ts.
   highlightGeneratorVersion: integer("highlight_generator_version"),
   lowlightGeneratorVersion: integer("lowlight_generator_version"),
+  // Music track ID used during the most recent successful (or in-progress)
+  // reel generation, e.g. "energetic", "cinematic". NULL means no music.
+  // Persisted so the GET endpoint can return it and the UI can show the
+  // correct "Generated with: X" indicator after a hard refresh.
+  highlightMusicTrack: text("highlight_music_track"),
+  lowlightMusicTrack: text("lowlight_music_track"),
   videoOffsetMs: integer("video_offset_ms"),
   videoProxyObjectPath: text("video_proxy_object_path"),
   // Version of the proxy-encoding pipeline that produced videoProxyObjectPath.

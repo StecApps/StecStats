@@ -159,6 +159,7 @@ export default function RecordGame() {
   const [lowlightLastUsedTrack, setLowlightLastUsedTrack] = useState<string | null>(
     () => localStorage.getItem(LOWLIGHT_LAST_USED_MUSIC_KEY) || null,
   );
+
   const [isGeneratingHighlight, setIsGeneratingHighlight] = useState(false);
   const [isGeneratingLowlight, setIsGeneratingLowlight] = useState(false);
 
@@ -179,6 +180,38 @@ export default function RecordGame() {
         query.state.data?.status === "processing" ? 3000 : false,
     },
   });
+
+  // Sync last-used track from server on load / after generation completes.
+  // The server now persists the track alongside the reel record, so we can
+  // restore the correct "Generated with: X" indicator after a hard refresh.
+  // We guard on status being ready/processing to avoid resetting on idle games.
+  useEffect(() => {
+    if (!highlight) return;
+    if (highlight.status !== "ready" && highlight.status !== "processing") return;
+    if (highlight.musicTrack !== undefined) {
+      const track = highlight.musicTrack ?? null;
+      setHighlightLastUsedTrack(track);
+      if (track) {
+        localStorage.setItem(HIGHLIGHT_LAST_USED_MUSIC_KEY, track);
+      } else {
+        localStorage.removeItem(HIGHLIGHT_LAST_USED_MUSIC_KEY);
+      }
+    }
+  }, [highlight?.status, highlight?.musicTrack]);
+
+  useEffect(() => {
+    if (!lowlight) return;
+    if (lowlight.status !== "ready" && lowlight.status !== "processing") return;
+    if (lowlight.musicTrack !== undefined) {
+      const track = lowlight.musicTrack ?? null;
+      setLowlightLastUsedTrack(track);
+      if (track) {
+        localStorage.setItem(LOWLIGHT_LAST_USED_MUSIC_KEY, track);
+      } else {
+        localStorage.removeItem(LOWLIGHT_LAST_USED_MUSIC_KEY);
+      }
+    }
+  }, [lowlight?.status, lowlight?.musicTrack]);
 
   const highlightFileName = () => {
     const opp = (opponent || "game").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();

@@ -442,6 +442,8 @@ export interface HighlightStatus {
   eligibleMoments: number;
   /** How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown. */
   onFilmMoments?: number | null;
+  /** Music track ID used during the most recent reel generation (e.g. "energetic"). Null means no music was used. */
+  musicTrack?: string | null;
 }
 
 export type LowlightStatusStatus = typeof LowlightStatusStatus[keyof typeof LowlightStatusStatus];
@@ -464,5 +466,7 @@ export interface LowlightStatus {
   eligibleMoments: number;
   /** How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown. */
   onFilmMoments?: number | null;
+  /** Music track ID used during the most recent reel generation (e.g. "energetic"). Null means no music was used. */
+  musicTrack?: string | null;
 }
 
