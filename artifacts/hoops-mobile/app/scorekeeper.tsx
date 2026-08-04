@@ -139,7 +139,8 @@ export default function ScorekeeperScreen() {
   const { data: players, isLoading: playersLoading, refetch: refetchPlayers } = useListPlayers({
     // Poll every 30 s so a player rename done in another tab or device is picked
     // up without requiring the coach to reload or leave the screen.
-    query: { refetchInterval: 30_000 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    query: { refetchInterval: 30_000 } as any,
   });
 
   // Refetch the player list whenever this screen comes into focus so that
