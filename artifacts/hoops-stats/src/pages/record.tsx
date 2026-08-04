@@ -678,11 +678,28 @@ export default function RecordGame() {
       setIsReconnectingLive(false);
       setLiveReconnectAttempt(0);
     };
+    // Test hook: arm liveReconnectTimeoutRef with a pending setTimeout so tests
+    // can verify the unmount cleanup's clearTimeout actually cancels it before
+    // the callback fires and calls state setters on an unmounted component.
+    // The callback sets window.__hoopsReconnectTimeoutFired so the test can
+    // confirm it was (or was not) invoked.
+    w.__hoopsArmReconnectTimeout = (delayMs: number) => {
+      w.__hoopsReconnectTimeoutFired = false;
+      liveReconnectTimeoutRef.current = setTimeout(() => {
+        w.__hoopsReconnectTimeoutFired = true;
+        // These mirror the state updates connectBroadcasterSocket queues;
+        // if cleanup missed the clearTimeout they would run on an unmounted
+        // component and trigger a React stale-update warning.
+        setIsReconnectingLive(true);
+        setLiveReconnectAttempt(1);
+      }, delayMs);
+    };
     return () => {
       delete w.__hoopsTurnCheckNow;
       delete w.__hoopsSetTurnAtGoLive;
       delete w.__hoopsSimulateLiveReconnect;
       delete w.__hoopsSimulateLiveReconnectSuccess;
+      delete w.__hoopsArmReconnectTimeout;
     };
   // runTurnHealthCheck is re-created on every render (it closes over toast/state);
   // the ref is stable, so the effect only needs to mount/unmount once.

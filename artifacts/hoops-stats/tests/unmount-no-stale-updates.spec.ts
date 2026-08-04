@@ -189,4 +189,102 @@ test.describe("Record page – no stale state updates after navigating away mid-
       ).toHaveLength(0);
     },
   );
+
+  test(
+    "liveReconnectTimeoutRef is cancelled on unmount — callback never fires after navigation",
+    async ({ page }) => {
+      // ── 0. Collect console warnings/errors ────────────────────────────────
+      const consoleMessages: Array<{ type: string; text: string }> = [];
+      page.on("console", (msg) => {
+        const type = msg.type();
+        if (type === "warning" || type === "error") {
+          consoleMessages.push({ type, text: msg.text() });
+        }
+      });
+
+      await setupClerkTestingToken({ page, userId });
+
+      // ── 1. Mock all API endpoints ──────────────────────────────────────────
+      await page.route("**/api/billing/status", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ plan: "pro", active: true }),
+        }),
+      );
+      await page.route("**/api/players", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{ id: 1, name: "Test Player", teamId: 1 }]),
+        }),
+      );
+      await page.route("**/api/teams", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{ id: 1, name: "Test Team", sport: "basketball" }]),
+        }),
+      );
+      await page.route("**/api/live/ice-servers", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+            turnAvailable: true,
+          }),
+        }),
+      );
+      await page.goto("/record");
+
+      // ── 2. Wait for the live-stream section so dev hooks are mounted ───────
+      await expect(page.getByText("Live stream link")).toBeVisible({ timeout: 15_000 });
+
+      // ── 3. Arm liveReconnectTimeoutRef with a 300 ms pending timeout ───────
+      //       The callback would call setIsReconnectingLive / setLiveReconnectAttempt
+      //       on the unmounted component if clearTimeout was never called.
+      await page.evaluate(() =>
+        (window as any).__hoopsArmReconnectTimeout(300),
+      );
+
+      // ── 4. Reset message buffer so only post-navigation noise counts ───────
+      consoleMessages.length = 0;
+
+      // ── 5. Navigate away immediately — unmount must clearTimeout ──────────
+      await page.evaluate(() => {
+        window.history.pushState({}, "", "/dashboard");
+        window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+      });
+
+      // Brief pause to let React process the unmount and run cleanup effects.
+      await page.waitForTimeout(100);
+
+      // ── 6. Wait longer than the armed timeout (300 ms) ────────────────────
+      //       If clearTimeout was missed the callback fires here, sets the flag,
+      //       and calls state setters on the now-unmounted component.
+      await page.waitForTimeout(600);
+
+      // ── 7. Assert the timeout callback never fired ────────────────────────
+      const timeoutFired = await page.evaluate(
+        () => (window as any).__hoopsReconnectTimeoutFired,
+      );
+      expect(
+        timeoutFired,
+        "liveReconnectTimeoutRef callback must NOT fire after the component unmounts",
+      ).toBeFalsy();
+
+      // ── 8. Assert no stale-update warnings ────────────────────────────────
+      const staleUpdateWarnings = consoleMessages.filter(
+        ({ text }) =>
+          text.includes("Can't perform a React state update on an unmounted component") ||
+          text.includes("Warning: Can't perform a React state update") ||
+          text.includes("unmounted component"),
+      );
+      expect(
+        staleUpdateWarnings.map((m) => m.text),
+        "Expected no React stale-state-update warnings after liveReconnectTimeoutRef fires post-unmount",
+      ).toHaveLength(0);
+    },
+  );
 });
