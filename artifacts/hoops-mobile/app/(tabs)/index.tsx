@@ -26,6 +26,7 @@ import {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+import { tekoStyle } from '@/lib/tekoStyle';
 
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
@@ -54,7 +55,7 @@ function ArcGauge({
           </G>
         </Svg>
         <View style={gaugeS.center}>
-          <Text style={[gaugeS.pctNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{pctStr}</Text>
+          <Text style={[gaugeS.pctNum, { color: colors.foreground }]}>{pctStr}</Text>
           {pct != null && pct > 0 && <Text style={[gaugeS.pctLabel, { color: colors.mutedForeground }]}>PERCENT</Text>}
         </View>
       </View>
@@ -68,7 +69,7 @@ function ArcGauge({
 const gaugeS = StyleSheet.create({
   wrap: { alignItems: 'center', flex: 1 },
   center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  pctNum: { fontSize: 17, lineHeight: 23 },
+  pctNum: { ...tekoStyle(17) },
   pctLabel: { fontSize: 7, fontFamily: 'Inter_500Medium', letterSpacing: 0.3 },
   gaugeLabel: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 6 },
   made: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
@@ -98,7 +99,7 @@ function StatCard({ label, value, sub, colors }: { label: string; value: string;
   return (
     <View style={[statS.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Text style={[statS.label, { color: colors.mutedForeground }]}>{label}</Text>
-      <Text style={[statS.value, { color: colors.primary, fontFamily: 'Teko_700Bold' }]}>{value}</Text>
+      <Text style={[statS.value, { color: colors.primary }]}>{value}</Text>
       {sub && <Text style={[statS.sub, { color: colors.mutedForeground }]}>{sub}</Text>}
     </View>
   );
@@ -106,7 +107,7 @@ function StatCard({ label, value, sub, colors }: { label: string; value: string;
 const statS = StyleSheet.create({
   card: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { fontSize: 30, lineHeight: 39 },
+  value: { ...tekoStyle(30) },
   sub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
 });
 
@@ -115,7 +116,7 @@ function MiniStat({ label, value, total, colors }: { label: string; value: strin
   return (
     <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Text style={[miniS.label, { color: colors.mutedForeground }]}>{label}</Text>
-      <Text style={[miniS.value, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{value}</Text>
+      <Text style={[miniS.value, { color: colors.foreground }]}>{value}</Text>
       {total && <Text style={[miniS.total, { color: colors.mutedForeground }]}>{total} TOTAL</Text>}
     </View>
   );
@@ -123,7 +124,7 @@ function MiniStat({ label, value, total, colors }: { label: string; value: strin
 const miniS = StyleSheet.create({
   wrap: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { fontSize: 26, lineHeight: 34 },
+  value: { ...tekoStyle(26) },
   total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
@@ -293,7 +294,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
                 onError={() => setPhotoLoadFailed(true)}
               />
             ) : (
-              <Text style={[heroS.avatarText, { color: colors.primary, fontFamily: 'Teko_700Bold' }]}>
+              <Text style={[heroS.avatarText, { color: colors.primary }]}>
                 {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
               </Text>
             )}
@@ -306,7 +307,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
           </View>
         </TouchableOpacity>
 
-        <Text style={[heroS.playerName, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+        <Text style={[heroS.playerName, { color: colors.foreground }]}>
           {player.name.toUpperCase()}
         </Text>
         <View style={[heroS.scopeBadge, { backgroundColor: colors.muted }]}>
@@ -361,14 +362,14 @@ const heroS = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { fontSize: 28, lineHeight: 37 },
+  avatarText: { ...tekoStyle(28) },
   cameraBadge: {
     position: 'absolute', bottom: -2, right: -2,
     width: 24, height: 24, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#0C0A09',
   },
-  playerName: { fontSize: 34, lineHeight: 45, letterSpacing: 1 },
+  playerName: { ...tekoStyle(34), letterSpacing: 1 },
   scopeBadge: { marginTop: 8, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
   scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
 });

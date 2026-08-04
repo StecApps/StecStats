@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { useSubscription } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { tekoStyle } from '@/lib/tekoStyle';
 import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetBillingStatusQueryKey } from '@workspace/api-client-react';
@@ -100,8 +101,8 @@ export default function PaywallScreen() {
         {/* FREE tier */}
         <View style={[styles.tierCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.tierHeader}>
-            <Text style={[styles.tierName, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>FREE</Text>
-            <Text style={[styles.tierPrice, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+            <Text style={[styles.tierName, { color: colors.foreground }]}>FREE</Text>
+            <Text style={[styles.tierPrice, { color: colors.foreground }]}>
               $0 <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>/ forever</Text>
             </Text>
           </View>
@@ -129,14 +130,14 @@ export default function PaywallScreen() {
           <View style={styles.tierHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="flash" size={18} color={colors.primary} />
-              <Text style={[styles.tierName, { color: colors.primary, fontFamily: 'Teko_700Bold' }]}>PRO</Text>
+              <Text style={[styles.tierName, { color: colors.primary }]}>PRO</Text>
             </View>
             {configured ? (
-              <Text style={[styles.tierPrice, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+              <Text style={[styles.tierPrice, { color: colors.foreground }]}>
                 {proPrice} <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>/ month</Text>
               </Text>
             ) : (
-              <Text style={[styles.tierPrice, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+              <Text style={[styles.tierPrice, { color: colors.foreground }]}>
                 $9.99 <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>/ month</Text>
               </Text>
             )}
@@ -185,9 +186,9 @@ export default function PaywallScreen() {
           <View style={styles.tierHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Ionicons name="star" size={18} color={colors.mutedForeground} />
-              <Text style={[styles.tierName, { color: colors.mutedForeground, fontFamily: 'Teko_700Bold' }]}>PREMIUM</Text>
+              <Text style={[styles.tierName, { color: colors.mutedForeground }]}>PREMIUM</Text>
             </View>
-            <Text style={[styles.tierPrice, { color: colors.mutedForeground, fontFamily: 'Teko_700Bold' }]}>
+            <Text style={[styles.tierPrice, { color: colors.mutedForeground }]}>
               TBA
             </Text>
           </View>
@@ -241,9 +242,7 @@ function makeStyles(colors: any, insets: any) {
     hero: { alignItems: 'center', paddingVertical: 8 },
     heroLogo: { width: 180, height: 42, marginBottom: 12 },
     heroTitle: {
-      fontSize: 28,
-      lineHeight: 37,
-      fontFamily: 'Teko_700Bold',
+      ...tekoStyle(28),
       color: colors.foreground,
       textAlign: 'center',
       marginBottom: 6,
@@ -274,13 +273,11 @@ function makeStyles(colors: any, insets: any) {
       marginBottom: 4,
     },
     tierName: {
-      fontSize: 22,
-      lineHeight: 29,
+      ...tekoStyle(22),
       letterSpacing: 1,
     },
     tierPrice: {
-      fontSize: 24,
-      lineHeight: 32,
+      ...tekoStyle(24),
     },
     tierPriceSub: {
       fontSize: 14,

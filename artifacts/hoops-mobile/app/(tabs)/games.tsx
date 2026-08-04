@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useListTeams, useListTeamGames, useListPlayers } from '@workspace/api-client-react';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import { tekoStyle } from '@/lib/tekoStyle';
 
 // ─── Season Picker Modal ───────────────────────────────────────────────────
 function SeasonPickerModal({
@@ -260,7 +261,7 @@ export default function GamesScreen() {
                   <Text style={[styles.dateStr, { color: colors.mutedForeground }]}>
                     {date.toLocaleString('en', { month: 'short' })}
                   </Text>
-                  <Text style={[styles.dateDay, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+                  <Text style={[styles.dateDay, { color: colors.foreground }]}>
                     {date.getDate()}
                   </Text>
                 </View>
@@ -347,7 +348,7 @@ function makeStyles(colors: any, insets: any) {
     row: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1, marginBottom: 8 },
     datePill: { width: 52, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
     dateStr: { fontSize: 10, textTransform: 'uppercase', fontFamily: 'Inter_500Medium' },
-    dateDay: { fontSize: 22, lineHeight: 29 },
+    dateDay: { ...tekoStyle(22) },
     rowMid: { flex: 1, paddingHorizontal: 12, paddingVertical: 10 },
     opponent: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 2 },
     score: { fontSize: 13, fontFamily: 'Inter_400Regular' },

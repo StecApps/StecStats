@@ -19,6 +19,7 @@ import {
 } from '@workspace/api-client-react';
 import { useLayoutEffect } from 'react';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import { tekoStyle } from '@/lib/tekoStyle';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useAuth } from '@clerk/clerk-expo';
 
@@ -49,7 +50,7 @@ function StatPill({
 }) {
   return (
     <View style={[pillStyle.wrap, { backgroundColor: colors.muted }]}>
-      <Text style={[pillStyle.value, { color: colors.foreground, fontFamily: 'Teko_600SemiBold' }]}>
+      <Text style={[pillStyle.value, { color: colors.foreground }]}>
         {value}
       </Text>
       <Text style={[pillStyle.label, { color: colors.mutedForeground }]}>{label}</Text>
@@ -65,7 +66,7 @@ const pillStyle = StyleSheet.create({
     borderRadius: 8,
     minWidth: 46,
   },
-  value: { fontSize: 20, lineHeight: 28 },
+  value: { ...tekoStyle(20, 'semiBold') },
   label: { fontSize: 9, textTransform: 'uppercase', fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
 });
 
@@ -268,7 +269,7 @@ export default function GameDetailScreen() {
           <Text style={[styles.scoreName, { color: colors.mutedForeground }]} numberOfLines={2} ellipsizeMode="tail">
             {game.teamName}
           </Text>
-          <Text style={[styles.scoreNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+          <Text style={[styles.scoreNum, { color: colors.foreground }]}>
             {game.teamScore}
           </Text>
         </View>
@@ -286,7 +287,7 @@ export default function GameDetailScreen() {
           <Text style={[styles.scoreName, { color: colors.mutedForeground }]} numberOfLines={2} ellipsizeMode="tail">
             {game.opponent}
           </Text>
-          <Text style={[styles.scoreNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+          <Text style={[styles.scoreNum, { color: colors.foreground }]}>
             {game.opponentScore}
           </Text>
         </View>
@@ -373,7 +374,7 @@ function makeStyles(colors: any, insets: any) {
     },
     scoreBlock: { alignItems: 'center', flex: 1, minWidth: 0 },
     scoreName: { fontSize: 11, fontFamily: 'Inter_500Medium', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4, textAlign: 'center' },
-    scoreNum: { fontSize: 44, lineHeight: 58 },
+    scoreNum: { ...tekoStyle(44) },
     scoreDivider: { alignItems: 'center', gap: 6 },
     resultBadge: { width: 36, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
     resultText: { fontSize: 13, fontFamily: 'Inter_700Bold' },

@@ -24,6 +24,7 @@ import { useListPlayers, useCreateGame, useRequestUploadUrl } from '@workspace/a
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import { tekoStyle } from '@/lib/tekoStyle';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
 
@@ -551,12 +552,12 @@ export default function ScorekeeperScreen() {
         {/* Our score */}
         <View style={styles.scoreCol}>
           <Text style={styles.teamLabel} numberOfLines={1}>{teamName}</Text>
-          <Text style={[styles.scoreNum, { fontFamily: 'Teko_700Bold' }]}>{teamScore}</Text>
+          <Text style={styles.scoreNum}>{teamScore}</Text>
         </View>
 
         {/* Center: timer + half */}
         <View style={styles.scoreCenter}>
-          <Text style={[styles.timer, { fontFamily: 'Teko_400Regular' }]}>{formatTime(seconds)}</Text>
+          <Text style={styles.timer}>{formatTime(seconds)}</Text>
           <TouchableOpacity
             onPress={handleStartStop}
             style={[styles.timerBtn, { backgroundColor: running ? 'rgba(255,255,255,0.18)' : colors.primary }]}
@@ -581,7 +582,7 @@ export default function ScorekeeperScreen() {
             >
               <Text style={styles.oppBtnText}>−</Text>
             </TouchableOpacity>
-            <Text style={[styles.scoreNum, { fontFamily: 'Teko_700Bold' }]}>{opponentScore}</Text>
+            <Text style={styles.scoreNum}>{opponentScore}</Text>
             <TouchableOpacity
               onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               style={styles.oppBtn}
@@ -691,7 +692,7 @@ export default function ScorekeeperScreen() {
                 return (
                   <View key={s.label} style={[styles.shootCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Text style={[styles.shootLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-                    <Text style={[styles.shootValue, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
+                    <Text style={[styles.shootValue, { color: colors.foreground }]}>
                       {made}/{att}
                     </Text>
                     <TouchableOpacity
@@ -745,7 +746,7 @@ export default function ScorekeeperScreen() {
                 return (
                   <View key={s.label} style={[styles.countCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Text style={[styles.countLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-                    <Text style={[styles.countValue, { color: accent, fontFamily: 'Teko_700Bold' }]}>{val}</Text>
+                    <Text style={[styles.countValue, { color: accent }]}>{val}</Text>
                     <View style={styles.countBtns}>
                       <TouchableOpacity
                         onPress={() => handleCount(s.field as keyof StatLine, -1)}
@@ -844,7 +845,7 @@ export default function ScorekeeperScreen() {
           {/* Session code */}
           <View style={[styles.codeBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             <Text style={[styles.codeLabel, { color: colors.mutedForeground }]}>Session code</Text>
-            <Text style={[styles.codeValue, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{liveCode}</Text>
+            <Text style={[styles.codeValue, { color: colors.foreground }]}>{liveCode}</Text>
           </View>
 
           {/* Share link */}
@@ -887,10 +888,10 @@ export default function ScorekeeperScreen() {
           <View style={styles.scoreboard}>
             <View style={styles.scoreCol}>
               <Text style={[styles.teamLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{teamName}</Text>
-              <Text style={[styles.scoreNum, { fontFamily: 'Teko_700Bold', color: colors.foreground }]}>{teamScore}</Text>
+              <Text style={[styles.scoreNum, { color: colors.foreground }]}>{teamScore}</Text>
             </View>
             <View style={styles.scoreCenter}>
-              <Text style={[styles.timer, { fontFamily: 'Teko_400Regular', color: colors.foreground }]}>{formatTime(seconds)}</Text>
+              <Text style={[styles.timer, { color: colors.foreground }]}>{formatTime(seconds)}</Text>
               <TouchableOpacity
                 onPress={handleStartStop}
                 style={[styles.timerBtn, { backgroundColor: running ? colors.muted : colors.primary }]}
@@ -913,7 +914,7 @@ export default function ScorekeeperScreen() {
                 >
                   <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
                 </TouchableOpacity>
-                <Text style={[styles.scoreNum, { fontFamily: 'Teko_700Bold', color: colors.foreground }]}>{opponentScore}</Text>
+                <Text style={[styles.scoreNum, { color: colors.foreground }]}>{opponentScore}</Text>
                 <TouchableOpacity
                   onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                   style={[styles.oppBtn, { backgroundColor: colors.muted }]}
@@ -1122,9 +1123,9 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       marginBottom: 1, fontFamily: 'Inter_500Medium',
       color: 'rgba(255,255,255,0.7)', maxWidth: 110,
     },
-    scoreNum: { fontSize: 44, lineHeight: 58, color: '#fff' },
+    scoreNum: { ...tekoStyle(44), color: '#fff' },
     scoreCenter: { alignItems: 'center', gap: 5, paddingHorizontal: 8 },
-    timer: { fontSize: 20, lineHeight: 26, color: 'rgba(255,255,255,0.75)' },
+    timer: { ...tekoStyle(20, 'regular'), color: 'rgba(255,255,255,0.75)' },
     timerBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
     halfBtn: {
       borderWidth: 1, borderRadius: 6,
@@ -1358,7 +1359,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       padding: 9, alignItems: 'center', gap: 5,
     },
     shootLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-    shootValue: { fontSize: 20, lineHeight: 26 },
+    shootValue: { ...tekoStyle(20) },
     makeBtn: {
       width: '100%', height: 34, borderRadius: 8,
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
@@ -1382,7 +1383,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       padding: 9, alignItems: 'center', gap: 5,
     },
     countLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-    countValue: { fontSize: 26, lineHeight: 34 },
+    countValue: { ...tekoStyle(26) },
     countBtns: { flexDirection: 'row', gap: 5, width: '100%' },
     countBtn: {
       flex: 1, height: 26, borderRadius: 8,
@@ -1477,8 +1478,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       letterSpacing: 0.8,
     },
     codeValue: {
-      fontSize: 36,
-      lineHeight: 47,
+      ...tekoStyle(36),
       letterSpacing: 6,
     },
     shareLinkBtn: {
