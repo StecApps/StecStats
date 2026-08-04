@@ -442,10 +442,11 @@ async function boot() {
     const devKey =
       process.env["STRIPE_SECRET_KEY"] ?? "";
     if (devKey.startsWith("sk_test_")) {
-      logger.warn(
+      const stripeTestKeyMsg =
         "Stripe test key (sk_test_) detected — this is expected in development " +
-          "but ensure a live key (sk_live_) is used before going to production.",
-      );
+        "but ensure a live key (sk_live_) is used before going to production.";
+      logger.warn(stripeTestKeyMsg);
+      console.warn("[WARN] " + stripeTestKeyMsg);
     }
   }
 
