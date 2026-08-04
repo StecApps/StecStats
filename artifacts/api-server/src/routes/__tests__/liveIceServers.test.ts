@@ -123,7 +123,7 @@ function mockMeteredFetch(
 ) {
   const realFetch = globalThis.fetch.bind(globalThis);
   return vi.spyOn(globalThis, "fetch").mockImplementation(
-    async (input: RequestInfo | URL, init?: RequestInit) => {
+    async (input: string | Request | URL, init?: RequestInit) => {
       const url =
         typeof input === "string"
           ? input

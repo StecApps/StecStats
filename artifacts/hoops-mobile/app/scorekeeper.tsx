@@ -11,7 +11,7 @@ import {
   Platform,
   useWindowDimensions,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useListPlayers, useCreateGame, useRequestUploadUrl } from '@workspace/api-client-react';
@@ -105,7 +105,15 @@ export default function ScorekeeperScreen() {
   const createGame = useCreateGame();
   const requestUploadUrlMutation = useRequestUploadUrl();
 
-  const { data: players, isLoading: playersLoading } = useListPlayers();
+  const { data: players, isLoading: playersLoading, refetch: refetchPlayers } = useListPlayers();
+
+  // Refetch the player list whenever this screen comes into focus so that
+  // a player added in the Roster screen is visible immediately at game start.
+  useFocusEffect(
+    useCallback(() => {
+      refetchPlayers();
+    }, [refetchPlayers]),
+  );
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [stats, setStats] = useState<Record<number, StatLine>>({});
   const [events, setEvents] = useState<GameEvent[]>([]);

@@ -520,7 +520,7 @@ describe("PATCH /api/games/:id — cross-tenant video hijack guard", () => {
     aclState.value = null;
 
     const { db } = await import("@workspace/db");
-    vi.mocked(db.query.gamesTable.findFirst)
+    (vi.mocked(db.query.gamesTable.findFirst) as any)
       .mockImplementationOnce(async () => COACH_B_GAME_ROW())   // call 1: Coach B owns game 20
       .mockImplementation(async () => COACH_A_GAME_ROW());       // calls 2+3: PATH_A → Coach A
 
@@ -531,7 +531,7 @@ describe("PATCH /api/games/:id — cross-tenant video hijack guard", () => {
     expect(body.error).toMatch(/already owned/i);
 
     // Restore the default state-based implementation for subsequent tests.
-    vi.mocked(db.query.gamesTable.findFirst).mockImplementation(async () => {
+    (vi.mocked(db.query.gamesTable.findFirst) as any).mockImplementation(async () => {
       if (gamesFinderState.value === "coach-a-owns-path") return COACH_A_GAME_ROW();
       return undefined;
     });
@@ -547,7 +547,7 @@ describe("PATCH /api/games/:id — cross-tenant video hijack guard", () => {
     aclState.value = { owner: String(COACH_A.id), visibility: "private" };
 
     const { db } = await import("@workspace/db");
-    vi.mocked(db.query.gamesTable.findFirst)
+    (vi.mocked(db.query.gamesTable.findFirst) as any)
       .mockImplementationOnce(async () => COACH_B_GAME_ROW()) // ownership check for game 20
       .mockImplementation(async () => undefined);              // no DB linkage → ACL guard fires
 
@@ -557,7 +557,7 @@ describe("PATCH /api/games/:id — cross-tenant video hijack guard", () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/already owned/i);
 
-    vi.mocked(db.query.gamesTable.findFirst).mockImplementation(async () => {
+    (vi.mocked(db.query.gamesTable.findFirst) as any).mockImplementation(async () => {
       if (gamesFinderState.value === "coach-a-owns-path") return COACH_A_GAME_ROW();
       return undefined;
     });
