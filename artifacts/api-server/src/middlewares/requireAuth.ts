@@ -17,6 +17,15 @@ declare global {
  * `req.appUser` — this gives other tables a stable local id to reference for
  * per-account data ownership in a later phase, without this phase needing to
  * scope any existing data by it yet.
+ *
+ * IMPORTANT — intentional per-request DB read:
+ * The `users` row (including `revenueCatEntitlement` and `stripeCustomerId`)
+ * is re-fetched from the database on every authenticated request. Do NOT
+ * replace this with a session-level cache or an in-memory map. A RevenueCat
+ * EXPIRATION/BILLING_ISSUE webhook can revoke a mobile subscription at any
+ * time; caching would let a user whose subscription just expired continue
+ * accessing premium features until the server restarts. The per-request DB
+ * read is the guarantee that revoked entitlements are honoured immediately.
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const auth = getAuth(req);

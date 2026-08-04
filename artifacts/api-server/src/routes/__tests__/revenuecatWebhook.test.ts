@@ -320,4 +320,38 @@ describe("RevenueCat webhook → billing status", () => {
     const billing = await getBillingStatus();
     expect(billing.plan).toBe("premium");
   });
+
+  // -------------------------------------------------------------------------
+  // 12. Stale-session guard: entitlement revoked mid-session must NOT be
+  //     honoured on the very next request.
+  //
+  //     requireAuth re-reads the users row from the DB on every request, so
+  //     there is no session-level cache that could keep a revoked entitlement
+  //     alive. This test verifies the full chain:
+  //       1. User is "pro" (simulating an active mobile subscription).
+  //       2. An EXPIRATION webhook arrives and clears revenueCatEntitlement.
+  //       3. The immediately-following billing-status request — representing
+  //          the first request the user makes after the webhook — returns
+  //          plan:"free", not the stale plan:"pro".
+  // -------------------------------------------------------------------------
+  it("does not honour a revoked RC entitlement on the next request after the webhook fires", async () => {
+    // Simulate an active mobile subscriber mid-session.
+    testUserState.revenueCatEntitlement = "pro";
+
+    // The current request (e.g. a page load) still sees "pro".
+    const beforeWebhook = await getBillingStatus();
+    expect(beforeWebhook.plan).toBe("pro");
+
+    // RC sends an EXPIRATION event — subscription has ended.
+    const webhookRes = await postWebhook(makeWebhookBody("EXPIRATION"));
+    expect(webhookRes.status).toBe(200);
+
+    // The DB row is now cleared (requireAuth re-reads the DB every request).
+    expect(testUserState.revenueCatEntitlement).toBeNull();
+
+    // The very next request — even within the same browser session — must
+    // reflect the revocation immediately.  No server restart required.
+    const afterWebhook = await getBillingStatus();
+    expect(afterWebhook.plan).toBe("free");
+  });
 });
