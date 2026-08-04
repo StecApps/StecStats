@@ -47,18 +47,37 @@ function useYoutubeStatus() {
   return { connected, disconnecting, disconnect };
 }
 
+// How long (ms) to poll for the webhook before showing the "check back" message.
+const ACTIVATION_TIMEOUT_MS = 30_000;
+
 export default function Billing() {
   const { toast } = useToast();
   const search = useSearch();
   const [, navigate] = useLocation();
+
+  // Parse search params before the query hook so they're available in the
+  // refetchInterval closure on the very first render.
+  const params = new URLSearchParams(search);
+  const checkoutResult = params.get("checkout");
+  const isCheckoutSuccess = checkoutResult === "success";
+
+  // After ACTIVATION_TIMEOUT_MS the polling stops and a "check back shortly"
+  // message is shown so the coach is never stuck in an infinite spinner.
+  // activationAttempt is bumped every time the coach hits Refresh so the
+  // useEffect re-runs and arms a brand-new 30 s window each time.
+  const [activationTimedOut, setActivationTimedOut] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(ACTIVATION_TIMEOUT_MS / 1000);
+  const [activationAttempt, setActivationAttempt] = useState(0);
+
   // When returning from a successful Stripe checkout the webhook may not have
   // fired yet, so the plan can still appear "free" for a few seconds. Poll
-  // every 2 s until the plan transitions to pro/premium, then stop.
-  const { data: status, isLoading } = useGetBillingStatus({
+  // every 2 s until the plan transitions to pro/premium, then stop (or until
+  // the timeout fires).
+  const { data: status, isLoading, refetch } = useGetBillingStatus({
     query: {
       queryKey: getGetBillingStatusQueryKey(),
       refetchInterval: (query) => {
-        if (!isCheckoutSuccess) return false;
+        if (!isCheckoutSuccess || activationTimedOut) return false;
         // In React Query v5 the callback receives the Query object; data lives
         // in query.state.data.
         const plan = (query.state.data as { plan?: string } | undefined)?.plan ?? "free";
@@ -70,9 +89,33 @@ export default function Billing() {
   const portal = useCreateBillingPortalSession();
   const youtube = useYoutubeStatus();
 
-  const params = new URLSearchParams(search);
-  const checkoutResult = params.get("checkout");
-  const isCheckoutSuccess = checkoutResult === "success";
+  // Start the countdown timer as soon as we enter the checkout-success flow.
+  // If the plan activates before the timer fires the UI transitions naturally
+  // (activating → success) and the cleanup runs. If the timer fires first the
+  // polling stops and the coach sees the "check back shortly" state.
+  // Re-runs whenever activationAttempt changes so the Refresh button arms a
+  // fresh 30 s window rather than leaving the coach without a timeout.
+  useEffect(() => {
+    if (!isCheckoutSuccess) return;
+
+    setActivationTimedOut(false);
+    setSecondsLeft(ACTIVATION_TIMEOUT_MS / 1000);
+
+    const timeout = setTimeout(() => {
+      setActivationTimedOut(true);
+    }, ACTIVATION_TIMEOUT_MS);
+
+    const tick = setInterval(() => {
+      setSecondsLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(tick);
+    };
+  // activationAttempt is intentionally included so Refresh re-arms the timer
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCheckoutSuccess, activationAttempt]);
 
   const [purchaseEventFired, setPurchaseEventFired] = useState(false);
 
@@ -143,6 +186,59 @@ export default function Billing() {
     const isPremium = plan === "premium";
     const activating = !isPro && !isPremium;
 
+    // Timed-out state: webhook never arrived within ACTIVATION_TIMEOUT_MS.
+    // Show a reassuring "check back" message and a manual Refresh button so
+    // the coach is never stranded in an infinite spinner.
+    if (activating && activationTimedOut) {
+      return (
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="max-w-md w-full text-center space-y-8">
+            <div className="flex justify-center">
+              <div className="w-24 h-24 rounded-full bg-muted/40 flex items-center justify-center">
+                <Loader2 className="w-10 h-10 text-muted-foreground" />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h1 className="text-4xl font-display font-bold uppercase tracking-tight text-secondary">
+                Still Activating…
+              </h1>
+              <p className="text-muted-foreground text-lg" data-testid="activation-timeout-message">
+                Your plan is being activated — this may take a minute. Check back shortly or refresh.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <Button
+                size="lg"
+                className="w-full font-display uppercase tracking-wide text-base"
+                data-testid="button-activation-refresh"
+                onClick={() => {
+                  // Incrementing activationAttempt re-triggers the useEffect,
+                  // which resets activationTimedOut + secondsLeft and arms a
+                  // fresh 30 s timeout — so the coach can never get stuck
+                  // with polling running but no timeout in place.
+                  setActivationAttempt((n) => n + 1);
+                  void refetch();
+                }}
+              >
+                Refresh
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => navigate("/billing")}
+              >
+                View billing details
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex-1 flex items-center justify-center px-4">
         <div className="max-w-md w-full text-center space-y-8">
@@ -170,6 +266,13 @@ export default function Billing() {
                     ? `Your 14-day free trial starts now. You won't be charged until ${trialEnd}.`
                     : "Welcome to STEC STATS Pro."}
             </p>
+            {/* Countdown gives the coach a clear sense of progress and lets
+                them know the page hasn't frozen. */}
+            {activating && (
+              <p className="text-sm text-muted-foreground/70" data-testid="activation-countdown">
+                Checking… {secondsLeft}s
+              </p>
+            )}
           </div>
 
           {!activating && (
