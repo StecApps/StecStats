@@ -671,6 +671,16 @@ export default function RecordGame() {
       setIsReconnectingLive(true);
       setLiveReconnectAttempt(attempt);
     };
+    // Test hook: simulate a ws.onclose drop including the retry-at timestamp so
+    // that the countdown display (liveReconnectCountdownSec) can be exercised.
+    // Mirrors the real ws.onclose path: sets reconnecting state + overwrites the
+    // retryAt ref so the interval picks up the new countdown on its next tick.
+    w.__hoopsSimulateLiveReconnectDrop = (attempt: number, delayMs: number) => {
+      setIsLive(false);
+      setIsReconnectingLive(true);
+      setLiveReconnectAttempt(attempt);
+      liveReconnectRetryAtRef.current = Date.now() + delayMs;
+    };
     // Test hook: simulate a successful reconnect completing — mirrors ws.onopen logic.
     w.__hoopsSimulateLiveReconnectSuccess = () => {
       setIsLive(true);
@@ -681,6 +691,7 @@ export default function RecordGame() {
       delete w.__hoopsTurnCheckNow;
       delete w.__hoopsSetTurnAtGoLive;
       delete w.__hoopsSimulateLiveReconnect;
+      delete w.__hoopsSimulateLiveReconnectDrop;
       delete w.__hoopsSimulateLiveReconnectSuccess;
     };
   // runTurnHealthCheck is re-created on every render (it closes over toast/state);
