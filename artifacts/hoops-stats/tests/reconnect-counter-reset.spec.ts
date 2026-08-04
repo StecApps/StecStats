@@ -247,12 +247,14 @@ test.describe("Watch page – reconnect counter resets when stream comes back li
       await expect(page.getByText(/Joining the stream/)).toBeVisible({ timeout: 10_000 });
 
       // ── 2. After WS drop, state becomes "reconnecting" with attempt counter ─
-      await expect(
-        page.getByText(/Attempt 1 of 6/)
-      ).toBeVisible({ timeout: 10_000 });
-
-      // Reconnecting overlay must be visible.
-      await expect(page.getByText(/Reconnecting…/)).toBeVisible({ timeout: 5_000 });
+      // Both texts live in the same conditional block — assert them together
+      // so they're both checked while the component is still in "reconnecting"
+      // state (it transitions back to "connecting" ~1 s later when the retry
+      // fires, so checking them sequentially created a race condition).
+      await Promise.all([
+        expect(page.getByText(/Attempt 1 of 6/)).toBeVisible({ timeout: 10_000 }),
+        expect(page.getByText(/Reconnecting…/)).toBeVisible({ timeout: 10_000 }),
+      ]);
 
       // ── 3. After reconnect + ICE success, state is "live" ──────────────────
       await expect(
@@ -264,6 +266,97 @@ test.describe("Watch page – reconnect counter resets when stream comes back li
       await expect(page.getByText(/Reconnecting…/)).not.toBeVisible();
 
       void serverSideWs; // suppress unused-var lint
+    }
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Test A2 — watch.tsx reconnect exhaustion → "Connection dropped" state
+// ---------------------------------------------------------------------------
+
+test.describe("Watch page – reconnect exhaustion shows 'Connection dropped'", () => {
+  test(
+    "shows 'Connection dropped' and 'Refresh and try again' after all 6 attempts fail",
+    async ({ page }) => {
+      await page.addInitScript({ content: FAKE_PC_SCRIPT });
+
+      // HTTP mocks
+      await page.route(
+        (url) => url.pathname === "/api",
+        (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+      );
+      await page.route(
+        (url) => url.pathname === `/api/live/${CODE}/status`,
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              active: true,
+              opponent: "Away",
+              teamName: "Home",
+              viewerCount: 0,
+              teamScore: 0,
+              opponentScore: 0,
+            }),
+          })
+      );
+      await page.route(
+        (url) => url.pathname === "/api/live/ice-servers",
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+              turnAvailable: false,
+            }),
+          })
+      );
+
+      // WS mock — close every connection immediately after the join-viewer ack
+      // so reconnectAttemptsRef increments on each onclose and exhausts all 6.
+      await page.routeWebSocket(
+        (url) => url.pathname === "/api/live/ws",
+        (ws) => {
+          ws.onMessage((raw) => {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(
+                typeof raw === "string" ? raw : new TextDecoder().decode(raw as ArrayBuffer)
+              );
+            } catch {
+              return;
+            }
+            if (msg.type === "join-viewer") {
+              ws.send(JSON.stringify({ type: "joined", viewerId: "test-viewer-exhaust" }));
+              // Close immediately — simulates a signaling server that keeps dropping.
+              setTimeout(() => ws.close(), 30);
+            }
+          });
+        }
+      );
+
+      // Use a tiny reconnect delay so the test completes in < 5 s instead of 31 s.
+      await page.goto(`/watch/${CODE}?__watchReconnectDelayMs=100`);
+
+      // ── 1. Initial connecting state ────────────────────────────────────────
+      await expect(page.getByText(/Joining the stream/)).toBeVisible({ timeout: 10_000 });
+
+      // ── 2. After all 6 WS drops, state must become "ended" ────────────────
+      // Total time: ≈ 6 × (30 ms close + 100 ms delay) ≈ 0.8 s; allow 30 s.
+      await expect(
+        page.getByText("Connection dropped and couldn't be restored.")
+      ).toBeVisible({ timeout: 30_000 });
+
+      // ── 3. "Refresh and try again" button must be present ─────────────────
+      await expect(
+        page.getByRole("button", { name: "Refresh and try again" })
+      ).toBeVisible();
+
+      // ── 4. The spinner, "Reconnecting…" heading, and attempt counter must be gone
+      await expect(page.getByText(/Reconnecting…/)).not.toBeVisible();
+      await expect(page.getByText(/Attempt \d+ of \d+/)).not.toBeVisible();
     }
   );
 });

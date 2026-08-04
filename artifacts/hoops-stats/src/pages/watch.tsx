@@ -25,6 +25,11 @@ export default function WatchStream() {
   const ELAPSED_THRESHOLD_S  = Number(searchParams.get("__watchElapsedS")    ?? "5");
   const RETRY_THRESHOLD_S    = Number(searchParams.get("__watchRetryS")      ?? "45");
   const OFFER_WATCHDOG_MS    = Number(searchParams.get("__offerWatchdogMs")  ?? "30000");
+  // When set, overrides every WS reconnect delay with a fixed value (ms).
+  // Intentionally only read on mount; not present in normal use.
+  const RECONNECT_DELAY_OVERRIDE_MS = searchParams.has("__watchReconnectDelayMs")
+    ? Number(searchParams.get("__watchReconnectDelayMs"))
+    : null;
 
   const [state, setState] = useState<ConnectionState>("connecting");
   const [status, setStatus] = useState<LiveStatus | null>(null);
@@ -315,6 +320,11 @@ export default function WatchStream() {
         setConnectingElapsed(0);
         setConnectingTotal(0);
         setReconnectAttemptCount(0);
+        // Reset the WS-level attempt counter so that a future drop gets the
+        // full 6 retries again.  This is the ONLY place it should reset —
+        // not in ws.onopen — so exhaustion (6 consecutive failures) actually
+        // terminates the loop instead of cycling forever.
+        reconnectAttemptsRef.current = 0;
       }
     }
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -494,7 +504,12 @@ export default function WatchStream() {
           }, OFFER_WATCHDOG_MS);
         }, OFFER_WATCHDOG_MS);
         if (isReconnect) {
-          reconnectAttemptsRef.current = 0;
+          // Do NOT reset reconnectAttemptsRef here — the counter only resets
+          // once the stream is actually live again (see the "live" branch in
+          // the state effect below).  Resetting here meant that every new WS
+          // connection cleared the attempt count, so exhaustion (6 failures)
+          // was never reached and the viewer could spin forever.
+          //
           // Re-check status rather than assuming a broadcaster is present —
           // after an api-server restart the broadcaster may take longer to
           // reconnect than this viewer, in which case we should show
@@ -700,7 +715,7 @@ export default function WatchStream() {
 
         setState("reconnecting");
         setReconnectAttemptCount(reconnectAttemptsRef.current + 1);
-        const delay = WATCH_RECONNECT_DELAYS_MS[reconnectAttemptsRef.current] ?? 8000;
+        const delay = RECONNECT_DELAY_OVERRIDE_MS ?? (WATCH_RECONNECT_DELAYS_MS[reconnectAttemptsRef.current] ?? 8000);
         reconnectRetryAtRef.current = Date.now() + delay;
         reconnectAttemptsRef.current += 1;
         reconnectTimeoutRef.current = setTimeout(() => {
