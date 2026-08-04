@@ -2,68 +2,21 @@
  * On mount (once the user is signed in), checks AsyncStorage for any photo
  * uploads that failed in a previous session and retries them in the background.
  *
- * Shows a brief Alert to let the coach know the outcome.
+ * Reads from the same queue (`pendingPhotoQueue`) that the dashboard's
+ * `attemptUpload` writes to, so entries are always visible to the retry hook.
+ *
+ * Uses the shared `uploadPhoto` helper from `photoUpload.ts` which fetches
+ * the real blob size before requesting a signed URL — avoiding the size:0
+ * rejection from the server's Zod schema (size must be >= 1).
  */
 
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  getPendingPhotoUploads,
-  clearPendingPhotoUpload,
-} from '@/lib/pendingPhotoUploads';
+import { getPendingPhotos, dequeuePhoto } from '@/lib/pendingPhotoQueue';
+import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
 import { getListPlayersQueryKey } from '@workspace/api-client-react';
-
-const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : '';
-
-async function uploadPhoto(
-  uri: string,
-  mimeType: string,
-  token: string,
-): Promise<string> {
-  let reqRes: Response;
-  try {
-    reqRes = await fetch(`${API_BASE}/api/storage/uploads/request-url`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        name: `player-photo-${Date.now()}.jpg`,
-        size: 0,
-        contentType: mimeType || 'image/jpeg',
-      }),
-    });
-  } catch {
-    throw new Error('Network error');
-  }
-  if (!reqRes.ok) throw new Error(`Request failed (${reqRes.status})`);
-  const { uploadURL, objectPath } = await reqRes.json();
-
-  let blob: Blob;
-  try {
-    blob = await (await fetch(uri)).blob();
-  } catch {
-    throw new Error('Could not read saved photo');
-  }
-
-  let upRes: Response;
-  try {
-    upRes = await fetch(uploadURL, {
-      method: 'PUT',
-      headers: { 'Content-Type': mimeType || 'image/jpeg' },
-      body: blob,
-    });
-  } catch {
-    throw new Error('Network error during upload');
-  }
-  if (!upRes.ok) throw new Error(`Upload failed (${upRes.status})`);
-  return objectPath;
-}
 
 async function updatePlayerPhoto(
   playerId: number,
@@ -92,7 +45,7 @@ export function usePendingPhotoRetry() {
     hasRun.current = true;
 
     (async () => {
-      const pending = await getPendingPhotoUploads(userId);
+      const pending = await getPendingPhotos(userId);
       if (pending.length === 0) return;
 
       const token = await getToken();
@@ -103,9 +56,11 @@ export function usePendingPhotoRetry() {
 
       for (const entry of pending) {
         try {
+          // uploadPhoto fetches the real blob size before requesting the
+          // signed URL, so the server's size >= 1 validation always passes.
           const objectPath = await uploadPhoto(entry.uri, entry.mimeType, token);
           await updatePlayerPhoto(entry.playerId, objectPath, token);
-          await clearPendingPhotoUpload(userId, entry.playerId);
+          await dequeuePhoto(userId, entry.id);
           successCount++;
         } catch {
           failCount++;
@@ -117,7 +72,6 @@ export function usePendingPhotoRetry() {
         qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
       }
 
-      // Brief indication of outcome.
       if (successCount > 0 && failCount === 0) {
         Alert.alert(
           'Photo uploaded',
@@ -130,8 +84,8 @@ export function usePendingPhotoRetry() {
         Alert.alert(
           'Photo upload',
           failCount === 1
-            ? `1 pending photo upload failed again${successCount > 0 ? ` (${successCount} succeeded)` : ''}. Tap the player's avatar to try again.`
-            : `${failCount} pending photo uploads failed again${successCount > 0 ? ` (${successCount} succeeded)` : ''}. Tap a player's avatar to retry.`,
+            ? `1 pending photo upload failed again${successCount > 0 ? ` (${successCount} succeeded)` : ''}. Tap the player\u2019s avatar to try again.`
+            : `${failCount} pending photo uploads failed again${successCount > 0 ? ` (${successCount} succeeded)` : ''}. Tap a player\u2019s avatar to retry.`,
           [{ text: 'OK' }],
         );
       }
