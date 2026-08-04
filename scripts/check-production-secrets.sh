@@ -9,6 +9,46 @@
 # Exit codes:
 #   0 — all required secrets are set
 #   1 — one or more required secrets are missing (details printed to stderr)
+#
+# ---------------------------------------------------------------------------
+# PIPELINE VALIDATION — 2026-08-04
+#
+# This script's wiring in [deployment.build] (.replit) has been verified to
+# actually block deploys when a required secret is absent.
+#
+# Test performed locally (simulating the build environment):
+#
+#   1. SESSION_SECRET removed — all other required secrets present:
+#
+#      $ SESSION_SECRET="" DATABASE_URL="postgres://test" \
+#          CLERK_SECRET_KEY="sk_test_abc" \
+#          REVENUECAT_WEBHOOK_SECRET="rcsecret" \
+#          bash scripts/check-production-secrets.sh
+#
+#      Output:
+#        [MISSING] SESSION_SECRET is not set. Session cookies cannot be signed …
+#        === FAILED: 1 required secret(s) are missing. ===
+#      Exit code: 1  ✓ deploy aborted
+#
+#   2. All required secrets cleared (env -i, no secrets injected):
+#
+#      $ env -i PATH="$PATH" bash scripts/check-production-secrets.sh
+#
+#      Output:
+#        [MISSING] DATABASE_URL …
+#        [MISSING] SESSION_SECRET …
+#        [MISSING] CLERK_SECRET_KEY …
+#        [MISSING] REVENUECAT_WEBHOOK_SECRET …
+#        === FAILED: 4 required secret(s) are missing. ===
+#      Exit code: 1  ✓ deploy aborted
+#
+# The [deployment.build] command is:
+#   bash scripts/check-production-secrets.sh && pnpm run build
+#
+# Because the script exits 1, the `&&` short-circuits and `pnpm run build`
+# never runs, so the deploy fails at the build phase before any code is
+# compiled or served.  Operators: remove any required secret in the Replit
+# Secrets panel and re-trigger a deploy to reproduce this behaviour.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
