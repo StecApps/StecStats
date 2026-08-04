@@ -42,6 +42,28 @@ export async function exchangeCode(code: string): Promise<{ refreshToken: string
   return { refreshToken: tokens.refresh_token ?? null };
 }
 
+/**
+ * Performs a cheap read-only probe (channels.list?mine=true&part=id) to verify
+ * the stored refresh token is still valid.  Throws YouTubeAuthError if Google
+ * rejects it with 401 or 403, so the caller can clear the DB record.
+ */
+export async function probeToken(refreshToken: string): Promise<void> {
+  const oauth2Client = makeOAuth2Client();
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  const youtube = google.youtube({ version: "v3", auth: oauth2Client });
+  try {
+    await youtube.channels.list({ part: ["id"], mine: true, maxResults: 1 });
+  } catch (err: unknown) {
+    const status =
+      (err as { status?: number; code?: number })?.status ??
+      (err as { status?: number; code?: number })?.code;
+    if (status === 401 || status === 403) {
+      throw new YouTubeAuthError("YouTube token revoked or expired");
+    }
+    throw err;
+  }
+}
+
 export async function revokeToken(refreshToken: string): Promise<void> {
   const client = makeOAuth2Client();
   try {

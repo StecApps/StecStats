@@ -543,7 +543,7 @@ export default function RecordGame() {
 
   useEffect(() => {
     if (!isEditing) return;
-    fetch("/api/auth/youtube/status")
+    fetch("/api/auth/youtube/status?probe=true")
       .then((r) => r.json())
       .then((d: { connected: boolean }) => setIsYoutubeConnected(d.connected))
       .catch(() => setIsYoutubeConnected(false));

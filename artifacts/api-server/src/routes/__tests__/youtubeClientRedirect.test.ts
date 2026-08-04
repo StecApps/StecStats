@@ -52,8 +52,10 @@ async function simulateHandleConfirmYoutubeUpload(
     // shown for every other failure; reconnect uses window.location instead.
     if (data.error === "YOUTUBE_NOT_CONNECTED") {
       // In a browser window === globalThis; the real record.tsx uses
-      // window.location.href.  In Node (test env) we use globalThis.location.
-      (globalThis as any).location = { href: `/api/auth/youtube/connect?returnTo=${encodeURIComponent(`/record/${gameId}`)}` };
+      // window.location.href.  Use the stubbed setter via globalThis so the
+      // vi.stubGlobal setter runs and locationHref is updated correctly.
+      // (plain `location` is not in scope in the API-server TS config.)
+      (globalThis as any).location.href = `/api/auth/youtube/connect?returnTo=${encodeURIComponent(`/record/${gameId}`)}`;
       return { redirected: true, toastShown: false, data };
     }
     // ── Generic failure: show toast, do NOT redirect ───────────────────────

@@ -12,6 +12,7 @@ import {
   getAuthUrl,
   exchangeCode,
   revokeToken,
+  probeToken,
   uploadToYoutube,
   YouTubeAuthError,
 } from "../lib/youtubeClient";
@@ -134,12 +135,52 @@ router.post("/auth/youtube/disconnect", requireAuth, async (req, res) => {
 
 // GET /api/auth/youtube/status
 // Returns whether the current user has connected their YouTube account.
+// Pass ?probe=true to also make a lightweight googleapis call (channels.list)
+// that verifies the stored token is still valid.  If the probe fails with an
+// auth error the DB record is cleared and connected:false is returned, so the
+// coach sees the reconnect prompt before attempting an upload.
 router.get("/auth/youtube/status", requireAuth, async (req, res) => {
   const user = await db.query.usersTable.findFirst({
     where: eq(usersTable.id, req.appUser!.id),
     columns: { youtubeRefreshToken: true },
   });
-  res.json({ connected: !!(user?.youtubeRefreshToken) });
+
+  if (!user?.youtubeRefreshToken) {
+    res.json({ connected: false });
+    return;
+  }
+
+  if (req.query.probe !== "true") {
+    res.json({ connected: true });
+    return;
+  }
+
+  // Probe path: decrypt + make a real API call to catch revoked tokens early.
+  let plainToken: string;
+  try {
+    plainToken = decryptToken(user.youtubeRefreshToken);
+  } catch (err) {
+    logger.error({ err, userId: req.appUser!.id }, "Failed to decrypt YouTube refresh token during probe");
+    await db.update(usersTable).set({ youtubeRefreshToken: null }).where(eq(usersTable.id, req.appUser!.id));
+    res.json({ connected: false });
+    return;
+  }
+
+  try {
+    await probeToken(plainToken);
+    res.json({ connected: true });
+  } catch (err) {
+    if (err instanceof YouTubeAuthError) {
+      logger.warn({ userId: req.appUser!.id }, "YouTube token probe failed — clearing stale token");
+      await db.update(usersTable).set({ youtubeRefreshToken: null }).where(eq(usersTable.id, req.appUser!.id));
+      res.json({ connected: false });
+      return;
+    }
+    // Non-auth error (network hiccup, etc.) — don't clear the token,
+    // report connected:true so the coach can still attempt the upload.
+    logger.warn({ err, userId: req.appUser!.id }, "YouTube token probe encountered non-auth error — assuming connected");
+    res.json({ connected: true });
+  }
 });
 
 // POST /api/games/:gameId/highlight/upload-youtube

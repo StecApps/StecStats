@@ -5,13 +5,13 @@ import os from "os";
 import path from "path";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { seedDatabase, applyVideoOffsetFixes } from "./lib/seed";
 import { attachLiveSocketServer } from "./lib/liveSocket";
 import { liveStreamRegistry, checkTurnAvailability } from "./lib/liveStream";
 import { getStripeSync, getStripeCredentials, probeStripeKey } from "./lib/stripeClient";
 import { db } from "@workspace/db";
 import { resumeHighlightJob } from "./routes/highlights";
 import { resumeLowlightJob } from "./routes/lowlights";
+import { seedDatabase, applyVideoOffsetFixes, backfillObjectAcl } from "./lib/seed";
 
 const rawPort = process.env["PORT"];
 
@@ -276,6 +276,9 @@ async function boot() {
     }),
     applyVideoOffsetFixes().catch((err) => {
       logger.error({ err }, "Error applying video offset fixes");
+    }),
+    backfillObjectAcl().catch((err) => {
+      logger.error({ err }, "Error running ACL ownership backfill");
     }),
     // In production, Stripe init failure is fatal — serving traffic with
     // billing silently dead is worse than a failed boot. Outside production,
