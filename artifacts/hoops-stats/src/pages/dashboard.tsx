@@ -1644,6 +1644,10 @@ function EditStatsDialog({
       toast({ title: "Opponent name is required", variant: "destructive" });
       return;
     }
+    if (!editDate) {
+      toast({ title: "Game date is required", variant: "destructive" });
+      return;
+    }
     try {
       await updateGame.mutateAsync({
         gameId: game.id,
@@ -1866,7 +1870,7 @@ function EditStatsDialog({
           )}
           <div className="flex gap-2 justify-end w-full">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={updateGame.isPending}>
+            <Button onClick={handleSave} disabled={updateGame.isPending || !editDate}>
               {updateGame.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Save Changes
             </Button>

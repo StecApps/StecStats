@@ -195,6 +195,13 @@ export default function RecordGame() {
   const highlightSelectorSyncedRef = useRef(false);
   const lowlightSelectorSyncedRef = useRef(false);
 
+  // Reset the sync guards when gameId changes so a new game seeds from its
+  // own server data instead of being blocked by a previous game's flag.
+  useEffect(() => {
+    highlightSelectorSyncedRef.current = false;
+    lowlightSelectorSyncedRef.current = false;
+  }, [gameId]);
+
   // Seed the music SELECTOR from the server-persisted track on first load.
   // This ensures the correct track is pre-populated when the coach opens the
   // page on a different device where localStorage is empty, so regenerating
