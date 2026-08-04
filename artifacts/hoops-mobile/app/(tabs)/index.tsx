@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { API_BASE } from '@/lib/photoUpload';
+import { uploadPhoto } from '@/lib/uploadPhoto';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -26,8 +27,6 @@ import {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { uploadPhoto } from '@/lib/uploadPhoto';
-
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
 }

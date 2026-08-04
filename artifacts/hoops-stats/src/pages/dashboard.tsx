@@ -83,6 +83,19 @@ export default function Dashboard() {
   const [newPlayerName, setNewPlayerName] = useState("");
 
   const createPlayer = useCreatePlayer();
+  const deletePlayer = useDeletePlayer();
+
+  const handleDeletePlayer = async (playerId: number, playerName: string) => {
+    if (!confirm(`Remove ${playerName}? This will permanently delete all their stats.`)) return;
+    try {
+      await deletePlayer.mutateAsync({ playerId });
+      queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey() });
+      if (selectedPlayerId === playerId) setSelectedPlayerId(null);
+      toast({ title: "Player removed", description: `${playerName} has been removed from the roster.` });
+    } catch (err) {
+      toast({ title: "Error removing player", variant: "destructive" });
+    }
+  };
 
   const handleCreatePlayer = async () => {
     if (!newPlayerName.trim()) return;
@@ -162,6 +175,7 @@ export default function Dashboard() {
               name={p.name}
               active={activePlayerId === p.id}
               onClick={() => setSelectedPlayerId(p.id)}
+              onDelete={() => handleDeletePlayer(p.id, p.name)}
             />
           ))}
         </div>
@@ -550,27 +564,41 @@ function PlayerDashboard({ playerId, player, isPro, isPremium }: { playerId: num
   );
 }
 
-function PlayerChip({ playerId, name, active, onClick }: { playerId: number, name: string, active: boolean, onClick: () => void }) {
+function PlayerChip({ playerId, name, active, onClick, onDelete }: { playerId: number, name: string, active: boolean, onClick: () => void, onDelete?: () => void }) {
   const { data: summary } = useGetPlayerSummary(playerId, {
     query: { enabled: !!playerId, queryKey: getGetPlayerSummaryQueryKey(playerId) }
   });
 
   return (
-    <button
-      onClick={onClick}
-      className={`px-4 py-2 rounded font-medium text-sm transition-colors whitespace-nowrap flex items-center gap-2 border ${
+    <div
+      className={`flex items-center rounded border transition-colors whitespace-nowrap font-medium text-sm ${
         active
           ? "bg-primary text-primary-foreground border-primary shadow-[0_0_16px_hsl(var(--primary)/0.4)]"
           : "bg-muted/60 text-muted-foreground border-border/60 hover:bg-muted"
       }`}
     >
-      <span>{name}</span>
-      {summary && (
-        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${active ? "bg-secondary-foreground/20" : "bg-foreground/10"}`}>
-          {summary.games}GP · {summary.ppg.toFixed(1)}PPG
-        </span>
+      <button
+        onClick={onClick}
+        className="flex items-center gap-2 px-4 py-2"
+      >
+        <span>{name}</span>
+        {summary && (
+          <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${active ? "bg-secondary-foreground/20" : "bg-foreground/10"}`}>
+            {summary.games}GP · {summary.ppg.toFixed(1)}PPG
+          </span>
+        )}
+      </button>
+      {onDelete && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className={`pr-2.5 pl-1 py-2 opacity-50 hover:opacity-100 transition-opacity ${active ? "hover:text-primary-foreground" : "hover:text-destructive"}`}
+          aria-label={`Remove ${name}`}
+          title={`Remove ${name}`}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       )}
-    </button>
+    </div>
   );
 }
 
