@@ -600,8 +600,8 @@ export default function ScorekeeperScreen() {
   // ── Shared: stat area ──
   const statArea = (
     <>
-      {/* ── Opponent score strip — visible in the stat area during video recording ── */}
-      {recordVideo && (
+      {/* ── Opponent score strip — always visible so coaches can track both scores ── */}
+      {(
         <View style={[styles.oppScoreStrip, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <View style={styles.oppScoreStripTeam}>
             <Text style={[styles.oppScoreStripLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{teamName}</Text>
