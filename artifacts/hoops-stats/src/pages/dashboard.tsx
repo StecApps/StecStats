@@ -1598,7 +1598,7 @@ function EditStatsDialog({
 
   // Game metadata state
   const [editOpponent, setEditOpponent] = useState(game.opponent);
-  const [editDate, setEditDate] = useState(game.date);
+  const [editDate, setEditDate] = useState(game.date ? game.date.slice(0, 10) : "");
   const [editTeamScore, setEditTeamScore] = useState(game.teamScore);
   const [editOpponentScore, setEditOpponentScore] = useState(game.opponentScore);
   const [editResult, setEditResult] = useState<"W" | "L">(game.result as "W" | "L");
@@ -1608,7 +1608,7 @@ function EditStatsDialog({
     if (open) {
       setLines(initEditableStats(game.stats));
       setEditOpponent(game.opponent);
-      setEditDate(game.date);
+      setEditDate(game.date ? game.date.slice(0, 10) : "");
       setEditTeamScore(game.teamScore);
       setEditOpponentScore(game.opponentScore);
       setEditResult(game.result as "W" | "L");
