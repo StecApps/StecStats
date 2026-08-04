@@ -106,7 +106,7 @@ function StatCard({ label, value, sub, colors }: { label: string; value: string;
 const statS = StyleSheet.create({
   card: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { fontSize: 30, lineHeight: 32 },
+  value: { fontSize: 30, lineHeight: 38 },
   sub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
 });
 
@@ -412,12 +412,13 @@ export default function DashboardScreen() {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.primary} />}
     >
-      {/* ── Brand logo banner — bleeds to the top of the screen ── */}
+      {/* ── Brand logo banner — dark bg bleeds behind status bar,
+           image sits at its natural proportions below it ── */}
       <View style={styles.logoBannerContainer}>
         <Image
           source={require('../../assets/images/logo-banner.png')}
-          style={{ flex: 1 }}
-          contentFit="fill"
+          style={styles.logoBannerImage}
+          contentFit="contain"
         />
       </View>
 
@@ -444,17 +445,23 @@ function makeStyles(colors: any, insets: any) {
       paddingBottom: insets.bottom + 100,
     },
     chips: { paddingBottom: 16 },
-    // Bleeds the logo banner all the way to the top of the screen (behind the
-    // status bar). The negative marginTop cancels out the contentContainer
-    // paddingTop so the image starts at y=0. Height adds insets.top so the
-    // logo background covers the status-bar area; 58 is the visible logo strip.
+    // The container bleeds all the way to the top of the screen behind the
+    // status bar. Its background matches the logo's dark bg so the zone above
+    // the image fills seamlessly. The image itself sits at the bottom of the
+    // container at its natural 60 pt height — no stretching.
     logoBannerContainer: {
       alignSelf: 'stretch',
-      height: insets.top + 58,
+      height: insets.top + 60,
       marginHorizontal: -16,
       marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)),
       marginBottom: 16,
+      backgroundColor: '#0B0806',
+      justifyContent: 'flex-end',
       overflow: 'hidden',
+    },
+    logoBannerImage: {
+      width: '100%',
+      height: 60,
     },
     emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', color: colors.foreground, marginTop: 16, marginBottom: 8 },
     emptySub: { fontSize: 14, color: colors.mutedForeground, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
