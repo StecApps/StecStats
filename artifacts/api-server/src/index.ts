@@ -204,7 +204,12 @@ async function boot() {
   // the synchronous env-var heuristic above cannot detect.
   if (process.env["NODE_ENV"] === "production") {
     try {
-      await getStripeCredentials();
+      const { source } = await getStripeCredentials();
+      const sourceLabel =
+        source === "direct-secret"
+          ? "direct secret key (STRIPE_SECRET_KEY)"
+          : "Replit connector";
+      logger.info(`Stripe credentials loaded from ${sourceLabel}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(

@@ -7,7 +7,7 @@ import { StripeSync } from "stripe-replit-sync";
  *
  * Exported so boot-time preflight guards can call it directly.
  */
-export async function getStripeCredentials(): Promise<{ secretKey: string; webhookSecret?: string }> {
+export async function getStripeCredentials(): Promise<{ secretKey: string; webhookSecret?: string; source: "direct-secret" | "replit-connector" }> {
   // Prefer a directly-set secret — this reliably works in both dev and
   // the deployed production environment. The Replit connector approach
   // below is kept as a fallback for local development convenience.
@@ -15,6 +15,7 @@ export async function getStripeCredentials(): Promise<{ secretKey: string; webho
     return {
       secretKey: process.env.STRIPE_SECRET_KEY,
       webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+      source: "direct-secret",
     };
   }
 
@@ -59,6 +60,7 @@ export async function getStripeCredentials(): Promise<{ secretKey: string; webho
   return {
     secretKey: settings.secret,
     webhookSecret: settings.webhook_secret,
+    source: "replit-connector",
   };
 }
 
