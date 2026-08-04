@@ -1080,8 +1080,8 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
 
     // Collapsed camera section (preview hidden)
     cameraSectionCollapsed: {
-      height: 44,
-      minHeight: 44,
+      height: 72,
+      minHeight: 72,
     },
     // Hidden camera section (not recording — collapses to nothing)
     cameraSectionHidden: {

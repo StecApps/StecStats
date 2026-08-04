@@ -65,7 +65,7 @@ const pillStyle = StyleSheet.create({
     borderRadius: 8,
     minWidth: 46,
   },
-  value: { fontSize: 20, lineHeight: 22 },
+  value: { fontSize: 20, lineHeight: 28 },
   label: { fontSize: 9, textTransform: 'uppercase', fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
 });
 
@@ -373,7 +373,7 @@ function makeStyles(colors: any, insets: any) {
     },
     scoreBlock: { alignItems: 'center', flex: 1, minWidth: 0 },
     scoreName: { fontSize: 11, fontFamily: 'Inter_500Medium', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4, textAlign: 'center' },
-    scoreNum: { fontSize: 44, lineHeight: 46 },
+    scoreNum: { fontSize: 44, lineHeight: 54 },
     scoreDivider: { alignItems: 'center', gap: 6 },
     resultBadge: { width: 36, height: 28, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
     resultText: { fontSize: 13, fontFamily: 'Inter_700Bold' },
