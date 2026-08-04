@@ -35,7 +35,7 @@ async function readQueue(userId: string): Promise<PendingPhotoEntry[]> {
         console.log(`[pendingPhotoQueue] pruned ${pruned} expired entr${pruned === 1 ? 'y' : 'ies'} (>${PENDING_PHOTO_TTL_MS / 86400000}d old)`);
       }
       // Persist the pruned list so they don't accumulate across reads.
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+      await AsyncStorage.setItem(storageKey(userId), JSON.stringify(fresh));
     }
 
     return fresh;

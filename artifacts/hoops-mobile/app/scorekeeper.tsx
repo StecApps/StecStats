@@ -804,11 +804,60 @@ export default function ScorekeeperScreen() {
   return (
     <View style={[styles.root, isLandscape && styles.rootLandscape]}>
 
+      {/* ── Compact scoreboard header — shown when not recording (camera hidden) ── */}
+      {!recordVideo && (
+        <View style={[styles.scoreHeader, { paddingTop: insets.top + (Platform.OS === 'ios' ? 8 : 24), backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <Ionicons name="chevron-down" size={22} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          <View style={styles.scoreboard}>
+            <View style={styles.scoreCol}>
+              <Text style={[styles.teamLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{teamName}</Text>
+              <Text style={[styles.scoreNum, { fontFamily: 'Teko_700Bold', color: colors.foreground }]}>{teamScore}</Text>
+            </View>
+            <View style={styles.scoreCenter}>
+              <Text style={[styles.timer, { fontFamily: 'Teko_400Regular', color: colors.foreground }]}>{formatTime(seconds)}</Text>
+              <TouchableOpacity
+                onPress={handleStartStop}
+                style={[styles.timerBtn, { backgroundColor: running ? colors.muted : colors.primary }]}
+              >
+                <Ionicons name={running ? 'pause' : 'play'} size={14} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { setHalf((h) => (h === 1 ? 2 : 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                style={[styles.halfBtn, { borderColor: colors.border }]}
+              >
+                <Text style={[styles.halfText, { color: colors.mutedForeground }]}>{half === 1 ? '1st' : '2nd'}</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.scoreCol}>
+              <Text style={[styles.teamLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{opponent}</Text>
+              <View style={styles.oppScoreRow}>
+                <TouchableOpacity
+                  onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+                >
+                  <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
+                </TouchableOpacity>
+                <Text style={[styles.scoreNum, { fontFamily: 'Teko_700Bold', color: colors.foreground }]}>{opponentScore}</Text>
+                <TouchableOpacity
+                  onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+                >
+                  <Text style={[styles.oppBtnText, { color: colors.foreground }]}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* ── CAMERA SECTION (top half portrait / left half landscape) ── */}
-      {/* Always keep this View mounted so CameraView never unmounts mid-recording */}
+      {/* Keep this View mounted so CameraView never unmounts mid-recording */}
       <View style={[
         isLandscape ? styles.cameraSectionLand : styles.cameraSectionPort,
         !previewVisible && styles.cameraSectionCollapsed,
+        !recordVideo && styles.cameraSectionHidden,
       ]}>
         {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
         {cameraReady ? (
@@ -956,6 +1005,17 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     cameraSectionCollapsed: {
       height: 44,
       minHeight: 44,
+    },
+    // Hidden camera section (not recording — collapses to nothing)
+    cameraSectionHidden: {
+      height: 0,
+      overflow: 'hidden' as const,
+    },
+    // Compact scoreboard shown above stats when not recording
+    scoreHeader: {
+      borderBottomWidth: 1,
+      paddingHorizontal: 10,
+      paddingBottom: 12,
     },
 
     // Camera control buttons — top-left
