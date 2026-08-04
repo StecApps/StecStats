@@ -31,7 +31,7 @@ function notifyPreviewListeners(trackId: string | null) {
   previewListeners.forEach((fn) => fn(trackId));
 }
 
-function stopPreview() {
+export function stopPreview() {
   if (sharedAudio) {
     sharedAudio.pause();
     sharedAudio.src = "";

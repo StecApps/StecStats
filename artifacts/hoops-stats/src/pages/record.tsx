@@ -41,7 +41,7 @@ import { AdaptiveQualityController, type AdaptiveLevel } from "@/lib/adaptiveStr
 import { Gauge } from "lucide-react";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
 import { getSportProfile, SPORT_EMOJI } from "@/lib/sport-profiles";
-import MusicTrackSelector, { MUSIC_TRACKS } from "@/components/MusicTrackSelector";
+import MusicTrackSelector, { MUSIC_TRACKS, stopPreview as stopMusicPreview } from "@/components/MusicTrackSelector";
 
 type StatCounters = {
   playerId: number;
@@ -129,6 +129,11 @@ export default function RecordGame() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  // Stop any in-progress music preview when the coach navigates away from this page.
+  useEffect(() => {
+    return () => { stopMusicPreview(); };
+  }, []);
 
   const preselectedTeamId = new URLSearchParams(search).get("teamId") || "";
 
