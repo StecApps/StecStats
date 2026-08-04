@@ -197,7 +197,7 @@ test.describe("Watch page – offer-watchdog fallback and broadcaster recovery",
               msg = JSON.parse(
                 typeof raw === "string"
                   ? raw
-                  : new TextDecoder().decode(raw as ArrayBuffer)
+                  : new TextDecoder().decode(raw as unknown as ArrayBuffer)
               );
             } catch {
               return;

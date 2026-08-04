@@ -127,7 +127,7 @@ test.describe("Watch page – countdown resets when a second drop fires mid-coun
             let msg: Record<string, unknown>;
             try {
               msg = JSON.parse(
-                typeof raw === "string" ? raw : new TextDecoder().decode(raw as ArrayBuffer)
+                typeof raw === "string" ? raw : new TextDecoder().decode(raw as unknown as ArrayBuffer)
               );
             } catch {
               return;

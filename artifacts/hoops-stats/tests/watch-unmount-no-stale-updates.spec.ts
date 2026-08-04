@@ -158,7 +158,7 @@ test.describe("Watch page – no stale state updates after navigating away mid-r
             let msg: Record<string, unknown>;
             try {
               msg = JSON.parse(
-                typeof raw === "string" ? raw : new TextDecoder().decode(raw as ArrayBuffer)
+                typeof raw === "string" ? raw : new TextDecoder().decode(raw as unknown as ArrayBuffer)
               );
             } catch {
               return;

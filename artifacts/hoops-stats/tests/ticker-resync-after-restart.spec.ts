@@ -210,7 +210,7 @@ test.describe("Watch page – ticker resync after server restart", () => {
               msg = JSON.parse(
                 typeof raw === "string"
                   ? raw
-                  : new TextDecoder().decode(raw as ArrayBuffer)
+                  : new TextDecoder().decode(raw as unknown as ArrayBuffer)
               );
             } catch {
               return;

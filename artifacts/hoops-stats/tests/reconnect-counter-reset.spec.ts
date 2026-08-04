@@ -208,7 +208,7 @@ test.describe("Watch page – reconnect counter resets when stream comes back li
             let msg: Record<string, unknown>;
             try {
               msg = JSON.parse(
-                typeof raw === "string" ? raw : new TextDecoder().decode(raw as ArrayBuffer)
+                typeof raw === "string" ? raw : new TextDecoder().decode(raw as unknown as ArrayBuffer)
               );
             } catch {
               return;
@@ -323,7 +323,7 @@ test.describe("Watch page – reconnect exhaustion shows 'Connection dropped'", 
             let msg: Record<string, unknown>;
             try {
               msg = JSON.parse(
-                typeof raw === "string" ? raw : new TextDecoder().decode(raw as ArrayBuffer)
+                typeof raw === "string" ? raw : new TextDecoder().decode(raw as unknown as ArrayBuffer)
               );
             } catch {
               return;

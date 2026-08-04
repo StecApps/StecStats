@@ -97,7 +97,7 @@ test.describe("Watch page – offer watchdog caps at MAX_WATCH_RECONNECT_ATTEMPT
               msg = JSON.parse(
                 typeof raw === "string"
                   ? raw
-                  : new TextDecoder().decode(raw as ArrayBuffer)
+                  : new TextDecoder().decode(raw as unknown as ArrayBuffer)
               );
             } catch {
               return;

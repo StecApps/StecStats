@@ -397,7 +397,7 @@ test.describe("Watch page – ICE stall retry flow", () => {
               msg = JSON.parse(
                 typeof raw === "string"
                   ? raw
-                  : new TextDecoder().decode(raw as ArrayBuffer)
+                  : new TextDecoder().decode(raw as unknown as ArrayBuffer)
               );
             } catch {
               return;

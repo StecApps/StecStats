@@ -28,7 +28,7 @@
  * React state → visible badge → hard-refresh → badge still correct.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 
 // ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ test.describe("Generated-with music indicator – survives hard refresh", () => 
   });
 
   // ── shared setup: create a real team + game so the URL is authentic ────────
-  async function seedGame(page: Parameters<Parameters<typeof test>[1]>[0]): Promise<number> {
+  async function seedGame(page: Page): Promise<number> {
     // If already created by a previous test in the suite, reuse it.
     if (gameId > 0) return gameId;
 
@@ -157,7 +157,7 @@ test.describe("Generated-with music indicator – survives hard refresh", () => 
 
   // ── helper: install route stubs so the page renders the reel section ───────
   async function installRouteStubs(
-    page: Parameters<Parameters<typeof test>[1]>[0],
+    page: Page,
     gId: number,
     opts: {
       highlightMusicTrack: string;
