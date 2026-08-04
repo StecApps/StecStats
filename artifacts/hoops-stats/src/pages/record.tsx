@@ -189,6 +189,48 @@ export default function RecordGame() {
     },
   });
 
+  // Track whether the selector has already been seeded from the server so
+  // subsequent refetches (e.g. 3-second processing polls) don't override
+  // a track the coach has manually changed mid-session.
+  const highlightSelectorSyncedRef = useRef(false);
+  const lowlightSelectorSyncedRef = useRef(false);
+
+  // Seed the music SELECTOR from the server-persisted track on first load.
+  // This ensures the correct track is pre-populated when the coach opens the
+  // page on a different device where localStorage is empty, so regenerating
+  // without re-selecting still re-uses the same track.
+  useEffect(() => {
+    if (highlightSelectorSyncedRef.current) return;
+    if (!highlight) return;
+    if (highlight.status !== "ready" && highlight.status !== "processing") return;
+    if (highlight.musicTrack !== undefined) {
+      highlightSelectorSyncedRef.current = true;
+      const track = highlight.musicTrack ?? null;
+      setHighlightMusicTrack(track);
+      if (track) {
+        localStorage.setItem(HIGHLIGHT_MUSIC_KEY, track);
+      } else {
+        localStorage.removeItem(HIGHLIGHT_MUSIC_KEY);
+      }
+    }
+  }, [highlight?.status, highlight?.musicTrack]);
+
+  useEffect(() => {
+    if (lowlightSelectorSyncedRef.current) return;
+    if (!lowlight) return;
+    if (lowlight.status !== "ready" && lowlight.status !== "processing") return;
+    if (lowlight.musicTrack !== undefined) {
+      lowlightSelectorSyncedRef.current = true;
+      const track = lowlight.musicTrack ?? null;
+      setLowlightMusicTrack(track);
+      if (track) {
+        localStorage.setItem(LOWLIGHT_MUSIC_KEY, track);
+      } else {
+        localStorage.removeItem(LOWLIGHT_MUSIC_KEY);
+      }
+    }
+  }, [lowlight?.status, lowlight?.musicTrack]);
+
   // Sync last-used track from server on load / after generation completes.
   // The server now persists the track alongside the reel record, so we can
   // restore the correct "Generated with: X" indicator after a hard refresh.
