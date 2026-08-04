@@ -144,6 +144,79 @@ describe('saveGame(null) — success path', () => {
   });
 });
 
+// ─── Inflated-made-counts rejection (400) ─────────────────────────────────────
+
+/**
+ * The POST /games guard rejects ftMade > ftAttempted with:
+ *   HTTP 400  { error: "Made shots cannot exceed attempted shots" }
+ *
+ * The generated API client surfaces the server's error text as err.message.
+ * These tests confirm saveGame() passes that message straight through to the
+ * coach via Alert rather than swallowing it or showing a generic spinner.
+ */
+describe('saveGame — server rejects inflated made counts (400)', () => {
+  const INFLATED_ERROR = 'Made shots cannot exceed attempted shots';
+
+  function makeInflatedDeps() {
+    return makeDeps({
+      // Simulate ftMade=5, ftAttempted=3 — server returns 400
+      stats: {
+        [PLAYER_1.id]: {
+          ...STAT_LINE,
+          ftMade: 5,
+          ftAttempted: 3,    // invalid: made > attempted
+        },
+      },
+      createGameMutateAsync: jest.fn().mockRejectedValue(
+        new Error(INFLATED_ERROR),
+      ),
+    });
+  }
+
+  test('shows Alert("Save failed") with the server error message', async () => {
+    const deps = makeInflatedDeps();
+    await saveGame(null, deps);
+
+    expect(alertSpy).toHaveBeenCalledWith('Save failed', INFLATED_ERROR);
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('does NOT navigate when the server rejects the inflated stat line', async () => {
+    const deps = makeInflatedDeps();
+    await saveGame(null, deps);
+
+    expect(deps.routerReplace).not.toHaveBeenCalled();
+  });
+
+  test('calls setSaving(false) so the coach is not stuck on a spinner', async () => {
+    const deps = makeInflatedDeps();
+    await saveGame(null, deps);
+
+    expect(deps.setSaving).toHaveBeenCalledWith(false);
+    expect(deps.setSaving).toHaveBeenCalledTimes(1);
+  });
+
+  test('does NOT fire the success haptic on a 400 rejection', async () => {
+    const deps = makeInflatedDeps();
+    await saveGame(null, deps);
+
+    expect(hapticsSpy).not.toHaveBeenCalled();
+  });
+
+  test('error message is not swallowed — Alert is called even when err has no stack', async () => {
+    // Some fetch-based API clients throw plain objects, not Error instances.
+    // Confirm our fallback still surfaces the right message.
+    const deps = makeDeps({
+      createGameMutateAsync: jest.fn().mockRejectedValue(
+        { message: INFLATED_ERROR },  // plain object, no prototype
+      ),
+    });
+    await saveGame(null, deps);
+
+    expect(alertSpy).toHaveBeenCalledWith('Save failed', INFLATED_ERROR);
+  });
+});
+
 // ─── Failure path ─────────────────────────────────────────────────────────────
 
 describe('saveGame(null) — createGame rejects (upload API down)', () => {
