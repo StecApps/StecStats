@@ -190,45 +190,23 @@ test.describe("Watch page – 'Check again' button transitions viewer to stream"
             } catch {
               return;
             }
-
             if (msg.type === "join-viewer") {
-              // ACK the join — no offer yet; broadcaster is not live at this point.
-              ws.send(JSON.stringify({ type: "joined", viewerId: "chk-viewer-001" }));
-
-            } else if (msg.type === "request-offer") {
-              // "Check again" triggered handleCheckAgain which sent request-offer.
-              requestOfferMessages.push(msg as { type: string; code: string });
-              // Broadcaster is now live — reply with a fresh SDP offer.
-              ws.send(
-                JSON.stringify({
-                  type: "offer",
-                  viewerId: "chk-viewer-001",
-                  sdp: { type: "offer", sdp: OFFER_SDP },
-                })
-              );
-
-            } else if (msg.type === "answer") {
-              answerMessages.push(msg as { type: string });
+              ws.send(JSON.stringify({ type: "joined", viewerId: "chk-viewer-003" }));
             }
+            // No offer reply — the broadcast is still inactive.
           });
         }
       );
 
-      // ── Navigate ─────────────────────────────────────────────────────────
-      // __offerWatchdogMs=5000 keeps the offer watchdog from racing with the
-      // test. __watchRetryS=9999 ensures the "Tap to retry" button (unrelated
-      // to this test) never appears and doesn't confuse the assertions.
+      // ── Navigate ──────────────────────────────────────────────────────────
       await page.goto(`/watch/${CODE}?__offerWatchdogMs=5000&__watchRetryS=9999`);
 
-      // ── 1. Component enters "waiting-for-broadcaster" ───────────────────
+      // ── 1. Component enters "waiting-for-broadcaster" ─────────────────────
       await expect(
         page.getByText(/Stream interrupted/)
       ).toBeVisible({ timeout: 10_000 });
 
-      // Connecting overlay must NOT be visible.
-      await expect(page.getByText(/Joining the stream/)).not.toBeVisible();
-
-      // ── 2. "Check again" button is visible and enabled ──────────────────
+      // ── 2. "Check again" button is enabled ───────────────────────────────
       const checkBtn = page.getByRole("button", { name: /Check again/i });
       await expect(checkBtn).toBeVisible({ timeout: 5_000 });
       await expect(checkBtn).toBeEnabled();
@@ -334,10 +312,9 @@ test.describe("Watch page – 'Check again' button transitions viewer to stream"
               return;
             }
             if (msg.type === "join-viewer") {
-              ws.send(JSON.stringify({ type: "joined", viewerId: "chk-viewer-002" }));
+              ws.send(JSON.stringify({ type: "joined", viewerId: "chk-viewer-003" }));
             }
-            // request-offer is deliberately not replied to — active is false
-            // so handleCheckAgain won't send one anyway.
+            // No offer reply — the broadcast is still inactive.
           });
         }
       );
@@ -345,12 +322,12 @@ test.describe("Watch page – 'Check again' button transitions viewer to stream"
       // ── Navigate ──────────────────────────────────────────────────────────
       await page.goto(`/watch/${CODE}?__offerWatchdogMs=5000&__watchRetryS=9999`);
 
-      // ── 1. Waiting-for-broadcaster screen is visible ─────────────────────
+      // ── 1. Component enters "waiting-for-broadcaster" ─────────────────────
       await expect(
         page.getByText(/Stream interrupted/)
       ).toBeVisible({ timeout: 10_000 });
 
-      // ── 2. "Check again" starts enabled ──────────────────────────────────
+      // ── 2. "Check again" button is enabled ───────────────────────────────
       const checkBtn = page.getByRole("button", { name: /Check again/i });
       await expect(checkBtn).toBeVisible({ timeout: 5_000 });
       await expect(checkBtn).toBeEnabled();
@@ -493,6 +470,126 @@ test.describe("Watch page – 'Check again' button transitions viewer to stream"
       await expect(
         page.getByRole("button", { name: /Check again \(\d+s\)/i })
       ).toBeDisabled();
+    }
+  );
+
+  test(
+    "falls back to waiting-for-broadcaster via watchdog when WS is closed before Check again is tapped",
+    async ({ page }) => {
+
+      // Replace WebSocket with a permanently-CLOSED stub so that when
+      // handleCheckAgain checks wsRef.current?.readyState === WebSocket.OPEN
+      // it gets false — exactly the scenario the bug report describes.
+      // The stub never fires onopen / onclose / onmessage so the component
+      // stays on the waiting-for-broadcaster screen (it enters that screen
+      // because the initial getLiveStatus returns active:false, not because
+      // of WS state).
+      await page.addInitScript(`
+        (function () {
+          function FakeClosedWS() {
+            this.readyState  = 3;   // WebSocket.CLOSED
+            this.send        = function () {};
+            this.close       = function () {};
+            this.onopen      = null;
+            this.onclose     = null;
+            this.onmessage   = null;
+            this.onerror     = null;
+            this.addEventListener    = function () {};
+            this.removeEventListener = function () {};
+          }
+          FakeClosedWS.CONNECTING = 0;
+          FakeClosedWS.OPEN       = 1;
+          FakeClosedWS.CLOSING    = 2;
+          FakeClosedWS.CLOSED     = 3;
+          window.WebSocket = FakeClosedWS;
+        })();
+      `);
+
+      // ── HTTP mocks ────────────────────────────────────────────────────────
+
+      await page.route(
+        (url) => url.pathname === "/api",
+        (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+      );
+
+      await page.route(
+        (url) => url.pathname === "/api/live/ice-servers",
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+              turnAvailable: false,
+            }),
+          })
+      );
+
+      // Two-phase status: first call (on mount) → inactive so viewer waits;
+      // second call (from handleCheckAgain) → active so state = "connecting".
+      let statusCallCount = 0;
+      await page.route(
+        (url) => url.pathname === `/api/live/${CODE}/status`,
+        (route) => {
+          statusCallCount += 1;
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              active: statusCallCount >= 2,
+              opponent: "Visitors",
+              teamName: "Home",
+              viewerCount: 0,
+              teamScore: 0,
+              opponentScore: 0,
+            }),
+          });
+        }
+      );
+
+      // ── Navigate ──────────────────────────────────────────────────────────
+      // __offerWatchdogMs=800  keeps the test fast; the watchdog fires in 800 ms
+      // when no offer arrives (because the WS is always CLOSED).
+      // __watchRetryS / __watchElapsedS are set high so unrelated UI doesn't
+      // interfere with the assertions below.
+      await page.goto(
+        `/watch/${CODE}?__offerWatchdogMs=800&__watchRetryS=9999&__watchElapsedS=9999`
+      );
+
+      // ── 1. Component enters waiting-for-broadcaster ───────────────────────
+      await expect(
+        page.getByText(/Stream interrupted/)
+      ).toBeVisible({ timeout: 10_000 });
+
+      // Connecting overlay must not be showing.
+      await expect(page.getByText(/Joining the stream/)).not.toBeVisible();
+
+      // ── 2. "Check again" button is visible and enabled ───────────────────
+      const checkBtnWs = page.getByRole("button", { name: /Check again/i });
+      await expect(checkBtnWs).toBeVisible({ timeout: 5_000 });
+      await expect(checkBtnWs).toBeEnabled();
+
+      // ── 3. Tap "Check again" ─────────────────────────────────────────────
+      await checkBtnWs.click();
+
+      // ── 4. Component transitions to "connecting" ──────────────────────────
+      // getLiveStatus returned active:true so handleCheckAgain calls
+      // setState("connecting"). The viewer leaves the waiting screen.
+      await expect(
+        page.getByText(/Joining the stream/)
+      ).toBeVisible({ timeout: 5_000 });
+
+      await expect(page.getByText(/Stream interrupted/)).not.toBeVisible();
+
+      // ── 5. Offer watchdog fires and returns to waiting-for-broadcaster ─────
+      // The WS is permanently CLOSED so no offer ever arrives. The 800 ms
+      // watchdog (armed unconditionally after the fix) must fire and transition
+      // back — the viewer must never be permanently stuck on "connecting".
+      await expect(
+        page.getByText(/Stream interrupted/)
+      ).toBeVisible({ timeout: 5_000 });
+
+      await expect(page.getByText(/Joining the stream/)).not.toBeVisible();
     }
   );
 });

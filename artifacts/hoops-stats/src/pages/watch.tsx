@@ -431,15 +431,16 @@ export default function WatchStream() {
       if (s?.active) {
         setState("connecting");
         startConnectingTimer(true /* first attempt */);
+        // Always arm the offer watchdog regardless of WS state. If the WS is
+        // closed (e.g. after a brief network drop) there is no other recovery
+        // path — without this the viewer stays stuck on "connecting" forever.
+        if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+        offerWatchdogRef.current = setTimeout(() => {
+          offerWatchdogRef.current = null;
+          setState((prev) => (prev === "connecting" ? "waiting-for-broadcaster" : prev));
+        }, OFFER_WATCHDOG_MS);
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: "request-offer", code }));
-          // Offer watchdog: if no offer arrives in 30 s, fall back to
-          // waiting-for-broadcaster rather than getting stuck on connecting.
-          if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
-          offerWatchdogRef.current = setTimeout(() => {
-            offerWatchdogRef.current = null;
-            setState((prev) => (prev === "connecting" ? "waiting-for-broadcaster" : prev));
-          }, 30_000);
         }
       }
     } catch {
