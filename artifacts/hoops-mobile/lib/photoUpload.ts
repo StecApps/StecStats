@@ -16,6 +16,15 @@ export async function uploadPhoto(
   mimeType: string,
   token: string,
 ): Promise<string> {
+  // Fetch the blob first so we have the real byte size for the request-url
+  // payload. The server Zod schema enforces size >= 1, so size: 0 is rejected.
+  let blob: Blob;
+  try {
+    blob = await (await fetch(uri)).blob();
+  } catch {
+    throw new Error('Could not read the photo — please try a different image.');
+  }
+
   let reqRes: Response;
   try {
     reqRes = await fetch(`${API_BASE}/api/storage/uploads/request-url`, {
@@ -26,7 +35,7 @@ export async function uploadPhoto(
       },
       body: JSON.stringify({
         name: `player-photo-${Date.now()}.jpg`,
-        size: 0,
+        size: blob.size,
         contentType: mimeType || 'image/jpeg',
       }),
     });
@@ -40,13 +49,6 @@ export async function uploadPhoto(
     throw new Error(`Server error (${reqRes.status}) — please try again.`);
   }
   const { uploadURL, objectPath } = await reqRes.json();
-
-  let blob: Blob;
-  try {
-    blob = await (await fetch(uri)).blob();
-  } catch {
-    throw new Error('Could not read the photo — please try a different image.');
-  }
 
   let upRes: Response;
   try {
