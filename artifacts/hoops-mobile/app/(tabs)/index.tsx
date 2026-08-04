@@ -161,9 +161,12 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
     setPhotoLoadFailed(false);
   }, [player.photoObjectPath]);
 
+  const MAX_RETRIES = 3;
+
   async function attemptUpload(
     asset: ImagePicker.ImagePickerAsset,
     pendingEntryId?: string,
+    retryCount: number = 0,
   ) {
     setUploading(true);
     try {
@@ -185,10 +188,25 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
         asset.mimeType ?? 'image/jpeg',
         player.id,
       );
-      Alert.alert('Upload failed', msg, [
-        { text: 'Retry', onPress: () => attemptUpload(asset, entryId) },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
+      if (retryCount >= MAX_RETRIES) {
+        // Cap reached — show a terminal message with no Retry button.
+        Alert.alert(
+          'Upload failed',
+          'Upload failed — please check your connection and try again later.',
+          [{ text: 'OK', style: 'cancel' }],
+        );
+      } else {
+        const delay = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s
+        Alert.alert('Upload failed', msg, [
+          {
+            text: 'Retry',
+            onPress: () => {
+              setTimeout(() => attemptUpload(asset, entryId, retryCount + 1), delay);
+            },
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
+      }
     } finally {
       setUploading(false);
     }
