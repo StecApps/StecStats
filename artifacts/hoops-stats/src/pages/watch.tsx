@@ -35,6 +35,9 @@ export default function WatchStream() {
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const iceWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Fires 30 s after join-viewer if no offer has arrived yet (broadcaster
+  // mid-reconnect).  Cleared immediately when an offer is received.
+  const offerWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Connecting-screen elapsed timers and retry counter.
   // connectingElapsed  — per-attempt seconds (resets on each ICE retry)
@@ -408,6 +411,25 @@ export default function WatchStream() {
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "join-viewer", code }));
         mediaFailedRef.current = false;
+
+        // Offer watchdog: if the broadcaster hasn't sent an offer within 30 s
+        // of us joining (e.g. it's mid-reconnect), proactively request one.
+        // The watchdog re-arms itself every 30 s until an offer is received or
+        // the WS closes.  It is cleared immediately in the "offer" handler so
+        // normal fast-connect flows are never disturbed.
+        if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+        const fireOfferWatchdog = () => {
+          offerWatchdogRef.current = null;
+          if (ws.readyState !== WebSocket.OPEN) return;
+          iceRetryCountRef.current += 1;
+          setIceRetryCount(iceRetryCountRef.current);
+          startConnectingTimer(false /* preserve cumulative */);
+          ws.send(JSON.stringify({ type: "request-offer", code }));
+          // Re-arm for another 30 s in case the broadcaster is still absent.
+          offerWatchdogRef.current = setTimeout(fireOfferWatchdog, 30_000);
+        };
+        offerWatchdogRef.current = setTimeout(fireOfferWatchdog, 30_000);
+
         if (isReconnect) {
           reconnectAttemptsRef.current = 0;
           // Re-check status rather than assuming a broadcaster is present —
@@ -457,6 +479,11 @@ export default function WatchStream() {
         }
 
         if (message.type === "offer") {
+          // An offer arrived — cancel the watchdog that was waiting for one.
+          if (offerWatchdogRef.current) {
+            clearTimeout(offerWatchdogRef.current);
+            offerWatchdogRef.current = null;
+          }
           if (message.renegotiate && pcRef.current) {
             // ICE restart from the broadcaster on the existing peer
             // connection — reuse it instead of tearing down and rebuilding,
@@ -530,6 +557,13 @@ export default function WatchStream() {
           // page in "waiting-for-broadcaster" state so the stream resumes
           // automatically when they come back, without the viewer having
           // to reload or re-enter a code.
+          // The offer watchdog is no longer needed: join-broadcaster on the
+          // server already sends new-viewer for every waiting viewer when
+          // the broadcaster reconnects, so we don't need to prod it further.
+          if (offerWatchdogRef.current) {
+            clearTimeout(offerWatchdogRef.current);
+            offerWatchdogRef.current = null;
+          }
           pcRef.current?.close();
           pcRef.current = null;
           setState("waiting-for-broadcaster");
@@ -562,6 +596,10 @@ export default function WatchStream() {
       };
 
       ws.onclose = () => {
+        if (offerWatchdogRef.current) {
+          clearTimeout(offerWatchdogRef.current);
+          offerWatchdogRef.current = null;
+        }
         if (cancelled) return;
         pcRef.current?.close();
         pcRef.current = null;
@@ -598,6 +636,7 @@ export default function WatchStream() {
       cancelled = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (iceWatchdogRef.current) clearTimeout(iceWatchdogRef.current);
+      if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
       if (reconnectTimerRef.current) clearInterval(reconnectTimerRef.current);
       stopConnectingTimer();
       pcRef.current?.close();
