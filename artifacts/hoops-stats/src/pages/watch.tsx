@@ -14,6 +14,16 @@ export default function WatchStream() {
   const params = useParams();
   const code = (params.code ?? "").toUpperCase();
 
+  // Test-mode overrides: ?__watchElapsedS=N reduces the "Still connecting…" timer
+  // threshold and ?__watchRetryS=N reduces the "Tap to retry" threshold. These
+  // are intentionally only read on mount so they don't interfere with production
+  // rendering (the params won't be present in normal use).
+  const searchParams = new URLSearchParams(
+    typeof window !== "undefined" ? window.location.search : ""
+  );
+  const ELAPSED_THRESHOLD_S = Number(searchParams.get("__watchElapsedS") ?? "5");
+  const RETRY_THRESHOLD_S   = Number(searchParams.get("__watchRetryS")   ?? "45");
+
   const [state, setState] = useState<ConnectionState>("connecting");
   const [status, setStatus] = useState<LiveStatus | null>(null);
   const [scoreboard, setScoreboard] = useState<{ teamScore: number; opponentScore: number } | null>(null);
@@ -817,12 +827,12 @@ export default function WatchStream() {
                   Retrying… (attempt {iceRetryCount + 1})
                 </p>
               )}
-              {connectingElapsed >= 5 && (
+              {connectingElapsed >= ELAPSED_THRESHOLD_S && (
                 <p className="text-sm text-white/50 tabular-nums">
                   Still connecting… {formatElapsed(connectingElapsed)}
                 </p>
               )}
-              {connectingTotal >= 45 && (
+              {connectingTotal >= RETRY_THRESHOLD_S && (
                 <button
                   onClick={handleManualRetry}
                   className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
