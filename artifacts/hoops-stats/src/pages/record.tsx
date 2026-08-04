@@ -1086,6 +1086,10 @@ export default function RecordGame() {
       adaptiveRef.current?.stop();
       adaptiveRef.current = null;
       if (liveReconnectTimeoutRef.current) clearTimeout(liveReconnectTimeoutRef.current);
+      if (turnCheckIntervalRef.current) {
+        clearInterval(turnCheckIntervalRef.current);
+        turnCheckIntervalRef.current = null;
+      }
       viewerIceTimeoutsRef.current.forEach(t => clearTimeout(t));
       viewerIceTimeoutsRef.current.clear();
       viewerIceAttemptsRef.current.clear();
