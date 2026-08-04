@@ -10,6 +10,9 @@ import {
   ActivityIndicator,
   Platform,
   useWindowDimensions,
+  Modal,
+  Animated,
+  Share,
 } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
@@ -112,6 +115,78 @@ export default function ScorekeeperScreen() {
   // Camera UI state
   const [cameraFacing, setCameraFacing] = useState<'back' | 'front'>('back');
   const [previewVisible, setPreviewVisible] = useState(true);
+
+  // Live broadcast state
+  const [liveCode, setLiveCode] = useState<string | null>(null);
+  const [isLive, setIsLive] = useState(false);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
+  // Pulsing animation for the LIVE badge
+  const livePulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!isLive) { livePulse.setValue(1); return; }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(livePulse, { toValue: 0.25, duration: 700, useNativeDriver: true }),
+        Animated.timing(livePulse, { toValue: 1,    duration: 700, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [isLive]);
+
+  // ─── Live broadcast helpers ────────────────────────────────────────────────
+  function watchUrl(code: string): string {
+    const domain = process.env.EXPO_PUBLIC_DOMAIN;
+    return domain ? `https://${domain}/watch/${code}` : `/watch/${code}`;
+  }
+
+  async function startLiveBroadcast() {
+    if (liveLoading || isLive) return;
+    setLiveLoading(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_BASE}/api/live/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ opponent: opponent as string, teamName: teamName as string }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        if ((body as any)?.code === 'UPGRADE_REQUIRED') {
+          Alert.alert('Pro Feature', 'Live streaming requires a Pro subscription.');
+        } else {
+          Alert.alert('Go Live failed', (body as any)?.error ?? `Server error (${res.status})`);
+        }
+        return;
+      }
+      const { code } = await res.json();
+      setLiveCode(code);
+      setIsLive(true);
+      setShowGoLiveSheet(true);
+    } catch (err: any) {
+      Alert.alert('Go Live failed', err?.message ?? 'Could not start broadcast');
+    } finally {
+      setLiveLoading(false);
+    }
+  }
+
+  async function stopLiveBroadcast(code: string) {
+    try {
+      const token = await getToken();
+      await fetch(`${API_BASE}/api/live/${encodeURIComponent(code)}/stop`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    } catch {
+      // best-effort — game save should not be blocked by this
+    }
+    setIsLive(false);
+    setLiveCode(null);
+  }
 
   function toggleCameraFacing() {
     if (!isRecording) {
@@ -296,6 +371,10 @@ export default function ScorekeeperScreen() {
     if (!players || (players as any[]).length === 0) {
       Alert.alert('No players', 'Add players to your team before saving a game.');
       return;
+    }
+    // End any active broadcast before saving so viewers get the final score
+    if (liveCode) {
+      await stopLiveBroadcast(liveCode);
     }
     // Create a fresh per-attempt token. The async stages below close over this
     // object, so a subsequent attempt's fresh token can never un-cancel us.
@@ -705,8 +784,67 @@ export default function ScorekeeperScreen() {
     </>
   );
 
+  // ── Go Live sheet ──
+  const goLiveSheet = liveCode ? (
+    <Modal
+      visible={showGoLiveSheet}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowGoLiveSheet(false)}
+    >
+      <View style={styles.sheetBackdrop}>
+        <View style={[styles.sheetContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {/* Header */}
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetTitleRow}>
+              <Animated.View style={[styles.sheetLiveDot, { opacity: livePulse }]} />
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>You're Live</Text>
+            </View>
+            <TouchableOpacity onPress={() => setShowGoLiveSheet(false)} style={styles.sheetCloseBtn}>
+              <Ionicons name="close" size={20} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
+            Share this link with viewers. They can watch the score update in real time.
+          </Text>
+
+          {/* Session code */}
+          <View style={[styles.codeBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            <Text style={[styles.codeLabel, { color: colors.mutedForeground }]}>Session code</Text>
+            <Text style={[styles.codeValue, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{liveCode}</Text>
+          </View>
+
+          {/* Share link */}
+          <TouchableOpacity
+            onPress={() => Share.share({ message: watchUrl(liveCode), url: watchUrl(liveCode) })}
+            activeOpacity={0.8}
+            style={[styles.shareLinkBtn, { backgroundColor: colors.primary }]}
+          >
+            <Ionicons name="share-outline" size={18} color="#fff" />
+            <Text style={styles.shareLinkText}>Share Watch Link</Text>
+          </TouchableOpacity>
+
+          {/* Stop broadcast */}
+          <TouchableOpacity
+            onPress={async () => {
+              setShowGoLiveSheet(false);
+              await stopLiveBroadcast(liveCode);
+            }}
+            activeOpacity={0.8}
+            style={[styles.stopLiveBtn, { borderColor: colors.destructive + '60' }]}
+          >
+            <Ionicons name="stop-circle-outline" size={18} color={colors.destructive} />
+            <Text style={[styles.stopLiveText, { color: colors.destructive }]}>End Broadcast</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  ) : null;
+
   return (
     <View style={[styles.root, isLandscape && styles.rootLandscape]}>
+      {goLiveSheet}
 
       {/* ── Compact scoreboard header — shown when not recording (camera hidden) ── */}
       {!recordVideo && (
@@ -783,9 +921,17 @@ export default function ScorekeeperScreen() {
 
             {/* REC / CAM badge — top-right */}
             {recordVideo && (
-              <View style={styles.recBadge}>
-                {isRecording ? <View style={styles.recDot} /> : <Ionicons name="videocam" size={10} color="#fff" />}
-                <Text style={styles.recText}>{isRecording ? 'REC' : 'CAM'}</Text>
+              <View style={styles.recBadgeRow}>
+                <View style={styles.recBadge}>
+                  {isRecording ? <View style={styles.recDot} /> : <Ionicons name="videocam" size={10} color="#fff" />}
+                  <Text style={styles.recText}>{isRecording ? 'REC' : 'CAM'}</Text>
+                </View>
+                {isLive && (
+                  <TouchableOpacity onPress={() => setShowGoLiveSheet(true)} style={styles.liveBadge} activeOpacity={0.8}>
+                    <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
+                    <Text style={styles.liveText}>LIVE</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -808,6 +954,25 @@ export default function ScorekeeperScreen() {
                   style={styles.camControlBtn}
                 >
                   <Ionicons name="eye-off" size={18} color="#fff" />
+                </TouchableOpacity>
+
+                {/* Go Live / Live indicator */}
+                <TouchableOpacity
+                  onPress={isLive ? () => setShowGoLiveSheet(true) : startLiveBroadcast}
+                  activeOpacity={0.75}
+                  disabled={liveLoading}
+                  style={[
+                    styles.camControlBtn,
+                    isLive && { backgroundColor: 'rgba(239,68,68,0.85)' },
+                  ]}
+                >
+                  {liveLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : isLive ? (
+                    <Ionicons name="radio" size={18} color="#fff" />
+                  ) : (
+                    <Ionicons name="radio-outline" size={18} color="#fff" />
+                  )}
                 </TouchableOpacity>
               </View>
             )}
@@ -1001,11 +1166,16 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       backgroundColor: '#EF4444',
     },
 
-    // REC badge — top-right of camera section
-    recBadge: {
+    // REC / LIVE badges — top-right of camera section
+    recBadgeRow: {
       position: 'absolute',
       top: insets.top + (Platform.OS === 'web' ? 64 : 8),
       right: 10,
+      flexDirection: 'column',
+      alignItems: 'flex-end',
+      gap: 4,
+    },
+    recBadge: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 3,
@@ -1016,6 +1186,17 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     recDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#EF4444' },
     recText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.5 },
+    liveBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: 'rgba(239,68,68,0.75)',
+      borderRadius: 6,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+    },
+    liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#fff' },
+    liveText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.5 },
 
     // Permission banner inside camera section
     permBanner: {
@@ -1129,6 +1310,95 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     cancelUploadText: {
       fontSize: 13, fontFamily: 'Inter_600SemiBold',
+    },
+
+    // ── Go Live modal sheet ────────────────────────────────────────────────
+    sheetBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      justifyContent: 'flex-end',
+    },
+    sheetContainer: {
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      borderWidth: 1,
+      borderBottomWidth: 0,
+      paddingHorizontal: 20,
+      paddingTop: 20,
+      paddingBottom: insets.bottom + 28,
+      gap: 14,
+    },
+    sheetHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    sheetTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    sheetLiveDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: '#EF4444',
+    },
+    sheetTitle: {
+      fontSize: 20,
+      fontFamily: 'Inter_700Bold',
+    },
+    sheetCloseBtn: {
+      padding: 4,
+    },
+    sheetSub: {
+      fontSize: 13,
+      fontFamily: 'Inter_400Regular',
+      lineHeight: 18,
+    },
+    codeBox: {
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 14,
+      alignItems: 'center',
+      gap: 4,
+    },
+    codeLabel: {
+      fontSize: 11,
+      fontFamily: 'Inter_600SemiBold',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+    },
+    codeValue: {
+      fontSize: 36,
+      lineHeight: 38,
+      letterSpacing: 6,
+    },
+    shareLinkBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      height: 48,
+      borderRadius: 12,
+    },
+    shareLinkText: {
+      fontSize: 15,
+      fontFamily: 'Inter_700Bold',
+      color: '#fff',
+    },
+    stopLiveBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      height: 44,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    stopLiveText: {
+      fontSize: 14,
+      fontFamily: 'Inter_600SemiBold',
     },
   });
 }
