@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import {
   useListPlayers,
   useCreatePlayer,
+  useDeletePlayer,
   useListTeams,
   useCreateTeam,
   getListPlayersQueryKey,
@@ -13,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, User, Trophy, ArrowRight, PartyPopper, Link, Plus, Zap, CheckCircle2 } from "lucide-react";
+import { Loader2, User, Trophy, ArrowRight, PartyPopper, Link, Plus, Zap, CheckCircle2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type Step = "player" | "team" | "done";
@@ -27,13 +28,14 @@ export default function Onboarding() {
   const { data: teams, isLoading: teamsLoading } = useListTeams();
 
   const createPlayer = useCreatePlayer();
+  const deletePlayer = useDeletePlayer();
   const createTeam = useCreateTeam();
 
   const [playerName, setPlayerName] = useState("");
   const [teamName, setTeamName] = useState("");
 
-  // All players confirmed during this onboarding session
-  const [confirmedPlayers, setConfirmedPlayers] = useState<string[]>([]);
+  // All players confirmed during this onboarding session (store id + name so we can delete)
+  const [confirmedPlayers, setConfirmedPlayers] = useState<{ id: number; name: string }[]>([]);
   const [confirmedTeamName, setConfirmedTeamName] = useState<string>("");
 
   // Whether the free-plan limit was hit during this session
@@ -67,13 +69,16 @@ export default function Onboarding() {
   // For the team/done steps: use the first confirmed player name, falling back
   // to the first pre-existing player name.
   const primaryPlayerName =
-    confirmedPlayers[0] || existingPlayers[0]?.name || "";
+    confirmedPlayers[0]?.name || existingPlayers[0]?.name || "";
 
-  // All player names shown on the done screen
-  const allPlayerNames: string[] = [
-    ...existingPlayers.map((p) => p.name),
+  // All players shown in the list (existing + newly confirmed), with IDs for deletion
+  const allPlayers: { id: number; name: string }[] = [
+    ...existingPlayers.map((p) => ({ id: p.id, name: p.name })),
     ...confirmedPlayers,
   ];
+
+  // All player names shown on the done screen
+  const allPlayerNames: string[] = allPlayers.map((p) => p.name);
 
   // A fully-onboarded coach who navigates back to /onboarding should be sent
   // straight to /dashboard. Only skip this redirect when the coach just
@@ -99,9 +104,9 @@ export default function Onboarding() {
   const handleCreatePlayer = async () => {
     if (!playerName.trim()) return;
     try {
-      await createPlayer.mutateAsync({ data: { name: playerName.trim() } });
+      const player = await createPlayer.mutateAsync({ data: { name: playerName.trim() } });
       queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey() });
-      setConfirmedPlayers((prev) => [...prev, playerName.trim()]);
+      setConfirmedPlayers((prev) => [...prev, { id: player.id, name: player.name }]);
       setPlayerName("");
       toast({ title: "Player added", description: `${playerName.trim()} is on the roster.` });
     } catch (err: unknown) {
@@ -115,6 +120,25 @@ export default function Onboarding() {
         err instanceof Error
           ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "")
           : "Failed to add player";
+      toast({ title: "Error", description, variant: "destructive" });
+    }
+  };
+
+  const handleRemovePlayer = async (playerId: number, playerName: string) => {
+    try {
+      await deletePlayer.mutateAsync({ playerId });
+      queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey() });
+      setConfirmedPlayers((prev) => prev.filter((p) => p.id !== playerId));
+      // If this player was in existingPlayers (pre-session), the query invalidation
+      // will remove them from that list automatically. Either way, if we were at
+      // the limit, removing a player opens the slot again.
+      setLimitHit(false);
+      toast({ title: "Player removed", description: `${playerName} was removed from the roster.` });
+    } catch (err) {
+      const description =
+        err instanceof Error
+          ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "")
+          : "Failed to remove player";
       toast({ title: "Error", description, variant: "destructive" });
     }
   };
@@ -173,15 +197,25 @@ export default function Onboarding() {
 
             <CardContent className="space-y-4">
               {/* Confirmed players list */}
-              {allPlayerNames.length > 0 && (
+              {allPlayers.length > 0 && (
                 <ul className="space-y-1.5" data-testid="onboarding-player-list">
-                  {allPlayerNames.map((name) => (
+                  {allPlayers.map((player) => (
                     <li
-                      key={name}
+                      key={player.id}
                       className="flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm font-medium"
                     >
                       <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
-                      {name}
+                      <span className="flex-1">{player.name}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${player.name}`}
+                        data-testid="button-remove-player"
+                        onClick={() => handleRemovePlayer(player.id, player.name)}
+                        disabled={deletePlayer.isPending}
+                        className="text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </li>
                   ))}
                 </ul>
