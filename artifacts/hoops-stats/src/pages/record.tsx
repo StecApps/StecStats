@@ -657,7 +657,41 @@ export default function RecordGame() {
   const [micMuted, setMicMuted] = useState(false);
   const [focusPlayerId, setFocusPlayerId] = useState<number | null>(null);
   const [isReconnectingLive, setIsReconnectingLive] = useState(false);
+  // Track which reconnect attempt is in progress (1-based) and how long it
+  // has been running so the coach can see "Attempt 2 of 6 · 5s" instead of a
+  // generic spinner with no indication of progress or when it will give up.
+  const [liveReconnectAttempt, setLiveReconnectAttempt] = useState(0);
+  const [liveReconnectElapsedSec, setLiveReconnectElapsedSec] = useState(0);
+  const liveReconnectStartRef = useRef<number | null>(null);
+  const liveReconnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [liveInterrupted, setLiveInterrupted] = useState(false);
+
+  // Start/stop the per-attempt elapsed timer whenever reconnection begins or ends.
+  // Placed after all declarations it depends on.
+  useEffect(() => {
+    if (!isReconnectingLive) {
+      if (liveReconnectIntervalRef.current) {
+        clearInterval(liveReconnectIntervalRef.current);
+        liveReconnectIntervalRef.current = null;
+      }
+      liveReconnectStartRef.current = null;
+      setLiveReconnectElapsedSec(0);
+      return;
+    }
+    liveReconnectStartRef.current = Date.now();
+    setLiveReconnectElapsedSec(0);
+    liveReconnectIntervalRef.current = setInterval(() => {
+      if (liveReconnectStartRef.current !== null) {
+        setLiveReconnectElapsedSec(Math.floor((Date.now() - liveReconnectStartRef.current) / 1000));
+      }
+    }, 1000);
+    return () => {
+      if (liveReconnectIntervalRef.current) {
+        clearInterval(liveReconnectIntervalRef.current);
+        liveReconnectIntervalRef.current = null;
+      }
+    };
+  }, [isReconnectingLive]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showRotateTip, setShowRotateTip] = useState(false);
   const [reviewIsPortrait, setReviewIsPortrait] = useState(false);
   const [showRecoveryPrompt, setShowRecoveryPrompt] = useState(false);
@@ -2380,6 +2414,7 @@ export default function RecordGame() {
       }
 
       setIsReconnectingLive(true);
+      setLiveReconnectAttempt(liveReconnectAttemptsRef.current + 1);
       const delay = LIVE_RECONNECT_DELAYS_MS[liveReconnectAttemptsRef.current] ?? 8000;
       liveReconnectAttemptsRef.current += 1;
       liveReconnectTimeoutRef.current = setTimeout(() => {
@@ -4080,8 +4115,13 @@ export default function RecordGame() {
 
             {isReconnectingLive && liveCode && (
               <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3">
-                <span className="flex items-center gap-1 text-sm font-semibold text-amber-600">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Reconnecting live stream...
+                <span className="flex items-center gap-2 text-sm font-semibold text-amber-600">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Reconnecting live stream…
+                  <span className="font-normal text-amber-600/70">
+                    attempt {liveReconnectAttempt} of {MAX_LIVE_RECONNECT_ATTEMPTS}
+                    {liveReconnectElapsedSec > 0 && ` · ${liveReconnectElapsedSec}s`}
+                  </span>
                 </span>
                 <span className="text-sm text-muted-foreground">
                   Your recording keeps going. The broadcast will resume automatically once reconnected.

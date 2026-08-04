@@ -25,10 +25,6 @@ export default function WatchStream() {
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const iceWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Offer watchdog: if no offer arrives within 30 s of joining, prod the
-  // broadcaster with a request-offer message (handles signaling races where
-  // the broadcaster is connected but missed the viewer joining).
-  const offerWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Connecting-screen elapsed timers and retry counter.
   // connectingElapsed  — per-attempt seconds (resets on each ICE retry)
@@ -37,6 +33,11 @@ export default function WatchStream() {
   const [connectingTotal, setConnectingTotal] = useState(0);
   const [iceRetryCount, setIceRetryCount] = useState(0);
   const iceRetryCountRef = useRef(0); // mirror for use inside closures
+  // WS-level reconnect progress — shown while state === "reconnecting".
+  const [reconnectAttemptCount, setReconnectAttemptCount] = useState(0);
+  const [reconnectElapsedSec, setReconnectElapsedSec] = useState(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectStartRef = useRef<number | null>(null);
   const connectingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectingAttemptStartRef = useRef<number | null>(null); // resets per attempt
   const connectingFirstStartRef = useRef<number | null>(null);   // set once, never reset
@@ -288,8 +289,35 @@ export default function WatchStream() {
         iceRetryCountRef.current = 0;
         setConnectingElapsed(0);
         setConnectingTotal(0);
+        setReconnectAttemptCount(0);
       }
     }
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Drive the WS-reconnect elapsed timer.
+  useEffect(() => {
+    if (state !== "reconnecting") {
+      if (reconnectTimerRef.current) {
+        clearInterval(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      reconnectStartRef.current = null;
+      setReconnectElapsedSec(0);
+      return;
+    }
+    reconnectStartRef.current = Date.now();
+    setReconnectElapsedSec(0);
+    reconnectTimerRef.current = setInterval(() => {
+      if (reconnectStartRef.current !== null) {
+        setReconnectElapsedSec(Math.floor((Date.now() - reconnectStartRef.current) / 1000));
+      }
+    }, 1000);
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearInterval(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Manual "Tap to retry" — close the dead PC and ask for a fresh offer.
@@ -363,22 +391,6 @@ export default function WatchStream() {
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "join-viewer", code }));
         mediaFailedRef.current = false;
-
-        // Arm the offer watchdog every time we (re)join — if the broadcaster
-        // is connected but misses our join (signaling race), this nudges them.
-        if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
-        offerWatchdogRef.current = setTimeout(() => {
-          offerWatchdogRef.current = null;
-          // Only act if we still have no PeerConnection (no offer received yet).
-          if (pcRef.current) return;
-          iceRetryCountRef.current += 1;
-          setIceRetryCount(iceRetryCountRef.current);
-          startConnectingTimer(false /* preserve cumulative */);
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: "request-offer", code }));
-          }
-        }, 30_000);
-
         if (isReconnect) {
           reconnectAttemptsRef.current = 0;
           // Re-check status rather than assuming a broadcaster is present —
@@ -428,12 +440,6 @@ export default function WatchStream() {
         }
 
         if (message.type === "offer") {
-          // Cancel the offer watchdog — an offer arrived, no need to prod.
-          if (offerWatchdogRef.current) {
-            clearTimeout(offerWatchdogRef.current);
-            offerWatchdogRef.current = null;
-          }
-
           if (message.renegotiate && pcRef.current) {
             // ICE restart from the broadcaster on the existing peer
             // connection — reuse it instead of tearing down and rebuilding,
@@ -539,10 +545,6 @@ export default function WatchStream() {
       };
 
       ws.onclose = () => {
-        if (offerWatchdogRef.current) {
-          clearTimeout(offerWatchdogRef.current);
-          offerWatchdogRef.current = null;
-        }
         if (cancelled) return;
         pcRef.current?.close();
         pcRef.current = null;
@@ -562,6 +564,7 @@ export default function WatchStream() {
         }
 
         setState("reconnecting");
+        setReconnectAttemptCount(reconnectAttemptsRef.current + 1);
         const delay = WATCH_RECONNECT_DELAYS_MS[reconnectAttemptsRef.current] ?? 8000;
         reconnectAttemptsRef.current += 1;
         reconnectTimeoutRef.current = setTimeout(() => {
@@ -577,7 +580,7 @@ export default function WatchStream() {
       cancelled = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (iceWatchdogRef.current) clearTimeout(iceWatchdogRef.current);
-      if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+      if (reconnectTimerRef.current) clearInterval(reconnectTimerRef.current);
       stopConnectingTimer();
       pcRef.current?.close();
       wsRef.current?.close();
@@ -847,7 +850,14 @@ export default function WatchStream() {
           {state === "reconnecting" && (
             <>
               <Loader2 className="w-8 h-8 animate-spin" />
-              <p className="max-w-sm">Reconnecting... stay on this page.</p>
+              <p className="max-w-sm font-semibold">Reconnecting…</p>
+              <p className="text-sm text-white/60">
+                {reconnectAttemptCount > 0
+                  ? `Attempt ${reconnectAttemptCount} of ${MAX_WATCH_RECONNECT_ATTEMPTS}`
+                  : "Waiting for the stream to resume"}
+                {reconnectElapsedSec > 0 && ` · ${reconnectElapsedSec}s`}
+              </p>
+              <p className="text-xs text-white/40 max-w-xs text-center">Stay on this page — the stream will resume automatically.</p>
             </>
           )}
           {state === "ended" && (() => {
