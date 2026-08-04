@@ -207,6 +207,136 @@ const STALLING_FAKE_PC_SCRIPT = `
 
 test.describe("Watch page – ICE stall retry flow", () => {
   test(
+    "offer watchdog fires after silent retry — shows waiting-for-broadcaster, not a spinner",
+    async ({ page }) => {
+      // No FakePeerConnection needed — no offer arrives, so no RTCPeerConnection
+      // is ever created. The test only cares about the state-machine fallback.
+
+      // ── HTTP mocks ──────────────────────────────────────────────────────────
+
+      await page.route(
+        (url) => url.pathname === "/api",
+        (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+      );
+
+      await page.route(
+        (url) => url.pathname === `/api/live/${CODE}/status`,
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              active: true,
+              opponent: "Away",
+              teamName: "Home",
+              viewerCount: 0,
+              teamScore: 0,
+              opponentScore: 0,
+            }),
+          })
+      );
+
+      await page.route(
+        (url) => url.pathname === "/api/live/ice-servers",
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+              turnAvailable: false,
+            }),
+          })
+      );
+
+      // ── WebSocket mock — receives request-offer but never replies ───────────
+      const requestOfferMessages: Array<{ type: string; code: string }> = [];
+
+      await page.routeWebSocket(
+        (url) => url.pathname === "/api/live/ws",
+        (ws) => {
+          ws.onMessage((raw) => {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(
+                typeof raw === "string"
+                  ? raw
+                  : new TextDecoder().decode(raw as ArrayBuffer)
+              );
+            } catch {
+              return;
+            }
+
+            if (msg.type === "join-viewer") {
+              // Acknowledge join — send NO offer so the component stays in "connecting".
+              ws.send(JSON.stringify({ type: "joined", viewerId: "test-viewer-watchdog" }));
+            } else if (msg.type === "request-offer") {
+              // Record it but deliberately do NOT send an offer back.
+              // This simulates a broadcaster that is unreachable/offline.
+              requestOfferMessages.push(msg as { type: string; code: string });
+            }
+          });
+        }
+      );
+
+      // ── Navigate with reduced thresholds ───────────────────────────────────
+      // __watchElapsedS=1  → "Still connecting…" after 1 s
+      // __watchRetryS=2    → "Tap to retry" button after 2 s cumulative
+      // __offerWatchdogMs=3000 → offer watchdog fires after 3 s (not 30 s).
+      //
+      // Why 3000 ms and not something tiny like 500 ms:
+      //   watch.tsx has a *proactive* offer watchdog set in ws.onopen that
+      //   also uses OFFER_WATCHDOG_MS.  With a tiny value (e.g. 500 ms) that
+      //   proactive watchdog fires two stages — at 500 ms and 1000 ms — and
+      //   transitions the component to "waiting-for-broadcaster" automatically
+      //   before the 2-second retry button even appears, so the test can never
+      //   click it.  Using 3000 ms means:
+      //     • the retry button appears at ~2 s,
+      //     • clicking it clears the pending proactive watchdog,
+      //     • the manual-retry watchdog fires at ~2+3 = ~5 s,
+      //     • the component transitions to "waiting-for-broadcaster" as expected.
+      await page.goto(
+        `/watch/${CODE}?__watchElapsedS=1&__watchRetryS=2&__offerWatchdogMs=3000`
+      );
+
+      // ── 1. Component enters "connecting" state ──────────────────────────────
+      await expect(
+        page.getByText(/Joining the stream/)
+      ).toBeVisible({ timeout: 10_000 });
+
+      // ── 2. "Tap to retry" button appears after ≥ 2 s ───────────────────────
+      const retryBtn = page.getByRole("button", { name: /Tap to retry/i });
+      await expect(retryBtn).toBeVisible({ timeout: 10_000 });
+
+      // ── 3. Click retry — WS sends request-offer ─────────────────────────────
+      await retryBtn.click();
+
+      await expect
+        .poll(() => requestOfferMessages.length, { timeout: 5_000 })
+        .toBeGreaterThan(0);
+
+      expect(requestOfferMessages[0].type).toBe("request-offer");
+      expect(requestOfferMessages[0].code).toBe(CODE);
+
+      // ── 4. Watchdog fires (≤ 500 ms + React tick) → waiting-for-broadcaster ─
+      // The component must show the "Stream interrupted" message, NOT a spinner.
+      await expect(
+        page.getByText(/Stream interrupted/)
+      ).toBeVisible({ timeout: 5_000 });
+
+      // Ensure the "Joining the stream…" connecting overlay is gone.
+      await expect(
+        page.getByText(/Joining the stream/)
+      ).not.toBeVisible();
+
+      // The "Check again" button must be present on the waiting-for-broadcaster screen.
+      await expect(
+        page.getByRole("button", { name: /Check again/i })
+      ).toBeVisible({ timeout: 3_000 });
+    }
+  );
+
+  test(
     "shows elapsed timer, retry button, sends request-offer, and recovers to live state",
     async ({ page }) => {
 
