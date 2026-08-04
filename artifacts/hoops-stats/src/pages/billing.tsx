@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useGetBillingStatus, useCreateCheckoutSession, useCreateBillingPortalSession } from "@workspace/api-client-react";
+import { useGetBillingStatus, getGetBillingStatusQueryKey, useCreateCheckoutSession, useCreateBillingPortalSession } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +51,21 @@ export default function Billing() {
   const { toast } = useToast();
   const search = useSearch();
   const [, navigate] = useLocation();
-  const { data: status, isLoading } = useGetBillingStatus();
+  // When returning from a successful Stripe checkout the webhook may not have
+  // fired yet, so the plan can still appear "free" for a few seconds. Poll
+  // every 2 s until the plan transitions to pro/premium, then stop.
+  const { data: status, isLoading } = useGetBillingStatus({
+    query: {
+      queryKey: getGetBillingStatusQueryKey(),
+      refetchInterval: (query) => {
+        if (!isCheckoutSuccess) return false;
+        // In React Query v5 the callback receives the Query object; data lives
+        // in query.state.data.
+        const plan = (query.state.data as { plan?: string } | undefined)?.plan ?? "free";
+        return plan === "free" ? 2000 : false;
+      },
+    },
+  });
   const checkout = useCreateCheckoutSession();
   const portal = useCreateBillingPortalSession();
   const youtube = useYoutubeStatus();

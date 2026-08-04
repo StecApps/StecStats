@@ -41,6 +41,11 @@ export default function Onboarding() {
   // Whether the free-plan limit was hit during this session
   const [limitHit, setLimitHit] = useState(false);
 
+  // Key written to sessionStorage when the coach clicks "Upgrade to Pro" so
+  // that handleCreatePlayer knows to retry on 403 (the webhook may not have
+  // fired yet when they navigate back from Stripe).
+  const RECENTLY_UPGRADED_KEY = "hoops_recently_upgraded_ts";
+
   // Whether the user has explicitly chosen to move to the team step
   const [proceedToTeam, setProceedToTeam] = useState(false);
 
@@ -106,24 +111,48 @@ export default function Onboarding() {
 
   const handleCreatePlayer = async () => {
     if (!playerName.trim()) return;
-    try {
-      const player = await createPlayer.mutateAsync({ data: { name: playerName.trim() } });
-      queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey() });
-      setConfirmedPlayers((prev) => [...prev, { id: player.id, name: player.name }]);
-      setPlayerName("");
-      toast({ title: "Player added", description: `${playerName.trim()} is on the roster.` });
-    } catch (err: unknown) {
-      // Check for the free-plan limit response (ApiError.status + ApiError.data.code)
-      const anyErr = err as { status?: number; data?: { code?: string } };
-      if (anyErr?.status === 403 || anyErr?.data?.code === "UPGRADE_REQUIRED") {
-        setLimitHit(true);
+
+    // If the coach just upgraded (stamp < 5 minutes old), retry on 403 up to
+    // two extra times with a 2-second delay.  The Stripe webhook can lag a few
+    // seconds after checkout, so we give the server a brief window to catch up
+    // before showing a false "upgrade required" banner.
+    const recentlyUpgradedTs = (() => {
+      try { return Number(sessionStorage.getItem(RECENTLY_UPGRADED_KEY)) || 0; } catch { return 0; }
+    })();
+    const recentlyUpgraded = Date.now() - recentlyUpgradedTs < 5 * 60 * 1000;
+    const maxAttempts = recentlyUpgraded ? 3 : 1;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      try {
+        const player = await createPlayer.mutateAsync({ data: { name: playerName.trim() } });
+        queryClient.invalidateQueries({ queryKey: getListPlayersQueryKey() });
+        setConfirmedPlayers((prev) => [...prev, { id: player.id, name: player.name }]);
+        setPlayerName("");
+        // Upgrade confirmed — clear the stamp so future 403s are immediate.
+        try { sessionStorage.removeItem(RECENTLY_UPGRADED_KEY); } catch {}
+        toast({ title: "Player added", description: `${playerName.trim()} is on the roster.` });
+        return;
+      } catch (err: unknown) {
+        // Check for the free-plan limit response (ApiError.status + ApiError.data.code)
+        const anyErr = err as { status?: number; data?: { code?: string } };
+        if (anyErr?.status === 403 || anyErr?.data?.code === "UPGRADE_REQUIRED") {
+          if (attempt < maxAttempts - 1) {
+            // Silent retry — webhook may not have fired yet.
+            continue;
+          }
+          setLimitHit(true);
+          return;
+        }
+        const description =
+          err instanceof Error
+            ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "")
+            : "Failed to add player";
+        toast({ title: "Error", description, variant: "destructive" });
         return;
       }
-      const description =
-        err instanceof Error
-          ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "")
-          : "Failed to add player";
-      toast({ title: "Error", description, variant: "destructive" });
     }
   };
 
@@ -241,7 +270,10 @@ export default function Onboarding() {
                     size="sm"
                     variant="outline"
                     className="w-full"
-                    onClick={() => setLocation("/billing")}
+                    onClick={() => {
+                      try { sessionStorage.setItem(RECENTLY_UPGRADED_KEY, String(Date.now())); } catch {}
+                      setLocation("/billing");
+                    }}
                   >
                     Upgrade to Pro
                   </Button>
