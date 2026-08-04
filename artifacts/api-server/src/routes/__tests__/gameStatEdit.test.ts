@@ -391,21 +391,21 @@ describe("PATCH /api/games/:gameId — made ≤ attempted invariant", () => {
   it("rejects ftMade > ftAttempted with 400", async () => {
     const res = await patchGame(10, buildPatchBody({ ftMade: 5, ftAttempted: 4 }));
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as any;
     expect(body.error).toMatch(/made.*cannot exceed.*attempted/i);
   });
 
   it("rejects twoMade > twoAttempted with 400", async () => {
     const res = await patchGame(10, buildPatchBody({ twoMade: 6, twoAttempted: 5 }));
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as any;
     expect(body.error).toMatch(/made.*cannot exceed.*attempted/i);
   });
 
   it("rejects threeMade > threeAttempted with 400", async () => {
     const res = await patchGame(10, buildPatchBody({ threeMade: 4, threeAttempted: 3 }));
     expect(res.status).toBe(400);
-    const body = await res.json();
+    const body = await res.json() as any;
     expect(body.error).toMatch(/made.*cannot exceed.*attempted/i);
   });
 
@@ -432,7 +432,7 @@ describe("PATCH /api/games/:gameId — career stat round-trip", () => {
       threeMade: 2, threeAttempted: 4,
     }));
     expect(res.status).toBe(200);
-    const game = await res.json();
+    const game = await res.json() as any;
     const stat = game.stats.find((s: any) => s.playerId === 20);
     expect(stat).toBeDefined();
     expect(stat.points).toBe(14); // 4×1 + 2×2 + 2×3
