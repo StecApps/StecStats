@@ -41,7 +41,7 @@ import { AdaptiveQualityController, type AdaptiveLevel } from "@/lib/adaptiveStr
 import { Gauge } from "lucide-react";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
 import { getSportProfile, SPORT_EMOJI } from "@/lib/sport-profiles";
-import MusicTrackSelector from "@/components/MusicTrackSelector";
+import MusicTrackSelector, { MUSIC_TRACKS } from "@/components/MusicTrackSelector";
 
 type StatCounters = {
   playerId: number;
@@ -89,17 +89,9 @@ const LOWLIGHT_MUSIC_KEY = "stec:lowlight-music-track";
 const HIGHLIGHT_LAST_USED_MUSIC_KEY = "stec:highlight-last-used-music-track";
 const LOWLIGHT_LAST_USED_MUSIC_KEY = "stec:lowlight-last-used-music-track";
 
-const MUSIC_TRACK_LABELS: Record<string, string> = {
-  energetic: "Energetic",
-  upbeat: "Upbeat",
-  dynamic: "Dynamic",
-  cinematic: "Cinematic",
-  oldschool: "Old School",
-  lofi: "Lo-Fi",
-};
-
 function musicTrackLabel(track: string | null): string {
-  return track ? (MUSIC_TRACK_LABELS[track] ?? track) : "No music";
+  if (!track) return "No music";
+  return MUSIC_TRACKS.find((t) => t.id === track)?.label ?? track;
 }
 
 const initialStats = (playerId: number): StatCounters => ({

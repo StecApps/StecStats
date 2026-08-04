@@ -6,7 +6,9 @@ import { cn } from "@/lib/utils";
 
 // ── static track catalogue ──────────────────────────────────────────────────
 // hasPreview mirrors which MP3 assets are present in api-server/src/assets/music/
-const TRACKS = [
+// Exported so other modules (e.g. record.tsx) can derive labels from this
+// single source of truth instead of maintaining a parallel list.
+export const MUSIC_TRACKS = [
   { id: "energetic",  label: "Energetic",  description: "High-energy uptempo",       hasPreview: true  },
   { id: "upbeat",     label: "Upbeat",     description: "Fun, positive groove",       hasPreview: true  },
   { id: "dynamic",    label: "Dynamic",    description: "Driving, powerful beat",     hasPreview: true  },
@@ -14,6 +16,9 @@ const TRACKS = [
   { id: "oldschool",  label: "Old School", description: "Classic boom bap hip-hop",   hasPreview: false },
   { id: "lofi",       label: "Lo-Fi",      description: "Chill, mellow backdrop",     hasPreview: false },
 ] as const;
+
+// Internal alias so the rest of the file keeps the short name
+const TRACKS = MUSIC_TRACKS;
 
 // ── module-level audio singleton ─────────────────────────────────────────────
 // One Audio instance shared across every MusicTrackSelector on the page so
