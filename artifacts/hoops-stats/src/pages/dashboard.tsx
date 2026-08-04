@@ -1704,6 +1704,15 @@ function EditStatsDialog({
           </p>
         </DialogHeader>
 
+        {game.highlightStatus === "ready" && (
+          <div className="flex items-start gap-3 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-600 dark:text-yellow-400">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              This game already has a highlight reel. Saving stat changes won't automatically regenerate it — the reel will stay as-is until you regenerate it from the game page.
+            </p>
+          </div>
+        )}
+
         <div className="space-y-6 py-2">
           {/* Game metadata */}
           <div className="rounded-lg border border-border/60 p-4 space-y-3">
