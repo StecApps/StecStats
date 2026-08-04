@@ -92,6 +92,13 @@ const { COACH_A, currentUser, store } = vi.hoisted(() => {
       store.stats = initialStats();
       store.games[0].result = "W";
     },
+    /**
+     * Set before calling DELETE /api/games/:gameId so the db.delete(gamesTable)
+     * mock knows which game to remove and which stats to cascade-delete.
+     * The DELETE handler only deletes the games row; stats are removed via
+     * DB-level FK CASCADE in production — we simulate that here.
+     */
+    targetDeleteGameId: null as number | null,
   };
 
   return { COACH_A, currentUser, store };
@@ -147,6 +154,8 @@ vi.mock("../../lib/videoDuration", () => ({
 vi.mock("../../lib/highlightGenerator", () => ({
   PROXY_VERSION: 1,
   ensureGameProxyInBackground: vi.fn(),
+  cancelHighlightGeneration: vi.fn(),
+  cancelProxyBuild: vi.fn(),
 }));
 
 /**
@@ -220,9 +229,14 @@ vi.mock("@workspace/db", () => {
   const db = {
     query: {
       gamesTable: {
-        findFirst: vi.fn().mockImplementation(async () =>
-          store.games[0],
-        ),
+        findFirst: vi.fn().mockImplementation(async () => {
+          // When a DELETE is in flight, return that specific game so the handler
+          // can read its object-path columns before deleting the row.
+          if (store.targetDeleteGameId != null) {
+            return store.games.find((g: any) => g.id === store.targetDeleteGameId) ?? null;
+          }
+          return store.games[0];
+        }),
       },
       teamsTable: {
         findFirst: vi.fn().mockImplementation(async () =>
@@ -298,6 +312,17 @@ vi.mock("@workspace/db", () => {
     }),
     delete: vi.fn().mockImplementation((table: string) => ({
       where: vi.fn().mockImplementation(() => {
+        if (table === GAMES_T) {
+          // Simulate the DB-level FK CASCADE: removing a game row also removes
+          // its stats and events for the deleted game only (not other games).
+          const id = store.targetDeleteGameId;
+          if (id != null) {
+            store.games = store.games.filter((g: any) => g.id !== id);
+            store.stats = store.stats.filter((s: any) => s.gameId !== id);
+            store.events = store.events.filter((e: any) => e.gameId !== id);
+            store.targetDeleteGameId = null;
+          }
+        }
         if (table === PGS_T)   store.stats.length = 0;
         if (table === EVENTS_T) store.events.length = 0;
         return Promise.resolve(undefined);
@@ -700,5 +725,155 @@ describe("PATCH /api/games/:gameId — career totals aggregate across teams", ()
     expect(summary.wins).toBe(1);
     expect(summary.losses).toBe(1);
     expect(summary.games).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — DELETE /api/games/:gameId career-total scoping
+// ---------------------------------------------------------------------------
+
+/**
+ * These tests verify that deleting one game does NOT silently drop stats that
+ * belong to other games for the same player (e.g. a bug where DELETE cleared
+ * all playerGameStats rows rather than just those for the deleted game).
+ *
+ * The real DELETE handler only removes the gamesTable row; the DB FK CASCADE
+ * removes that game's stat rows.  The mock simulates the cascade via
+ * store.targetDeleteGameId so the summary query that follows sees only the
+ * surviving game's stats.
+ *
+ * Stat lines:
+ *   game 10 (team 5): 2 FT/4, 3 two/5, 1 three/3  →  2+6+3  = 11 pts  W
+ *   game 11 (team 6): 4 FT/4, 0 two/2, 2 three/3  →  4+0+6  = 10 pts  L
+ */
+describe("DELETE /api/games/:gameId — career totals survive game deletion", () => {
+  const GAME11_STAT = {
+    gameId: 11,
+    playerId: 20,
+    ftMade: 4,  ftAttempted: 4,
+    twoMade: 0, twoAttempted: 2,
+    threeMade: 2, threeAttempted: 3,
+    assists: 3, rebounds: 5, steals: 1, turnovers: 2, blocks: 0,
+    goals: 0, shots: 0, shotsOffTarget: 0, saves: 0, yellowCards: 0, redCards: 0,
+  };
+
+  const GAME11 = {
+    id: 11,
+    ownerId: 1,
+    teamId: 6,
+    opponent: "Cross-Town",
+    date: "2024-02-10",
+    result: "L" as string,
+    teamScore: 60,
+    opponentScore: 65,
+    videoObjectPath: null as string | null,
+    videoOffsetMs: null,
+    videoDurationMs: null,
+    videoHalf2StartMs: null,
+    videoHalftimeGapMs: null,
+    highlightObjectPath: null,
+    highlightStatus: "idle",
+    highlightError: null,
+    highlightStartedAt: null,
+    lowlightObjectPath: null,
+    lowlightStatus: "idle",
+    lowlightError: null,
+    lowlightStartedAt: null,
+    videoProxyObjectPath: null,
+    videoProxyVersion: null,
+    highlightGeneratorVersion: null,
+    createdAt: new Date("2024-02-10"),
+  };
+
+  /** Snapshot used to restore game 10 if the DELETE test removes it. */
+  const GAME10_SNAPSHOT = {
+    id: 10,
+    ownerId: 1,
+    teamId: 5,
+    opponent: "Rivals",
+    date: "2024-01-15",
+    result: "W" as string,
+    teamScore: 80,
+    opponentScore: 70,
+    videoObjectPath: null as string | null,
+    videoOffsetMs: null,
+    videoDurationMs: null,
+    videoHalf2StartMs: null,
+    videoHalftimeGapMs: null,
+    highlightObjectPath: null,
+    highlightStatus: "idle",
+    highlightError: null,
+    highlightStartedAt: null,
+    lowlightObjectPath: null,
+    lowlightStatus: "idle",
+    lowlightError: null,
+    lowlightStartedAt: null,
+    videoProxyObjectPath: null,
+    videoProxyVersion: null,
+    highlightGeneratorVersion: null,
+    createdAt: new Date("2024-01-15"),
+  };
+
+  beforeEach(() => {
+    // outer beforeEach already reset stats to game 10 only
+    store.targetDeleteGameId = null;
+    if (!store.games.find((g: any) => g.id === 11)) {
+      store.games.push({ ...GAME11 });
+    }
+    store.stats.push({ ...GAME11_STAT });
+  });
+
+  afterEach(() => {
+    store.targetDeleteGameId = null;
+    // Remove game 11 if it survived the test
+    const idx11 = store.games.findIndex((g: any) => g.id === 11);
+    if (idx11 !== -1) store.games.splice(idx11, 1);
+    // Restore game 10 if the DELETE test removed it, so outer beforeEach is safe
+    if (!store.games.find((g: any) => g.id === 10)) {
+      store.games.unshift({ ...GAME10_SNAPSHOT });
+    }
+  });
+
+  it("DELETE /games/:gameId returns 204", async () => {
+    store.targetDeleteGameId = 10;
+    const res = await fetch(`${baseUrl}/api/games/10`, { method: "DELETE" });
+    expect(res.status).toBe(204);
+  });
+
+  it("career summary aggregates only game 2 after game 1 is deleted", async () => {
+    // game 10: 11 pts (W)   game 11: 10 pts (L)
+    // After deleting game 10 the summary must reflect game 11 only.
+    store.targetDeleteGameId = 10;
+    const deleteRes = await fetch(`${baseUrl}/api/games/10`, { method: "DELETE" });
+    expect(deleteRes.status).toBe(204);
+
+    const summary = await getPlayerSummary(20);
+    expect(summary.games).toBe(1);
+    expect(summary.points).toBe(10);  // game 11 only: 4+0+6
+    expect(summary.ppg).toBe(10);
+  });
+
+  it("game 11 rebounds survive after game 10 is deleted", async () => {
+    // A scoping bug would clear ALL stats on delete; game 11's rebound total
+    // would vanish.  Verify it remains intact.
+    store.targetDeleteGameId = 10;
+    const deleteRes = await fetch(`${baseUrl}/api/games/10`, { method: "DELETE" });
+    expect(deleteRes.status).toBe(204);
+
+    const summary = await getPlayerSummary(20);
+    expect(summary.rebounds).toBe(5);   // game 11 only
+    expect(summary.rpg).toBe(5);
+  });
+
+  it("win/loss record reflects only game 11 after game 10 is deleted", async () => {
+    // game 10 = W deleted, game 11 = L survives → 0W / 1L
+    store.targetDeleteGameId = 10;
+    const deleteRes = await fetch(`${baseUrl}/api/games/10`, { method: "DELETE" });
+    expect(deleteRes.status).toBe(204);
+
+    const summary = await getPlayerSummary(20);
+    expect(summary.wins).toBe(0);
+    expect(summary.losses).toBe(1);
+    expect(summary.games).toBe(1);
   });
 });
