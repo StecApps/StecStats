@@ -19,9 +19,12 @@ export const usersTable = pgTable("users", {
   // Stored refresh token from the coach's personal YouTube OAuth consent.
   // Null when the coach has not connected YouTube yet.
   youtubeRefreshToken: text("youtube_refresh_token"),
-  // Active entitlement granted by a RevenueCat (mobile) subscription.
-  // Set by the RevenueCat webhook when a mobile purchase is made or cancelled.
-  // "pro" | "premium" | null — null means no active mobile subscription.
+  // Active entitlement(s) granted by RevenueCat (mobile) subscriptions.
+  // Set by the RC webhook when a purchase or expiry event is received.
+  // Value is a "+" compound string when multiple entitlements are active:
+  //   "pro" | "premium" | "soccer" | "pro+soccer" | "premium+soccer" | null
+  // null means no active mobile subscription.
+  // Expiry events remove only the named entitlement — other parts are preserved.
   // Used as a fallback in getEntitlements() when there is no Stripe subscription.
   revenueCatEntitlement: text("revenue_cat_entitlement"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

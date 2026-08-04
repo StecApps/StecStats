@@ -50,6 +50,16 @@ vi.mock("@workspace/db", () => ({
         }),
       })),
     }),
+    // The expiry handler reads the current revenueCatEntitlement before
+    // surgically removing the expired part:
+    //   db.select({ revenueCatEntitlement }).from(usersTable).where(...)
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockImplementation(async () => [
+          { revenueCatEntitlement: testUserState.revenueCatEntitlement },
+        ]),
+      }),
+    }),
     // getEntitlements may call db.execute for Stripe tables when stripeCustomerId
     // is non-null.  Our test user has no Stripe customer, so this should not be
     // reached, but mock it defensively.
@@ -59,6 +69,7 @@ vi.mock("@workspace/db", () => ({
     // Drizzle column references — only need to exist as objects; the mock
     // where() above ignores the condition and operates on testUserState by key.
     clerkUserId: "clerk_user_id",
+    revenueCatEntitlement: "revenue_cat_entitlement",
     id: "id",
   },
 }));
@@ -147,10 +158,10 @@ async function postWebhook(body: Buffer, secret?: string): Promise<Response> {
   return fetch(`${baseUrl}/api/revenuecat/webhook`, { method: "POST", body, headers });
 }
 
-async function getBillingStatus(): Promise<{ plan: string; status: string | null }> {
+async function getBillingStatus(): Promise<{ plan: string; status: string | null; hasSoccer: boolean }> {
   const res = await fetch(`${baseUrl}/api/billing/status`);
   expect(res.status).toBe(200);
-  return res.json() as Promise<{ plan: string; status: string | null }>;
+  return res.json() as Promise<{ plan: string; status: string | null; hasSoccer: boolean }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -353,5 +364,63 @@ describe("RevenueCat webhook → billing status", () => {
     // reflect the revocation immediately.  No server restart required.
     const afterWebhook = await getBillingStatus();
     expect(afterWebhook.plan).toBe("free");
+  });
+
+  // -------------------------------------------------------------------------
+  // Partial-expiry: four combinations where one of two active entitlements
+  // expires and the other must survive unchanged.
+  // -------------------------------------------------------------------------
+
+  // 13. Pro+Soccer — soccer expires → pro survives
+  it("partial-expiry: soccer EXPIRATION on pro+soccer leaves plan:pro with no soccer", async () => {
+    testUserState.revenueCatEntitlement = "pro+soccer";
+
+    const res = await postWebhook(makeWebhookBody("EXPIRATION", ["soccer"]));
+    expect(res.status).toBe(200);
+
+    // "soccer" removed, "pro" kept.
+    expect(testUserState.revenueCatEntitlement).toBe("pro");
+
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("pro");
+    expect(billing.hasSoccer).toBe(false);
+  });
+
+  // 14. Pro+Soccer — pro expires → soccer survives (base plan drops to free
+  //     when resolved, but the stored column retains "soccer" so a separate
+  //     re-grant of pro can restore full access without a new soccer purchase).
+  it("partial-expiry: pro EXPIRATION on pro+soccer leaves only soccer in column", async () => {
+    testUserState.revenueCatEntitlement = "pro+soccer";
+
+    const res = await postWebhook(makeWebhookBody("EXPIRATION", ["pro"]));
+    expect(res.status).toBe(200);
+
+    // "pro" removed, "soccer" kept in column.
+    expect(testUserState.revenueCatEntitlement).toBe("soccer");
+  });
+
+  // 15. Premium+Soccer — soccer expires → premium survives
+  it("partial-expiry: soccer EXPIRATION on premium+soccer leaves plan:premium with no soccer", async () => {
+    testUserState.revenueCatEntitlement = "premium+soccer";
+
+    const res = await postWebhook(makeWebhookBody("EXPIRATION", ["soccer"]));
+    expect(res.status).toBe(200);
+
+    expect(testUserState.revenueCatEntitlement).toBe("premium");
+
+    const billing = await getBillingStatus();
+    expect(billing.plan).toBe("premium");
+    expect(billing.hasSoccer).toBe(false);
+  });
+
+  // 16. Premium+Soccer — premium expires → soccer survives in column
+  it("partial-expiry: premium EXPIRATION on premium+soccer leaves only soccer in column", async () => {
+    testUserState.revenueCatEntitlement = "premium+soccer";
+
+    const res = await postWebhook(makeWebhookBody("EXPIRATION", ["premium"]));
+    expect(res.status).toBe(200);
+
+    // "premium" removed, "soccer" kept.
+    expect(testUserState.revenueCatEntitlement).toBe("soccer");
   });
 });

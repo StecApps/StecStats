@@ -135,11 +135,54 @@ export async function handleRevenueCatWebhook(req: Request, res: Response): Prom
       // EXPIRATION fires when access truly ends; BILLING_ISSUE means payment failed.
       // CANCELLATION is intentionally NOT cleared here — the user still has access
       // until the period end; EXPIRATION will clear it when access ends.
-      await db
-        .update(usersTable)
-        .set({ revenueCatEntitlement: null })
-        .where(eq(usersTable.clerkUserId, appUserId));
-      logger.info({ appUserId, eventType }, "RevenueCat: entitlement revoked");
+      //
+      // Surgical removal: only strip the entitlement(s) named in this event.
+      // If the coach holds both "pro" and "soccer" and only "soccer" expires,
+      // we must preserve "pro" (and vice-versa).  Wiping the whole column was
+      // the original bug that this logic replaces.
+      const entitlementIds = (event["entitlement_ids"] as string[] | undefined) ?? [];
+      const entitlementId = event["entitlement_id"] as string | undefined;
+      const expiringIds = new Set(
+        (entitlementId ? [entitlementId, ...entitlementIds] : entitlementIds).map((id) =>
+          id.toLowerCase(),
+        ),
+      );
+
+      if (expiringIds.size === 0) {
+        // No specific entitlement ID in the event — clear everything for safety.
+        await db
+          .update(usersTable)
+          .set({ revenueCatEntitlement: null })
+          .where(eq(usersTable.clerkUserId, appUserId));
+        logger.info(
+          { appUserId, eventType },
+          "RevenueCat: all entitlements revoked (no entitlement_ids in event)",
+        );
+      } else {
+        // Fetch the current stored value, strip only the expiring part(s), and
+        // write back whatever remains so unrelated entitlements are untouched.
+        const rows = await db
+          .select({ revenueCatEntitlement: usersTable.revenueCatEntitlement })
+          .from(usersTable)
+          .where(eq(usersTable.clerkUserId, appUserId));
+
+        const current = rows[0]?.revenueCatEntitlement ?? null;
+        const remaining = (current ?? "")
+          .split("+")
+          .filter((part) => part && !expiringIds.has(part.toLowerCase()));
+
+        const updated = remaining.length > 0 ? remaining.join("+") : null;
+
+        await db
+          .update(usersTable)
+          .set({ revenueCatEntitlement: updated })
+          .where(eq(usersTable.clerkUserId, appUserId));
+
+        logger.info(
+          { appUserId, eventType, expiringIds: [...expiringIds], previous: current, updated },
+          "RevenueCat: entitlement(s) revoked",
+        );
+      }
 
     } else if (eventType === "CANCELLATION") {
       // Don't clear yet — user retains access until period end.
