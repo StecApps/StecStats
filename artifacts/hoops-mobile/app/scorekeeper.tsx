@@ -515,6 +515,16 @@ export default function ScorekeeperScreen() {
   // ── Shared: stat area ──
   const statArea = (
     <>
+      {/* Camera hidden badge — subtle reminder that recording is still running */}
+      {recordVideo && !previewVisible && (
+        <View style={[styles.cameraHiddenBadge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+          <Ionicons name="videocam" size={11} color={colors.mutedForeground} />
+          <Text style={[styles.cameraHiddenText, { color: colors.mutedForeground }]}>
+            {isRecording ? 'Recording — camera hidden' : 'Camera hidden'}
+          </Text>
+        </View>
+      )}
+
       {/* Player selector */}
       <View style={[styles.playerBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <FlatList
@@ -817,11 +827,19 @@ export default function ScorekeeperScreen() {
             )}
           </>
         ) : (
-          /* Preview hidden — dark overlay with expand button */
+          /* Preview hidden — dark overlay with expand button + back nav */
           <View style={styles.previewHiddenOverlay}>
+            {/* Back button — always reachable even when preview is collapsed */}
+            <TouchableOpacity onPress={() => router.back()} activeOpacity={0.75} style={styles.collapsedCloseBtn}>
+              <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.7)" />
+            </TouchableOpacity>
+
+            {/* Expand button with visible label so coaches know how to restore the preview */}
             <TouchableOpacity onPress={togglePreview} activeOpacity={0.75} style={styles.expandPreviewBtn}>
               <Ionicons name="videocam" size={16} color="#fff" />
+              <Text style={styles.expandPreviewText}>Show camera</Text>
             </TouchableOpacity>
+
             {recordVideo && isRecording && <View style={styles.recDotSmall} />}
           </View>
         )}
@@ -946,6 +964,35 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       borderRadius: 8,
       paddingHorizontal: 12,
       paddingVertical: 6,
+    },
+    expandPreviewText: {
+      fontSize: 13,
+      fontFamily: 'Inter_600SemiBold',
+      color: '#fff',
+    },
+    collapsedCloseBtn: {
+      position: 'absolute',
+      left: 10,
+      top: 0,
+      bottom: 0,
+      justifyContent: 'center',
+      padding: 6,
+    },
+    cameraHiddenBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      alignSelf: 'center',
+      marginTop: 6,
+      marginBottom: 2,
+      borderRadius: 20,
+      borderWidth: 1,
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+    },
+    cameraHiddenText: {
+      fontSize: 11,
+      fontFamily: 'Inter_500Medium',
     },
     recDotSmall: {
       width: 7,
