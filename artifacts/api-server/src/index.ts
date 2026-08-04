@@ -321,6 +321,15 @@ async function boot() {
     }
   }
 
+  // Log which RevenueCat credential path is active so operators can confirm
+  // the correct path without exposing the secret value itself.
+  {
+    const rcSource = process.env["REVENUECAT_WEBHOOK_SECRET"]
+      ? "direct env var (REVENUECAT_WEBHOOK_SECRET)"
+      : "not configured";
+    logger.info(`RevenueCat webhook credentials: ${rcSource}`);
+  }
+
   await Promise.all([
     seedDatabase().catch((err) => {
       logger.error({ err }, "Error seeding database");
