@@ -136,7 +136,65 @@ describe('uploadPhoto() error-classification', () => {
     expect(result).toBe('photos/abc.jpg');
   });
 
-  // ── 5. Upload PUT failure ─────────────────────────────────────────────────
+  // ── 5. Local photo unreadable ─────────────────────────────────────────────
+
+  it('throws a photo-read message when fetch(uri) rejects', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      // 1st call: request-url → 200 with uploadURL + objectPath
+      .mockResolvedValueOnce(
+        makeResponse(200, { uploadURL: 'https://storage.example/put', objectPath: 'photos/abc.jpg' }),
+      )
+      // 2nd call: read local photo blob → network-level rejection
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    await expect(uploadPhoto(URI, MIME, TOKEN)).rejects.toThrow(
+      'Could not read the photo — please try a different image.',
+    );
+  });
+
+  it('includes "Retry" in the expected Alert button list for photo-read failures', () => {
+    const expectedButtons = expect.arrayContaining([
+      expect.objectContaining({ text: 'Retry' }),
+      expect.objectContaining({ text: 'Cancel' }),
+    ]);
+    expect([
+      { text: 'Retry', onPress: jest.fn() },
+      { text: 'Cancel', style: 'cancel' },
+    ]).toEqual(expectedButtons);
+  });
+
+  // ── 6. Network drop during storage PUT ────────────────────────────────────
+
+  it('throws a network-during-upload message when the storage PUT fetch rejects', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      // 1st call: request-url → 200
+      .mockResolvedValueOnce(
+        makeResponse(200, { uploadURL: 'https://storage.example/put', objectPath: 'photos/abc.jpg' }),
+      )
+      // 2nd call: read local photo blob → succeeds
+      .mockResolvedValueOnce(makeBlobResponse())
+      // 3rd call: PUT to storage → network-level rejection
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+    await expect(uploadPhoto(URI, MIME, TOKEN)).rejects.toThrow(
+      'Network error during upload — check your connection and try again.',
+    );
+  });
+
+  it('includes "Retry" in the expected Alert button list for mid-upload network failures', () => {
+    const expectedButtons = expect.arrayContaining([
+      expect.objectContaining({ text: 'Retry' }),
+      expect.objectContaining({ text: 'Cancel' }),
+    ]);
+    expect([
+      { text: 'Retry', onPress: jest.fn() },
+      { text: 'Cancel', style: 'cancel' },
+    ]).toEqual(expectedButtons);
+  });
+
+  // ── 7. Storage PUT returns non-2xx ────────────────────────────────────────
 
   it('throws an upload-failed message when the storage PUT returns a non-2xx status', async () => {
     jest
@@ -150,5 +208,16 @@ describe('uploadPhoto() error-classification', () => {
     await expect(uploadPhoto(URI, MIME, TOKEN)).rejects.toThrow(
       'Upload failed (503) — please try again.',
     );
+  });
+
+  it('includes "Retry" in the expected Alert button list for PUT non-2xx failures', () => {
+    const expectedButtons = expect.arrayContaining([
+      expect.objectContaining({ text: 'Retry' }),
+      expect.objectContaining({ text: 'Cancel' }),
+    ]);
+    expect([
+      { text: 'Retry', onPress: jest.fn() },
+      { text: 'Cancel', style: 'cancel' },
+    ]).toEqual(expectedButtons);
   });
 });
