@@ -14,7 +14,7 @@ import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { createClerkClient } from "@clerk/backend";
 
-const FAILED_CHECKOUT_KEY = "stec-failed-checkout-interval";
+const FAILED_CHECKOUT_KEY = "stec-failed-checkout";
 
 const clerkClient = createClerkClient({
   secretKey: process.env.CLERK_SECRET_KEY,
@@ -87,8 +87,8 @@ test.describe("Billing page – resume-checkout banner", () => {
     await signInAndSetupPlayer(page, context, user.email);
 
     await page.evaluate(
-      ({ key }) => localStorage.setItem(key, "month"),
-      { key: FAILED_CHECKOUT_KEY },
+      ({ key, value }) => localStorage.setItem(key, value),
+      { key: FAILED_CHECKOUT_KEY, value: JSON.stringify({ interval: "month", tier: "pro" }) },
     );
 
     await page.goto("/billing");
@@ -112,8 +112,8 @@ test.describe("Billing page – resume-checkout banner", () => {
     await signInAndSetupPlayer(page, context, user.email);
 
     await page.evaluate(
-      ({ key }) => localStorage.setItem(key, "month"),
-      { key: FAILED_CHECKOUT_KEY },
+      ({ key, value }) => localStorage.setItem(key, value),
+      { key: FAILED_CHECKOUT_KEY, value: JSON.stringify({ interval: "month", tier: "pro" }) },
     );
 
     await page.goto("/billing");
@@ -139,8 +139,8 @@ test.describe("Billing page – resume-checkout banner", () => {
     await signInAndSetupPlayer(page, context, user.email);
 
     await page.evaluate(
-      ({ key }) => localStorage.setItem(key, "month"),
-      { key: FAILED_CHECKOUT_KEY },
+      ({ key, value }) => localStorage.setItem(key, value),
+      { key: FAILED_CHECKOUT_KEY, value: JSON.stringify({ interval: "month", tier: "pro" }) },
     );
 
     await page.goto("/billing");
@@ -163,5 +163,8 @@ test.describe("Billing page – resume-checkout banner", () => {
     ]);
 
     expect(checkoutRequest).toBeTruthy();
+    const body = checkoutRequest.postDataJSON() as { data?: { interval?: string; tier?: string } };
+    expect(body?.data?.tier).toBe("pro");
+    expect(body?.data?.interval).toBe("month");
   });
 });
