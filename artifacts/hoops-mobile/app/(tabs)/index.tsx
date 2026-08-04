@@ -123,7 +123,7 @@ function MiniStat({ label, value, total, colors }: { label: string; value: strin
 const miniS = StyleSheet.create({
   wrap: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { fontSize: 26, lineHeight: 28 },
+  value: { fontSize: 26, lineHeight: 34 },
   total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
@@ -342,7 +342,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
         <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} colors={colors} />
         <MiniStat label="Steals / GM" value={summary.spg.toFixed(1)} total={String(summary.steals)} colors={colors} />
       </View>
-      <View style={{ flexDirection: 'row', gap: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 24 }}>
         <MiniStat label="Blocks / GM" value={summary.bpg.toFixed(1)} total={String(summary.blocks)} colors={colors} />
         <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} colors={colors} />
       </View>
@@ -412,12 +412,14 @@ export default function DashboardScreen() {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.primary} />}
     >
-      {/* ── Brand logo banner ── */}
-      <Image
-        source={require('../../assets/images/logo-banner.png')}
-        style={styles.logoBanner}
-        contentFit="contain"
-      />
+      {/* ── Brand logo banner — bleeds to the top of the screen ── */}
+      <View style={styles.logoBannerContainer}>
+        <Image
+          source={require('../../assets/images/logo-banner.png')}
+          style={{ flex: 1 }}
+          contentFit="fill"
+        />
+      </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {(players as any[]).map((p) => (
@@ -442,7 +444,18 @@ function makeStyles(colors: any, insets: any) {
       paddingBottom: insets.bottom + 100,
     },
     chips: { paddingBottom: 16 },
-    logoBanner: { alignSelf: 'stretch', aspectRatio: 7, marginHorizontal: -16, marginBottom: 12 },
+    // Bleeds the logo banner all the way to the top of the screen (behind the
+    // status bar). The negative marginTop cancels out the contentContainer
+    // paddingTop so the image starts at y=0. Height adds insets.top so the
+    // logo background covers the status-bar area; 58 is the visible logo strip.
+    logoBannerContainer: {
+      alignSelf: 'stretch',
+      height: insets.top + 58,
+      marginHorizontal: -16,
+      marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)),
+      marginBottom: 16,
+      overflow: 'hidden',
+    },
     emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', color: colors.foreground, marginTop: 16, marginBottom: 8 },
     emptySub: { fontSize: 14, color: colors.mutedForeground, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
   });
