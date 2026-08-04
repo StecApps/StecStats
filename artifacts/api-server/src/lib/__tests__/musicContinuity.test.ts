@@ -1,16 +1,17 @@
 /**
  * Music continuity regression test.
  *
- * Confirms that mixMusicIntoReel mixes music AFTER concatenation so the track
- * plays continuously from start to finish — not per-segment (which would
- * restart the track at every clip boundary and produce an audible pop/gap).
+ * Confirms that the combined concat+music single-pass in concatSegments mixes
+ * music across the full reel so the track plays continuously from start to
+ * finish — not per-segment (which would restart the track at every clip
+ * boundary and produce an audible pop/gap).
  *
  * Oracle design
  * ─────────────
  * The music track starts with 0.5 s of digital silence, then a continuous
  * 880 Hz sine tone.  After mixing a two-clip reel (3 s + 3 s = 6 s total):
  *
- *   Post-concat mix (correct):
+ *   Single-pass concat+music (correct):
  *     Music plays from t=0 → t=6 s once.  At the boundary (t≈3 s) the track
  *     is already 2.5 s into the tone phase → loud signal, mean ≈ −3 dBFS.
  *
@@ -131,7 +132,7 @@ const SILENT_DB_MAX = -40;
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("mixMusicIntoReel — music continuity across clip boundaries", () => {
+describe("concatSegments (single-pass) — music continuity across clip boundaries", () => {
   let tmpDir: string;
   let clip1: string;
   let clip2: string;
@@ -157,16 +158,15 @@ describe("mixMusicIntoReel — music continuity across clip boundaries", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 1. Correct path: post-concat mixing
+  // 1. Correct path: single-pass concat+music
   // ──────────────────────────────────────────────────────────────────────────
   it(
-    "post-concat mix: music is audible at the clip boundary (track plays through)",
+    "single-pass concat+music: music is audible at the clip boundary (track plays through)",
     async () => {
-      const concatPath = path.join(tmpDir, "concat_postmix.mp4");
-      await concatSegments([clip1, clip2], tmpDir, concatPath, /* hasAudio */ false);
-
-      const reelPath = path.join(tmpDir, "reel_postmix.mp4");
-      await mixMusicIntoReel(concatPath, reelPath, musicPath, /* reelHasAudio */ false);
+      // Single ffmpeg invocation: concat list + music input → final reel.
+      // No intermediate file is written; this is the production code path.
+      const reelPath = path.join(tmpDir, "reel_singlepass.mp4");
+      await concatSegments([clip1, clip2], tmpDir, reelPath, /* hasAudio */ false, musicPath);
 
       // At t=3.05–3.45 s the music has been playing for 2.55 s past its
       // silence intro → we are deep into the tone phase → loud signal.
@@ -174,7 +174,7 @@ describe("mixMusicIntoReel — music continuity across clip boundaries", () => {
 
       expect(
         vol,
-        `Post-concat reel: expected audible music (> ${LOUD_DB_MIN} dBFS) at ` +
+        `Single-pass reel: expected audible music (> ${LOUD_DB_MIN} dBFS) at ` +
           `t=${PROBE_START}–${(PROBE_START + PROBE_DURATION).toFixed(2)} s ` +
           `but measured ${vol.toFixed(1)} dB. ` +
           "The music may have been truncated or not mixed across the full reel.",
