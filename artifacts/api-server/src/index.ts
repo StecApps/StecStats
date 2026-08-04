@@ -125,10 +125,32 @@ async function initStripe() {
   // every ~8-min autoscale instance cycle would grow boot latency unboundedly
   // with the customer base. After the one-time backfill, webhooks keep the
   // tables in sync.
+  //
+  // Two-tier guard:
+  //  1. No products → genuinely fresh DB, run a full backfill.
+  //  2. Products exist but no subscriptions → the webhook was briefly down
+  //     during initial customer sign-ups so subscriptions (and their parent
+  //     customers) never landed in the DB.  Re-sync customers + subscriptions
+  //     only; products/prices are already present so this is fast.
+  //  3. Both exist → skip entirely (performance guard, the common case).
   const seeded = await db.execute(sql`SELECT 1 FROM stripe.products LIMIT 1`);
   if (seeded.rows.length === 0) {
     logger.info("Stripe tables empty — running one-time full backfill");
     await stripeSync.syncBackfill({ object: "all" });
+  } else {
+    const subSeeded = await db.execute(
+      sql`SELECT 1 FROM stripe.subscriptions LIMIT 1`,
+    );
+    if (subSeeded.rows.length === 0) {
+      logger.info(
+        "Stripe products present but subscriptions table is empty — " +
+          "webhook may have been down during initial sign-ups; " +
+          "backfilling customers and subscriptions",
+      );
+      // Sync customers first so FK references from subscriptions resolve.
+      await stripeSync.syncCustomers();
+      await stripeSync.syncSubscriptions();
+    }
   }
 }
 
