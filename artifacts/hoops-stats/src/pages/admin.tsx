@@ -4,6 +4,7 @@ import { Loader2, CheckCircle2, Clock, Mail, User, CreditCard, Webhook, AlertTri
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import MarketingHeader from "@/components/marketing-header";
+import { useToast } from "@/hooks/use-toast";
 
 type FeedbackRow = {
   id: number;
@@ -51,12 +52,14 @@ type StripeSyncHealth = {
 
 export default function AdminFeedback() {
   const { isLoaded } = useUser();
+  const { toast } = useToast();
   const [rows, setRows] = useState<FeedbackRow[]>([]);
   const [purchases, setPurchases] = useState<PurchaseEvent[]>([]);
   const [stripeSyncHealth, setStripeSyncHealth] = useState<StripeSyncHealth | null>(null);
   const [stripeSyncError, setStripeSyncError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -81,6 +84,28 @@ export default function AdminFeedback() {
   }
 
   useEffect(() => { if (isLoaded) load(); }, [isLoaded]);
+
+  async function runBackfill() {
+    setBackfilling(true);
+    try {
+      const res = await fetch("/api/admin/stripe/sync", { method: "POST" });
+      if (res.ok) {
+        toast({ title: "Backfill complete", description: "Stripe data re-synced for the last 30 days." });
+        await load();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toast({
+          title: "Backfill failed",
+          description: (body as { error?: string }).error ?? "Unknown error",
+          variant: "destructive",
+        });
+      }
+    } catch {
+      toast({ title: "Backfill failed", description: "Network error — please try again.", variant: "destructive" });
+    } finally {
+      setBackfilling(false);
+    }
+  }
 
   async function markReviewed(id: number) {
     await fetch(`/api/admin/feedback/${id}`, { method: "PATCH" });
@@ -120,10 +145,16 @@ export default function AdminFeedback() {
               </h2>
               <p className="text-muted-foreground mt-1">Billing data freshness &amp; webhook health</p>
             </div>
-            <Button size="sm" variant="outline" onClick={load} className="shrink-0">
-              <RefreshCw className="w-3 h-3 mr-1" />
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button size="sm" variant="outline" onClick={load} disabled={backfilling}>
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Refresh
+              </Button>
+              <Button size="sm" variant="outline" onClick={runBackfill} disabled={backfilling}>
+                {backfilling ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                {backfilling ? "Running…" : "Run backfill (last 30 days)"}
+              </Button>
+            </div>
           </div>
 
           {stripeSyncError && (
