@@ -60,12 +60,28 @@ function getRevenueCatApiKey(): string | null {
   return REVENUECAT_TEST_API_KEY;
 }
 
+function getRevenueCatKeyPath(): string {
+  if (__DEV__ || Platform.OS === 'web' || Constants.executionEnvironment === 'storeClient') {
+    return 'test';
+  }
+  if (Platform.OS === 'ios') return 'iOS';
+  if (Platform.OS === 'android') return 'Android';
+  return 'test (fallback)';
+}
+
+function truncateKey(key: string): string {
+  if (key.length <= 8) return '****';
+  return `${key.slice(0, 4)}**…**${key.slice(-4)}`;
+}
+
 export function initializeRevenueCat() {
   const apiKey = getRevenueCatApiKey();
   if (!apiKey) {
     console.warn('[RevenueCat] API keys not set — subscription features unavailable until configured.');
     return;
   }
+  const path = getRevenueCatKeyPath();
+  console.info(`[RevenueCat] initialised with ${path} key ${truncateKey(apiKey)}`);
   Purchases.setLogLevel(Purchases.LOG_LEVEL.WARN);
   Purchases.configure({ apiKey });
 }
