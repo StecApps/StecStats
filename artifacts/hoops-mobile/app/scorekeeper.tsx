@@ -12,6 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import { showNoVideoAlert } from '@/lib/noVideoAlert';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useListPlayers, useCreateGame, useRequestUploadUrl } from '@workspace/api-client-react';
@@ -326,16 +327,7 @@ export default function ScorekeeperScreen() {
           }
         }
         if (!recordedUriRef.current) {
-          Alert.alert(
-            'No video captured',
-            recordingStartedRef.current
-              ? 'The camera started but did not produce a video file. Save the game without video, or go back and try again.'
-              : 'Recording never started (tap Play first to begin filming). Save the game without video?',
-            [
-              { text: 'Cancel', style: 'cancel', onPress: () => setSaving(false) },
-              { text: 'Save without video', style: 'default', onPress: () => saveGame(null) },
-            ],
-          );
+          showNoVideoAlert(recordingStartedRef.current, setSaving, saveGame);
           return;
         }
         try {
