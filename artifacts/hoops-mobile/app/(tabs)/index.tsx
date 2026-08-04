@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
 import Svg, { Circle, G } from 'react-native-svg';
@@ -32,13 +33,29 @@ function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
 }
 
+// ─── Glass glare overlay ────────────────────────────────────────────────────
+// Place as first child inside any overflow:hidden View to get a liquid-glass
+// highlight. The gradient goes top-bright → transparent so cards look lit from above.
+function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
+  return (
+    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <LinearGradient
+        colors={[`rgba(255,255,255,${intensity})`, 'rgba(255,255,255,0.0)']}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 0.75 }}
+        style={{ flex: 1 }}
+      />
+    </View>
+  );
+}
+
 // ─── Arc Gauge ─────────────────────────────────────────────────────────────
 function ArcGauge({
   pct, label, made, attempted, colors,
 }: {
   pct?: number | null; label: string; made?: number; attempted?: number; colors: any;
 }) {
-  const SIZE = 84, SW = 7;
+  const SIZE = 90, SW = 8;
   const r = (SIZE - SW) / 2;
   const circ = 2 * Math.PI * r;
   const filled = Math.max(0, Math.min(1, pct ?? 0)) * circ;
@@ -56,7 +73,7 @@ function ArcGauge({
         </Svg>
         <View style={gaugeS.center}>
           <Text style={[gaugeS.pctNum, { color: colors.foreground }]}>{pctStr}</Text>
-          {pct != null && pct > 0 && <Text style={[gaugeS.pctLabel, { color: colors.mutedForeground }]}>PERCENT</Text>}
+          {pct != null && pct > 0 && <Text style={[gaugeS.pctLabel, { color: colors.mutedForeground }]}>PCT</Text>}
         </View>
       </View>
       <Text style={[gaugeS.gaugeLabel, { color: colors.mutedForeground }]}>{label}</Text>
@@ -69,9 +86,9 @@ function ArcGauge({
 const gaugeS = StyleSheet.create({
   wrap: { alignItems: 'center', flex: 1 },
   center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  pctNum: { ...tekoStyle(17) },
-  pctLabel: { fontSize: 7, fontFamily: 'Inter_500Medium', letterSpacing: 0.3 },
-  gaugeLabel: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 6 },
+  pctNum: { ...tekoStyle(19) },
+  pctLabel: { fontSize: 7, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
+  gaugeLabel: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 6 },
   made: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
@@ -79,25 +96,37 @@ const gaugeS = StyleSheet.create({
 function PlayerChip({ player, isSelected, onPress, colors }: { player: any; isSelected: boolean; onPress: () => void; colors: any }) {
   const { data: summary } = useGetPlayerSummary(player.id);
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75}
-      style={[chipS.chip, { backgroundColor: isSelected ? colors.primary : colors.card, borderColor: isSelected ? colors.primary : colors.border }]}>
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[
+        chipS.chip,
+        {
+          backgroundColor: isSelected ? colors.primary : colors.card,
+          borderColor: isSelected ? colors.primary : colors.border,
+          overflow: 'hidden',
+        },
+      ]}
+    >
+      {isSelected && <GlareOverlay intensity={0.2} />}
       <Text style={[chipS.name, { color: isSelected ? '#fff' : colors.foreground }]}>{player.name}</Text>
-      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.7)' : colors.mutedForeground }]}>
+      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.72)' : colors.mutedForeground }]}>
         {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
       </Text>
     </TouchableOpacity>
   );
 }
 const chipS = StyleSheet.create({
-  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 22, borderWidth: 1, marginRight: 8, minWidth: 110 },
-  name: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 22, borderWidth: 1, marginRight: 8, minWidth: 110 },
+  name: { fontSize: 14, fontFamily: 'Inter_700Bold' },
   sub: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
 // ─── Stat Card ─────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, colors }: { label: string; value: string; sub?: string; colors: any }) {
   return (
-    <View style={[statS.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[statS.card, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
+      <GlareOverlay intensity={0.07} />
       <Text style={[statS.label, { color: colors.mutedForeground }]}>{label}</Text>
       <Text style={[statS.value, { color: colors.primary }]}>{value}</Text>
       {sub && <Text style={[statS.sub, { color: colors.mutedForeground }]}>{sub}</Text>}
@@ -105,16 +134,17 @@ function StatCard({ label, value, sub, colors }: { label: string; value: string;
   );
 }
 const statS = StyleSheet.create({
-  card: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { ...tekoStyle(30) },
+  card: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, alignItems: 'center' },
+  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
+  value: { ...tekoStyle(34) },
   sub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
 });
 
 // ─── Mini Stat ──────────────────────────────────────────────────────────────
 function MiniStat({ label, value, total, colors }: { label: string; value: string; total?: string; colors: any }) {
   return (
-    <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
+      <GlareOverlay intensity={0.07} />
       <Text style={[miniS.label, { color: colors.mutedForeground }]}>{label}</Text>
       <Text style={[miniS.value, { color: colors.foreground }]}>{value}</Text>
       {total && <Text style={[miniS.total, { color: colors.mutedForeground }]}>{total} TOTAL</Text>}
@@ -122,9 +152,9 @@ function MiniStat({ label, value, total, colors }: { label: string; value: strin
   );
 }
 const miniS = StyleSheet.create({
-  wrap: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' },
+  wrap: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { ...tekoStyle(26) },
+  value: { ...tekoStyle(28) },
   total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
@@ -132,15 +162,15 @@ const miniS = StyleSheet.create({
 function SectionHeader({ title, colors }: { title: string; colors: any }) {
   return (
     <View style={secS.wrap}>
-      <View style={[secS.bar, { backgroundColor: colors.primary }]} />
-      <Text style={[secS.title, { color: colors.foreground }]}>{title}</Text>
+      <Text style={[secS.title, { color: colors.foreground }]}>{title.toUpperCase()}</Text>
+      <View style={[secS.accent, { backgroundColor: colors.primary }]} />
     </View>
   );
 }
 const secS = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 20 },
-  bar: { width: 3, height: 18, borderRadius: 2, marginRight: 10 },
-  title: { fontSize: 13, fontFamily: 'Inter_700Bold', letterSpacing: 1, textTransform: 'uppercase' },
+  wrap: { marginBottom: 12, marginTop: 22 },
+  title: { ...tekoStyle(22), letterSpacing: 1.5 },
+  accent: { height: 2, width: 36, borderRadius: 1, marginTop: 3 },
 });
 
 // ─── Player Dashboard ──────────────────────────────────────────────────────
@@ -273,16 +303,19 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
   return (
     <>
       {/* Player Hero */}
-      <View style={[heroS.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[heroS.card, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
+        {/* Liquid-glass glare — two-stop gradient so the top half glows and the bottom stays dark */}
+        <GlareOverlay intensity={0.10} />
+
         <View style={heroS.flashRow}>
-          <Ionicons name="flash" size={14} color={colors.primary} />
+          <Ionicons name="flash" size={13} color={colors.primary} />
           <Text style={[heroS.liveLabel, { color: colors.primary }]}>LIVE PLAYER STATS</Text>
-          <Ionicons name="flash" size={14} color={colors.primary} />
+          <Ionicons name="flash" size={13} color={colors.primary} />
         </View>
 
-        {/* Tappable avatar */}
+        {/* Tappable avatar — larger with a glare highlight on the photo */}
         <TouchableOpacity onPress={handlePhotoTap} activeOpacity={0.8} style={heroS.avatarWrap}>
-          <View style={[heroS.avatar, { borderColor: colors.primary }]}>
+          <View style={[heroS.avatar, { borderColor: colors.primary, overflow: 'hidden' }]}>
             {hasPhoto && authToken !== null && !photoLoadFailed ? (
               <Image
                 source={{
@@ -298,12 +331,21 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
                 {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
               </Text>
             )}
+            {/* Glare on avatar — diagonal highlight across the top */}
+            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+              <LinearGradient
+                colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0.0)']}
+                start={{ x: 0.15, y: 0 }}
+                end={{ x: 0.85, y: 0.55 }}
+                style={{ flex: 1 }}
+              />
+            </View>
           </View>
           {/* Camera badge */}
           <View style={[heroS.cameraBadge, { backgroundColor: colors.primary }]}>
             {uploading
               ? <ActivityIndicator size="small" color="#fff" />
-              : <Ionicons name="camera" size={12} color="#fff" />}
+              : <Ionicons name="camera" size={13} color="#fff" />}
           </View>
         </TouchableOpacity>
 
@@ -329,7 +371,8 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
 
       {/* Shooting Efficiency */}
       <SectionHeader title="Shooting Efficiency" colors={colors} />
-      <View style={[shootS.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[shootS.card, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
+        <GlareOverlay intensity={0.07} />
         <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} colors={colors} />
         <View style={[shootS.divider, { backgroundColor: colors.border }]} />
         <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} colors={colors} />
@@ -352,30 +395,32 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
 }
 
 const heroS = StyleSheet.create({
-  card: { borderRadius: 14, borderWidth: 1, alignItems: 'center', paddingVertical: 20, paddingHorizontal: 16, marginBottom: 8 },
-  flashRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },
-  liveLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 1.5 },
-  avatarWrap: { marginBottom: 12 },
+  card: { borderRadius: 16, borderWidth: 1, alignItems: 'center', paddingVertical: 22, paddingHorizontal: 16, marginBottom: 10 },
+  flashRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 16 },
+  // "LIVE PLAYER STATS" in Teko for a bold, condensed display feel
+  liveLabel: { ...tekoStyle(13), letterSpacing: 2.5 },
+  avatarWrap: { marginBottom: 14 },
   avatar: {
-    width: 76, height: 76, borderRadius: 38, borderWidth: 3,
-    backgroundColor: 'rgba(255,83,26,0.15)',
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    width: 116, height: 116, borderRadius: 58, borderWidth: 4,
+    backgroundColor: 'rgba(255,83,26,0.12)',
+    alignItems: 'center', justifyContent: 'center',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { ...tekoStyle(28) },
+  avatarText: { ...tekoStyle(40) },
   cameraBadge: {
-    position: 'absolute', bottom: -2, right: -2,
-    width: 24, height: 24, borderRadius: 12,
+    position: 'absolute', bottom: 0, right: 0,
+    width: 28, height: 28, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#0C0A09',
   },
-  playerName: { ...tekoStyle(34), letterSpacing: 1 },
+  // Bigger, wider letter-spacing for a dramatic name display
+  playerName: { ...tekoStyle(44), letterSpacing: 1.5 },
   scopeBadge: { marginTop: 8, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
   scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
 });
 
 const shootS = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, padding: 16 },
+  card: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, padding: 16 },
   divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 8 },
 });
 

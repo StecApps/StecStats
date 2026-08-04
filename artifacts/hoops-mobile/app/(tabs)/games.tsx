@@ -13,12 +13,27 @@ import {
   Pressable,
   ScrollView,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useListTeams, useListTeamGames, useListPlayers } from '@workspace/api-client-react';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
+
+// ─── Glass glare overlay ────────────────────────────────────────────────────
+function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
+  return (
+    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <LinearGradient
+        colors={[`rgba(255,255,255,${intensity})`, 'rgba(255,255,255,0.0)']}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 0.75 }}
+        style={{ flex: 1 }}
+      />
+    </View>
+  );
+}
 
 // ─── Season Picker Modal ───────────────────────────────────────────────────
 function SeasonPickerModal({
@@ -55,9 +70,10 @@ function SeasonPickerModal({
                 activeOpacity={0.7}
                 style={[
                   modalS.row,
-                  { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary + '15' : 'transparent' },
+                  { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary + '15' : 'transparent', overflow: 'hidden' },
                 ]}
               >
+                {isSelected && <GlareOverlay intensity={0.08} />}
                 <View style={modalS.rowLeft}>
                   <Text style={[modalS.teamName, { color: colors.foreground }]} numberOfLines={1}>
                     {t.name}
@@ -145,13 +161,14 @@ export default function GamesScreen() {
     <View style={styles.root}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Games</Text>
+        <Text style={[styles.title, { color: colors.foreground }]}>GAMES</Text>
         <TouchableOpacity
           onPress={() => router.push('/(tabs)/record')}
-          style={[styles.newBtn, { backgroundColor: colors.primary }]}
+          style={[styles.newBtn, { backgroundColor: colors.primary, overflow: 'hidden' }]}
           activeOpacity={0.8}
         >
-          <Feather name="plus" size={18} color="#fff" />
+          <GlareOverlay intensity={0.22} />
+          <Feather name="plus" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -160,8 +177,16 @@ export default function GamesScreen() {
         <TouchableOpacity
           onPress={() => (teams?.length ?? 0) > 1 && setPickerOpen(true)}
           activeOpacity={(teams?.length ?? 0) > 1 ? 0.7 : 1}
-          style={[styles.seasonBtn, { backgroundColor: colors.card, borderColor: (teams?.length ?? 0) > 1 ? colors.primary : colors.border }]}
+          style={[
+            styles.seasonBtn,
+            {
+              backgroundColor: colors.card,
+              borderColor: (teams?.length ?? 0) > 1 ? colors.primary : colors.border,
+              overflow: 'hidden',
+            },
+          ]}
         >
+          <GlareOverlay intensity={0.07} />
           <View style={[styles.seasonDot, { backgroundColor: colors.primary }]} />
           <Text style={[styles.seasonName, { color: colors.foreground }]} numberOfLines={1}>
             {team?.name ?? 'All Games'}
@@ -191,11 +216,13 @@ export default function GamesScreen() {
             style={[
               styles.playerChip,
               {
-                backgroundColor: selectedPlayerId === null ? colors.primary : colors.muted,
+                backgroundColor: selectedPlayerId === null ? colors.primary : colors.card,
                 borderColor: selectedPlayerId === null ? colors.primary : colors.border,
+                overflow: 'hidden',
               },
             ]}
           >
+            {selectedPlayerId === null && <GlareOverlay intensity={0.2} />}
             <Text style={[styles.playerChipText, { color: selectedPlayerId === null ? '#fff' : colors.mutedForeground }]}>
               All
             </Text>
@@ -208,12 +235,14 @@ export default function GamesScreen() {
               style={[
                 styles.playerChip,
                 {
-                  backgroundColor: selectedPlayerId === p.id ? colors.primary : colors.secondary,
-                  borderColor: selectedPlayerId === p.id ? colors.primary : colors.mutedForeground,
+                  backgroundColor: selectedPlayerId === p.id ? colors.primary : colors.card,
+                  borderColor: selectedPlayerId === p.id ? colors.primary : colors.border,
+                  overflow: 'hidden',
                 },
               ]}
             >
-              <Text style={[styles.playerChipText, { color: '#FFFFFF' }]} numberOfLines={1}>
+              {selectedPlayerId === p.id && <GlareOverlay intensity={0.2} />}
+              <Text style={[styles.playerChipText, { color: selectedPlayerId === p.id ? '#fff' : colors.foreground }]} numberOfLines={1}>
                 {p.name.trim().split(/\s+/)[0]}
               </Text>
             </TouchableOpacity>
@@ -222,8 +251,9 @@ export default function GamesScreen() {
       )}
 
       {/* Search */}
-      <View style={[styles.searchWrap, { backgroundColor: colors.input, borderColor: colors.border }]}>
-        <Ionicons name="search" size={16} color={colors.mutedForeground} style={{ paddingLeft: 12 }} />
+      <View style={[styles.searchWrap, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
+        <GlareOverlay intensity={0.05} />
+        <Ionicons name="search" size={16} color={colors.mutedForeground} style={{ paddingLeft: 14 }} />
         <TextInput
           style={[styles.search, { color: colors.foreground }]}
           placeholder="Search opponent…"
@@ -255,8 +285,10 @@ export default function GamesScreen() {
               <TouchableOpacity
                 onPress={() => router.push(`/game/${item.id}`)}
                 activeOpacity={0.7}
-                style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}
+                style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}
               >
+                <GlareOverlay intensity={0.06} />
+                {/* Date column */}
                 <View style={[styles.datePill, { backgroundColor: colors.muted }]}>
                   <Text style={[styles.dateStr, { color: colors.mutedForeground }]}>
                     {date.toLocaleString('en', { month: 'short' })}
@@ -265,6 +297,7 @@ export default function GamesScreen() {
                     {date.getDate()}
                   </Text>
                 </View>
+                {/* Middle */}
                 <View style={styles.rowMid}>
                   <Text style={[styles.opponent, { color: colors.foreground }]} numberOfLines={1}>
                     vs {item.opponent}
@@ -273,20 +306,28 @@ export default function GamesScreen() {
                     {item.teamScore} – {item.opponentScore}
                   </Text>
                 </View>
-                <View style={[styles.resultBadge, { backgroundColor: isWin ? colors.primary + '25' : colors.muted }]}>
+                {/* Result badge */}
+                <View style={[
+                  styles.resultBadge,
+                  { backgroundColor: isWin ? colors.primary + '22' : colors.muted, overflow: 'hidden' },
+                ]}>
+                  {isWin && <GlareOverlay intensity={0.15} />}
                   <Text style={[styles.resultText, { color: isWin ? colors.primary : colors.mutedForeground }]}>
                     {isWin ? 'W' : 'L'}
                   </Text>
                 </View>
-                <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginRight: 10 }} />
+                <Feather name="chevron-right" size={16} color={colors.mutedForeground} style={{ marginRight: 12 }} />
               </TouchableOpacity>
             );
           }}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name="basketball-outline" size={40} color={colors.mutedForeground} />
+              <Ionicons name="basketball-outline" size={44} color={colors.mutedForeground} />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                {search ? 'No matches' : 'No games yet'}
+              </Text>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                {search ? 'No games match your search' : 'No games recorded yet'}
+                {search ? 'Try a different opponent name' : 'Tap + to record your first game'}
               </Text>
             </View>
           }
@@ -317,20 +358,21 @@ function makeStyles(colors: any, insets: any) {
       alignItems: 'center',
       paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 12 : 24),
       paddingHorizontal: 16,
-      paddingBottom: 12,
+      paddingBottom: 10,
     },
-    title: { fontSize: 28, fontFamily: 'Inter_700Bold', color: colors.foreground },
-    newBtn: { width: 38, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+    // Teko makes "GAMES" feel like a scoreboard header — dramatic, condensed, sporty
+    title: { ...tekoStyle(48), letterSpacing: 0.5 },
+    newBtn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
     seasonBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
       marginHorizontal: 16,
       marginBottom: 10,
-      borderRadius: 12,
+      borderRadius: 14,
       borderWidth: 1.5,
       paddingHorizontal: 14,
-      paddingVertical: 11,
+      paddingVertical: 12,
     },
     seasonDot: { width: 8, height: 8, borderRadius: 4 },
     seasonName: { flex: 1, fontSize: 15, fontFamily: 'Inter_600SemiBold' },
@@ -338,30 +380,33 @@ function makeStyles(colors: any, insets: any) {
     searchWrap: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 10,
+      borderRadius: 14,
       marginHorizontal: 16,
       marginBottom: 12,
       borderWidth: 1,
     },
-    search: { flex: 1, height: 40, paddingHorizontal: 10, fontSize: 15, fontFamily: 'Inter_400Regular' },
+    search: { flex: 1, height: 44, paddingHorizontal: 10, fontSize: 15, fontFamily: 'Inter_400Regular' },
     list: { paddingHorizontal: 16, paddingBottom: insets.bottom + 100 },
-    row: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1, marginBottom: 8 },
-    datePill: { width: 52, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
-    dateStr: { fontSize: 10, textTransform: 'uppercase', fontFamily: 'Inter_500Medium' },
-    dateDay: { ...tekoStyle(22) },
-    rowMid: { flex: 1, paddingHorizontal: 12, paddingVertical: 10 },
-    opponent: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 2 },
-    score: { fontSize: 13, fontFamily: 'Inter_400Regular' },
-    resultBadge: { width: 36, height: 36, borderRadius: 8, marginRight: 6, alignItems: 'center', justifyContent: 'center' },
-    resultText: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-    empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
-    emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular' },
+    row: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, marginBottom: 8 },
+    datePill: { width: 56, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 },
+    dateStr: { fontSize: 10, textTransform: 'uppercase', fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
+    // Teko makes the day number punchy and bold — anchors the date pill visually
+    dateDay: { ...tekoStyle(28) },
+    rowMid: { flex: 1, paddingHorizontal: 12, paddingVertical: 12 },
+    opponent: { fontSize: 15, fontFamily: 'Inter_700Bold', marginBottom: 3 },
+    // Teko score — small but condensed and athletic
+    score: { ...tekoStyle(15), letterSpacing: 0.5 },
+    resultBadge: { width: 38, height: 38, borderRadius: 10, marginRight: 6, alignItems: 'center', justifyContent: 'center' },
+    resultText: { ...tekoStyle(18), letterSpacing: 0.5 },
     playerChip: {
-      paddingHorizontal: 14,
-      paddingVertical: 6,
-      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 7,
+      borderRadius: 22,
       borderWidth: 1,
     },
-    playerChipText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+    playerChipText: { fontSize: 13, fontFamily: 'Inter_700Bold' },
+    empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
+    emptyTitle: { ...tekoStyle(26), letterSpacing: 0.5 },
+    emptyText: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   });
 }
