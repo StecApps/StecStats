@@ -247,4 +247,56 @@ describe("liveSocket signaling relay", () => {
     broadcaster.close();
     viewer.close();
   });
+
+  it("relays request-offer from a viewer to the broadcaster as new-viewer", async () => {
+    const broadcaster = await connectBroadcaster();
+    // Wait for broadcaster-joined ack before continuing so it is fully registered.
+    await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");
+
+    const { ws: viewer, viewerId } = await connectViewer();
+    // The broadcaster receives a new-viewer notice when the viewer joins; drain it.
+    await waitForMessage(broadcaster, (m) => m.type === "new-viewer" && m.viewerId === viewerId);
+
+    // Simulate the viewer's ICE negotiation timing out and requesting a fresh offer.
+    viewer.send(JSON.stringify({ type: "request-offer", code: TEST_CODE }));
+
+    // The server must relay a new-viewer message with the same viewerId so the
+    // broadcaster creates a new RTCPeerConnection for that slot without duplicating
+    // the viewer's entry in the session's viewer map.
+    const relayed = await waitForMessage(broadcaster, (m) => m.type === "new-viewer");
+    expect(relayed.viewerId).toBe(viewerId);
+
+    broadcaster.close();
+    viewer.close();
+  });
+
+  it("drops request-offer silently when no broadcaster is connected", async () => {
+    // Viewer joins with no broadcaster present; request-offer must not crash the
+    // server or send anything back to the viewer.
+    const { ws: viewer } = await connectViewer();
+
+    viewer.send(JSON.stringify({ type: "request-offer", code: TEST_CODE }));
+
+    // No error or unexpected message should arrive on the viewer socket.
+    await expect(
+      waitForMessage(viewer, (m) => m.type === "error" || m.type === "new-viewer", 300),
+    ).rejects.toThrow();
+
+    viewer.close();
+  });
+
+  it("drops request-offer silently when sent by the broadcaster role", async () => {
+    const broadcaster = await connectBroadcaster();
+    await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");
+
+    // A malformed client sending request-offer from the broadcaster slot must
+    // not corrupt session state or produce any relay message.
+    broadcaster.send(JSON.stringify({ type: "request-offer", code: TEST_CODE }));
+
+    await expect(
+      waitForMessage(broadcaster, (m) => m.type === "new-viewer", 300),
+    ).rejects.toThrow();
+
+    broadcaster.close();
+  });
 });
