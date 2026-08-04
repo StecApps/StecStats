@@ -1,8 +1,6 @@
 import { db, playersTable, gamesTable } from "@workspace/db";
-import { and, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { logger } from "./logger";
-import { ObjectStorageService } from "./objectStorage";
-import { getObjectAclPolicy, setObjectAclPolicy } from "./objectAcl";
 
 const SEED_PLAYERS = ["Amyra Stec", "Javiana Stec"];
 
@@ -47,96 +45,6 @@ const VIDEO_OFFSET_FIXES: ReadonlyArray<{
   // Supersedes the earlier estimate calibrated to a misread anchor of 3:29.
   { gameId: 158, videoOffsetMs: 1_984_368, supersedes: [2_042_368] },
 ];
-
-/**
- * One-time backfill: stamp ACL policy metadata (owner + visibility=private)
- * onto every stored game video / highlight / lowlight / proxy object that was
- * created before the isolation work and therefore has no ACL metadata.
- *
- * Idempotent — objects that already carry an ACL policy are skipped.
- */
-export async function backfillObjectAcl(): Promise<void> {
-  const svc = new ObjectStorageService();
-
-  const games = await db
-    .select({
-      id: gamesTable.id,
-      ownerId: gamesTable.ownerId,
-      videoObjectPath: gamesTable.videoObjectPath,
-      highlightObjectPath: gamesTable.highlightObjectPath,
-      lowlightObjectPath: gamesTable.lowlightObjectPath,
-      videoProxyObjectPath: gamesTable.videoProxyObjectPath,
-    })
-    .from(gamesTable)
-    .where(
-      or(
-        isNotNull(gamesTable.videoObjectPath),
-        isNotNull(gamesTable.highlightObjectPath),
-        isNotNull(gamesTable.lowlightObjectPath),
-        isNotNull(gamesTable.videoProxyObjectPath),
-      ),
-    );
-
-  let tagged = 0;
-  let skipped = 0;
-  let missing = 0;
-  let errored = 0;
-
-  for (const game of games) {
-    if (game.ownerId == null) continue;
-
-    const paths = [
-      game.videoObjectPath,
-      game.highlightObjectPath,
-      game.lowlightObjectPath,
-      game.videoProxyObjectPath,
-    ].filter((p): p is string => p != null);
-
-    for (const path of paths) {
-      try {
-        let objectFile;
-        try {
-          objectFile = await svc.getObjectEntityFile(path);
-        } catch (err: any) {
-          if (err?.name === "ObjectNotFoundError") {
-            missing++;
-            continue;
-          }
-          throw err;
-        }
-
-        const existing = await getObjectAclPolicy(objectFile);
-        if (existing != null) {
-          skipped++;
-          continue;
-        }
-
-        await setObjectAclPolicy(objectFile, {
-          owner: String(game.ownerId),
-          visibility: "private",
-        });
-        tagged++;
-        logger.info(
-          { gameId: game.id, path, ownerId: game.ownerId },
-          "backfillObjectAcl: tagged object",
-        );
-      } catch (err) {
-        errored++;
-        logger.warn(
-          { err, gameId: game.id, path },
-          "backfillObjectAcl: error tagging object",
-        );
-      }
-    }
-  }
-
-  if (tagged > 0 || errored > 0) {
-    logger.info(
-      { tagged, skipped, missing, errored },
-      "backfillObjectAcl complete",
-    );
-  }
-}
 
 export async function applyVideoOffsetFixes(): Promise<void> {
   for (const fix of VIDEO_OFFSET_FIXES) {
