@@ -131,6 +131,80 @@ const FAKE_PC_SCRIPT = `
 })();
 `;
 
+// Stalling FakePeerConnection: the FIRST instance's setRemoteDescription does
+// nothing (simulates a stuck ICE negotiation that never reaches "connected"),
+// triggering the automatic 20-second hang watchdog. The SECOND instance
+// succeeds immediately, letting the component reach state="live".
+// A global counter on window tracks which instance is being constructed.
+const STALLING_FAKE_PC_SCRIPT = `
+(function () {
+  var __fpcCount = 0;
+
+  class StallingFakePeerConnection {
+    constructor() {
+      this.connectionState    = "new";
+      this.iceConnectionState = "new";
+      this.ontrack = null;
+      this.onicecandidate = null;
+      this.onconnectionstatechange = null;
+      this.oniceconnectionstatechange = null;
+      this._closed = false;
+      this._index  = __fpcCount++;
+    }
+
+    async setRemoteDescription(_desc) {
+      if (this._closed) return;
+      if (this._index === 0) {
+        // First PC: intentionally stall — the ICE hang watchdog must recover.
+        return;
+      }
+      // Second PC: succeed after a short tick so the test resolves quickly.
+      var self = this;
+      setTimeout(function () {
+        if (self._closed) return;
+        if (self.ontrack) {
+          var stream = new MediaStream();
+          self.ontrack({ track: { kind: "video" }, streams: [stream] });
+        }
+        self.connectionState    = "connected";
+        self.iceConnectionState = "connected";
+        if (self.onconnectionstatechange)  self.onconnectionstatechange();
+        if (self.oniceconnectionstatechange) self.oniceconnectionstatechange();
+      }, 100);
+    }
+
+    async createAnswer() {
+      return {
+        type: "answer",
+        sdp: [
+          "v=0",
+          "o=- 0 0 IN IP4 127.0.0.1",
+          "s=-",
+          "t=0 0",
+          "a=group:BUNDLE 0",
+          "m=video 9 UDP/TLS/RTP/SAVPF 96",
+          "c=IN IP4 0.0.0.0",
+          "a=mid:0",
+          "a=recvonly",
+          "a=rtcp-mux",
+          "a=rtpmap:96 VP8/90000",
+        ].join("\\r\\n") + "\\r\\n",
+      };
+    }
+
+    async setLocalDescription(_desc) {}
+    addIceCandidate() { return Promise.resolve(); }
+
+    close() {
+      this._closed = true;
+      this.connectionState = "closed";
+    }
+  }
+
+  window.RTCPeerConnection = StallingFakePeerConnection;
+})();
+`;
+
 test.describe("Watch page – ICE stall retry flow", () => {
   test(
     "shows elapsed timer, retry button, sends request-offer, and recovers to live state",
@@ -270,6 +344,145 @@ test.describe("Watch page – ICE stall retry flow", () => {
       ).toBeVisible({ timeout: 5_000 });
 
       // Connecting overlay must be gone.
+      await expect(
+        page.getByText(/Joining the stream/)
+      ).not.toBeVisible();
+    }
+  );
+
+  test(
+    "automatic ICE-hang watchdog recovers to live state without manual retry",
+    async ({ page }) => {
+
+      // Inject the stalling FakePeerConnection. The first PC stalls (no
+      // ontrack / connected), the second one succeeds after 100 ms.
+      await page.addInitScript({ content: STALLING_FAKE_PC_SCRIPT });
+
+      // ── HTTP mocks ──────────────────────────────────────────────────────────
+
+      await page.route(
+        (url) => url.pathname === "/api",
+        (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+      );
+
+      await page.route(
+        (url) => url.pathname === `/api/live/${CODE}/status`,
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              active: true,
+              opponent: "Away",
+              teamName: "Home",
+              viewerCount: 0,
+              teamScore: 0,
+              opponentScore: 0,
+            }),
+          })
+      );
+
+      await page.route(
+        (url) => url.pathname === "/api/live/ice-servers",
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+              turnAvailable: false,
+            }),
+          })
+      );
+
+      // ── WebSocket mock ──────────────────────────────────────────────────────
+
+      const requestOfferMessages: Array<{ type: string; code: string }> = [];
+      const answerMessages: Array<{ type: string }> = [];
+
+      await page.routeWebSocket(
+        (url) => url.pathname === "/api/live/ws",
+        (ws) => {
+          ws.onMessage((raw) => {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(
+                typeof raw === "string"
+                  ? raw
+                  : new TextDecoder().decode(raw as ArrayBuffer)
+              );
+            } catch {
+              return;
+            }
+
+            if (msg.type === "join-viewer") {
+              // Acknowledge join then immediately send an offer so the first
+              // (stalling) FakePeerConnection is created right away.
+              ws.send(JSON.stringify({ type: "joined", viewerId: "test-viewer-001" }));
+              ws.send(
+                JSON.stringify({
+                  type: "offer",
+                  viewerId: "test-viewer-001",
+                  sdp: { type: "offer", sdp: OFFER_SDP },
+                })
+              );
+
+            } else if (msg.type === "request-offer") {
+              // ICE watchdog fired — record it and reply with a second offer.
+              // The second StallingFakePeerConnection will succeed.
+              requestOfferMessages.push(msg as { type: string; code: string });
+              ws.send(
+                JSON.stringify({
+                  type: "offer",
+                  viewerId: "test-viewer-001",
+                  sdp: { type: "offer", sdp: OFFER_SDP },
+                })
+              );
+
+            } else if (msg.type === "answer") {
+              answerMessages.push(msg as { type: string });
+            }
+          });
+        }
+      );
+
+      // ── Navigate with a very short ICE watchdog so the test runs fast ───────
+      // __iceWatchdogMs=500  → watchdog fires 500 ms after stalling offer received
+      // __watchRetryS=9999   → "Tap to retry" button must NOT appear (watchdog only)
+      // __offerWatchdogMs=5000 → offer watchdog won't race against ICE watchdog
+      await page.goto(
+        `/watch/${CODE}?__iceWatchdogMs=500&__watchRetryS=9999&__offerWatchdogMs=5000`
+      );
+
+      // ── 1. Component enters "connecting" state ──────────────────────────────
+      await expect(
+        page.getByText(/Joining the stream/)
+      ).toBeVisible({ timeout: 10_000 });
+
+      // ── 2. Manual "Tap to retry" button must NOT appear ─────────────────────
+      // (cumulative threshold is 9999 s so the button won't show)
+      await expect(
+        page.getByRole("button", { name: /Tap to retry/i })
+      ).not.toBeVisible();
+
+      // ── 3. Watchdog fires: request-offer is sent automatically ──────────────
+      await expect
+        .poll(() => requestOfferMessages.length, { timeout: 5_000 })
+        .toBeGreaterThan(0);
+
+      expect(requestOfferMessages[0].type).toBe("request-offer");
+      expect(requestOfferMessages[0].code).toBe(CODE);
+
+      // ── 4. Second PC completes the signaling handshake ──────────────────────
+      await expect
+        .poll(() => answerMessages.length, { timeout: 5_000 })
+        .toBeGreaterThanOrEqual(2); // one from the stalling PC, one from the live PC
+
+      // ── 5. Component reaches live state automatically ───────────────────────
+      await expect(
+        page.getByText(/Tap for sound/)
+      ).toBeVisible({ timeout: 5_000 });
+
       await expect(
         page.getByText(/Joining the stream/)
       ).not.toBeVisible();

@@ -15,11 +15,10 @@ export default function WatchStream() {
   const code = (params.code ?? "").toUpperCase();
 
   // Test-mode overrides: ?__watchElapsedS=N reduces the "Still connecting…" timer
-  // threshold, ?__watchRetryS=N reduces the "Tap to retry" threshold,
-  // ?__watchOfferS=N shrinks both stages of the offer-arrival watchdog (seconds,
-  // matching the __watchRetryS convention). The legacy ?__offerWatchdogMs=N param
-  // (milliseconds) is still accepted for backward compatibility with existing tests;
-  // __watchOfferS takes precedence when both are present.
+  // threshold, ?__watchRetryS=N reduces the "Tap to retry" threshold, and
+  // ?__watchOfferS=N shrinks both stages of the offer-arrival watchdog to N
+  // seconds (matching the __watchRetryS convention). The legacy ?__offerWatchdogMs=N param
+  // is also accepted for backwards-compatibility with existing tests.
   // These are intentionally only read on mount so they don't interfere with
   // production rendering (the params won't be present in normal use).
   const searchParams = new URLSearchParams(
@@ -30,6 +29,9 @@ export default function WatchStream() {
   const OFFER_WATCHDOG_MS    = searchParams.has("__watchOfferS")
     ? Number(searchParams.get("__watchOfferS")) * 1000
     : Number(searchParams.get("__offerWatchdogMs") ?? "30000");
+  // When set, overrides the 20-second ICE-hang watchdog timeout (ms).
+  // Intentionally only read on mount; not present in normal use.
+  const ICE_WATCHDOG_MS      = Number(searchParams.get("__iceWatchdogMs")    ?? "20000");
   // When set, overrides every WS reconnect delay with a fixed value (ms).
   // Intentionally only read on mount; not present in normal use.
   const RECONNECT_DELAY_OVERRIDE_MS = searchParams.has("__watchReconnectDelayMs")
@@ -413,7 +415,7 @@ export default function WatchStream() {
           offerWatchdogRef.current = setTimeout(() => {
             offerWatchdogRef.current = null;
             setState((prev) => (prev === "connecting" ? "waiting-for-broadcaster" : prev));
-          }, OFFER_WATCHDOG_MS);
+          }, 30_000);
         }
       }
     } finally {
@@ -652,7 +654,7 @@ export default function WatchStream() {
                 );
               }, OFFER_WATCHDOG_MS);
             }
-          }, 20_000);
+          }, ICE_WATCHDOG_MS);
         } else if (message.type === "ice-candidate") {
           if (pcRef.current && message.candidate) {
             await pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));
