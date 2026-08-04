@@ -46,8 +46,12 @@ export default function WatchStream() {
   // WS-level reconnect progress — shown while state === "reconnecting".
   const [reconnectAttemptCount, setReconnectAttemptCount] = useState(0);
   const [reconnectElapsedSec, setReconnectElapsedSec] = useState(0);
+  // Countdown to the next retry attempt ("next attempt in Ns").
+  const [reconnectCountdownSec, setReconnectCountdownSec] = useState(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectStartRef = useRef<number | null>(null);
+  // Absolute timestamp (ms) when the next WS reconnect attempt will fire.
+  const reconnectRetryAtRef = useRef<number>(0);
   const connectingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const connectingAttemptStartRef = useRef<number | null>(null); // resets per attempt
   const connectingFirstStartRef = useRef<number | null>(null);   // set once, never reset
@@ -304,7 +308,7 @@ export default function WatchStream() {
     }
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drive the WS-reconnect elapsed timer.
+  // Drive the WS-reconnect elapsed timer and countdown to next attempt.
   useEffect(() => {
     if (state !== "reconnecting") {
       if (reconnectTimerRef.current) {
@@ -313,14 +317,17 @@ export default function WatchStream() {
       }
       reconnectStartRef.current = null;
       setReconnectElapsedSec(0);
+      setReconnectCountdownSec(0);
       return;
     }
     reconnectStartRef.current = Date.now();
     setReconnectElapsedSec(0);
     reconnectTimerRef.current = setInterval(() => {
+      const now = Date.now();
       if (reconnectStartRef.current !== null) {
-        setReconnectElapsedSec(Math.floor((Date.now() - reconnectStartRef.current) / 1000));
+        setReconnectElapsedSec(Math.floor((now - reconnectStartRef.current) / 1000));
       }
+      setReconnectCountdownSec(Math.max(0, Math.ceil((reconnectRetryAtRef.current - now) / 1000)));
     }, 1000);
     return () => {
       if (reconnectTimerRef.current) {
@@ -576,6 +583,7 @@ export default function WatchStream() {
         setState("reconnecting");
         setReconnectAttemptCount(reconnectAttemptsRef.current + 1);
         const delay = WATCH_RECONNECT_DELAYS_MS[reconnectAttemptsRef.current] ?? 8000;
+        reconnectRetryAtRef.current = Date.now() + delay;
         reconnectAttemptsRef.current += 1;
         reconnectTimeoutRef.current = setTimeout(() => {
           if (cancelled) return;
@@ -865,8 +873,13 @@ export default function WatchStream() {
                 {reconnectAttemptCount > 0
                   ? `Attempt ${reconnectAttemptCount} of ${MAX_WATCH_RECONNECT_ATTEMPTS}`
                   : "Waiting for the stream to resume"}
-                {reconnectElapsedSec > 0 && ` · ${reconnectElapsedSec}s`}
+                {reconnectElapsedSec > 0 && ` · ${reconnectElapsedSec}s elapsed`}
               </p>
+              {reconnectCountdownSec > 0 && (
+                <p className="text-sm font-semibold text-primary/80 tabular-nums">
+                  next attempt in {reconnectCountdownSec}s
+                </p>
+              )}
               <p className="text-xs text-white/40 max-w-xs text-center">Stay on this page — the stream will resume automatically.</p>
             </>
           )}

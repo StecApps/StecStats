@@ -680,7 +680,12 @@ export default function RecordGame() {
   // generic spinner with no indication of progress or when it will give up.
   const [liveReconnectAttempt, setLiveReconnectAttempt] = useState(0);
   const [liveReconnectElapsedSec, setLiveReconnectElapsedSec] = useState(0);
+  // Countdown to when the next retry fires ("next attempt in Ns").
+  const [liveReconnectCountdownSec, setLiveReconnectCountdownSec] = useState(0);
   const liveReconnectStartRef = useRef<number | null>(null);
+  // Absolute timestamp (ms) when the next reconnect attempt will fire; set
+  // alongside the setTimeout so the interval can derive the countdown.
+  const liveReconnectRetryAtRef = useRef<number>(0);
   const liveReconnectIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [liveInterrupted, setLiveInterrupted] = useState(false);
 
@@ -694,14 +699,17 @@ export default function RecordGame() {
       }
       liveReconnectStartRef.current = null;
       setLiveReconnectElapsedSec(0);
+      setLiveReconnectCountdownSec(0);
       return;
     }
     liveReconnectStartRef.current = Date.now();
     setLiveReconnectElapsedSec(0);
     liveReconnectIntervalRef.current = setInterval(() => {
+      const now = Date.now();
       if (liveReconnectStartRef.current !== null) {
-        setLiveReconnectElapsedSec(Math.floor((Date.now() - liveReconnectStartRef.current) / 1000));
+        setLiveReconnectElapsedSec(Math.floor((now - liveReconnectStartRef.current) / 1000));
       }
+      setLiveReconnectCountdownSec(Math.max(0, Math.ceil((liveReconnectRetryAtRef.current - now) / 1000)));
     }, 1000);
     return () => {
       if (liveReconnectIntervalRef.current) {
@@ -2445,6 +2453,7 @@ export default function RecordGame() {
       setIsReconnectingLive(true);
       setLiveReconnectAttempt(liveReconnectAttemptsRef.current + 1);
       const delay = LIVE_RECONNECT_DELAYS_MS[liveReconnectAttemptsRef.current] ?? 8000;
+      liveReconnectRetryAtRef.current = Date.now() + delay;
       liveReconnectAttemptsRef.current += 1;
       liveReconnectTimeoutRef.current = setTimeout(() => {
         if (liveManualStopRef.current || !liveCodeRef.current) return;
@@ -4149,7 +4158,8 @@ export default function RecordGame() {
                   Reconnecting live stream…
                   <span className="font-normal text-amber-600/70">
                     attempt {liveReconnectAttempt} of {MAX_LIVE_RECONNECT_ATTEMPTS}
-                    {liveReconnectElapsedSec > 0 && ` · ${liveReconnectElapsedSec}s`}
+                    {liveReconnectElapsedSec > 0 && ` · ${liveReconnectElapsedSec}s elapsed`}
+                    {liveReconnectCountdownSec > 0 && ` · next attempt in ${liveReconnectCountdownSec}s`}
                   </span>
                 </span>
                 <span className="text-sm text-muted-foreground">
