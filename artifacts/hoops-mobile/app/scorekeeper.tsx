@@ -53,6 +53,7 @@ function formatTime(secs: number): string {
 async function uploadVideoFile(
   uri: string,
   requestUploadUrlFn: (body: { name: string; size: number; contentType: string }) => Promise<{ uploadURL: string; objectPath: string }>,
+  onProgress?: (pct: number) => void,
 ): Promise<string> {
   const fileResponse = await fetch(uri);
   const blob = await fileResponse.blob();
@@ -63,12 +64,26 @@ async function uploadVideoFile(
     size: blob.size || 1,
     contentType,
   });
-  const putRes = await fetch(uploadURL, {
-    method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: blob,
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', uploadURL);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100);
+        resolve();
+      } else {
+        reject(new Error(`Video upload failed (${xhr.status})`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Video upload failed (network error)'));
+    xhr.send(blob);
   });
-  if (!putRes.ok) throw new Error(`Video upload failed (${putRes.status})`);
   return objectPath;
 }
 
@@ -99,6 +114,7 @@ export default function ScorekeeperScreen() {
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
 
@@ -274,11 +290,15 @@ export default function ScorekeeperScreen() {
           return;
         }
         try {
+          setUploadProgress(0);
           videoObjectPath = await uploadVideoFile(
             recordedUriRef.current,
             (body) => requestUploadUrlMutation.mutateAsync({ data: body }),
+            setUploadProgress,
           );
+          setUploadProgress(null);
         } catch (uploadErr: any) {
+          setUploadProgress(null);
           Alert.alert(
             'Video upload failed',
             uploadErr?.message ?? 'Could not upload video. Save game without video?',
@@ -292,6 +312,7 @@ export default function ScorekeeperScreen() {
       }
       await saveGame(videoObjectPath);
     } catch (err: any) {
+      setUploadProgress(null);
       Alert.alert('Save failed', err?.message ?? 'Could not save game');
       setSaving(false);
     }
@@ -545,21 +566,35 @@ export default function ScorekeeperScreen() {
 
       {/* Save button */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <TouchableOpacity
-          onPress={confirmSave}
-          disabled={saving}
-          activeOpacity={0.8}
-          style={[styles.saveBtn, { backgroundColor: colors.primary }]}
-        >
-          {saving ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={styles.saveBtnText}>Save Game</Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {uploadProgress !== null ? (
+          <View style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'column', gap: 6 }]}>
+            <Text style={[styles.saveBtnText, { fontSize: 14 }]}>
+              Uploading video… {uploadProgress}%
+            </Text>
+            <View style={styles.uploadTrack}>
+              <View style={[styles.uploadFill, { width: `${uploadProgress}%` as any }]} />
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={confirmSave}
+            disabled={saving}
+            activeOpacity={0.8}
+            style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+          >
+            {saving ? (
+              <>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.saveBtnText}>Saving…</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                <Text style={styles.saveBtnText}>Save Game</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
     </>
   );
@@ -789,5 +824,14 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       gap: 8, height: 50, borderRadius: 13,
     },
     saveBtnText: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#fff' },
+    uploadTrack: {
+      width: '80%', height: 4, borderRadius: 2,
+      backgroundColor: 'rgba(255,255,255,0.3)',
+      overflow: 'hidden',
+    },
+    uploadFill: {
+      height: 4, borderRadius: 2,
+      backgroundColor: '#fff',
+    },
   });
 }
