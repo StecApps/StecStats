@@ -176,10 +176,12 @@ function generateCode(length = 6): string {
 }
 
 const HEARTBEAT_THROTTLE_MS = 10 * 60 * 1000;
+const SCORE_PERSIST_THROTTLE_MS = 2_000; // 2 s — debounces rapid score taps
 
 class LiveStreamRegistry {
   private sessions = new Map<string, LiveSession>();
   private lastHeartbeatAt = new Map<string, number>();
+  private lastScorePersistAt = new Map<string, number>();
 
   /**
    * Heartbeat: refreshes the persisted lastSeenAt for a session with live
@@ -199,6 +201,27 @@ class LiveStreamRegistry {
       .catch((err: unknown) => {
         this.lastHeartbeatAt.delete(upper);
         logger.warn({ err, code: upper }, "Failed to heartbeat live session lastSeenAt");
+      });
+  }
+
+  /**
+   * Persists the current scoreboard to the database so viewers who join after
+   * a server restart see the real score instead of 0-0, even before the
+   * broadcaster's device has had a chance to reconnect. Throttled to at most
+   * one DB write per session every 2 seconds to absorb rapid score taps.
+   */
+  persistScoreboard(code: string, teamScore: number, opponentScore: number): void {
+    const upper = code.toUpperCase();
+    const now = Date.now();
+    const last = this.lastScorePersistAt.get(upper) ?? 0;
+    if (now - last < SCORE_PERSIST_THROTTLE_MS) return;
+    this.lastScorePersistAt.set(upper, now);
+    db.update(liveSessionsTable)
+      .set({ teamScore, opponentScore })
+      .where(eq(liveSessionsTable.code, upper))
+      .catch((err: unknown) => {
+        this.lastScorePersistAt.delete(upper);
+        logger.warn({ err, code: upper }, "Failed to persist live session scoreboard");
       });
   }
 
@@ -285,7 +308,9 @@ class LiveStreamRegistry {
       createdAt: row.createdAt.getTime(),
       broadcaster: null,
       viewers: new Map(),
-      scoreboard: { teamScore: 0, opponentScore: 0 },
+      // Restore the last-known scores from the database so viewers who join
+      // before the broadcaster reconnects see the real score, not 0-0.
+      scoreboard: { teamScore: row.teamScore, opponentScore: row.opponentScore },
       recentEvents: [],
     };
     this.sessions.set(upper, resumed);

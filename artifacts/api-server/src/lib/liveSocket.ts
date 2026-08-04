@@ -187,6 +187,10 @@ export function attachLiveSocketServer(upgradeEmitter: {
           for (const viewerWs of session.viewers.values()) {
             safeSend(viewerWs, { type: "scoreboard", teamScore, opponentScore });
           }
+          // Persist the latest score to the database (throttled) so that if
+          // the server restarts, getOrResumeSession can restore the real score
+          // immediately — without waiting for the broadcaster to reconnect.
+          liveStreamRegistry.persistScoreboard(session.code, teamScore, opponentScore);
           break;
         }
         case "stat-event": {
