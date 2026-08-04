@@ -33,9 +33,8 @@ function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
 }
 
-// ─── Glass glare overlay ────────────────────────────────────────────────────
-// Place as first child inside any overflow:hidden View to get a liquid-glass
-// highlight. The gradient goes top-bright → transparent so cards look lit from above.
+// ─── Glass glare overlays ────────────────────────────────────────────────────
+// White glare — neutral cards
 function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
@@ -43,6 +42,27 @@ function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
         colors={[`rgba(255,255,255,${intensity})`, 'rgba(255,255,255,0.0)']}
         start={{ x: 0.15, y: 0 }}
         end={{ x: 0.85, y: 0.75 }}
+        style={{ flex: 1 }}
+      />
+    </View>
+  );
+}
+
+// Orange-warm glare — used on primary stat cards and hero to give the
+// "orange and black" depth the design needs. The orange fades to a white
+// shimmer then to transparent so it reads as a warm 3-D light hit.
+function OrangeGlareOverlay({ strength = 1 }: { strength?: number }) {
+  return (
+    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <LinearGradient
+        colors={[
+          `rgba(255,83,26,${0.18 * strength})`,
+          `rgba(255,140,60,${0.10 * strength})`,
+          'rgba(255,255,255,0.0)',
+        ]}
+        locations={[0, 0.35, 1]}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.9, y: 0.85 }}
         style={{ flex: 1 }}
       />
     </View>
@@ -125,8 +145,8 @@ const chipS = StyleSheet.create({
 // ─── Stat Card ─────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, colors }: { label: string; value: string; sub?: string; colors: any }) {
   return (
-    <View style={[statS.card, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
-      <GlareOverlay intensity={0.07} />
+    <View style={[statS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.28)', overflow: 'hidden' }]}>
+      <OrangeGlareOverlay />
       <Text style={[statS.label, { color: colors.mutedForeground }]}>{label}</Text>
       <Text style={[statS.value, { color: colors.primary }]}>{value}</Text>
       {sub && <Text style={[statS.sub, { color: colors.mutedForeground }]}>{sub}</Text>}
@@ -143,8 +163,8 @@ const statS = StyleSheet.create({
 // ─── Mini Stat ──────────────────────────────────────────────────────────────
 function MiniStat({ label, value, total, colors }: { label: string; value: string; total?: string; colors: any }) {
   return (
-    <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
-      <GlareOverlay intensity={0.07} />
+    <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.22)', overflow: 'hidden' }]}>
+      <OrangeGlareOverlay strength={0.7} />
       <Text style={[miniS.label, { color: colors.mutedForeground }]}>{label}</Text>
       <Text style={[miniS.value, { color: colors.foreground }]}>{value}</Text>
       {total && <Text style={[miniS.total, { color: colors.mutedForeground }]}>{total} TOTAL</Text>}
@@ -303,9 +323,9 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
   return (
     <>
       {/* Player Hero */}
-      <View style={[heroS.card, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
-        {/* Liquid-glass glare — two-stop gradient so the top half glows and the bottom stays dark */}
-        <GlareOverlay intensity={0.10} />
+      <View style={[heroS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.45)', overflow: 'hidden' }]}>
+        {/* Warm orange-to-transparent glass — makes the card look like it's lit by the orange brand color */}
+        <OrangeGlareOverlay strength={1.2} />
 
         <View style={heroS.flashRow}>
           <Ionicons name="flash" size={13} color={colors.primary} />
@@ -371,8 +391,8 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
 
       {/* Shooting Efficiency */}
       <SectionHeader title="Shooting Efficiency" colors={colors} />
-      <View style={[shootS.card, { backgroundColor: colors.card, borderColor: colors.border, overflow: 'hidden' }]}>
-        <GlareOverlay intensity={0.07} />
+      <View style={[shootS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.22)', overflow: 'hidden' }]}>
+        <OrangeGlareOverlay strength={0.8} />
         <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} colors={colors} />
         <View style={[shootS.divider, { backgroundColor: colors.border }]} />
         <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} colors={colors} />
