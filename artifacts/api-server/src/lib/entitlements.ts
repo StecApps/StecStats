@@ -42,11 +42,23 @@ const OWNER_PREMIUM: Entitlements = {
  * purchase or cancellation event is received.
  */
 function rcFallback(revenueCatEntitlement?: string | null): Entitlements {
-  if (revenueCatEntitlement === "premium") {
-    return { plan: "premium", status: "active", currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
+  // The stored value can be a compound "+" string when both a base plan and
+  // the soccer add-on were present in the same RC grant event, e.g.:
+  //   "pro", "premium", "soccer", "pro+soccer", "premium+soccer"
+  // Parse all parts so neither base plan nor add-on is silently dropped.
+  const parts = new Set((revenueCatEntitlement ?? "").split("+").filter(Boolean));
+  const hasSoccer = parts.has("soccer");
+
+  if (parts.has("premium")) {
+    return { plan: "premium", status: "active", currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer };
   }
-  if (revenueCatEntitlement === "pro") {
-    return { plan: "pro", status: "active", currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
+  if (parts.has("pro")) {
+    return { plan: "pro", status: "active", currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer };
+  }
+  if (hasSoccer) {
+    // Soccer add-on purchased without an explicit base plan in this event.
+    // The add-on requires a paid plan, so grant Pro-level access.
+    return { plan: "pro", status: "active", currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: true };
   }
   return { plan: "free", status: null, currentPeriodEnd: null, trialEnd: null, cancelAtPeriodEnd: false, hasSoccer: false };
 }

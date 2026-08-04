@@ -138,34 +138,7 @@ describe("YouTube upload — frontend YOUTUBE_NOT_CONNECTED redirect contract", 
 
     expect(result.redirected).toBe(false);
     expect(result.toastShown).toBe(true);
-    // window.location.href must be unchanged — no silent redirect.
-    expect(locationHref).toBe(originalHref);
-    expect(locationHref).not.toContain("/api/auth/youtube/connect");
-  });
-
-  // -------------------------------------------------------------------------
-  // Negative: UPGRADE_REQUIRED (Pro paywall) must NOT redirect to YouTube connect
-  // -------------------------------------------------------------------------
-  it("does NOT redirect to YouTube connect when the user lacks a Pro subscription", async () => {
-    const gameId = 7;
-    const originalHref = locationHref;
-
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: false,
-      status: 403,
-      json: vi.fn().mockResolvedValue({
-        error: "UPGRADE_REQUIRED",
-        message: "YouTube upload is a Pro feature",
-      }),
-    });
-
-    const result = await simulateHandleConfirmYoutubeUpload(gameId, {
-      title: "Test Upload",
-      privacyStatus: "unlisted",
-    });
-
-    expect(result.redirected).toBe(false);
-    expect(result.toastShown).toBe(true);
+    // href must be unchanged — no redirect happened
     expect(locationHref).toBe(originalHref);
     expect(locationHref).not.toContain("youtube/connect");
   });
@@ -194,5 +167,32 @@ describe("YouTube upload — frontend YOUTUBE_NOT_CONNECTED redirect contract", 
     expect(decodeURIComponent(url.searchParams.get("returnTo") ?? "")).toBe(
       "/record/42",
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // Negative: UPGRADE_REQUIRED must NOT redirect (shows toast instead)
+  // -------------------------------------------------------------------------
+  it("does NOT redirect on UPGRADE_REQUIRED — only shows a toast", async () => {
+    const gameId = 7;
+    const originalHref = locationHref;
+
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: vi.fn().mockResolvedValue({
+        error: "UPGRADE_REQUIRED",
+        message: "YouTube upload is a Pro feature",
+      }),
+    });
+
+    const result = await simulateHandleConfirmYoutubeUpload(gameId, {
+      title: "Test Upload",
+      privacyStatus: "unlisted",
+    });
+
+    expect(result.redirected).toBe(false);
+    expect(result.toastShown).toBe(true);
+    expect(locationHref).toBe(originalHref);
+    expect(locationHref).not.toContain("youtube/connect");
   });
 });

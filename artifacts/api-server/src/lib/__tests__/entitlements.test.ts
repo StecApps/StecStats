@@ -198,6 +198,94 @@ describe("getEntitlements() — Stripe customer exists but all subs cancelled", 
   });
 });
 
+describe("getEntitlements() — RC soccer add-on (no Stripe customer)", () => {
+  it("returns hasSoccer:true and plan:'pro' when RC entitlement is 'soccer'", async () => {
+    const result = await getEntitlements(null, null, "soccer");
+
+    expect(result.hasSoccer).toBe(true);
+    expect(result.plan).toBe("pro");
+    expect(result.status).toBe("active");
+  });
+
+  it("returns hasSoccer:false when RC entitlement is 'pro' (no soccer add-on)", async () => {
+    const result = await getEntitlements(null, null, "pro");
+
+    expect(result.hasSoccer).toBe(false);
+    expect(result.plan).toBe("pro");
+  });
+
+  it("returns hasSoccer:false when RC entitlement is 'premium' (no soccer add-on)", async () => {
+    const result = await getEntitlements(null, null, "premium");
+
+    expect(result.hasSoccer).toBe(false);
+    expect(result.plan).toBe("premium");
+  });
+
+  // Compound values written by the webhook when both base plan and soccer
+  // were present in the same RC grant event (e.g. entitlement_ids: ["pro","soccer"]).
+  it("returns hasSoccer:true and plan:'pro' for compound 'pro+soccer'", async () => {
+    const result = await getEntitlements(null, null, "pro+soccer");
+
+    expect(result.hasSoccer).toBe(true);
+    expect(result.plan).toBe("pro");
+    expect(result.status).toBe("active");
+  });
+
+  it("returns hasSoccer:true and plan:'premium' for compound 'premium+soccer'", async () => {
+    const result = await getEntitlements(null, null, "premium+soccer");
+
+    expect(result.hasSoccer).toBe(true);
+    expect(result.plan).toBe("premium");
+    expect(result.status).toBe("active");
+  });
+
+  it("is order-independent: 'soccer+pro' and 'pro+soccer' both give hasSoccer:true plan:'pro'", async () => {
+    const a = await getEntitlements(null, null, "soccer+pro");
+    const b = await getEntitlements(null, null, "pro+soccer");
+
+    expect(a.hasSoccer).toBe(true);
+    expect(a.plan).toBe("pro");
+    expect(b.hasSoccer).toBe(true);
+    expect(b.plan).toBe("pro");
+  });
+});
+
+describe("getEntitlements() — RC soccer add-on with Stripe customer", () => {
+  it("uses Stripe's hasSoccer when Stripe has an active soccer product (RC 'soccer' is irrelevant)", async () => {
+    // Stripe has a dedicated Soccer add-on product; RC value should be ignored.
+    mockExecuteResult.rows = [
+      makeRow({ product_name: "Basketball Pro" }),
+      makeRow({ product_name: "Soccer Add-on" }),
+    ];
+
+    const result = await getEntitlements("cus_stripe123", null, "soccer");
+
+    expect(result.hasSoccer).toBe(true);
+    expect(result.plan).toBe("pro");
+  });
+
+  it("falls back to RC 'soccer' when Stripe customer has no active subscriptions", async () => {
+    // Stripe customer exists but all subs are cancelled; RC is the source of truth.
+    mockExecuteResult.rows = [makeRow({ status: "canceled", product_name: "Basketball Pro" })];
+
+    const result = await getEntitlements("cus_stripe123", null, "soccer");
+
+    expect(result.hasSoccer).toBe(true);
+    expect(result.plan).toBe("pro");
+  });
+
+  it("Stripe active Pro sub does NOT pick up hasSoccer from RC 'soccer'", async () => {
+    // Stripe has an active Pro sub but no soccer product; RC 'soccer' must not
+    // inject hasSoccer when Stripe is the active source of truth.
+    mockExecuteResult.rows = [makeRow({ product_name: "Basketball Pro" })];
+
+    const result = await getEntitlements("cus_stripe123", null, "soccer");
+
+    expect(result.hasSoccer).toBe(false);
+    expect(result.plan).toBe("pro");
+  });
+});
+
 describe("getEntitlements() — owner bypass", () => {
   it("always returns 'premium' for the designated owner regardless of Stripe/RC", async () => {
     process.env["OWNER_CLERK_EMAIL"] = "owner@example.com";

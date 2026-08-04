@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
-import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
+import { API_BASE } from '@/lib/photoUpload';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';

@@ -93,18 +93,22 @@ export async function handleRevenueCatWebhook(req: Request, res: Response): Prom
       const entitlementId = event["entitlement_id"] as string | undefined;
       const allIds = entitlementId ? [entitlementId, ...entitlementIds] : entitlementIds;
 
-      let entitlement: "premium" | "pro" | null = null;
+      // Collect base plan and add-ons independently so a combined event like
+      // ["pro", "soccer"] does not silently drop the soccer add-on.
+      let basePlan: "premium" | "pro" | null = null;
+      let rcHasSoccer = false;
       for (const id of allIds) {
         const lower = id.toLowerCase();
         if (lower === "premium") {
-          entitlement = "premium";
-          break;
-        } else if (lower === "pro") {
-          entitlement = "pro";
+          basePlan = "premium"; // premium wins over pro
+        } else if (lower === "pro" && basePlan !== "premium") {
+          basePlan = "pro";
+        } else if (lower === "soccer") {
+          rcHasSoccer = true;
         }
       }
 
-      if (!entitlement) {
+      if (!basePlan && !rcHasSoccer) {
         // Unknown entitlement ID — no-op rather than defaulting to pro, which
         // would grant access to users who shouldn't have it if RC entitlement
         // naming drifts (e.g. "Pro" renamed in the RC dashboard).
@@ -112,6 +116,13 @@ export async function handleRevenueCatWebhook(req: Request, res: Response): Prom
         res.status(200).json({ received: true });
         return;
       }
+
+      // Encode as a compound string so both base plan and add-on survive in
+      // the single `revenueCatEntitlement` column.
+      // Examples: "pro", "premium", "soccer", "pro+soccer", "premium+soccer"
+      const entitlement: string = [basePlan, rcHasSoccer ? "soccer" : null]
+        .filter(Boolean)
+        .join("+");
 
       await db
         .update(usersTable)
