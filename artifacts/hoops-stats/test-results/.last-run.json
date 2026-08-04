@@ -1,6 +1,15 @@
 {
   "status": "failed",
+<<<<<<< ours — object `failedTests` (F, confidence: medium)
+// hint: Logic changed on both sides. Requires understanding intent of each change.
   "failedTests": [
     "330ac6ed0511aac8d8a7-cd22d9bc79e7a49e4435"
   ]
+=======
+  "failedTests": [
+    "50bd5b505a35dfc6ba8a-eee8f21ab17b3cbde6fa",
+    "50bd5b505a35dfc6ba8a-4504f43a278d222fef6a",
+    "50bd5b505a35dfc6ba8a-750ada3ff1d121681d0b"
+  ]
+>>>>>>> theirs — object `failedTests` (F, confidence: medium)
 }
