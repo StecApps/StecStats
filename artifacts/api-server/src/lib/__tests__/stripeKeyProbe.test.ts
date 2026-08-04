@@ -361,3 +361,206 @@ describe("boot-time Stripe probe (NODE_ENV=production)", () => {
     consoleErrorSpy.mockRestore();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Boot-time development test-key warning
+//
+// index.ts emits TWO lines when NODE_ENV !== "production" and STRIPE_SECRET_KEY
+// starts with "sk_test_":
+//   1. logger.warn(stripeTestKeyMsg)         ← structured log
+//   2. console.warn("[WARN] " + stripeTestKeyMsg)  ← plain-text fallback
+//
+// These tests verify both lines appear so a future refactor cannot silently
+// drop either one.
+// ---------------------------------------------------------------------------
+
+describe("boot-time Stripe test-key warning (NODE_ENV=development)", () => {
+  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let listenMock: ReturnType<typeof vi.fn>;
+  let loggerWarnSpy: ReturnType<typeof vi.fn>;
+
+  const BASE_ENV: Record<string, string> = {
+    NODE_ENV: "development",
+    PORT: "9998",
+    DATABASE_URL: "postgres://localhost/test",
+    REVENUECAT_WEBHOOK_SECRET: "rc_dev_probe",
+    SESSION_SECRET: "session_dev_probe",
+    CLERK_SECRET_KEY: "clerk_dev_probe",
+    REPLIT_DOMAINS: "test.example.com",
+  };
+
+  beforeEach(() => {
+    listenMock = vi.fn();
+    loggerWarnSpy = vi.fn();
+
+    // process.exit must not actually exit — make the first call a no-op so
+    // boot() can settle without killing the test runner.
+    exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as () => never);
+
+    for (const [k, v] of Object.entries(BASE_ENV)) {
+      process.env[k] = v;
+    }
+
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    exitSpy.mockRestore();
+    for (const k of Object.keys(BASE_ENV)) {
+      delete process.env[k];
+    }
+    delete process.env["STRIPE_SECRET_KEY"];
+  });
+
+  /** Register all mocks needed for a dev-mode boot. */
+  function registerDevBootMocks() {
+    vi.doMock("../../lib/stripeClient", () => ({
+      getStripeCredentials: vi.fn().mockResolvedValue({
+        secretKey: "sk_test_dev_key",
+        source: "direct-secret",
+      }),
+      probeStripeKey: vi.fn().mockResolvedValue({ ok: true, authError: false }),
+      getStripeSync: vi.fn().mockResolvedValue({
+        findOrCreateManagedWebhook: vi.fn().mockResolvedValue(undefined),
+        syncBackfill: vi.fn().mockResolvedValue(undefined),
+        syncCustomers: vi.fn().mockResolvedValue(undefined),
+        syncSubscriptions: vi.fn().mockResolvedValue(undefined),
+      }),
+      getUncachableStripeClient: vi.fn(),
+    }));
+
+    vi.doMock("../../app", () => ({
+      default: {
+        listen: listenMock.mockImplementation((_port: number, cb?: () => void) => {
+          if (cb) cb();
+          return { on: vi.fn(), once: vi.fn() };
+        }),
+      },
+    }));
+
+    vi.doMock("stripe-replit-sync", () => ({
+      runMigrations: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    vi.doMock("@workspace/db", () => ({
+      db: {
+        execute: vi.fn().mockResolvedValue({ rows: [{ tbl: "stripe.accounts" }] }),
+      },
+      sql: vi.fn((strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values })),
+    }));
+
+    // Capture logger.warn calls so we can assert the structured log line.
+    vi.doMock("../../lib/logger", () => ({
+      logger: {
+        info: vi.fn(),
+        warn: loggerWarnSpy,
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+    }));
+
+    vi.doMock("../../lib/liveSocket", () => ({
+      attachLiveSocketServer: vi.fn(),
+    }));
+    vi.doMock("../../lib/liveStream", () => ({
+      liveStreamRegistry: { startCleanupTimer: vi.fn() },
+      checkTurnAvailability: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock("../../routes/highlights", () => ({
+      resumeHighlightJob: vi.fn(),
+    }));
+    vi.doMock("../../routes/lowlights", () => ({
+      resumeLowlightJob: vi.fn(),
+    }));
+    vi.doMock("../../lib/seed", () => ({
+      seedDatabase: vi.fn().mockResolvedValue(undefined),
+      applyVideoOffsetFixes: vi.fn().mockResolvedValue(undefined),
+    }));
+  }
+
+  it("emits the structured logger.warn line when a sk_test_ key is set in development", async () => {
+    process.env["STRIPE_SECRET_KEY"] = "sk_test_dev_key_123";
+    registerDevBootMocks();
+
+    try {
+      await import("../../index");
+    } catch {
+      // Unexpected in dev mode; let assertions surface any real failure.
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+    // logger.warn must have been called with a message containing the marker.
+    const warnCalls = loggerWarnSpy.mock.calls.flat().join("\n");
+    expect(warnCalls).toMatch(/Stripe test key \(sk_test_\)/);
+  });
+
+  it("emits the console.warn [WARN] line when a sk_test_ key is set in development", async () => {
+    process.env["STRIPE_SECRET_KEY"] = "sk_test_dev_key_123";
+    registerDevBootMocks();
+
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await import("../../index");
+    } catch {
+      // Unexpected in dev mode.
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+    const warnOutput = consoleWarnSpy.mock.calls.flat().join("\n");
+    expect(warnOutput).toMatch(/\[WARN\]/);
+    expect(warnOutput).toMatch(/Stripe test key \(sk_test_\)/);
+
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("does NOT emit the test-key warning when no STRIPE_SECRET_KEY is set", async () => {
+    // STRIPE_SECRET_KEY deliberately absent — no warning should fire.
+    delete process.env["STRIPE_SECRET_KEY"];
+    registerDevBootMocks();
+
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await import("../../index");
+    } catch {
+      // Unexpected.
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+    // Neither the structured log nor the plain-text line should mention sk_test_.
+    const warnCalls = loggerWarnSpy.mock.calls.flat().join("\n");
+    expect(warnCalls).not.toMatch(/Stripe test key \(sk_test_\)/);
+
+    const consoleWarnOutput = consoleWarnSpy.mock.calls.flat().join("\n");
+    expect(consoleWarnOutput).not.toMatch(/Stripe test key \(sk_test_\)/);
+
+    consoleWarnSpy.mockRestore();
+  });
+
+  it("does NOT emit the test-key warning when a sk_live_ key is used in development", async () => {
+    process.env["STRIPE_SECRET_KEY"] = "sk_live_some_live_key_456";
+    registerDevBootMocks();
+
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await import("../../index");
+    } catch {
+      // Unexpected.
+    }
+
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+    const warnCalls = loggerWarnSpy.mock.calls.flat().join("\n");
+    expect(warnCalls).not.toMatch(/Stripe test key \(sk_test_\)/);
+
+    const consoleWarnOutput = consoleWarnSpy.mock.calls.flat().join("\n");
+    expect(consoleWarnOutput).not.toMatch(/Stripe test key \(sk_test_\)/);
+
+    consoleWarnSpy.mockRestore();
+  });
+});
