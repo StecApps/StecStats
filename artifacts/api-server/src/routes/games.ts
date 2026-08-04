@@ -33,7 +33,7 @@ import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
-import { PROXY_VERSION, ensureGameProxyInBackground } from "../lib/highlightGenerator";
+import { PROXY_VERSION, ensureGameProxyInBackground, cancelHighlightGeneration, cancelProxyBuild } from "../lib/highlightGenerator";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -694,7 +694,13 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   // Fetch the game first so we can clean up its GCS objects after deletion.
   const game = await db.query.gamesTable.findFirst({
     where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
-    columns: { id: true, videoObjectPath: true, highlightObjectPath: true },
+    columns: {
+      id: true,
+      videoObjectPath: true,
+      highlightObjectPath: true,
+      lowlightObjectPath: true,
+      videoProxyObjectPath: true,
+    },
   });
 
   if (!game) {
@@ -702,6 +708,11 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
     res.status(204).send();
     return;
   }
+
+  // Cancel any in-flight highlight/lowlight/proxy jobs so they stop writing
+  // new GCS objects and don't try to update a row that no longer exists.
+  cancelHighlightGeneration(gameId);
+  cancelProxyBuild(gameId);
 
   // Delete the DB row first so concurrent requests can no longer reference it.
   await db
@@ -713,27 +724,54 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   // Log errors but don't fail the response — the row is already gone and the
   // blob is orphaned at worst, not cross-accessible.
   const deletions: Promise<void>[] = [];
-  if (game.videoObjectPath) {
-    const normalizedPath = objectStorageService.normalizeObjectEntityPath(game.videoObjectPath);
+
+  const deleteIfPresent = (objectPath: string | null | undefined, label: string) => {
+    if (!objectPath) return;
+    const normalizedPath = objectStorageService.normalizeObjectEntityPath(objectPath);
     deletions.push(
       objectStorageService.deleteObjectEntity(normalizedPath).catch((err) =>
-        req.log.error({ err, objectPath: normalizedPath }, "Failed to delete game video object")
+        req.log.error({ err, objectPath: normalizedPath }, `Failed to delete game ${label} object`)
       ),
     );
-  }
-  if (game.highlightObjectPath) {
-    const normalizedPath = objectStorageService.normalizeObjectEntityPath(game.highlightObjectPath);
-    deletions.push(
-      objectStorageService.deleteObjectEntity(normalizedPath).catch((err) =>
-        req.log.error({ err, objectPath: normalizedPath }, "Failed to delete game highlight object")
-      ),
-    );
-  }
+  };
+
+  deleteIfPresent(game.videoObjectPath, "video");
+  deleteIfPresent(game.highlightObjectPath, "highlight");
+  deleteIfPresent(game.lowlightObjectPath, "lowlight");
+  deleteIfPresent(game.videoProxyObjectPath, "proxy");
+
+  // Sweep proxy chunks: /objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}
+  // These intermediate GCS objects are not stored in the DB row — enumerate
+  // them until the first miss so any partial or completed proxy encode is
+  // fully removed.
+  const sweepProxyChunks = async () => {
+    let i = 0;
+    while (true) {
+      const chunkPath = `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
+      try {
+        const file = await objectStorageService.getObjectEntityFile(chunkPath);
+        const [md] = await file.getMetadata();
+        if (!md || Number(md.size ?? 0) === 0) break; // no more chunks
+        await objectStorageService.deleteObjectEntity(chunkPath);
+        req.log.info({ gameId, chunk: i, chunkPath }, "Deleted proxy chunk for deleted game");
+        i++;
+      } catch {
+        // Object doesn't exist — no more chunks at this index.
+        break;
+      }
+    }
+    if (i > 0) {
+      req.log.info({ gameId, count: i }, "Proxy chunk sweep complete for deleted game");
+    }
+  };
+  deletions.push(sweepProxyChunks().catch((err) =>
+    req.log.error({ err, gameId }, "Failed to sweep proxy chunks for deleted game")
+  ));
+
   await Promise.all(deletions);
 
   res.status(204).send();
 });
-
 /**
  * Returns the best available duration estimate for a game's video in ms.
  * Falls back to max event timestamp + 30 s when videoDurationMs is NULL.
@@ -1080,6 +1118,7 @@ async function startBackgroundVideoConcat(
 router.get("/games/:gameId/video-signed-url", requireAuth, async (req, res) => {
   const gameId = Number(req.params.gameId);
   if (isNaN(gameId)) return void res.status(400).json({ error: "Invalid gameId" });
+
   const ownerId = req.appUser!.id;
   const game = await db.query.gamesTable.findFirst({
     where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
@@ -1127,6 +1166,7 @@ router.get("/games/:gameId/video-signed-url", requireAuth, async (req, res) => {
 router.get("/games/:gameId/video-probe", requireAuth, async (req, res) => {
   const gameId = Number(req.params.gameId);
   if (isNaN(gameId)) return void res.status(400).json({ error: "Invalid gameId" });
+
   const ownerId = req.appUser!.id;
   const game = await db.query.gamesTable.findFirst({
     where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
@@ -1441,7 +1481,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
 
         if (splitOffset !== null) {
           // Two-half WebM: download the full file then split + remux.
-          const rawFull = path.join(tmpDir, "raw.webm");
+        const rawFull = path.join(tmpDir, "raw.bin");
           log.info({ gameId }, "repair-video: downloading full WebM for two-half processing");
           await downloadGCSRange(srcFile, rawFull);
 

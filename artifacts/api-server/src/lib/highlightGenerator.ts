@@ -23,11 +23,15 @@ const objectStorageService = new ObjectStorageService();
 // (which uses the first job's signal) kept running, causing OOM loops.
 const highlightAbortControllers = new Map<number, AbortController>();
 const lowlightAbortControllers = new Map<number, AbortController>();
+const proxyBuildAbortControllers = new Map<number, AbortController>();
 export function cancelHighlightJob(gameId: number): void {
   highlightAbortControllers.get(gameId)?.abort();
 }
 export function cancelLowlightJob(gameId: number): void {
   lowlightAbortControllers.get(gameId)?.abort();
+}
+export function cancelProxyBuild(gameId: number): void {
+  proxyBuildAbortControllers.get(gameId)?.abort();
 }
 /** @deprecated use cancelHighlightJob / cancelLowlightJob */
 export function cancelHighlightGeneration(gameId: number): void {
@@ -611,6 +615,7 @@ async function encodeChunksToGcs(
   existFlags: boolean[],
   firstMissing: number,
   deleteAfterUpload: boolean,
+  signal?: AbortSignal,
 ): Promise<number> {
   const numChunks = existFlags.length;
   const gcsChunkPath = (i: number) =>
@@ -727,6 +732,7 @@ async function encodeChunksToGcs(
           }
         }
         if (!existFlags[chunkIdx]) {
+          if (signal?.aborted) throw new HighlightError("Cancelled");
           logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: uploading to GCS");
           await objectStorageService.uploadLocalFileToObjectPath(
             localPath, gcsChunkPath(chunkIdx), "video/mp4",
@@ -823,7 +829,7 @@ async function createChunkedProxy(
     // Local chunk files are KEPT here because the concat below needs them.
     const firstMissing = existFlags.findIndex((e) => !e);
     const actualNumChunks = await encodeChunksToGcs(
-      gameId, ownerId, srcPath, proxyTmpDir, existFlags, firstMissing, false,
+      gameId, ownerId, srcPath, proxyTmpDir, existFlags, firstMissing, false, signal,
     );
 
     // Chunks 0..firstMissing-1 were already in GCS — download them for concat.
@@ -991,7 +997,7 @@ async function doEnsureProxyChunksInGcs(
       // deleteAfterUpload: local chunk files are removed as soon as each one
       // is safely in GCS — extraction re-downloads only the chunks it needs.
       actualNumChunks = await encodeChunksToGcs(
-        gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true,
+        gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal,
       );
     } finally {
       release();
@@ -1072,6 +1078,19 @@ async function acquireGameProxy(
               release();
             }
           }
+          // Guard: check the game still exists before writing the proxy object
+          // to GCS. If the game was deleted while we were building the proxy,
+          // discard the output rather than creating an orphaned GCS object.
+          {
+            const stillExists = await db.query.gamesTable.findFirst({
+              where: eq(gamesTable.id, gameId),
+              columns: { id: true },
+            });
+            if (!stillExists) {
+              logger.warn({ gameId }, "Proxy: game was deleted mid-build — discarding, not uploading to GCS");
+              return destPath;
+            }
+          }
           logger.info({ gameId }, "Proxy created — uploading final proxy to storage");
           const proxyObjectPath = await uploadHighlight(destPath, ownerId);
           await db
@@ -1126,6 +1145,8 @@ const backgroundProxyBuilds = new Set<number>();
 export function ensureGameProxyInBackground(gameId: number, ownerId: number): void {
   if (backgroundProxyBuilds.has(gameId)) return;
   backgroundProxyBuilds.add(gameId);
+  const proxyAc = new AbortController();
+  proxyBuildAbortControllers.set(gameId, proxyAc);
   (async () => {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -1148,8 +1169,9 @@ export function ensureGameProxyInBackground(gameId: number, ownerId: number): vo
       );
       return;
     }
+    if (proxyAc.signal.aborted) return;
     logger.info({ gameId }, "Background proxy build starting (film-room playback)");
-    const { release } = await acquireGameProxy(gameId, ownerId);
+    const { release } = await acquireGameProxy(gameId, ownerId, proxyAc.signal);
     // The build already uploaded the proxy to GCS and persisted the DB row;
     // we don't need the local file, so release it immediately.
     release();
@@ -1160,6 +1182,7 @@ export function ensureGameProxyInBackground(gameId: number, ownerId: number): vo
     })
     .finally(() => {
       backgroundProxyBuilds.delete(gameId);
+      proxyBuildAbortControllers.delete(gameId);
     });
 }
 
@@ -2409,6 +2432,20 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     const outPath = path.join(tmpDir, "highlight.mp4");
     await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath);
 
+    // Guard: check the game still exists before writing any new GCS object.
+    // If the game was deleted while we were generating, discard the output
+    // rather than uploading an orphaned reel that can never be cleaned up.
+    {
+      const stillExists = await db.query.gamesTable.findFirst({
+        where: eq(gamesTable.id, gameId),
+        columns: { id: true },
+      });
+      if (!stillExists) {
+        logger.warn({ gameId }, "Highlight: game was deleted mid-generation — discarding output");
+        return;
+      }
+    }
+
     const objectPath = await uploadHighlight(outPath, game.ownerId);
 
     await setGameStatus(gameId, "ready", {
@@ -2536,6 +2573,20 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     // resetting at each boundary, and no intermediate file is written to disk.
     const outPath = path.join(tmpDir, "lowlight.mp4");
     await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath);
+
+    // Guard: check the game still exists before writing any new GCS object.
+    // If the game was deleted while we were generating, discard the output
+    // rather than uploading an orphaned reel that can never be cleaned up.
+    {
+      const stillExists = await db.query.gamesTable.findFirst({
+        where: eq(gamesTable.id, gameId),
+        columns: { id: true },
+      });
+      if (!stillExists) {
+        logger.warn({ gameId }, "Lowlight: game was deleted mid-generation — discarding output");
+        return;
+      }
+    }
 
     const objectPath = await uploadHighlight(outPath, game.ownerId);
 
