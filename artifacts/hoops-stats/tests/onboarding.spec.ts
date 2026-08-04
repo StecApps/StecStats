@@ -199,4 +199,52 @@ test.describe("Onboarding step routing", () => {
       await deleteClerkUser(user.id);
     }
   });
+
+  test("F – removing the last pre-existing player hides Continue button and restores 'Add your first player' heading", async ({ page }) => {
+    const email = uniqueEmail("rmv-existing");
+    const user = await createClerkUser(email, "SomeTestPassword!9x");
+
+    try {
+      await setupClerkTestingToken({ page, userId: user.id });
+
+      // Establish an authenticated session before calling the API
+      await page.goto("/dashboard");
+      await page.waitForLoadState("networkidle");
+
+      // Seed one player via API (pre-existing — not added during this onboarding session)
+      const playerOk = await page.evaluate(async (apiBase: string) => {
+        const res = await fetch(`${apiBase}/players`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "Pre-existing Player" }),
+        });
+        return res.ok;
+      }, API_BASE);
+      expect(playerOk).toBe(true);
+
+      // Navigate to /onboarding — no team yet, so we land on the player step
+      await page.goto("/onboarding");
+
+      // The pre-existing player means Continue to Team button must be visible
+      await expect(page.getByTestId("button-onboarding-continue-to-team")).toBeVisible();
+
+      // The heading should reflect that players already exist
+      await expect(page.getByRole("heading", { name: /add players to your roster/i })).toBeVisible();
+
+      // Remove the only (pre-existing) player via the X button
+      await page.getByTestId("button-remove-player").click();
+
+      // Continue to Team button must now be gone — no players remain
+      await expect(page.getByTestId("button-onboarding-continue-to-team")).not.toBeVisible();
+
+      // The heading should revert to "Add your first player"
+      await expect(page.getByRole("heading", { name: /add your first player/i })).toBeVisible();
+
+      // The add-player input must be visible (not the upgrade prompt)
+      await expect(page.getByTestId("input-onboarding-player-name")).toBeVisible();
+      await expect(page.getByTestId("onboarding-upgrade-prompt")).not.toBeVisible();
+    } finally {
+      await deleteClerkUser(user.id);
+    }
+  });
 });
