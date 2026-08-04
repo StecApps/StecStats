@@ -387,7 +387,11 @@ export default function WatchStream() {
       if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
       offerWatchdogRef.current = setTimeout(() => {
         offerWatchdogRef.current = null;
-        setState((prev) => (prev === "connecting" ? "waiting-for-broadcaster" : prev));
+        setState((prev) =>
+          prev === "connecting" || prev === "reconnecting"
+            ? "waiting-for-broadcaster"
+            : prev
+        );
       }, OFFER_WATCHDOG_MS);
     }
   };
@@ -1064,6 +1068,13 @@ export default function WatchStream() {
                 </p>
               )}
               <p className="text-xs text-white/40 max-w-xs text-center">Stay on this page — the stream will resume automatically.</p>
+              <button
+                onClick={handleManualRetry}
+                className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Tap to retry
+              </button>
             </>
           )}
           {state === "ended" && (() => {

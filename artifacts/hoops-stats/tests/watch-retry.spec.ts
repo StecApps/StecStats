@@ -205,6 +205,158 @@ const STALLING_FAKE_PC_SCRIPT = `
 })();
 `;
 
+test.describe("Watch page – reconnecting state retry flow", () => {
+  test(
+    "offer watchdog falls back to waiting-for-broadcaster when retry is tapped in reconnecting state",
+    async ({ page }) => {
+      // This test verifies the guard fix in handleManualRetry:
+      //   setState((prev) => prev === "connecting" || prev === "reconnecting"
+      //     ? "waiting-for-broadcaster" : prev)
+      //
+      // Scenario: viewer's WS drops mid-game → state = "reconnecting".
+      // WS auto-reconnects (fast, delay=0). getLiveStatus is intentionally
+      // slow (2 s) so the viewer stays in "reconnecting" while the WS is
+      // already open again. The viewer taps "Tap to retry" — this arms the
+      // offer watchdog. No offer arrives. The watchdog fires and must
+      // transition to "waiting-for-broadcaster" (not silently no-op).
+
+      await page.addInitScript({ content: FAKE_PC_SCRIPT });
+
+      // ── HTTP mocks ─────────────────────────────────────────────────────────
+
+      await page.route(
+        (url) => url.pathname === "/api",
+        (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+      );
+
+      // First call (mount): instant active response so component starts connecting.
+      // Second call (after WS reconnect): slow (3 s) so state stays "reconnecting"
+      // long enough for the test to click the button while the WS is open.
+      let statusCallCount = 0;
+      await page.route(
+        (url) => url.pathname === `/api/live/${CODE}/status`,
+        async (route) => {
+          statusCallCount++;
+          if (statusCallCount === 1) {
+            await route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                active: true,
+                opponent: "Away",
+                teamName: "Home",
+                viewerCount: 0,
+                teamScore: 0,
+                opponentScore: 0,
+              }),
+            });
+          } else {
+            // Delay the reconnect status response so state stays "reconnecting"
+            // while the WS is already open — this is the window the test exercises.
+            await new Promise<void>((r) => setTimeout(r, 3000));
+            await route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                active: true,
+                opponent: "Away",
+                teamName: "Home",
+                viewerCount: 0,
+                teamScore: 0,
+                opponentScore: 0,
+              }),
+            });
+          }
+        }
+      );
+
+      await page.route(
+        (url) => url.pathname === "/api/live/ice-servers",
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+              turnAvailable: false,
+            }),
+          })
+      );
+
+      // ── WebSocket mock ──────────────────────────────────────────────────────
+      // First WS connection: acknowledge join, then immediately close so the
+      // component enters "reconnecting" state.
+      // Second WS connection (reconnect): acknowledge join, stay open, but never
+      // send an offer — this is what the offer watchdog should eventually detect.
+      let wsConnectionCount = 0;
+      let serverWs: { send: (msg: string) => void; close: () => void } | null = null;
+
+      await page.routeWebSocket(
+        (url) => url.pathname === "/api/live/ws",
+        (ws) => {
+          wsConnectionCount++;
+          const connIndex = wsConnectionCount;
+          serverWs = ws;
+
+          ws.onMessage((raw) => {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(
+                typeof raw === "string"
+                  ? raw
+                  : new TextDecoder().decode(raw as ArrayBuffer)
+              );
+            } catch {
+              return;
+            }
+
+            if (msg.type === "join-viewer") {
+              ws.send(JSON.stringify({ type: "joined", viewerId: "test-viewer-reconnect" }));
+              if (connIndex === 1) {
+                // First connection: close immediately to trigger "reconnecting"
+                ws.close();
+              }
+              // Second connection: stay open, never send an offer
+            }
+            // Intentionally ignore request-offer — no offer will arrive
+          });
+        }
+      );
+
+      // ── Navigate with fast reconnect and short offer watchdog ──────────────
+      // __watchReconnectDelayMs=0  → reconnect fires immediately (no 1s delay)
+      // __watchOfferS=2            → offer watchdog fires after 2 s
+      await page.goto(
+        `/watch/${CODE}?__watchReconnectDelayMs=0&__watchOfferS=2`
+      );
+
+      // ── 1. WS closes immediately → state enters "reconnecting" ─────────────
+      // ("Joining the stream" is intentionally not asserted — the WS closes
+      // so fast that "connecting" is transient and Playwright may miss it.)
+      await expect(page.getByText(/Reconnecting/)).toBeVisible({ timeout: 10_000 });
+
+      // ── 2. "Tap to retry" button appears in reconnecting state ──────────────
+      const retryBtn = page.getByRole("button", { name: /Tap to retry/i });
+      await expect(retryBtn).toBeVisible({ timeout: 10_000 });
+
+      // ── 3. WS has reconnected (second connection opened by this point) ──────
+      // The WS is open but getLiveStatus is still pending, so state stays
+      // "reconnecting". Click retry to arm the offer watchdog.
+      await retryBtn.click();
+
+      // ── 4. No offer arrives → watchdog transitions to waiting-for-broadcaster ─
+      // The offer watchdog fires after ~2 s and checks:
+      //   prev === "connecting" || prev === "reconnecting" → "waiting-for-broadcaster"
+      await expect(
+        page.getByText(/Stream interrupted|Game hasn't started yet/)
+      ).toBeVisible({ timeout: 10_000 });
+
+      // Reconnecting overlay must be gone.
+      await expect(page.getByText(/^Reconnecting…$/)).not.toBeVisible();
+    }
+  );
+});
+
 test.describe("Watch page – ICE stall retry flow", () => {
   test(
     "offer watchdog fires after silent retry — shows waiting-for-broadcaster, not a spinner",
