@@ -46,13 +46,22 @@ export async function exchangeCode(code: string): Promise<{ refreshToken: string
  * Performs a cheap read-only probe (channels.list?mine=true&part=id) to verify
  * the stored refresh token is still valid.  Throws YouTubeAuthError if Google
  * rejects it with 401 or 403, so the caller can clear the DB record.
+ *
+ * @param timeoutMs  Maximum ms to wait for the Google API call (default 4 s).
+ *                   The server-side default is kept short so the route handler
+ *                   can send a response before the client's own 5 s AbortController
+ *                   fires, giving the client a real JSON body instead of a network
+ *                   abort.
  */
-export async function probeToken(refreshToken: string): Promise<void> {
+export async function probeToken(refreshToken: string, timeoutMs = 4_000): Promise<void> {
   const oauth2Client = makeOAuth2Client();
   oauth2Client.setCredentials({ refresh_token: refreshToken });
   const youtube = google.youtube({ version: "v3", auth: oauth2Client });
   try {
-    await youtube.channels.list({ part: ["id"], mine: true, maxResults: 1 });
+    await youtube.channels.list(
+      { part: ["id"], mine: true, maxResults: 1 },
+      { timeout: timeoutMs },
+    );
   } catch (err: unknown) {
     const status =
       (err as { status?: number; code?: number })?.status ??

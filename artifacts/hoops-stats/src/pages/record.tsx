@@ -573,10 +573,26 @@ export default function RecordGame() {
 
   useEffect(() => {
     if (!isEditing) return;
-    fetch("/api/auth/youtube/status?probe=true")
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5_000);
+    fetch("/api/auth/youtube/status?probe=true", { signal: controller.signal })
       .then((r) => r.json())
       .then((d: { connected: boolean }) => setIsYoutubeConnected(d.connected))
-      .catch(() => setIsYoutubeConnected(false));
+      .catch((err: unknown) => {
+        // On timeout (AbortError) fall back to optimistic connected:true so the
+        // coach can still attempt the upload — a slow Google API call shouldn't
+        // block the record page from loading.
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setIsYoutubeConnected(true);
+        } else {
+          setIsYoutubeConnected(false);
+        }
+      })
+      .finally(() => clearTimeout(timeoutId));
+    return () => {
+      controller.abort();
+      clearTimeout(timeoutId);
+    };
   }, [isEditing]);
 
   // Pre-warm the ICE-server cache and surface TURN availability so we can
