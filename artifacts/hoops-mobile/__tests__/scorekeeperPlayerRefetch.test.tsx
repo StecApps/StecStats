@@ -108,6 +108,10 @@ jest.mock('expo-camera', () => ({
   useMicrophonePermissions: jest.fn(() => [{ granted: false }, jest.fn()]),
 }));
 
+jest.mock('@clerk/clerk-expo', () => ({
+  useAuth: jest.fn(() => ({ getToken: jest.fn(async () => 'test-token') })),
+}));
+
 // ── Imports run after mock hoisting ──────────────────────────────────────────
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';

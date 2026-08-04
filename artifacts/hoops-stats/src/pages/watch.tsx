@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "wouter";
-import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2, RefreshCw } from "lucide-react";
+import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2, RefreshCw, AlertTriangle } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
@@ -63,6 +63,11 @@ export default function WatchStream() {
   const [muted, setMuted] = useState(true);
   const userUnmutedRef = useRef(false); // tracks if the viewer explicitly tapped to unmute
   const [shareStatus, setShareStatus] = useState<"idle" | "copied">("idle");
+
+  // TURN relay self-diagnostic banner: shown when the broadcaster's health-check
+  // reports the relay is down, cleared automatically when it recovers.
+  const [turnRelayDown, setTurnRelayDown] = useState(false);
+  const [turnBannerDismissed, setTurnBannerDismissed] = useState(false);
 
   // Pinch-to-zoom / pan / double-tap-reset — all via refs so gesture
   // handling never triggers a React re-render.
@@ -609,6 +614,14 @@ export default function WatchStream() {
           setState("ended");
           pcRef.current?.close();
           pcRef.current = null;
+        } else if (message.type === "turn-status") {
+          // Broadcaster's TURN health-check result — show or clear the
+          // self-diagnostic banner so viewers on restrictive networks get
+          // actionable guidance instead of a silent freeze.
+          setTurnRelayDown(!message.turnAvailable);
+          // Clear any prior dismissal when the relay recovers so the banner
+          // can surface again if the relay goes down a second time.
+          if (message.turnAvailable) setTurnBannerDismissed(false);
         } else if (message.type === "peer-connection-failed") {
           // The broadcaster exhausted its ICE-restart attempts for our
           // media connection specifically. Show a clear "disconnected"
@@ -693,6 +706,26 @@ export default function WatchStream() {
           className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${state === "live" ? "" : "invisible"}`}
         />
       </div>
+
+      {state === "live" && turnRelayDown && !turnBannerDismissed && (
+        <div
+          className="absolute inset-x-3 z-20 flex items-start justify-between gap-3 rounded-lg bg-amber-500/90 px-3 py-2.5 text-amber-950 backdrop-blur-sm shadow-lg"
+          style={{ top: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span className="flex-1 text-xs font-semibold leading-snug">
+            Your network may be blocking this stream — try switching to mobile data if the video freezes.
+          </span>
+          <button
+            type="button"
+            onClick={() => setTurnBannerDismissed(true)}
+            className="shrink-0 rounded-full p-0.5 hover:bg-amber-700/20 transition-colors"
+            aria-label="Dismiss warning"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {state === "live" && showRotateTip && (
         <div

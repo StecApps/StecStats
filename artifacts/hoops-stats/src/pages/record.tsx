@@ -2417,6 +2417,15 @@ export default function RecordGame() {
           description: "The TURN relay is back — restricted-network viewers can reconnect.",
         });
       }
+      // Broadcast the current TURN status to all viewers so they can surface
+      // a self-diagnostic banner if the relay is unavailable.
+      if (liveWsRef.current?.readyState === WebSocket.OPEN && liveCodeRef.current) {
+        liveWsRef.current.send(JSON.stringify({
+          type: "turn-status",
+          code: liveCodeRef.current,
+          turnAvailable: nowAvailable,
+        }));
+      }
     } catch {
       // Swallow errors: a failed check shouldn't crash the broadcast.
     }

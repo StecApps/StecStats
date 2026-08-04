@@ -17,7 +17,8 @@ type ClientMessage =
   | { type: "stat-event"; code: string; playerName: string; label: string }
   | { type: "resync-events"; code: string; events: Array<{ playerName: string; label: string; timestamp: number }> }
   | { type: "peer-connection-failed"; code: string; targetId: string }
-  | { type: "request-offer"; code: string };
+  | { type: "request-offer"; code: string }
+  | { type: "turn-status"; code: string; turnAvailable: boolean };
 
 function safeSend(ws: WebSocket, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -246,6 +247,18 @@ export function attachLiveSocketServer(upgradeEmitter: {
           // entry in the viewer map.
           if (role !== "viewer" || !viewerId || !session.broadcaster) break;
           safeSend(session.broadcaster, { type: "new-viewer", viewerId });
+          break;
+        }
+        case "turn-status": {
+          // The broadcaster's periodic TURN health-check detected a change in
+          // relay availability. Fan the status out to every current viewer so
+          // restricted-network viewers can show a self-diagnostic banner
+          // instead of silently losing the stream.
+          if (role !== "broadcaster") break;
+          const turnAvailable = message.turnAvailable === true;
+          for (const viewerWs of session.viewers.values()) {
+            safeSend(viewerWs, { type: "turn-status", turnAvailable });
+          }
           break;
         }
       }
