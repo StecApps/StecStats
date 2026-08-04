@@ -129,6 +129,20 @@ export default function ScorekeeperScreen() {
   const cameraReadyRef = useRef(false);
   const pendingRecordRef = useRef(false);
 
+  // Camera UI state
+  const [cameraFacing, setCameraFacing] = useState<'back' | 'front'>('back');
+  const [previewVisible, setPreviewVisible] = useState(true);
+
+  function toggleCameraFacing() {
+    if (isRecording) return; // can't switch mid-recording
+    setCameraFacing((f) => (f === 'back' ? 'front' : 'back'));
+    cameraReadyRef.current = false; // will be set again via onCameraReady
+  }
+
+  function togglePreview() {
+    setPreviewVisible((v) => !v);
+  }
+
   useEffect(() => {
     if (!recordVideo) return;
     (async () => {
@@ -603,13 +617,17 @@ export default function ScorekeeperScreen() {
     <View style={[styles.root, isLandscape && styles.rootLandscape]}>
 
       {/* ── CAMERA SECTION (top half portrait / left half landscape) ── */}
-      <View style={isLandscape ? styles.cameraSectionLand : styles.cameraSectionPort}>
-        {/* Camera fills this section */}
+      {/* Always keep this View mounted so CameraView never unmounts mid-recording */}
+      <View style={[
+        isLandscape ? styles.cameraSectionLand : styles.cameraSectionPort,
+        !previewVisible && styles.cameraSectionCollapsed,
+      ]}>
+        {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
         {cameraReady ? (
           <CameraView
             ref={cameraRef}
             style={StyleSheet.absoluteFill}
-            facing="back"
+            facing={cameraFacing}
             mode="video"
             onCameraReady={onCameraReady}
           />
@@ -617,28 +635,64 @@ export default function ScorekeeperScreen() {
           <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0d0d0d' }]} />
         )}
 
-        {/* Scoreboard overlaid at bottom of camera section */}
-        {scoreboardOverlay}
+        {previewVisible ? (
+          <>
+            {/* Scoreboard overlaid at bottom of camera section */}
+            {scoreboardOverlay}
 
-        {/* REC / CAM badge */}
-        {recordVideo && (
-          <View style={styles.recBadge}>
-            {isRecording ? <View style={styles.recDot} /> : <Ionicons name="videocam" size={10} color="#fff" />}
-            <Text style={styles.recText}>{isRecording ? 'REC' : 'CAM'}</Text>
-          </View>
-        )}
+            {/* REC / CAM badge — top-right */}
+            {recordVideo && (
+              <View style={styles.recBadge}>
+                {isRecording ? <View style={styles.recDot} /> : <Ionicons name="videocam" size={10} color="#fff" />}
+                <Text style={styles.recText}>{isRecording ? 'REC' : 'CAM'}</Text>
+              </View>
+            )}
 
-        {/* Permission denied — shown inside camera box */}
-        {recordVideo && (!cameraPermission?.granted || !micPermission?.granted) && (
-          <View style={styles.permBanner}>
-            <Ionicons name="videocam-off" size={15} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.permText}>Camera permission needed</Text>
-            <TouchableOpacity
-              onPress={async () => { await requestCameraPermission(); await requestMicPermission(); }}
-              style={[styles.permBtn, { backgroundColor: colors.primary }]}
-            >
-              <Text style={styles.permBtnText}>Allow</Text>
+            {/* Camera controls — top-left */}
+            {cameraReady && (
+              <View style={styles.camControls}>
+                {/* Flip front/back — disabled while recording */}
+                <TouchableOpacity
+                  onPress={toggleCameraFacing}
+                  disabled={isRecording}
+                  activeOpacity={0.75}
+                  style={[styles.camControlBtn, isRecording && { opacity: 0.35 }]}
+                >
+                  <Ionicons name="camera-reverse" size={18} color="#fff" />
+                </TouchableOpacity>
+
+                {/* Dismiss preview */}
+                <TouchableOpacity
+                  onPress={togglePreview}
+                  activeOpacity={0.75}
+                  style={styles.camControlBtn}
+                >
+                  <Ionicons name="eye-off" size={18} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Permission denied — shown inside camera box */}
+            {recordVideo && (!cameraPermission?.granted || !micPermission?.granted) && (
+              <View style={styles.permBanner}>
+                <Ionicons name="videocam-off" size={15} color="rgba(255,255,255,0.6)" />
+                <Text style={styles.permText}>Camera permission needed</Text>
+                <TouchableOpacity
+                  onPress={async () => { await requestCameraPermission(); await requestMicPermission(); }}
+                  style={[styles.permBtn, { backgroundColor: colors.primary }]}
+                >
+                  <Text style={styles.permBtnText}>Allow</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        ) : (
+          /* Preview hidden — dark overlay with expand button */
+          <View style={styles.previewHiddenOverlay}>
+            <TouchableOpacity onPress={togglePreview} activeOpacity={0.75} style={styles.expandPreviewBtn}>
+              <Ionicons name="videocam" size={16} color="#fff" />
             </TouchableOpacity>
+            {recordVideo && isRecording && <View style={styles.recDotSmall} />}
           </View>
         )}
       </View>
@@ -710,6 +764,54 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       backgroundColor: 'rgba(255,255,255,0.15)',
     },
     oppBtnText: { fontSize: 17, lineHeight: 19, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+
+    // Collapsed camera section (preview hidden)
+    cameraSectionCollapsed: {
+      height: 44,
+      minHeight: 44,
+    },
+
+    // Camera control buttons — top-left
+    camControls: {
+      position: 'absolute',
+      top: insets.top + (Platform.OS === 'web' ? 64 : 8),
+      left: 10,
+      flexDirection: 'column',
+      gap: 6,
+    },
+    camControlBtn: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    // Overlay shown when preview is hidden
+    previewHiddenOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.85)',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    expandPreviewBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: 'rgba(255,255,255,0.12)',
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+    },
+    recDotSmall: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: '#EF4444',
+    },
 
     // REC badge — top-right of camera section
     recBadge: {
