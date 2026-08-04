@@ -557,6 +557,24 @@ export default function RecordGame() {
     getTurnAvailable().then(setTurnAvailable).catch(() => setTurnAvailable(false));
   }, [isPro]);
 
+  // Dev-only test hooks so Playwright specs can trigger the TURN health-check
+  // without waiting 25 minutes and without a real WebSocket connection.
+  // Never present in production builds (tree-shaken by Vite).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    w.__hoopsTurnCheckNow = () => runTurnHealthCheck();
+    w.__hoopsSetTurnAtGoLive = (val: boolean | null) => { turnAtGoLiveRef.current = val; };
+    return () => {
+      delete w.__hoopsTurnCheckNow;
+      delete w.__hoopsSetTurnAtGoLive;
+    };
+  // runTurnHealthCheck is re-created on every render (it closes over toast/state);
+  // the ref is stable, so the effect only needs to mount/unmount once.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(search);
     const ytParam = params.get("youtube");
@@ -2306,6 +2324,31 @@ export default function RecordGame() {
   const MAX_LIVE_RECONNECT_ATTEMPTS = 6;
   const LIVE_RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 8000, 8000];
 
+  // Extracted so the 25-minute interval, dev test hooks, and any future
+  // callers all share the same logic without duplication.
+  const runTurnHealthCheck = async () => {
+    try {
+      const nowAvailable = await refreshTurnAvailable();
+      setTurnAvailable(nowAvailable);
+      if (turnAtGoLiveRef.current === true && !nowAvailable) {
+        console.warn("[live] TURN relay was available at Go Live but is no longer reachable.");
+        toast({
+          title: "TURN relay unavailable",
+          description: "The streaming relay has gone offline. Viewers behind restrictive networks may lose the stream.",
+          variant: "destructive",
+        });
+      } else if (turnAtGoLiveRef.current === false && nowAvailable) {
+        console.info("[live] TURN relay became available mid-game.");
+        toast({
+          title: "Relay connection restored",
+          description: "The TURN relay is back — restricted-network viewers can reconnect.",
+        });
+      }
+    } catch {
+      // Swallow errors: a failed check shouldn't crash the broadcast.
+    }
+  };
+
   const connectBroadcasterSocket = (code: string, isReconnect: boolean) => {
     const ws = new WebSocket(liveWsUrl());
     liveWsRef.current = ws;
@@ -2322,31 +2365,10 @@ export default function RecordGame() {
       }
 
       // Start (or restart on reconnect) a 25-minute TURN health-check timer.
-      // If TURN was available when the coach tapped Go Live but is now gone,
-      // show a toast warning so they know relay-dependent viewers may drop.
+      // Clear any previous interval first so reconnects never accumulate
+      // duplicate timers — only one health-check fires at a time.
       if (turnCheckIntervalRef.current) clearInterval(turnCheckIntervalRef.current);
-      turnCheckIntervalRef.current = setInterval(async () => {
-        try {
-          const nowAvailable = await refreshTurnAvailable();
-          setTurnAvailable(nowAvailable);
-          if (turnAtGoLiveRef.current === true && !nowAvailable) {
-            console.warn("[live] TURN relay was available at Go Live but is no longer reachable.");
-            toast({
-              title: "TURN relay unavailable",
-              description: "The streaming relay has gone offline. Viewers behind restrictive networks may lose the stream.",
-              variant: "destructive",
-            });
-          } else if (turnAtGoLiveRef.current === false && nowAvailable) {
-            console.info("[live] TURN relay became available mid-game.");
-            toast({
-              title: "Relay connection restored",
-              description: "The TURN relay is back — restricted-network viewers can reconnect.",
-            });
-          }
-        } catch {
-          // Swallow errors: a failed check shouldn't crash the broadcast.
-        }
-      }, 25 * 60 * 1000);
+      turnCheckIntervalRef.current = setInterval(runTurnHealthCheck, 25 * 60 * 1000);
     };
 
     ws.onmessage = async (event) => {
@@ -3433,7 +3455,7 @@ export default function RecordGame() {
                 </>
               )}
               {turnAvailable === false && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5 pt-0.5">
+                <p data-testid="turn-warning-badge" className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5 pt-0.5">
                   <span className="shrink-0">⚠️</span>
                   <span>Streaming on limited network — viewers behind school or gym firewalls may not connect.</span>
                 </p>
@@ -4080,7 +4102,7 @@ export default function RecordGame() {
                     Go Live
                   </Button>
                   {turnAvailable === false && (
-                    <span className="text-[11px] text-amber-300 bg-black/50 backdrop-blur-sm rounded px-2 py-1 leading-tight max-w-[160px] text-center">
+                    <span data-testid="turn-warning-overlay-badge" className="text-[11px] text-amber-300 bg-black/50 backdrop-blur-sm rounded px-2 py-1 leading-tight max-w-[160px] text-center">
                       ⚠️ Limited network — some viewers may not connect
                     </span>
                   )}
@@ -4092,7 +4114,7 @@ export default function RecordGame() {
                     <Radio className="w-4 h-4 mr-2 text-red-500 animate-pulse" /> End Live
                   </Button>
                   {turnAvailable === false && (
-                    <span className="text-[11px] text-amber-300 bg-black/50 backdrop-blur-sm rounded px-2 py-1 leading-tight max-w-[160px] text-center">
+                    <span data-testid="turn-warning-live-badge" className="text-[11px] text-amber-300 bg-black/50 backdrop-blur-sm rounded px-2 py-1 leading-tight max-w-[160px] text-center">
                       ⚠️ Relay offline — some viewers may lose the stream
                     </span>
                   )}
