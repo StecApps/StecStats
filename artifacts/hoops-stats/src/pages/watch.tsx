@@ -25,6 +25,10 @@ export default function WatchStream() {
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const iceWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Offer watchdog: if no offer arrives within 30 s of joining, prod the
+  // broadcaster with a request-offer message (handles signaling races where
+  // the broadcaster is connected but missed the viewer joining).
+  const offerWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Connecting-screen elapsed timers and retry counter.
   // connectingElapsed  — per-attempt seconds (resets on each ICE retry)
@@ -359,6 +363,22 @@ export default function WatchStream() {
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "join-viewer", code }));
         mediaFailedRef.current = false;
+
+        // Arm the offer watchdog every time we (re)join — if the broadcaster
+        // is connected but misses our join (signaling race), this nudges them.
+        if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+        offerWatchdogRef.current = setTimeout(() => {
+          offerWatchdogRef.current = null;
+          // Only act if we still have no PeerConnection (no offer received yet).
+          if (pcRef.current) return;
+          iceRetryCountRef.current += 1;
+          setIceRetryCount(iceRetryCountRef.current);
+          startConnectingTimer(false /* preserve cumulative */);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "request-offer", code }));
+          }
+        }, 30_000);
+
         if (isReconnect) {
           reconnectAttemptsRef.current = 0;
           // Re-check status rather than assuming a broadcaster is present —
@@ -408,6 +428,12 @@ export default function WatchStream() {
         }
 
         if (message.type === "offer") {
+          // Cancel the offer watchdog — an offer arrived, no need to prod.
+          if (offerWatchdogRef.current) {
+            clearTimeout(offerWatchdogRef.current);
+            offerWatchdogRef.current = null;
+          }
+
           if (message.renegotiate && pcRef.current) {
             // ICE restart from the broadcaster on the existing peer
             // connection — reuse it instead of tearing down and rebuilding,
@@ -513,6 +539,10 @@ export default function WatchStream() {
       };
 
       ws.onclose = () => {
+        if (offerWatchdogRef.current) {
+          clearTimeout(offerWatchdogRef.current);
+          offerWatchdogRef.current = null;
+        }
         if (cancelled) return;
         pcRef.current?.close();
         pcRef.current = null;
@@ -547,6 +577,7 @@ export default function WatchStream() {
       cancelled = true;
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (iceWatchdogRef.current) clearTimeout(iceWatchdogRef.current);
+      if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
       stopConnectingTimer();
       pcRef.current?.close();
       wsRef.current?.close();
