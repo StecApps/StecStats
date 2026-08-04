@@ -133,7 +133,11 @@ export default function ScorekeeperScreen() {
   const createGame = useCreateGame();
   const requestUploadUrlMutation = useRequestUploadUrl();
 
-  const { data: players, isLoading: playersLoading, refetch: refetchPlayers } = useListPlayers();
+  const { data: players, isLoading: playersLoading, refetch: refetchPlayers } = useListPlayers({
+    // Poll every 30 s so a player rename done in another tab or device is picked
+    // up without requiring the coach to reload or leave the screen.
+    query: { refetchInterval: 30_000 },
+  });
 
   // Refetch the player list whenever this screen comes into focus so that
   // a player added in the Roster screen is visible immediately at game start.
