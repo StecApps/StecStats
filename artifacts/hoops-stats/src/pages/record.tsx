@@ -566,9 +566,24 @@ export default function RecordGame() {
     const w = window as any;
     w.__hoopsTurnCheckNow = () => runTurnHealthCheck();
     w.__hoopsSetTurnAtGoLive = (val: boolean | null) => { turnAtGoLiveRef.current = val; };
+    // Test hook: drive the broadcaster reconnect UI into a mid-reconnect state
+    // so the counter-reset path can be verified without a real WebSocket or camera.
+    w.__hoopsSimulateLiveReconnect = (attempt: number) => {
+      setIsLive(false);
+      setIsReconnectingLive(true);
+      setLiveReconnectAttempt(attempt);
+    };
+    // Test hook: simulate a successful reconnect completing — mirrors ws.onopen logic.
+    w.__hoopsSimulateLiveReconnectSuccess = () => {
+      setIsLive(true);
+      setIsReconnectingLive(false);
+      setLiveReconnectAttempt(0);
+    };
     return () => {
       delete w.__hoopsTurnCheckNow;
       delete w.__hoopsSetTurnAtGoLive;
+      delete w.__hoopsSimulateLiveReconnect;
+      delete w.__hoopsSimulateLiveReconnectSuccess;
     };
   // runTurnHealthCheck is re-created on every render (it closes over toast/state);
   // the ref is stable, so the effect only needs to mount/unmount once.
@@ -2369,6 +2384,7 @@ export default function RecordGame() {
       setIsLive(true);
       setIsStartingLive(false);
       setIsReconnectingLive(false);
+      setLiveReconnectAttempt(0);
       setLiveInterrupted(false);
       if (isReconnect) {
         liveReconnectAttemptsRef.current = 0;
