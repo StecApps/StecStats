@@ -1,15 +1,23 @@
 /** @type {import('jest').Config} */
+const { transformIgnorePatterns, transform, moduleNameMapper: presetModuleNameMapper } =
+  require('jest-expo/jest-preset');
+
 module.exports = {
+  // Use babel-jest with the expo preset for transformation — but skip the
+  // react-native setup files that pull in ESM-only polyfills not yet
+  // supported by Jest's CommonJS runner.
+  transform,
+  transformIgnorePatterns,
   testEnvironment: 'node',
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
-  // Use ts-jest for TypeScript — avoids pulling in babel-preset-expo
-  // which unconditionally injects expo/virtual/env.js (an ESM file)
-  // even in a plain Node test environment.
-  transform: {
-    '^.+\\.tsx?$': ['ts-jest', { tsconfig: { strict: true } }],
-  },
-  transformIgnorePatterns: ['/node_modules/'],
   moduleNameMapper: {
+    // honour the @/* path alias from tsconfig
     '^@/(.*)$': '<rootDir>/$1',
+    // stub out asset imports
+    '\\.(jpg|jpeg|png|gif|svg|ttf|otf|woff|woff2|mp4|webm|wav|mp3|aac|oga|webp)$':
+      '<rootDir>/__mocks__/fileMock.js',
   },
+  // Define __DEV__ before any react-native import; skip the full RN setup
+  // file which pulls in ESM-only polyfills unsupported by Jest's CJS runner.
+  setupFiles: ['<rootDir>/__mocks__/setup.js'],
 };

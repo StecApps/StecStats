@@ -16,7 +16,7 @@
  * A separate assertion documents the expected Alert button structure.
  */
 
-import { uploadPhoto } from '../lib/uploadPhoto';
+import { uploadPhoto } from '../lib/photoUpload';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -61,21 +61,19 @@ describe('uploadPhoto() error-classification', () => {
 
   it('includes "Retry" in the expected Alert button list for network failures', () => {
     // Document the expected Alert.alert() shape so the call-site contract is explicit.
-    // The Retry button must be present for every failure so the coach can recover.
     const expectedButtons = expect.arrayContaining([
       expect.objectContaining({ text: 'Retry' }),
       expect.objectContaining({ text: 'Cancel' }),
     ]);
-    // This is a structural assertion — no live Alert is shown in tests.
     expect([
       { text: 'Retry', onPress: jest.fn() },
       { text: 'Cancel', style: 'cancel' },
     ]).toEqual(expectedButtons);
   });
 
-  // ── 2. Auth failure (401) ─────────────────────────────────────────────────
+  // ── 2. Auth failure ───────────────────────────────────────────────────────
 
-  it('throws an auth-error message when the API returns 401', async () => {
+  it('throws a sign-out message when the API returns 401', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValueOnce(makeResponse(401));
 
     await expect(uploadPhoto(URI, MIME, TOKEN)).rejects.toThrow(
@@ -83,23 +81,12 @@ describe('uploadPhoto() error-classification', () => {
     );
   });
 
-  it('throws an auth-error message when the API returns 403', async () => {
+  it('throws a sign-out message when the API returns 403', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValueOnce(makeResponse(403));
 
     await expect(uploadPhoto(URI, MIME, TOKEN)).rejects.toThrow(
       'Not authorised — please sign out and back in, then try again.',
     );
-  });
-
-  it('includes "Retry" in the expected Alert button list for auth failures', () => {
-    const expectedButtons = expect.arrayContaining([
-      expect.objectContaining({ text: 'Retry' }),
-      expect.objectContaining({ text: 'Cancel' }),
-    ]);
-    expect([
-      { text: 'Retry', onPress: jest.fn() },
-      { text: 'Cancel', style: 'cancel' },
-    ]).toEqual(expectedButtons);
   });
 
   // ── 3. Server failure (5xx) ───────────────────────────────────────────────
@@ -147,5 +134,21 @@ describe('uploadPhoto() error-classification', () => {
 
     const result = await uploadPhoto(URI, MIME, TOKEN);
     expect(result).toBe('photos/abc.jpg');
+  });
+
+  // ── 5. Upload PUT failure ─────────────────────────────────────────────────
+
+  it('throws an upload-failed message when the storage PUT returns a non-2xx status', async () => {
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(
+        makeResponse(200, { uploadURL: 'https://storage.example/put', objectPath: 'photos/abc.jpg' }),
+      )
+      .mockResolvedValueOnce(makeBlobResponse())
+      .mockResolvedValueOnce(makeResponse(503));
+
+    await expect(uploadPhoto(URI, MIME, TOKEN)).rejects.toThrow(
+      'Upload failed (503) — please try again.',
+    );
   });
 });
