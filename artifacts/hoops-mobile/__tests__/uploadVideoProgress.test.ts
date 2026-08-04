@@ -260,3 +260,158 @@ test('returns the objectPath on successful upload', async () => {
 
   expect(result).toBe('recordings/game-123.mp4');
 });
+
+// ─── Multi-clip progress tests ────────────────────────────────────────────────
+
+/**
+ * Mirrors the scorekeeper.tsx upload loop for 2 clips:
+ *
+ *   for (let i = 0; i < uris.length; i++) {
+ *     const segStart = Math.round((i / uris.length) * 90);
+ *     const segEnd   = Math.round(((i + 1) / uris.length) * 90);
+ *     await uploadVideoFile(uri, ...,
+ *       (pct) => setUploadProgress(segStart + Math.round((pct / 100) * (segEnd - segStart))),
+ *     );
+ *   }
+ *
+ * For 2 clips: clip 0 → 0–45 %, clip 1 → 45–90 %.
+ * The combined reported sequence must never decrease — no "jump back to 0 %"
+ * between clips.
+ */
+test('combined progress for two sequential clips is monotonically non-decreasing', async () => {
+  const reported: number[] = [];
+  const xhrs: FakeXHR[] = [];
+
+  // Override XMLHttpRequest to hand out a new FakeXHR per instantiation and
+  // keep references so each upload can be driven independently.
+  (global as any).XMLHttpRequest = jest.fn(() => {
+    const xhr = new FakeXHR();
+    xhrs.push(xhr);
+    return xhr;
+  });
+
+  const uris = ['file:///clip1.mp4', 'file:///clip2.mp4'];
+  const totalClips = uris.length;
+
+  // Build scaled onProgress wrappers exactly as scorekeeper.tsx does.
+  function makeOnProgress(i: number) {
+    const segStart = Math.round((i / totalClips) * 90);
+    const segEnd   = Math.round(((i + 1) / totalClips) * 90);
+    return (pct: number) => {
+      reported.push(segStart + Math.round((pct / 100) * (segEnd - segStart)));
+    };
+  }
+
+  // ── Clip 1 ──────────────────────────────────────────────────────────────
+  const upload1 = uploadVideoFile(
+    uris[0],
+    fakeRequestUploadUrl,
+    makeOnProgress(0),
+  );
+
+  // Let fetch + presign settle.
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  // Advance the simulated ticker for a few ticks so intermediate values appear.
+  jest.advanceTimersByTime(900); // 3 × 300 ms
+
+  // Complete clip 1 upload.
+  xhrs[0].complete();
+  await upload1;
+
+  // ── Clip 2 ──────────────────────────────────────────────────────────────
+  const upload2 = uploadVideoFile(
+    uris[1],
+    fakeRequestUploadUrl,
+    makeOnProgress(1),
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  jest.advanceTimersByTime(900);
+
+  xhrs[1].complete();
+  await upload2;
+
+  // ── Assertions ──────────────────────────────────────────────────────────
+
+  // At least some values must have been reported.
+  expect(reported.length).toBeGreaterThan(0);
+
+  // The sequence must be monotonically non-decreasing — no value ever drops
+  // below the previous one (i.e. no jump back to 0 % at the start of clip 2).
+  for (let i = 1; i < reported.length; i++) {
+    expect(reported[i]).toBeGreaterThanOrEqual(reported[i - 1]);
+  }
+
+  // Clip 1's final scaled value must be 45 % (100 % mapped into 0–45 range).
+  // This is the value emitted by the 100 % callback at the end of clip 1.
+  const clip1End = Math.round((0 + 1) / totalClips * 90); // 45
+  expect(reported).toContain(clip1End);
+
+  // No value should be strictly less than 0 or greater than 90 % (the outer
+  // loop caps at 90 %; 100 % is set after the loop completes / after concat).
+  expect(reported.every((p) => p >= 0 && p <= 90)).toBe(true);
+});
+
+test('first progress value of clip 2 is not less than last progress value of clip 1', async () => {
+  const clip1Values: number[] = [];
+  const clip2Values: number[] = [];
+  const xhrs: FakeXHR[] = [];
+
+  (global as any).XMLHttpRequest = jest.fn(() => {
+    const xhr = new FakeXHR();
+    xhrs.push(xhr);
+    return xhr;
+  });
+
+  const totalClips = 2;
+  const segStart1 = Math.round((0 / totalClips) * 90); // 0
+  const segEnd1   = Math.round((1 / totalClips) * 90); // 45
+  const segStart2 = Math.round((1 / totalClips) * 90); // 45
+  const segEnd2   = Math.round((2 / totalClips) * 90); // 90
+
+  const upload1 = uploadVideoFile(
+    'file:///clip1.mp4',
+    fakeRequestUploadUrl,
+    (pct) => clip1Values.push(segStart1 + Math.round((pct / 100) * (segEnd1 - segStart1))),
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  jest.advanceTimersByTime(600);
+  xhrs[0].complete();
+  await upload1;
+
+  const upload2 = uploadVideoFile(
+    'file:///clip2.mp4',
+    fakeRequestUploadUrl,
+    (pct) => clip2Values.push(segStart2 + Math.round((pct / 100) * (segEnd2 - segStart2))),
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  jest.advanceTimersByTime(600);
+  xhrs[1].complete();
+  await upload2;
+
+  // The last value from clip 1 must be 45 (100 % mapped to 0–45 range).
+  expect(clip1Values[clip1Values.length - 1]).toBe(45);
+
+  // The first value emitted by clip 2's ticker must be >= 45
+  // (scaled from 0 in the 45–90 range → 45 + something ≥ 45).
+  if (clip2Values.length > 0) {
+    expect(clip2Values[0]).toBeGreaterThanOrEqual(45);
+  }
+
+  // No value in clip 2 should be less than 45.
+  expect(clip2Values.every((p) => p >= 45)).toBe(true);
+});
