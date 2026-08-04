@@ -16,7 +16,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useListTeams, useListTeamGames } from '@workspace/api-client-react';
+import { useListTeams, useListTeamGames, useListPlayers } from '@workspace/api-client-react';
 import { Ionicons, Feather } from '@expo/vector-icons';
 
 // ─── Season Picker Modal ───────────────────────────────────────────────────
@@ -111,10 +111,13 @@ export default function GamesScreen() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
 
   const { data: teams, isLoading: teamsLoading } = useListTeams();
   const [selectedTeamIdx, setSelectedTeamIdx] = useState(0);
   const team = (teams as any[])?.[selectedTeamIdx] ?? null;
+
+  const { data: players } = useListPlayers();
 
   const { data: games, isLoading: gamesLoading, refetch } = useListTeamGames(
     team?.id ?? 0,
@@ -126,9 +129,13 @@ export default function GamesScreen() {
     const q = search.toLowerCase();
     return (games as any[])
       .filter((g) => !q || g.opponent.toLowerCase().includes(q))
+      .filter((g) => {
+        if (!selectedPlayerId) return true;
+        return (g.stats ?? []).some((s: any) => s.playerId === selectedPlayerId);
+      })
       .slice()
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [games, search]);
+  }, [games, search, selectedPlayerId]);
 
   const styles = makeStyles(colors, insets);
   const isLoading = teamsLoading || gamesLoading;
@@ -167,6 +174,49 @@ export default function GamesScreen() {
             </>
           )}
         </TouchableOpacity>
+      )}
+
+      {/* Player filter chips */}
+      {(players as any[])?.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8 }}
+        >
+          <TouchableOpacity
+            onPress={() => setSelectedPlayerId(null)}
+            activeOpacity={0.7}
+            style={[
+              styles.playerChip,
+              {
+                backgroundColor: selectedPlayerId === null ? colors.primary : colors.muted,
+                borderColor: selectedPlayerId === null ? colors.primary : colors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.playerChipText, { color: selectedPlayerId === null ? '#fff' : colors.mutedForeground }]}>
+              All
+            </Text>
+          </TouchableOpacity>
+          {(players as any[]).map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              onPress={() => setSelectedPlayerId(p.id === selectedPlayerId ? null : p.id)}
+              activeOpacity={0.7}
+              style={[
+                styles.playerChip,
+                {
+                  backgroundColor: selectedPlayerId === p.id ? colors.primary : colors.muted,
+                  borderColor: selectedPlayerId === p.id ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.playerChipText, { color: selectedPlayerId === p.id ? '#fff' : colors.foreground }]} numberOfLines={1}>
+                {p.name.split(' ')[0]}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       )}
 
       {/* Search */}
@@ -304,5 +354,12 @@ function makeStyles(colors: any, insets: any) {
     resultText: { fontSize: 14, fontFamily: 'Inter_700Bold' },
     empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
     emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular' },
+    playerChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1,
+    },
+    playerChipText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   });
 }

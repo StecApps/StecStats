@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
@@ -336,7 +337,10 @@ export default function ScorekeeperScreen() {
     );
   }
 
-  const styles = makeStyles(colors, insets);
+  const { width: sw, height: sh } = useWindowDimensions();
+  const isLandscape = sw > sh;
+
+  const styles = makeStyles(colors, insets, sw, sh, isLandscape);
   const cameraReady = recordVideo && cameraPermission?.granted && micPermission?.granted;
   const selectedLine = selectedPlayerId ? (stats[selectedPlayerId] ?? defaultLine()) : null;
 
@@ -348,70 +352,62 @@ export default function ScorekeeperScreen() {
     );
   }
 
-  return (
-    <View style={styles.root}>
-      {/* Header: scoreboard */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-          <Ionicons name="chevron-down" size={24} color={colors.mutedForeground} />
-        </TouchableOpacity>
+  // ── Shared: scoreboard rendered inside the camera section overlay ──
+  const scoreboardOverlay = (
+    <View style={styles.scoreOverlay}>
+      <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+        <Ionicons name="chevron-down" size={22} color="rgba(255,255,255,0.85)" />
+      </TouchableOpacity>
+      <View style={styles.scoreboard}>
+        {/* Our score */}
+        <View style={styles.scoreCol}>
+          <Text style={styles.teamLabel} numberOfLines={1}>{teamName}</Text>
+          <Text style={[styles.scoreNum, { fontFamily: 'Teko_700Bold' }]}>{teamScore}</Text>
+        </View>
 
-        <View style={styles.scoreboard}>
-          {/* Our score */}
-          <View style={styles.scoreCol}>
-            <Text style={[styles.teamLabel, { color: colors.mutedForeground }]} numberOfLines={1}>
-              {teamName}
-            </Text>
-            <Text style={[styles.scoreNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
-              {teamScore}
-            </Text>
-          </View>
+        {/* Center: timer + half */}
+        <View style={styles.scoreCenter}>
+          <Text style={[styles.timer, { fontFamily: 'Teko_400Regular' }]}>{formatTime(seconds)}</Text>
+          <TouchableOpacity
+            onPress={handleStartStop}
+            style={[styles.timerBtn, { backgroundColor: running ? 'rgba(255,255,255,0.18)' : colors.primary }]}
+          >
+            <Ionicons name={running ? 'pause' : 'play'} size={14} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { setHalf((h) => (h === 1 ? 2 : 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            style={styles.halfBtn}
+          >
+            <Text style={styles.halfText}>{half === 1 ? '1st' : '2nd'}</Text>
+          </TouchableOpacity>
+        </View>
 
-          {/* Center: timer + half */}
-          <View style={styles.scoreCenter}>
-            <Text style={[styles.timer, { color: colors.mutedForeground, fontFamily: 'Teko_400Regular' }]}>
-              {formatTime(seconds)}
-            </Text>
+        {/* Opponent score */}
+        <View style={styles.scoreCol}>
+          <Text style={styles.teamLabel} numberOfLines={1}>{opponent}</Text>
+          <View style={styles.oppScoreRow}>
             <TouchableOpacity
-              onPress={handleStartStop}
-              style={[styles.timerBtn, { backgroundColor: running ? colors.muted : colors.primary }]}
+              onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              style={styles.oppBtn}
             >
-              <Ionicons name={running ? 'pause' : 'play'} size={14} color={running ? colors.mutedForeground : '#fff'} />
+              <Text style={styles.oppBtnText}>−</Text>
             </TouchableOpacity>
+            <Text style={[styles.scoreNum, { fontFamily: 'Teko_700Bold' }]}>{opponentScore}</Text>
             <TouchableOpacity
-              onPress={() => { setHalf((h) => (h === 1 ? 2 : 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-              style={[styles.halfBtn, { borderColor: colors.border }]}
+              onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              style={styles.oppBtn}
             >
-              <Text style={[styles.halfText, { color: colors.mutedForeground }]}>{half === 1 ? '1st' : '2nd'}</Text>
+              <Text style={styles.oppBtnText}>+</Text>
             </TouchableOpacity>
-          </View>
-
-          {/* Opponent score */}
-          <View style={styles.scoreCol}>
-            <Text style={[styles.teamLabel, { color: colors.mutedForeground }]} numberOfLines={1}>
-              {opponent}
-            </Text>
-            <View style={styles.oppScoreRow}>
-              <TouchableOpacity
-                onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                style={[styles.oppBtn, { backgroundColor: colors.muted }]}
-              >
-                <Text style={[styles.oppBtnText, { color: colors.mutedForeground }]}>−</Text>
-              </TouchableOpacity>
-              <Text style={[styles.scoreNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
-                {opponentScore}
-              </Text>
-              <TouchableOpacity
-                onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                style={[styles.oppBtn, { backgroundColor: colors.muted }]}
-              >
-                <Text style={[styles.oppBtnText, { color: colors.mutedForeground }]}>+</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </View>
+    </View>
+  );
 
+  // ── Shared: stat area ──
+  const statArea = (
+    <>
       {/* Player selector */}
       <View style={[styles.playerBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <FlatList
@@ -447,7 +443,7 @@ export default function ScorekeeperScreen() {
         />
       </View>
 
-      {/* Stat area */}
+      {/* Stat scroll */}
       <ScrollView style={styles.statScroll} contentContainerStyle={styles.statContent} showsVerticalScrollIndicator={false}>
         {!selectedPlayerId ? (
           <Text style={[styles.noPlayerText, { color: colors.mutedForeground }]}>Select a player above to track stats</Text>
@@ -470,7 +466,6 @@ export default function ScorekeeperScreen() {
                     <Text style={[styles.shootValue, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>
                       {made}/{att}
                     </Text>
-                    {/* MAKE / MISS */}
                     <TouchableOpacity
                       onPress={() => handleShoot('make', s.madeKey as any, s.attKey as any, s.statField)}
                       style={[styles.makeBtn, { backgroundColor: '#16a34a' }]}
@@ -487,7 +482,6 @@ export default function ScorekeeperScreen() {
                       <Ionicons name="close" size={13} color="#fff" />
                       <Text style={styles.shootBtnText}>MISS</Text>
                     </TouchableOpacity>
-                    {/* Undo row */}
                     <View style={styles.undoRow}>
                       <TouchableOpacity
                         onPress={() => handleShoot('undoMake', s.madeKey as any, s.attKey as any, s.statField)}
@@ -567,73 +561,165 @@ export default function ScorekeeperScreen() {
           )}
         </TouchableOpacity>
       </View>
+    </>
+  );
 
-      {/* Floating camera preview */}
-      {cameraReady && (
-        <View style={styles.cameraFloat} pointerEvents="none">
+  return (
+    <View style={[styles.root, isLandscape && styles.rootLandscape]}>
+
+      {/* ── CAMERA SECTION (top half portrait / left half landscape) ── */}
+      <View style={isLandscape ? styles.cameraSectionLand : styles.cameraSectionPort}>
+        {/* Camera fills this section */}
+        {cameraReady ? (
           <CameraView
             ref={cameraRef}
-            style={styles.cameraView}
+            style={StyleSheet.absoluteFill}
             facing="back"
             mode="video"
             onCameraReady={onCameraReady}
           />
+        ) : (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0d0d0d' }]} />
+        )}
+
+        {/* Scoreboard overlaid at bottom of camera section */}
+        {scoreboardOverlay}
+
+        {/* REC / CAM badge */}
+        {recordVideo && (
           <View style={styles.recBadge}>
-            {isRecording ? (
-              <View style={styles.recDot} />
-            ) : (
-              <Ionicons name="videocam" size={10} color="#fff" />
-            )}
+            {isRecording ? <View style={styles.recDot} /> : <Ionicons name="videocam" size={10} color="#fff" />}
             <Text style={styles.recText}>{isRecording ? 'REC' : 'CAM'}</Text>
           </View>
-        </View>
-      )}
+        )}
 
-      {/* Permission denied banner */}
-      {recordVideo && (!cameraPermission?.granted || !micPermission?.granted) && (
-        <View style={[styles.permBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Ionicons name="videocam-off" size={16} color={colors.mutedForeground} />
-          <Text style={[styles.permText, { color: colors.mutedForeground }]}>
-            Camera permission needed to record video
-          </Text>
-          <TouchableOpacity
-            onPress={async () => { await requestCameraPermission(); await requestMicPermission(); }}
-            style={[styles.permBtn, { backgroundColor: colors.primary }]}
-          >
-            <Text style={styles.permBtnText}>Allow</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        {/* Permission denied — shown inside camera box */}
+        {recordVideo && (!cameraPermission?.granted || !micPermission?.granted) && (
+          <View style={styles.permBanner}>
+            <Ionicons name="videocam-off" size={15} color="rgba(255,255,255,0.6)" />
+            <Text style={styles.permText}>Camera permission needed</Text>
+            <TouchableOpacity
+              onPress={async () => { await requestCameraPermission(); await requestMicPermission(); }}
+              style={[styles.permBtn, { backgroundColor: colors.primary }]}
+            >
+              <Text style={styles.permBtnText}>Allow</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* ── STATS SECTION (bottom half portrait / right half landscape) ── */}
+      <View style={[styles.statsSection, isLandscape && styles.statsSectionLand]}>
+        {statArea}
+      </View>
     </View>
   );
 }
 
-function makeStyles(colors: any, insets: any) {
+function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscape: boolean) {
+  // Camera section height: top half in portrait, full height in landscape
+  const cameraH = isLandscape ? sh : Math.round(sh * 0.46);
+
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
+    rootLandscape: { flexDirection: 'row' },
     centered: { alignItems: 'center', justifyContent: 'center' },
-    header: {
-      paddingTop: insets.top + (Platform.OS === 'web' ? 67 : (Platform.OS === 'ios' ? 12 : 16)),
-      paddingBottom: 12,
-      paddingHorizontal: 12,
+
+    // ── Camera section ─────────────────────────────────────────────────────
+    cameraSectionPort: {
+      width: '100%',
+      height: cameraH,
+      backgroundColor: '#0d0d0d',
+      overflow: 'hidden',
     },
-    closeBtn: { alignSelf: 'center', padding: 6, marginBottom: 4 },
+    cameraSectionLand: {
+      width: '48%',
+      height: '100%',
+      backgroundColor: '#0d0d0d',
+      overflow: 'hidden',
+    },
+
+    // Scoreboard overlaid at the bottom of the camera section
+    scoreOverlay: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      paddingTop: 8,
+      paddingBottom: 10,
+      paddingHorizontal: 10,
+      backgroundColor: 'rgba(0,0,0,0.52)',
+    },
+    closeBtn: { alignSelf: 'center', padding: 4, marginBottom: 2 },
     scoreboard: { flexDirection: 'row', alignItems: 'center' },
     scoreCol: { flex: 1, alignItems: 'center' },
-    teamLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2, fontFamily: 'Inter_500Medium', maxWidth: 100 },
-    scoreNum: { fontSize: 52, lineHeight: 54 },
-    scoreCenter: { alignItems: 'center', gap: 6, paddingHorizontal: 8 },
-    timer: { fontSize: 22, lineHeight: 24 },
-    timerBtn: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-    halfBtn: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-    halfText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
-    oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    oppBtn: { width: 26, height: 26, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
-    oppBtnText: { fontSize: 18, lineHeight: 20, fontFamily: 'Inter_600SemiBold' },
+    teamLabel: {
+      fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5,
+      marginBottom: 1, fontFamily: 'Inter_500Medium',
+      color: 'rgba(255,255,255,0.7)', maxWidth: 110,
+    },
+    scoreNum: { fontSize: 44, lineHeight: 46, color: '#fff' },
+    scoreCenter: { alignItems: 'center', gap: 5, paddingHorizontal: 8 },
+    timer: { fontSize: 20, lineHeight: 22, color: 'rgba(255,255,255,0.75)' },
+    timerBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+    halfBtn: {
+      borderWidth: 1, borderRadius: 6,
+      paddingHorizontal: 8, paddingVertical: 2,
+      borderColor: 'rgba(255,255,255,0.3)',
+    },
+    halfText: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: 'rgba(255,255,255,0.75)' },
+    oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    oppBtn: {
+      width: 26, height: 26, borderRadius: 6,
+      alignItems: 'center', justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.15)',
+    },
+    oppBtnText: { fontSize: 17, lineHeight: 19, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+
+    // REC badge — top-right of camera section
+    recBadge: {
+      position: 'absolute',
+      top: insets.top + (Platform.OS === 'web' ? 64 : 8),
+      right: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      borderRadius: 6,
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+    },
+    recDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#EF4444' },
+    recText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.5 },
+
+    // Permission banner inside camera section
+    permBanner: {
+      position: 'absolute',
+      bottom: 80,
+      left: 12,
+      right: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.15)',
+      backgroundColor: 'rgba(0,0,0,0.7)',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    permText: { flex: 1, fontSize: 11, fontFamily: 'Inter_400Regular', color: 'rgba(255,255,255,0.6)' },
+    permBtn: { borderRadius: 7, paddingHorizontal: 10, paddingVertical: 5 },
+    permBtnText: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+
+    // ── Stats section ──────────────────────────────────────────────────────
+    statsSection: { flex: 1, backgroundColor: colors.background },
+    statsSectionLand: { flex: 1 },
+
     playerBar: {
       borderTopWidth: 1,
       borderBottomWidth: 1,
-      paddingVertical: 10,
+      paddingVertical: 9,
     },
     playerChip: {
       flexDirection: 'row',
@@ -647,142 +733,61 @@ function makeStyles(colors: any, insets: any) {
     playerChipName: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
     playerChipPts: { fontSize: 12, fontFamily: 'Inter_500Medium' },
 
-    // ── Stat area ──────────────────────────────────────────────────────────
+    // Stat scroll
     statScroll: { flex: 1 },
-    statContent: { padding: 12, gap: 12 },
+    statContent: { padding: 10, gap: 10 },
     noPlayerText: { textAlign: 'center', fontFamily: 'Inter_400Regular', fontSize: 14, marginTop: 24 },
 
-    // Shooting row — 3 cards side by side
-    shootRow: { flexDirection: 'row', gap: 8 },
+    // Shooting row
+    shootRow: { flexDirection: 'row', gap: 7 },
     shootCard: {
-      flex: 1,
-      borderRadius: 12,
-      borderWidth: 1,
-      padding: 10,
-      alignItems: 'center',
-      gap: 6,
+      flex: 1, borderRadius: 12, borderWidth: 1,
+      padding: 9, alignItems: 'center', gap: 5,
     },
     shootLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-    shootValue: { fontSize: 22, lineHeight: 24 },
+    shootValue: { fontSize: 20, lineHeight: 22 },
     makeBtn: {
-      width: '100%',
-      height: 36,
-      borderRadius: 8,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 4,
+      width: '100%', height: 34, borderRadius: 8,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     },
     missBtn: {
-      width: '100%',
-      height: 36,
-      borderRadius: 8,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 4,
+      width: '100%', height: 34, borderRadius: 8,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
     },
     shootBtnText: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.3 },
     undoRow: { flexDirection: 'row', gap: 4, width: '100%' },
     undoBtn: {
-      flex: 1,
-      height: 24,
-      borderRadius: 6,
-      borderWidth: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
+      flex: 1, height: 22, borderRadius: 6, borderWidth: 1,
+      alignItems: 'center', justifyContent: 'center',
     },
     undoBtnText: { fontSize: 10, fontFamily: 'Inter_500Medium' },
 
-    // Counting grid — 5 cards in a wrap
-    countGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    // Counting grid
+    countGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
     countCard: {
-      flex: 1,
-      minWidth: '18%',
-      borderRadius: 12,
-      borderWidth: 1,
-      padding: 10,
-      alignItems: 'center',
-      gap: 6,
+      flex: 1, minWidth: '18%', borderRadius: 12, borderWidth: 1,
+      padding: 9, alignItems: 'center', gap: 5,
     },
     countLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-    countValue: { fontSize: 28, lineHeight: 30 },
-    countBtns: { flexDirection: 'row', gap: 6, width: '100%' },
+    countValue: { fontSize: 26, lineHeight: 28 },
+    countBtns: { flexDirection: 'row', gap: 5, width: '100%' },
     countBtn: {
-      flex: 1,
-      height: 28,
-      borderRadius: 8,
-      alignItems: 'center',
-      justifyContent: 'center',
+      flex: 1, height: 26, borderRadius: 8,
+      alignItems: 'center', justifyContent: 'center',
     },
     countBtnText: { fontSize: 14, lineHeight: 16, fontFamily: 'Inter_700Bold' },
 
     // Footer
     footer: {
-      paddingHorizontal: 16,
+      paddingHorizontal: 14,
       paddingTop: 8,
       borderTopWidth: 1,
       borderTopColor: 'rgba(255,255,255,0.06)',
     },
     saveBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      height: 52,
-      borderRadius: 13,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 8, height: 50, borderRadius: 13,
     },
     saveBtnText: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#fff' },
-
-    // Floating camera preview
-    cameraFloat: {
-      position: 'absolute',
-      bottom: 90 + insets.bottom,
-      right: 12,
-      width: 160,
-      height: 120,
-      borderRadius: 12,
-      overflow: 'hidden',
-      borderWidth: 2,
-      borderColor: 'rgba(255,255,255,0.25)',
-      shadowColor: '#000',
-      shadowOpacity: 0.5,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 3 },
-      elevation: 8,
-    },
-    cameraView: { flex: 1 },
-    recBadge: {
-      position: 'absolute',
-      top: 5,
-      left: 5,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 3,
-      backgroundColor: 'rgba(0,0,0,0.55)',
-      borderRadius: 6,
-      paddingHorizontal: 5,
-      paddingVertical: 2,
-    },
-    recDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#EF4444' },
-    recText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.5 },
-
-    // Permission banner
-    permBanner: {
-      position: 'absolute',
-      bottom: 90 + insets.bottom,
-      right: 12,
-      left: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      borderRadius: 10,
-      borderWidth: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    permText: { flex: 1, fontSize: 12, fontFamily: 'Inter_400Regular' },
-    permBtn: { borderRadius: 7, paddingHorizontal: 12, paddingVertical: 6 },
-    permBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', color: '#fff' },
   });
 }
