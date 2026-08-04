@@ -559,6 +559,20 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
   const body = UpdateGameBody.parse(req.body);
   const ownerId = req.appUser!.id;
 
+  // Enforce the "made ≤ attempted" invariant for every stat line.
+  // The Zod schema only enforces ≥ 0; this closes the gap where a client
+  // could submit ftMade=5, ftAttempted=3 and inflate shooting percentages.
+  const invalidStat = body.stats.find(
+    (s) =>
+      s.ftMade > s.ftAttempted ||
+      s.twoMade > s.twoAttempted ||
+      s.threeMade > s.threeAttempted,
+  );
+  if (invalidStat) {
+    res.status(400).json({ error: "Made shots cannot exceed attempted shots" });
+    return;
+  }
+
   const existing = await db.query.gamesTable.findFirst({
     where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
   });
