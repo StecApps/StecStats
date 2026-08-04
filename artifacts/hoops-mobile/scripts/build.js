@@ -61,12 +61,15 @@ function getDeploymentDomain() {
     return stripProtocol(process.env.REPLIT_INTERNAL_APP_DOMAIN);
   }
 
-  if (process.env.REPLIT_DEV_DOMAIN) {
-    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
-  }
-
+  // EXPO_PUBLIC_DOMAIN takes priority over REPLIT_DEV_DOMAIN so it can be
+  // set to the production domain (e.g. stecstats.com) and override the dev
+  // server when testing against real production data.
   if (process.env.EXPO_PUBLIC_DOMAIN) {
     return stripProtocol(process.env.EXPO_PUBLIC_DOMAIN);
+  }
+
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    return stripProtocol(process.env.REPLIT_DEV_DOMAIN);
   }
 
   console.error(

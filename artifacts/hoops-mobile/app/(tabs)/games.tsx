@@ -181,7 +181,8 @@ export default function GamesScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8 }}
+          style={{ flexShrink: 0 }}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8, alignItems: 'center' }}
         >
           <TouchableOpacity
             onPress={() => setSelectedPlayerId(null)}
