@@ -1479,7 +1479,6 @@ async function renderGameSegments(
   eligible: { videoTimestampMs: number; playerId: number; statField: string }[],
   nameById: Map<number, string>,
   offsetMs: number = 0,
-  musicTrackPath?: string,
   half2StartMs?: number,
   halftimeGapMs?: number,
   knownDurationMs?: number,
@@ -1920,20 +1919,17 @@ async function renderGameSegments(
     // Build filter_complex.  Music is added as input 2 (0=video, 1=logo, 2=music)
     // when a musicTrackPath is provided.  The audio filter runs INSIDE
     // filter_complex so that the amix output can be routed with -map [aout].
+    // Music is intentionally NOT mixed into individual segments.  Doing so
+    // causes the music track to reset to the beginning for every clip after
+    // concatenation, producing an audible pop/restart at every clip boundary.
+    // Instead, segments carry only the source audio (or are audio-free when
+    // the source has no audio), and a single music-mixing pass is applied over
+    // the final concatenated MP4 in mixMusicIntoReel() after concatSegments().
     const fcParts = [
       `[0:v]${mainFilters}[main]`,
       `[1:v]scale=-1:${wmLogoHeight},format=rgba,colorchannelmixer=aa=0.65[logo]`,
       `[main][logo]overlay=W-w-${wmLogoMargin}:${wmLogoMargin}:shortest=1[out]`,
     ];
-    if (musicTrackPath) {
-      // Music volume: 20% of original audio when source has audio (amix
-      // weights=1 0.2), or 30% solo volume when there is no source audio.
-      if (hasAudio) {
-        fcParts.push(`[0:a][2:a]amix=inputs=2:duration=first:weights=1 0.2[aout]`);
-      } else {
-        fcParts.push(`[2:a]volume=0.3[aout]`);
-      }
-    }
     const filterComplex = fcParts.join(";");
 
     const segPath = path.join(tmpDir, `seg_${prefix}_${i}.ts`);
@@ -1949,7 +1945,6 @@ async function renderGameSegments(
       "-ss", input.seek.toFixed(3),
       "-i", input.path,
       "-loop", "1", "-i", LOGO_FILE,
-      ...(musicTrackPath ? ["-stream_loop", "-1", "-i", musicTrackPath] : []),
       "-t", segDur.toFixed(3),
       "-filter_complex", filterComplex,
       "-map", "[out]",
@@ -1963,9 +1958,7 @@ async function renderGameSegments(
       "-maxrate", "6000k",
       "-bufsize", "12000k",
     ];
-    if (musicTrackPath) {
-      args.push("-map", "[aout]", "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
-    } else if (hasAudio) {
+    if (hasAudio) {
       args.push("-map", "0:a?", "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2");
     } else {
       args.push("-an");
@@ -2169,6 +2162,57 @@ async function concatSegments(
   await runFfmpegQueued(concatArgs);
 }
 
+/**
+ * Mix a music track into a fully-concatenated reel MP4, producing a new file
+ * at outPath.  This is the correct place to apply music so that the track
+ * plays continuously from beginning to end — mixing per-segment would restart
+ * the track at every clip boundary and produce an audible pop.
+ *
+ * - When the source reel has audio: blend at 20% music / 100% original audio.
+ * - When the source reel has no audio: music only at 30% volume.
+ * Music is always truncated to the video duration (-shortest).
+ */
+async function mixMusicIntoReel(
+  concatPath: string,
+  outPath: string,
+  musicTrackPath: string,
+  reelHasAudio: boolean,
+): Promise<void> {
+  const args = [
+    "-y",
+    "-i", concatPath,
+    "-stream_loop", "-1", "-i", musicTrackPath,
+  ];
+
+  if (reelHasAudio) {
+    // Blend original game audio (weight 1) with background music (weight 0.2).
+    // duration=first trims the music to the video length; -shortest below is
+    // an additional safety net so ffmpeg doesn't wait on the looped music input.
+    args.push(
+      "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.2[aout]",
+      "-map", "0:v",
+      "-map", "[aout]",
+    );
+  } else {
+    // No source audio — music only, trimmed to video length.
+    args.push(
+      "-filter_complex", "[1:a]volume=0.3[aout]",
+      "-map", "0:v",
+      "-map", "[aout]",
+    );
+  }
+
+  args.push(
+    "-c:v", "copy",
+    "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
+    "-shortest",
+    "-movflags", "+faststart",
+    outPath,
+  );
+
+  await runFfmpegQueued(args);
+}
+
 async function uploadHighlight(outPath: string, ownerId: number): Promise<string> {
   // Use GCS SDK streaming upload (pipeline → createWriteStream) instead of
   // reading the whole file into a Buffer and POSTing to a signed URL.
@@ -2276,7 +2320,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       highlightChunksConfirmed = true;
       rendered = await renderGameSegments(
         null, tmpDir, "g", eligible, nameById,
-        game.videoOffsetMs ?? 0, musicTrackPath,
+        game.videoOffsetMs ?? 0,
         game.videoHalf2StartMs ?? undefined,
         game.videoHalftimeGapMs ?? undefined,
         game.videoDurationMs ?? undefined,
@@ -2299,7 +2343,7 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       try {
         rendered = await renderGameSegments(
           srcPath, tmpDir, "g", eligible, nameById,
-          game.videoOffsetMs ?? 0, musicTrackPath,
+          game.videoOffsetMs ?? 0,
           game.videoHalf2StartMs ?? undefined,
           game.videoHalftimeGapMs ?? undefined,
           game.videoDurationMs ?? undefined,
@@ -2313,9 +2357,15 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       throw new HighlightError("No qualifying highlight moments in this game");
     }
 
-    const outPath = path.join(tmpDir, "highlight.mp4");
-    const outputHasAudio = hasAudio || !!musicTrackPath;
-    await concatSegments(segPaths, tmpDir, outPath, outputHasAudio);
+    // Music is mixed in a single post-concat pass so the track plays
+    // continuously across all clips without resetting at each boundary.
+    let outPath = path.join(tmpDir, "highlight.mp4");
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio);
+    if (musicTrackPath) {
+      const musicOutPath = path.join(tmpDir, "highlight_music.mp4");
+      await mixMusicIntoReel(outPath, musicOutPath, musicTrackPath, hasAudio);
+      outPath = musicOutPath;
+    }
 
     const objectPath = await uploadHighlight(outPath, game.ownerId);
 
@@ -2402,7 +2452,7 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       lowlightChunksConfirmed = true;
       rendered = await renderGameSegments(
         null, tmpDir, "ll", eligible, nameById,
-        game.videoOffsetMs ?? 0, musicTrackPath,
+        game.videoOffsetMs ?? 0,
         game.videoHalf2StartMs ?? undefined,
         game.videoHalftimeGapMs ?? undefined,
         game.videoDurationMs ?? undefined,
@@ -2425,7 +2475,7 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       try {
         rendered = await renderGameSegments(
           srcPath, tmpDir, "ll", eligible, nameById,
-          game.videoOffsetMs ?? 0, musicTrackPath,
+          game.videoOffsetMs ?? 0,
           game.videoHalf2StartMs ?? undefined,
           game.videoHalftimeGapMs ?? undefined,
           game.videoDurationMs ?? undefined,
@@ -2439,9 +2489,15 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       throw new HighlightError("No lowlight moments could be rendered");
     }
 
-    const outPath = path.join(tmpDir, "lowlight.mp4");
-    const outputHasAudio = hasAudio || !!musicTrackPath;
-    await concatSegments(segPaths, tmpDir, outPath, outputHasAudio);
+    // Music is mixed in a single post-concat pass so the track plays
+    // continuously across all clips without resetting at each boundary.
+    let outPath = path.join(tmpDir, "lowlight.mp4");
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio);
+    if (musicTrackPath) {
+      const musicOutPath = path.join(tmpDir, "lowlight_music.mp4");
+      await mixMusicIntoReel(outPath, musicOutPath, musicTrackPath, hasAudio);
+      outPath = musicOutPath;
+    }
 
     const objectPath = await uploadHighlight(outPath, game.ownerId);
 
@@ -2542,7 +2598,7 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
         teamChunksConfirmed = true;
         result = await renderGameSegments(
           null, tmpDir!, `t${game.id}`, eligible, nameById,
-          game.videoOffsetMs ?? 0, undefined,
+          game.videoOffsetMs ?? 0,
           game.videoHalf2StartMs ?? undefined,
           game.videoHalftimeGapMs ?? undefined,
           game.videoDurationMs ?? undefined,
@@ -2563,7 +2619,7 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
         try {
           result = await renderGameSegments(
             srcPath, tmpDir!, `t${game.id}`, eligible, nameById,
-            game.videoOffsetMs ?? 0, undefined,
+            game.videoOffsetMs ?? 0,
             game.videoHalf2StartMs ?? undefined,
             game.videoHalftimeGapMs ?? undefined,
             game.videoDurationMs ?? undefined,
