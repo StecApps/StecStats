@@ -413,10 +413,14 @@ export default function WatchStream() {
   const [checkAgainCooldown, setCheckAgainCooldown] = useState(0);
   const checkAgainCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const CHECK_AGAIN_COOLDOWN_S = 10;
+  // Set to true when getLiveStatus throws (network error, 500, etc.) so the
+  // viewer gets visible feedback instead of a silent no-op.
+  const [checkAgainFailed, setCheckAgainFailed] = useState(false);
 
   const handleCheckAgain = async () => {
     if (checkAgainCooldown > 0 || isCheckingAgain) return;
     setIsCheckingAgain(true);
+    setCheckAgainFailed(false);
     try {
       const s = await getLiveStatus(code);
       if (s) setStatus(s);
@@ -434,6 +438,10 @@ export default function WatchStream() {
           }, 30_000);
         }
       }
+    } catch {
+      // Network error or non-2xx response — stay on waiting-for-broadcaster
+      // and surface an inline message so the viewer knows the check failed.
+      setCheckAgainFailed(true);
     } finally {
       setIsCheckingAgain(false);
       // Rate-limit: start a cooldown so the button can't be hammered.
@@ -1054,6 +1062,11 @@ export default function WatchStream() {
                   ? <><RefreshCw className="w-4 h-4" /> Check again ({checkAgainCooldown}s)</>
                   : <><RefreshCw className="w-4 h-4" /> Check again</>}
               </button>
+              {checkAgainFailed && (
+                <p className="text-xs text-red-400 text-center max-w-xs" role="alert">
+                  Couldn't reach the server — check your connection and try again.
+                </p>
+              )}
               <button
                 onClick={shareLink}
                 className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20 transition-colors"

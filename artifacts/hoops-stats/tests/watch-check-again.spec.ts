@@ -373,4 +373,126 @@ test.describe("Watch page – 'Check again' button transitions viewer to stream"
       await expect(page.getByText(/Joining the stream/)).not.toBeVisible();
     }
   );
+
+  test(
+    "shows inline error feedback and still runs the cooldown when the status request fails",
+    async ({ page }) => {
+
+      await page.addInitScript({ content: FAKE_PC_SCRIPT });
+
+      // ── HTTP mocks ─────────────────────────────────────────────────────────
+
+      await page.route(
+        (url) => url.pathname === "/api",
+        (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+      );
+
+      // First call (on mount) — inactive so the component enters
+      // "waiting-for-broadcaster".  Second call (from handleCheckAgain) —
+      // aborted to simulate a network failure / total outage, causing
+      // getLiveStatus to throw so the catch branch in handleCheckAgain fires.
+      let statusCallCount = 0;
+      await page.route(
+        (url) => url.pathname === `/api/live/${CODE}/status`,
+        (route) => {
+          statusCallCount += 1;
+          if (statusCallCount === 1) {
+            // Mount-time probe — broadcaster not live yet.
+            route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                active: false,
+                opponent: "Visitors",
+                teamName: "Home",
+                viewerCount: 0,
+                teamScore: 0,
+                opponentScore: 0,
+              }),
+            });
+          } else {
+            // "Check again" probe — abort to simulate a network error so
+            // fetch() throws and handleCheckAgain's catch block fires.
+            route.abort("failed");
+          }
+        }
+      );
+
+      await page.route(
+        (url) => url.pathname === "/api/live/ice-servers",
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+              turnAvailable: false,
+            }),
+          })
+      );
+
+      // ── WebSocket mock ─────────────────────────────────────────────────────
+
+      await page.routeWebSocket(
+        (url) => url.pathname === "/api/live/ws",
+        (ws) => {
+          ws.onMessage((raw) => {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(
+                typeof raw === "string"
+                  ? raw
+                  : new TextDecoder().decode(raw as ArrayBuffer)
+              );
+            } catch {
+              return;
+            }
+            if (msg.type === "join-viewer") {
+              ws.send(JSON.stringify({ type: "joined", viewerId: "chk-viewer-003" }));
+            }
+            // No offer reply — the broadcast is still inactive.
+          });
+        }
+      );
+
+      // ── Navigate ──────────────────────────────────────────────────────────
+      await page.goto(`/watch/${CODE}?__offerWatchdogMs=5000&__watchRetryS=9999`);
+
+      // ── 1. Component enters "waiting-for-broadcaster" ─────────────────────
+      await expect(
+        page.getByText(/Stream interrupted/)
+      ).toBeVisible({ timeout: 10_000 });
+
+      // ── 2. "Check again" button is enabled ───────────────────────────────
+      const checkBtn = page.getByRole("button", { name: /Check again/i });
+      await expect(checkBtn).toBeVisible({ timeout: 5_000 });
+      await expect(checkBtn).toBeEnabled();
+
+      // ── 3. Tap "Check again" ─────────────────────────────────────────────
+      await checkBtn.click();
+
+      // ── 4. Component stays on "waiting-for-broadcaster" ──────────────────
+      // The error path must NOT transition to "connecting".
+      await expect(page.getByText(/Stream interrupted/)).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText(/Joining the stream/)).not.toBeVisible();
+
+      // ── 5. Inline error feedback is visible ──────────────────────────────
+      await expect(
+        page.getByRole("alert")
+      ).toBeVisible({ timeout: 5_000 });
+
+      await expect(
+        page.getByRole("alert")
+      ).toContainText(/check your connection/i);
+
+      // ── 6. Cooldown still starts (button becomes disabled with countdown) ─
+      await expect(
+        page.getByRole("button", { name: /Check again \(\d+s\)/i })
+      ).toBeVisible({ timeout: 3_000 });
+
+      await expect(
+        page.getByRole("button", { name: /Check again \(\d+s\)/i })
+      ).toBeDisabled();
+    }
+  );
 });
