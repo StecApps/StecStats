@@ -12,9 +12,9 @@ export const MUSIC_TRACKS = [
   { id: "energetic",  label: "Energetic",  description: "High-energy uptempo",       hasPreview: true  },
   { id: "upbeat",     label: "Upbeat",     description: "Fun, positive groove",       hasPreview: true  },
   { id: "dynamic",    label: "Dynamic",    description: "Driving, powerful beat",     hasPreview: true  },
-  { id: "cinematic",  label: "Cinematic",  description: "Epic orchestral triumph",    hasPreview: false },
-  { id: "oldschool",  label: "Old School", description: "Classic boom bap hip-hop",   hasPreview: false },
-  { id: "lofi",       label: "Lo-Fi",      description: "Chill, mellow backdrop",     hasPreview: false },
+  { id: "cinematic",  label: "Cinematic",  description: "Epic orchestral triumph",    hasPreview: true  },
+  { id: "oldschool",  label: "Old School", description: "Classic boom bap hip-hop",   hasPreview: true  },
+  { id: "lofi",       label: "Lo-Fi",      description: "Chill, mellow backdrop",     hasPreview: true  },
 ] as const;
 
 // Internal alias so the rest of the file keeps the short name
