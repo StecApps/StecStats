@@ -231,10 +231,18 @@ export default function ProfileScreen() {
           />
           <ProfileRow
             icon="card-outline"
-            label="Manage Subscription"
+            label={rcPlan ? (Platform.OS === 'android' ? 'Manage in Google Play' : 'Manage in App Store') : 'Manage Billing'}
             onPress={() => {
-              // Open billing portal on web
-              Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/billing`);
+              if (rcPlan) {
+                // RC subscriber must cancel through the OS store, not the web portal
+                const url = Platform.OS === 'android'
+                  ? 'https://play.google.com/store/account/subscriptions'
+                  : 'itms-apps://apps.apple.com/account/subscriptions';
+                Linking.openURL(url);
+              } else {
+                // Stripe / web subscription — open billing portal
+                Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/billing`);
+              }
             }}
             colors={colors}
           />
