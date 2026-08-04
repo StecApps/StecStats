@@ -1,45 +1,49 @@
 /**
  * watch-offer-watchdog-param.spec.ts
  *
- * Confirms that the `__watchOfferS` URL parameter shortens the offer-arrival
- * watchdog interval so end-to-end tests don't need to wait a full 30 s.
+ * Confirms that the offer-arrival watchdog respects MAX_WATCH_RECONNECT_ATTEMPTS
+ * and that the `__watchOfferS` URL parameter shortens the interval so CI doesn't
+ * need to wait the full 30 s per stage.
  *
  * Scenario
  * ---------
  * 1. Viewer navigates to /watch/:code with `__watchOfferS=1`.
  * 2. WS opens and a `joined` ACK is sent — but deliberately no SDP offer,
- *    simulating a broadcaster that is absent.
- * 3. After ~1 s (first watchdog stage) the component increments the retry
- *    counter and sends `request-offer` over the still-open socket.
- *    The UI switches to "Retrying… (attempt N)" for some N ≥ 2.
- * 4. Still no offer arrives — after another ~1 s (second watchdog stage) the
- *    component transitions to `state="waiting-for-broadcaster"`.
- *    The UI shows the "Stream interrupted" waiting message.
+ *    simulating a broadcaster that is permanently absent.
+ * 3. The watchdog fires up to MAX_WATCH_RECONNECT_ATTEMPTS (6) times.
+ *    On each of the first 5 firings the component increments the retry counter
+ *    and sends `request-offer` over the still-open socket.
+ * 4. On the 6th firing the cap is reached (attempts >= MAX_WATCH_RECONNECT_ATTEMPTS)
+ *    and the component transitions to `state="ended"` showing
+ *    "Connection dropped and couldn't be restored."
+ * 5. No further `request-offer` messages are sent after that point.
  *
  * Why __watchOfferS=1
  * --------------------
- * Without the param the watchdog waits 30 s per stage (60 s total), which
- * is too slow for CI.  With __watchOfferS=1 each stage is 1 s, so the full
- * two-stage sequence completes in ~2 s of real time — well under the 10 s
- * Playwright action timeout.  The param is never present in production URLs
+ * Without the param the watchdog waits 30 s per firing (180 s total for 6
+ * rounds), which is too slow for CI.  With __watchOfferS=1 each firing takes
+ * 1 s, so the full sequence completes in ~6 s of real time — well within the
+ * Playwright default timeout.  The param is never present in production URLs
  * so it has no effect on live sessions.
  *
  * What is mocked vs what is exercised
  * -------------------------------------
  * Mocked  : HTTP health-gate, live session status, ICE server config, WS
  *           signaling server
- * Exercised: watch.tsx __watchOfferS param reading, two-stage offer-watchdog
- *            state machine, retry counter increment, `request-offer` dispatch,
- *            transition to "waiting-for-broadcaster" when broadcaster is absent
+ * Exercised: watch.tsx __watchOfferS param reading, capped offer-watchdog
+ *            state machine (MAX_WATCH_RECONNECT_ATTEMPTS), retry counter
+ *            increment, `request-offer` dispatch, transition to "ended" when
+ *            broadcaster never responds
  */
 
 import { test, expect } from "@playwright/test";
 
 const CODE = "WOFR1";
+const MAX_WATCH_RECONNECT_ATTEMPTS = 6;
 
-test.describe("Watch page – __watchOfferS shortens the offer watchdog", () => {
+test.describe("Watch page – offer watchdog caps at MAX_WATCH_RECONNECT_ATTEMPTS", () => {
   test(
-    "retry counter increments and waiting-for-broadcaster shows within 5 s using __watchOfferS=1",
+    "sends request-offer up to cap then shows 'Connection dropped' — not a spinner",
     async ({ page }) => {
 
       // ── HTTP mocks ─────────────────────────────────────────────────────────
@@ -100,13 +104,11 @@ test.describe("Watch page – __watchOfferS shortens the offer watchdog", () => 
             }
 
             if (msg.type === "join-viewer") {
-              // ACK the join — deliberately NO offer so the first-stage
-              // watchdog fires and the retry counter increments.
+              // ACK the join — deliberately NO offer so the watchdog fires.
               ws.send(JSON.stringify({ type: "joined", viewerId: "wofr-viewer-001" }));
 
             } else if (msg.type === "request-offer") {
-              // Record it but do NOT reply — the second-stage watchdog must
-              // fire and transition the component to "waiting-for-broadcaster".
+              // Record it but do NOT reply — watchdog must keep firing until cap.
               requestOfferMessages.push(msg as { type: string; code: string });
             }
           });
@@ -114,8 +116,8 @@ test.describe("Watch page – __watchOfferS shortens the offer watchdog", () => 
       );
 
       // ── Navigate with __watchOfferS=1 ─────────────────────────────────────
-      // Each watchdog stage is 1 s instead of 30 s; the full two-stage
-      // sequence completes in ~2 s of real time.
+      // Each watchdog firing is 1 s; all MAX_WATCH_RECONNECT_ATTEMPTS firings
+      // complete in ~6 s of real time.
       await page.goto(`/watch/${CODE}?__watchOfferS=1`);
 
       // ── 1. Component enters "connecting" state ─────────────────────────────
@@ -123,36 +125,37 @@ test.describe("Watch page – __watchOfferS shortens the offer watchdog", () => 
         page.getByText(/Joining the stream/)
       ).toBeVisible({ timeout: 10_000 });
 
-      // ── 2. First-stage watchdog fires — retry counter increments ──────────
-      // The component increments iceRetryCount and shows "Retrying… (attempt N)".
-      // It also sends request-offer over the open WS.
-      await expect(
-        page.getByText(/Retrying…/)
-      ).toBeVisible({ timeout: 5_000 });
-
-      // "Joining the stream" must be replaced by the retry text.
-      await expect(page.getByText(/Joining the stream/)).not.toBeVisible();
-
-      // The component sent request-offer exactly once.
+      // ── 2. Watchdog cycles through all attempts ────────────────────────────
+      // Each firing (except the last) sends request-offer and re-arms.
+      // The last firing (attempt = MAX_WATCH_RECONNECT_ATTEMPTS) transitions
+      // to "ended" without sending another request-offer.
+      // Expected count: MAX_WATCH_RECONNECT_ATTEMPTS - 1 = 5 messages.
       await expect
-        .poll(() => requestOfferMessages.length, { timeout: 3_000 })
-        .toBe(1);
+        .poll(() => requestOfferMessages.length, { timeout: 12_000, intervals: [500] })
+        .toBe(MAX_WATCH_RECONNECT_ATTEMPTS - 1);
 
-      expect(requestOfferMessages[0].type).toBe("request-offer");
-      expect(requestOfferMessages[0].code).toBe(CODE);
-
-      // ── 3. Second-stage watchdog fires → waiting-for-broadcaster ───────────
-      // No offer arrived, so the component falls back gracefully instead of
-      // looping or hanging on "connecting" forever.
+      // ── 3. Final watchdog firing → "ended" ────────────────────────────────
+      // The component must show the dropped-connection message instead of
+      // staying on a spinner or showing "Stream interrupted" / waiting-for-broadcaster.
       await expect(
-        page.getByText(/Stream interrupted/)
+        page.getByText(/Connection dropped and couldn't be restored/)
       ).toBeVisible({ timeout: 5_000 });
 
       // Connecting overlay must be fully gone.
+      await expect(page.getByText(/Joining the stream/)).not.toBeVisible();
       await expect(page.getByText(/Retrying…/)).not.toBeVisible();
+      await expect(page.getByText(/Stream interrupted/)).not.toBeVisible();
 
-      // No additional request-offer messages were sent after the fallback.
-      expect(requestOfferMessages).toHaveLength(1);
+      // ── 4. No extra request-offer messages after the cap ───────────────────
+      // Wait an extra 1.5 watchdog cycles to confirm no further messages arrive.
+      await page.waitForTimeout(1_500);
+      expect(requestOfferMessages).toHaveLength(MAX_WATCH_RECONNECT_ATTEMPTS - 1);
+
+      // All messages targeted the correct session code.
+      for (const msg of requestOfferMessages) {
+        expect(msg.type).toBe("request-offer");
+        expect(msg.code).toBe(CODE);
+      }
     }
   );
 });

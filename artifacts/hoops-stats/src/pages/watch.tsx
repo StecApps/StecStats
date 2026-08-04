@@ -51,6 +51,10 @@ export default function WatchStream() {
   // doesn't fire within 30 s the broadcaster is likely offline, so we
   // fall back to "waiting-for-broadcaster" instead of retrying forever.
   const offerWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Counts how many times the offer watchdog has fired without receiving an
+  // offer. When this reaches MAX_WATCH_RECONNECT_ATTEMPTS the broadcaster is
+  // permanently gone and we transition to "ended" instead of looping forever.
+  const offerWatchdogAttemptsRef = useRef(0);
 
   // Connecting-screen elapsed timers and retry counter.
   // connectingElapsed  — per-attempt seconds (resets on each ICE retry)
@@ -485,29 +489,32 @@ export default function WatchStream() {
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "join-viewer", code }));
         mediaFailedRef.current = false;
-        // Proactive offer watchdog: if no offer arrives within 30 s of joining
-        // (broadcaster is mid-reconnect), send request-offer once, then wait
-        // another 30 s; if still no offer the broadcaster is truly offline and
-        // we fall back to "waiting-for-broadcaster" instead of looping forever.
+        // Proactive offer watchdog: if no offer arrives within OFFER_WATCHDOG_MS
+        // of joining, send request-offer and re-arm. After MAX_WATCH_RECONNECT_ATTEMPTS
+        // firings with no offer the broadcaster is permanently gone — transition
+        // to "ended" instead of looping forever.
         if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
-        offerWatchdogRef.current = setTimeout(() => {
+        offerWatchdogAttemptsRef.current = 0;
+        const fireOfferWatchdog = () => {
           offerWatchdogRef.current = null;
           if (ws.readyState !== WebSocket.OPEN) return;
+          offerWatchdogAttemptsRef.current += 1;
+          if (offerWatchdogAttemptsRef.current >= MAX_WATCH_RECONNECT_ATTEMPTS) {
+            // Reached the attempt cap — the broadcaster is not coming back.
+            // Transition to "ended" without re-arming so we stop exactly at
+            // MAX_WATCH_RECONNECT_ATTEMPTS total firings.
+            setState((prev) =>
+              prev === "connecting" || prev === "reconnecting" ? "ended" : prev
+            );
+            return;
+          }
           iceRetryCountRef.current += 1;
           setIceRetryCount(iceRetryCountRef.current);
           startConnectingTimer(false /* preserve cumulative */);
           ws.send(JSON.stringify({ type: "request-offer", code }));
-          // Second stage: if the broadcaster still doesn't respond within the
-          // watchdog window, they are offline — show "waiting-for-broadcaster".
-          offerWatchdogRef.current = setTimeout(() => {
-            offerWatchdogRef.current = null;
-            setState((prev) =>
-              prev === "connecting" || prev === "reconnecting"
-                ? "waiting-for-broadcaster"
-                : prev
-            );
-          }, OFFER_WATCHDOG_MS);
-        }, OFFER_WATCHDOG_MS);
+          offerWatchdogRef.current = setTimeout(fireOfferWatchdog, OFFER_WATCHDOG_MS);
+        };
+        offerWatchdogRef.current = setTimeout(fireOfferWatchdog, OFFER_WATCHDOG_MS);
         if (isReconnect) {
           // Do NOT reset reconnectAttemptsRef here — the counter only resets
           // once the stream is actually live again (see the "live" branch in
@@ -569,6 +576,9 @@ export default function WatchStream() {
             clearTimeout(offerWatchdogRef.current);
             offerWatchdogRef.current = null;
           }
+          // Reset the attempt counter so a future watchdog cycle on this
+          // connection starts fresh rather than inheriting a prior tally.
+          offerWatchdogAttemptsRef.current = 0;
           if (message.renegotiate && pcRef.current) {
             // ICE restart from the broadcaster on the existing peer
             // connection — reuse it instead of tearing down and rebuilding,
