@@ -126,6 +126,26 @@ export class ObjectStorageService {
     const fullPath = `${privateObjectDir}/uploads/${ownerId}/${objectId}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+
+    // Atomically claim the object slot with an owner ACL *before* returning
+    // the signed URL to the client.  This means the object is already
+    // ownership-tagged even during the window between URL issuance and the
+    // client's actual PUT (or if the game row is never saved).
+    //
+    // Note: a plain GCS signed PUT will clear custom metadata when the
+    // client uploads the real file, so GET /storage/objects/* also uses a
+    // path-based ownership check (see storage.ts) as a complementary guard
+    // that requires no live metadata.
+    await file.save(Buffer.alloc(0), {
+      metadata: { contentType: "application/octet-stream" },
+      resumable: false,
+    });
+    await setObjectAclPolicy(file, {
+      owner: String(ownerId),
+      visibility: "private",
+    });
 
     return signObjectURL({
       bucketName,

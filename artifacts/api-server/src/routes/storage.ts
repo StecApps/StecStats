@@ -18,6 +18,20 @@ const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
 /**
+ * Returns true when the objectPath follows the server-assigned upload
+ * convention: /objects/uploads/{ownerId}/{uuid}
+ *
+ * Upload paths are namespaced by ownerId at URL-generation time so that
+ * ownership can be verified from the path alone — even during the window
+ * after a signed PUT clears the object's ACL metadata and before the game
+ * row that links the path to an owner is saved.
+ */
+function isOwnedByPath(objectPath: string, ownerId: number): boolean {
+  const match = objectPath.match(/^\/objects\/uploads\/(\d+)\//);
+  return match !== null && parseInt(match[1], 10) === ownerId;
+}
+
+/**
  * POST /storage/uploads/request-url
  *
  * Request a presigned URL for file upload.
@@ -122,7 +136,16 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
         })
       : null;
 
+    // Path-based ownership check: upload paths are namespaced as
+    // /objects/uploads/{ownerId}/{uuid} by the server at URL-generation time.
+    // A signed PUT from GCS overwrites the object's custom metadata, so the
+    // ACL set during URL issuance can be cleared.  Verifying the ownerId
+    // encoded in the path covers that window (between client PUT and game-row
+    // save) without requiring live metadata.
+    const ownedByPathConvention = isOwnedByPath(objectPath, ownerId);
+
     const canAccess =
+      ownedByPathConvention ||
       !!ownedGame ||
       !!ownedPlayerPhoto ||
       (await objectStorageService.canAccessObjectEntity({
@@ -246,6 +269,7 @@ router.get("/storage/objects-signed-url/*path", requireAuth, async (req: Request
       : null;
 
     const canAccess =
+      isOwnedByPath(objectPath, ownerId) ||
       !!ownedGame ||
       !!ownedPlayerPhoto ||
       (await objectStorageService.canAccessObjectEntity({
