@@ -13,14 +13,50 @@ export const PRO_ENTITLEMENT = 'pro';
 export const PREMIUM_ENTITLEMENT = 'premium';
 
 function getRevenueCatApiKey(): string | null {
-  if (!REVENUECAT_TEST_API_KEY || !REVENUECAT_IOS_API_KEY || !REVENUECAT_ANDROID_API_KEY) {
-    return null;
-  }
+  // Dev mode (Expo Go, simulator, web preview) — only the test key is needed.
   if (__DEV__ || Platform.OS === 'web' || Constants.executionEnvironment === 'storeClient') {
+    if (!REVENUECAT_TEST_API_KEY) {
+      console.warn(
+        '[RevenueCat] EXPO_PUBLIC_REVENUECAT_TEST_API_KEY is not set — ' +
+          'subscription features unavailable in dev mode.',
+      );
+      return null;
+    }
     return REVENUECAT_TEST_API_KEY;
   }
-  if (Platform.OS === 'ios') return REVENUECAT_IOS_API_KEY;
-  if (Platform.OS === 'android') return REVENUECAT_ANDROID_API_KEY;
+
+  // Production iOS build — only the iOS key is required.
+  if (Platform.OS === 'ios') {
+    if (!REVENUECAT_IOS_API_KEY) {
+      console.warn(
+        '[RevenueCat] EXPO_PUBLIC_REVENUECAT_IOS_API_KEY is not set — ' +
+          'subscription features unavailable on iOS.',
+      );
+      return null;
+    }
+    return REVENUECAT_IOS_API_KEY;
+  }
+
+  // Production Android build — only the Android key is required.
+  if (Platform.OS === 'android') {
+    if (!REVENUECAT_ANDROID_API_KEY) {
+      console.warn(
+        '[RevenueCat] EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY is not set — ' +
+          'subscription features unavailable on Android.',
+      );
+      return null;
+    }
+    return REVENUECAT_ANDROID_API_KEY;
+  }
+
+  // Unknown platform fallback.
+  if (!REVENUECAT_TEST_API_KEY) {
+    console.warn(
+      '[RevenueCat] No RevenueCat API key available for this platform — ' +
+        'subscription features unavailable.',
+    );
+    return null;
+  }
   return REVENUECAT_TEST_API_KEY;
 }
 

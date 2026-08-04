@@ -163,8 +163,15 @@ export default function PaywallScreen() {
               )}
             </TouchableOpacity>
           ) : (
-            <View style={[styles.proCta, { backgroundColor: colors.primary, opacity: 0.5 }]}>
-              <Text style={styles.proCtaText}>Coming Soon</Text>
+            <View style={{ gap: 4 }}>
+              <View style={[styles.proCta, { backgroundColor: colors.muted, opacity: 0.8 }]}>
+                <Text style={[styles.proCtaText, { color: colors.mutedForeground }]}>
+                  Subscriptions Unavailable
+                </Text>
+              </View>
+              <Text style={[styles.unconfiguredNote, { color: colors.mutedForeground }]}>
+                In-app purchases are not configured for this build. Please contact support.
+              </Text>
             </View>
           )}
         </View>
@@ -364,6 +371,12 @@ function makeStyles(colors: any, insets: any) {
       textAlign: 'center',
       fontFamily: 'Inter_400Regular',
       lineHeight: 16,
+    },
+    unconfiguredNote: {
+      fontSize: 12,
+      textAlign: 'center',
+      fontFamily: 'Inter_400Regular',
+      lineHeight: 17,
     },
   });
 }
