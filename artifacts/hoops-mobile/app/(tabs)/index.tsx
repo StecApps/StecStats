@@ -26,6 +26,7 @@ import {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+import { uploadPhoto } from '@/lib/uploadPhoto';
 
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
@@ -170,7 +171,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
       const token = await getToken();
       if (!token) throw new Error('Not signed in — please sign out and back in.');
       const mimeType = asset.mimeType ?? 'image/jpeg';
-      const objectPath = await uploadPhoto(asset.uri, mimeType, token);
+      const objectPath = await uploadPhoto(asset.uri, mimeType, token, API_BASE);
       await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
       qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
       // Remove from the pending queue now that the upload succeeded.
