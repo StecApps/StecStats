@@ -83,6 +83,23 @@ type RecordDraft = {
 
 const DRAFT_STORAGE_KEY = "stec:record-draft";
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const HIGHLIGHT_MUSIC_KEY = "stec:highlight-music-track";
+const LOWLIGHT_MUSIC_KEY = "stec:lowlight-music-track";
+const HIGHLIGHT_LAST_USED_MUSIC_KEY = "stec:highlight-last-used-music-track";
+const LOWLIGHT_LAST_USED_MUSIC_KEY = "stec:lowlight-last-used-music-track";
+
+const MUSIC_TRACK_LABELS: Record<string, string> = {
+  energetic: "Energetic",
+  upbeat: "Upbeat",
+  dynamic: "Dynamic",
+  cinematic: "Cinematic",
+  oldschool: "Old School",
+  lofi: "Lo-Fi",
+};
+
+function musicTrackLabel(track: string | null): string {
+  return track ? (MUSIC_TRACK_LABELS[track] ?? track) : "No music";
+}
 
 const initialStats = (playerId: number): StatCounters => ({
   playerId, ftMade: 0, ftAttempted: 0, twoMade: 0, twoAttempted: 0, threeMade: 0, threeAttempted: 0,
@@ -137,8 +154,18 @@ export default function RecordGame() {
   const createGame = useCreateGame();
   const updateGame = useUpdateGame();
   const savingRef = useRef(false);
-  const [highlightMusicTrack, setHighlightMusicTrack] = useState<string | null>(null);
-  const [lowlightMusicTrack, setLowlightMusicTrack] = useState<string | null>(null);
+  const [highlightMusicTrack, setHighlightMusicTrack] = useState<string | null>(
+    () => localStorage.getItem(HIGHLIGHT_MUSIC_KEY) || null,
+  );
+  const [lowlightMusicTrack, setLowlightMusicTrack] = useState<string | null>(
+    () => localStorage.getItem(LOWLIGHT_MUSIC_KEY) || null,
+  );
+  const [highlightLastUsedTrack, setHighlightLastUsedTrack] = useState<string | null>(
+    () => localStorage.getItem(HIGHLIGHT_LAST_USED_MUSIC_KEY) || null,
+  );
+  const [lowlightLastUsedTrack, setLowlightLastUsedTrack] = useState<string | null>(
+    () => localStorage.getItem(LOWLIGHT_LAST_USED_MUSIC_KEY) || null,
+  );
   const [isGeneratingHighlight, setIsGeneratingHighlight] = useState(false);
   const [isGeneratingLowlight, setIsGeneratingLowlight] = useState(false);
 
@@ -255,10 +282,35 @@ export default function RecordGame() {
     }
   };
 
+  // Persist music track selections to localStorage whenever they change
+  useEffect(() => {
+    if (highlightMusicTrack) {
+      localStorage.setItem(HIGHLIGHT_MUSIC_KEY, highlightMusicTrack);
+    } else {
+      localStorage.removeItem(HIGHLIGHT_MUSIC_KEY);
+    }
+  }, [highlightMusicTrack]);
+
+  useEffect(() => {
+    if (lowlightMusicTrack) {
+      localStorage.setItem(LOWLIGHT_MUSIC_KEY, lowlightMusicTrack);
+    } else {
+      localStorage.removeItem(LOWLIGHT_MUSIC_KEY);
+    }
+  }, [lowlightMusicTrack]);
+
   const handleGenerateHighlight = async () => {
     if (!gameId) return;
     highlightBlobCacheRef.current = null;
     setIsGeneratingHighlight(true);
+    // Record which track is being used so the ready state can display it
+    const trackUsed = highlightMusicTrack;
+    setHighlightLastUsedTrack(trackUsed);
+    if (trackUsed) {
+      localStorage.setItem(HIGHLIGHT_LAST_USED_MUSIC_KEY, trackUsed);
+    } else {
+      localStorage.removeItem(HIGHLIGHT_LAST_USED_MUSIC_KEY);
+    }
     try {
       const body: Record<string, string> = {};
       if (highlightMusicTrack) body.musicTrack = highlightMusicTrack;
@@ -360,6 +412,14 @@ export default function RecordGame() {
     if (!gameId) return;
     lowlightBlobCacheRef.current = null;
     setIsGeneratingLowlight(true);
+    // Record which track is being used so the ready state can display it
+    const trackUsed = lowlightMusicTrack;
+    setLowlightLastUsedTrack(trackUsed);
+    if (trackUsed) {
+      localStorage.setItem(LOWLIGHT_LAST_USED_MUSIC_KEY, trackUsed);
+    } else {
+      localStorage.removeItem(LOWLIGHT_LAST_USED_MUSIC_KEY);
+    }
     try {
       const body: Record<string, string> = {};
       if (lowlightMusicTrack) body.musicTrack = lowlightMusicTrack;
@@ -3472,6 +3532,10 @@ export default function RecordGame() {
                       Regenerate
                     </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Music className="w-3 h-3 shrink-0" />
+                    Generated with: <span className="font-medium">{musicTrackLabel(highlightLastUsedTrack)}</span>
+                  </p>
                   {isPro && (
                     <Dialog
                       open={isYoutubeDialogOpen}
@@ -3695,6 +3759,10 @@ export default function RecordGame() {
                         Regenerate
                       </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Music className="w-3 h-3 shrink-0" />
+                      Generated with: <span className="font-medium">{musicTrackLabel(lowlightLastUsedTrack)}</span>
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-2">
