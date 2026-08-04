@@ -371,6 +371,50 @@ export default function WatchStream() {
     }
   };
 
+  // "Check again" button state for the waiting-for-broadcaster screen.
+  const [isCheckingAgain, setIsCheckingAgain] = useState(false);
+  const [checkAgainCooldown, setCheckAgainCooldown] = useState(0);
+  const checkAgainCooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const CHECK_AGAIN_COOLDOWN_S = 10;
+
+  const handleCheckAgain = async () => {
+    if (checkAgainCooldown > 0 || isCheckingAgain) return;
+    setIsCheckingAgain(true);
+    try {
+      const s = await getLiveStatus(code);
+      if (s) setStatus(s);
+      if (s?.active) {
+        setState("connecting");
+        startConnectingTimer(true /* first attempt */);
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "request-offer", code }));
+          // Offer watchdog: if no offer arrives in 30 s, fall back to
+          // waiting-for-broadcaster rather than getting stuck on connecting.
+          if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+          offerWatchdogRef.current = setTimeout(() => {
+            offerWatchdogRef.current = null;
+            setState((prev) => (prev === "connecting" ? "waiting-for-broadcaster" : prev));
+          }, 30_000);
+        }
+      }
+    } finally {
+      setIsCheckingAgain(false);
+      // Rate-limit: start a cooldown so the button can't be hammered.
+      setCheckAgainCooldown(CHECK_AGAIN_COOLDOWN_S);
+      if (checkAgainCooldownRef.current) clearInterval(checkAgainCooldownRef.current);
+      checkAgainCooldownRef.current = setInterval(() => {
+        setCheckAgainCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(checkAgainCooldownRef.current!);
+            checkAgainCooldownRef.current = null;
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+  };
+
   const [finalSummary, setFinalSummary] = useState<{
     teamScore: number;
     opponentScore: number;
@@ -674,6 +718,7 @@ export default function WatchStream() {
       if (iceWatchdogRef.current) clearTimeout(iceWatchdogRef.current);
       if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
       if (reconnectTimerRef.current) clearInterval(reconnectTimerRef.current);
+      if (checkAgainCooldownRef.current) clearInterval(checkAgainCooldownRef.current);
       stopConnectingTimer();
       pcRef.current?.close();
       wsRef.current?.close();
@@ -951,8 +996,19 @@ export default function WatchStream() {
               <Users className="w-8 h-8 text-primary" />
               <p className="max-w-sm text-white">{explicitEndRef.current ? "Game hasn't started yet. You're in the right place — it'll connect automatically when the coach goes live." : "Stream interrupted — staying connected. It'll resume automatically when the coach reconnects."}</p>
               <button
+                onClick={handleCheckAgain}
+                disabled={isCheckingAgain || checkAgainCooldown > 0}
+                className="mt-1 flex items-center gap-2 rounded-full border border-primary/40 bg-primary/10 px-5 py-2 text-sm font-semibold text-primary hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCheckingAgain
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Checking…</>
+                  : checkAgainCooldown > 0
+                  ? <><RefreshCw className="w-4 h-4" /> Check again ({checkAgainCooldown}s)</>
+                  : <><RefreshCw className="w-4 h-4" /> Check again</>}
+              </button>
+              <button
                 onClick={shareLink}
-                className="mt-2 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20 transition-colors"
+                className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20 transition-colors"
               >
                 {shareStatus === "copied"
                   ? <><Check className="w-4 h-4 text-green-400" /> Link copied!</>
