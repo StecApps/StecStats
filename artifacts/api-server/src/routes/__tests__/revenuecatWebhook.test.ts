@@ -98,6 +98,7 @@ vi.mock("../../middlewares/requireAuth", () => ({
 // ---------------------------------------------------------------------------
 import { handleRevenueCatWebhook } from "../revenuecat-webhook";
 import billingRouter from "../billing";
+import { db } from "@workspace/db";
 
 // ---------------------------------------------------------------------------
 // Express app shared across all tests
@@ -422,5 +423,220 @@ describe("RevenueCat webhook → billing status", () => {
 
     // "premium" removed, "soccer" kept.
     expect(testUserState.revenueCatEntitlement).toBe("soccer");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Soccer add-on integration tests
+//
+// These verify the full chain for the soccer add-on specifically:
+//   INITIAL_PURCHASE webhook with entitlement_id "soccer"
+//     → DB updated (revenueCatEntitlement = "soccer" or "pro+soccer" etc.)
+//     → GET /api/billing/status returns hasSoccer:true
+//
+// Two paths are covered:
+//   A. Pure RC (no Stripe customer) — stripeCustomerId is null.
+//   B. Cancelled Stripe sub (RC fallback) — customer exists but all subs are
+//      cancelled, so getEntitlements falls back to the RC column.
+// ---------------------------------------------------------------------------
+
+describe("Soccer add-on → billing status: pure RC path (no Stripe customer)", () => {
+  // -------------------------------------------------------------------------
+  // 1. Solo soccer entitlement — the add-on alone implies Pro-level access
+  // -------------------------------------------------------------------------
+  it("returns hasSoccer:true and plan:pro after INITIAL_PURCHASE with entitlement_id ['soccer']", async () => {
+    // stripeCustomerId is null (set in beforeEach) — pure RC path.
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["soccer"]));
+    expect(res.status).toBe(200);
+
+    // Webhook must store "soccer" in the DB column.
+    expect(testUserState.revenueCatEntitlement).toBe("soccer");
+
+    // Billing status must surface the add-on.
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(true);
+    expect(billing.plan).toBe("pro");
+    expect(billing.status).toBe("active");
+  });
+
+  // -------------------------------------------------------------------------
+  // 2. Compound event: base plan + soccer in the same entitlement_ids array
+  // -------------------------------------------------------------------------
+  it("returns hasSoccer:true and plan:pro for INITIAL_PURCHASE with ['pro', 'soccer']", async () => {
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["pro", "soccer"]));
+    expect(res.status).toBe(200);
+
+    // Compound value written to DB.
+    expect(testUserState.revenueCatEntitlement).toBe("pro+soccer");
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(true);
+    expect(billing.plan).toBe("pro");
+  });
+
+  it("returns hasSoccer:true and plan:premium for INITIAL_PURCHASE with ['premium', 'soccer']", async () => {
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["premium", "soccer"]));
+    expect(res.status).toBe(200);
+
+    expect(testUserState.revenueCatEntitlement).toBe("premium+soccer");
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(true);
+    expect(billing.plan).toBe("premium");
+  });
+
+  // -------------------------------------------------------------------------
+  // 3. Soccer without a base plan in a RENEWAL event
+  // -------------------------------------------------------------------------
+  it("returns hasSoccer:true after RENEWAL with ['soccer']", async () => {
+    testUserState.revenueCatEntitlement = "soccer"; // pre-existing from prior purchase
+
+    const res = await postWebhook(makeWebhookBody("RENEWAL", ["soccer"]));
+    expect(res.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBe("soccer");
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // 4. EXPIRATION clears soccer too — hasSoccer must become false
+  // -------------------------------------------------------------------------
+  it("clears hasSoccer after EXPIRATION (no-soccer fallback to free)", async () => {
+    testUserState.revenueCatEntitlement = "soccer";
+
+    // Confirm soccer is visible before the expiration.
+    const before = await getBillingStatus();
+    expect(before.hasSoccer).toBe(true);
+
+    const res = await postWebhook(makeWebhookBody("EXPIRATION"));
+    expect(res.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBeNull();
+
+    const after = await getBillingStatus();
+    expect(after.hasSoccer).toBe(false);
+    expect(after.plan).toBe("free");
+  });
+
+  // -------------------------------------------------------------------------
+  // 5. CANCELLATION retains soccer until period end
+  // -------------------------------------------------------------------------
+  it("keeps hasSoccer:true after CANCELLATION (access retained until period end)", async () => {
+    testUserState.revenueCatEntitlement = "pro+soccer";
+
+    const res = await postWebhook(makeWebhookBody("CANCELLATION"));
+    expect(res.status).toBe(200);
+
+    // CANCELLATION must NOT clear the entitlement.
+    expect(testUserState.revenueCatEntitlement).toBe("pro+soccer");
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(true);
+    expect(billing.plan).toBe("pro");
+  });
+
+  // -------------------------------------------------------------------------
+  // 6. Pro purchase without soccer → hasSoccer must remain false
+  // -------------------------------------------------------------------------
+  it("returns hasSoccer:false when only ['pro'] is purchased (no soccer add-on)", async () => {
+    const res = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["pro"]));
+    expect(res.status).toBe(200);
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(false);
+    expect(billing.plan).toBe("pro");
+  });
+});
+
+describe("Soccer add-on → billing status: cancelled Stripe sub path (RC fallback)", () => {
+  // When a Stripe customer exists but all subscriptions are cancelled,
+  // getEntitlements falls through to rcFallback(revenueCatEntitlement).
+  // A prior web cancellation must not erase a valid mobile soccer purchase.
+
+  beforeEach(() => {
+    // Give the test user a Stripe customer ID so getEntitlements hits db.execute.
+    testUserState.stripeCustomerId = "cus_test_cancelled_001";
+  });
+
+  // Helper: make db.execute return a single cancelled subscription row.
+  function stubCancelledStripeRow() {
+    vi.mocked(db.execute).mockResolvedValueOnce({
+      rows: [
+        {
+          status: "canceled",
+          current_period_end: 1700000000,
+          trial_end: null,
+          cancel_at_period_end: false,
+          product_name: "Basketball Pro",
+        },
+      ],
+    } as Awaited<ReturnType<typeof db.execute>>);
+  }
+
+  // -------------------------------------------------------------------------
+  // 1. Soccer purchase → cancelled Stripe → hasSoccer:true via RC fallback
+  // -------------------------------------------------------------------------
+  it("returns hasSoccer:true after soccer INITIAL_PURCHASE when Stripe sub is cancelled", async () => {
+    // Post the RC soccer purchase webhook first (sets the DB column).
+    const webhookRes = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["soccer"]));
+    expect(webhookRes.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBe("soccer");
+
+    // Stripe query will return a cancelled row — RC fallback activates.
+    stubCancelledStripeRow();
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(true);
+    expect(billing.plan).toBe("pro");
+  });
+
+  // -------------------------------------------------------------------------
+  // 2. Compound (pro+soccer) purchase → cancelled Stripe → hasSoccer:true
+  // -------------------------------------------------------------------------
+  it("returns hasSoccer:true for pro+soccer when Stripe sub is cancelled", async () => {
+    const webhookRes = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["pro", "soccer"]));
+    expect(webhookRes.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBe("pro+soccer");
+
+    stubCancelledStripeRow();
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(true);
+    expect(billing.plan).toBe("pro");
+  });
+
+  // -------------------------------------------------------------------------
+  // 3. No RC soccer, cancelled Stripe → hasSoccer must be false (no phantom access)
+  // -------------------------------------------------------------------------
+  it("returns hasSoccer:false when Stripe is cancelled and no RC soccer entitlement", async () => {
+    // Only pro RC entitlement — no soccer.
+    const webhookRes = await postWebhook(makeWebhookBody("INITIAL_PURCHASE", ["pro"]));
+    expect(webhookRes.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBe("pro");
+
+    stubCancelledStripeRow();
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(false);
+    expect(billing.plan).toBe("pro");
+  });
+
+  // -------------------------------------------------------------------------
+  // 4. Soccer expired via RC + cancelled Stripe → hasSoccer false (no double-grant)
+  // -------------------------------------------------------------------------
+  it("returns hasSoccer:false after RC EXPIRATION even when Stripe sub is also cancelled", async () => {
+    // Start with soccer entitlement.
+    testUserState.revenueCatEntitlement = "soccer";
+
+    // RC subscription expires.
+    const expireRes = await postWebhook(makeWebhookBody("EXPIRATION"));
+    expect(expireRes.status).toBe(200);
+    expect(testUserState.revenueCatEntitlement).toBeNull();
+
+    stubCancelledStripeRow();
+
+    const billing = await getBillingStatus();
+    expect(billing.hasSoccer).toBe(false);
+    expect(billing.plan).toBe("free");
   });
 });
