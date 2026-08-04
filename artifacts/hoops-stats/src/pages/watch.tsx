@@ -35,8 +35,9 @@ export default function WatchStream() {
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const iceWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Fires 30 s after join-viewer if no offer has arrived yet (broadcaster
-  // mid-reconnect).  Cleared immediately when an offer is received.
+  // Tracks whether an offer arrives after we send request-offer. If it
+  // doesn't fire within 30 s the broadcaster is likely offline, so we
+  // fall back to "waiting-for-broadcaster" instead of retrying forever.
   const offerWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Connecting-screen elapsed timers and retry counter.
@@ -353,6 +354,13 @@ export default function WatchStream() {
     startConnectingTimer(false /* preserve cumulative */);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "request-offer", code }));
+      // Same 30-s offer watchdog as the ICE watchdog path — if no offer
+      // arrives the broadcaster is offline; fall back gracefully.
+      if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+      offerWatchdogRef.current = setTimeout(() => {
+        offerWatchdogRef.current = null;
+        setState((prev) => (prev === "connecting" ? "waiting-for-broadcaster" : prev));
+      }, 30_000);
     }
   };
 
@@ -411,25 +419,29 @@ export default function WatchStream() {
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "join-viewer", code }));
         mediaFailedRef.current = false;
-
-        // Offer watchdog: if the broadcaster hasn't sent an offer within 30 s
-        // of us joining (e.g. it's mid-reconnect), proactively request one.
-        // The watchdog re-arms itself every 30 s until an offer is received or
-        // the WS closes.  It is cleared immediately in the "offer" handler so
-        // normal fast-connect flows are never disturbed.
+        // Proactive offer watchdog: if no offer arrives within 30 s of joining
+        // (broadcaster is mid-reconnect), send request-offer once, then wait
+        // another 30 s; if still no offer the broadcaster is truly offline and
+        // we fall back to "waiting-for-broadcaster" instead of looping forever.
         if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
-        const fireOfferWatchdog = () => {
+        offerWatchdogRef.current = setTimeout(() => {
           offerWatchdogRef.current = null;
           if (ws.readyState !== WebSocket.OPEN) return;
           iceRetryCountRef.current += 1;
           setIceRetryCount(iceRetryCountRef.current);
           startConnectingTimer(false /* preserve cumulative */);
           ws.send(JSON.stringify({ type: "request-offer", code }));
-          // Re-arm for another 30 s in case the broadcaster is still absent.
-          offerWatchdogRef.current = setTimeout(fireOfferWatchdog, 30_000);
-        };
-        offerWatchdogRef.current = setTimeout(fireOfferWatchdog, 30_000);
-
+          // Second stage: if the broadcaster still doesn't respond in 30 s,
+          // they are offline — show "waiting-for-broadcaster" gracefully.
+          offerWatchdogRef.current = setTimeout(() => {
+            offerWatchdogRef.current = null;
+            setState((prev) =>
+              prev === "connecting" || prev === "reconnecting"
+                ? "waiting-for-broadcaster"
+                : prev
+            );
+          }, 30_000);
+        }, 30_000);
         if (isReconnect) {
           reconnectAttemptsRef.current = 0;
           // Re-check status rather than assuming a broadcaster is present —
@@ -479,7 +491,9 @@ export default function WatchStream() {
         }
 
         if (message.type === "offer") {
-          // An offer arrived — cancel the watchdog that was waiting for one.
+          // An offer arrived — the broadcaster is present. Cancel the
+          // offer-response watchdog so we don't fall back to
+          // "waiting-for-broadcaster" mid-negotiation.
           if (offerWatchdogRef.current) {
             clearTimeout(offerWatchdogRef.current);
             offerWatchdogRef.current = null;
@@ -544,6 +558,18 @@ export default function WatchStream() {
             startConnectingTimer(false /* preserve cumulative */);
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "request-offer", code }));
+              // Start a 30-s window expecting an offer back. If none arrives the
+              // broadcaster is likely offline — fall back to waiting-for-broadcaster
+              // rather than looping retries indefinitely.
+              if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = setTimeout(() => {
+                offerWatchdogRef.current = null;
+                setState((prev) =>
+                  prev === "connecting" || prev === "reconnecting"
+                    ? "waiting-for-broadcaster"
+                    : prev
+                );
+              }, 30_000);
             }
           }, 20_000);
         } else if (message.type === "ice-candidate") {
@@ -557,9 +583,8 @@ export default function WatchStream() {
           // page in "waiting-for-broadcaster" state so the stream resumes
           // automatically when they come back, without the viewer having
           // to reload or re-enter a code.
-          // The offer watchdog is no longer needed: join-broadcaster on the
-          // server already sends new-viewer for every waiting viewer when
-          // the broadcaster reconnects, so we don't need to prod it further.
+          // The server will push a new offer when the broadcaster rejoins,
+          // so the proactive offer watchdog is no longer needed.
           if (offerWatchdogRef.current) {
             clearTimeout(offerWatchdogRef.current);
             offerWatchdogRef.current = null;
@@ -596,10 +621,6 @@ export default function WatchStream() {
       };
 
       ws.onclose = () => {
-        if (offerWatchdogRef.current) {
-          clearTimeout(offerWatchdogRef.current);
-          offerWatchdogRef.current = null;
-        }
         if (cancelled) return;
         pcRef.current?.close();
         pcRef.current = null;
