@@ -16,6 +16,7 @@ import {
   useMergeGames,
   useGetTeamHighlight,
   useGenerateTeamHighlight,
+  useGenerateGameHighlight,
   useGetBillingStatus,
   useUpdateGame,
   getListPlayersQueryKey,
@@ -1591,7 +1592,9 @@ function EditStatsDialog({
 }) {
   const { toast } = useToast();
   const updateGame = useUpdateGame();
+  const generateHighlight = useGenerateGameHighlight();
   const [lines, setLines] = useState<EditableStatLine[]>([]);
+  const [regenReel, setRegenReel] = useState(false);
 
   // Game metadata state
   const [editOpponent, setEditOpponent] = useState(game.opponent);
@@ -1609,6 +1612,7 @@ function EditStatsDialog({
       setEditTeamScore(game.teamScore);
       setEditOpponentScore(game.opponentScore);
       setEditResult(game.result as "W" | "L");
+      setRegenReel(false);
     }
   }, [open, game]);
 
@@ -1681,7 +1685,18 @@ function EditStatsDialog({
           })),
         },
       });
-      toast({ title: "Game updated", description: "Opponent, score, date, and stats saved." });
+
+      // Fire-and-forget reel regeneration if the coach opted in.
+      if (regenReel) {
+        generateHighlight.mutate({ gameId: game.id });
+      }
+
+      toast({
+        title: "Game updated",
+        description: regenReel
+          ? "Stats saved. Reel regeneration started in the background."
+          : "Opponent, score, date, and stats saved.",
+      });
       onOpenChange(false);
       onSaved();
     } catch (err) {
@@ -1708,7 +1723,7 @@ function EditStatsDialog({
           <div className="flex items-start gap-3 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-600 dark:text-yellow-400">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <p>
-              This game already has a highlight reel. Saving stat changes won't automatically regenerate it — the reel will stay as-is until you regenerate it from the game page.
+              This game already has a highlight reel. Saving stat changes won't automatically regenerate it.
             </p>
           </div>
         )}
@@ -1837,12 +1852,25 @@ function EditStatsDialog({
           ))}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={updateGame.isPending}>
-            {updateGame.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Save Changes
-          </Button>
+        <DialogFooter className="flex-col gap-3 sm:flex-col">
+          {game.highlightStatus === "ready" && (
+            <label className="flex items-center gap-2 cursor-pointer select-none text-sm w-full">
+              <input
+                type="checkbox"
+                className="accent-primary h-4 w-4 rounded"
+                checked={regenReel}
+                onChange={e => setRegenReel(e.target.checked)}
+              />
+              <span className="text-foreground">Regenerate reel after saving</span>
+            </label>
+          )}
+          <div className="flex gap-2 justify-end w-full">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={updateGame.isPending}>
+              {updateGame.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save Changes
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
