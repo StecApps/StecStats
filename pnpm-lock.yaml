@@ -802,7 +802,7 @@ importers:
     devDependencies:
       vitest:
         specifier: ^4.1.10
-        version: 4.1.10(@types/node@25.9.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.4)(yaml@2.9.0)
+        version: 4.1.10(@types/node@25.9.4)(jiti@2.7.0)(jsdom@20.0.3)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.4)(yaml@2.9.0)
 
   scripts:
     dependencies:
