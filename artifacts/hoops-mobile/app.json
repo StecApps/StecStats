@@ -18,7 +18,8 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSCameraUsageDescription": "Allow Hoops Stats to access your camera to record game footage.",
-        "NSMicrophoneUsageDescription": "Allow Hoops Stats to access your microphone to record game audio."
+        "NSMicrophoneUsageDescription": "Allow Hoops Stats to access your microphone to record game audio.",
+        "LSApplicationQueriesSchemes": ["itms-apps"]
       }
     },
     "android": {

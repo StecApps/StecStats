@@ -232,13 +232,29 @@ export default function ProfileScreen() {
           <ProfileRow
             icon="card-outline"
             label={rcPlan ? (Platform.OS === 'android' ? 'Manage in Google Play' : 'Manage in App Store') : 'Manage Billing'}
-            onPress={() => {
+            onPress={async () => {
               if (rcPlan) {
-                // RC subscriber must cancel through the OS store, not the web portal
+                // RC subscriber must cancel through the OS store, not the web portal.
+                // itms-apps:// is the correct deep-link scheme for the App Store on iOS;
+                // it must be declared in LSApplicationQueriesSchemes (app.json) so that
+                // Linking.canOpenURL returns true on iOS 9+.
                 const url = Platform.OS === 'android'
                   ? 'https://play.google.com/store/account/subscriptions'
                   : 'itms-apps://apps.apple.com/account/subscriptions';
-                Linking.openURL(url);
+                const supported = await Linking.canOpenURL(url);
+                if (supported) {
+                  Linking.openURL(url).catch(() => {
+                    // openURL resolved but the OS still rejected it (e.g. simulator);
+                    // swallow silently — the user is on a platform that can't open it.
+                  });
+                } else {
+                  // Fallback: open the https equivalent in Safari so the user still
+                  // reaches their subscription management page.
+                  const fallback = Platform.OS === 'android'
+                    ? 'https://play.google.com/store/account/subscriptions'
+                    : 'https://apps.apple.com/account/subscriptions';
+                  Linking.openURL(fallback);
+                }
               } else {
                 // Stripe / web subscription — open billing portal
                 Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/billing`);
