@@ -52,13 +52,23 @@ function formatTime(secs: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const UPLOAD_CANCELLED_MSG = 'Upload cancelled';
+/**
+ * cancelToken is a per-attempt object `{ cancelled: boolean }` created fresh for
+ * each handleSave() call.  The async stages close over this reference so they
+ * check the flag of their own attempt — immune to resets by a subsequent attempt.
+ */
 async function uploadVideoFile(
   uri: string,
   requestUploadUrlFn: (body: { name: string; size: number; contentType: string }) => Promise<{ uploadURL: string; objectPath: string }>,
   onProgress?: (pct: number) => void,
+  xhrRef?: React.MutableRefObject<XMLHttpRequest | null>,
+  cancelToken?: { cancelled: boolean },
 ): Promise<string> {
   const fileResponse = await fetch(uri);
   const blob = await fileResponse.blob();
+  // Check for cancellation after the potentially slow fetch+blob step.
+  if (cancelToken?.cancelled) throw new Error(UPLOAD_CANCELLED_MSG);
   const contentType = uri.endsWith('.mov') ? 'video/quicktime' : 'video/mp4';
   const ext = uri.endsWith('.mov') ? 'mov' : 'mp4';
   const { uploadURL, objectPath } = await requestUploadUrlFn({
@@ -66,8 +76,17 @@ async function uploadVideoFile(
     size: blob.size || 1,
     contentType,
   });
+  // Check again after the presign round-trip before opening the XHR.
+  if (cancelToken?.cancelled) throw new Error(UPLOAD_CANCELLED_MSG);
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    if (xhrRef) xhrRef.current = xhr;
+    // If cancel was requested between the check above and the XHR send, bail immediately.
+    if (cancelToken?.cancelled) {
+      if (xhrRef) xhrRef.current = null;
+      reject(new Error(UPLOAD_CANCELLED_MSG));
+      return;
+    }
     xhr.open('PUT', uploadURL);
     xhr.setRequestHeader('Content-Type', contentType);
 
@@ -76,7 +95,7 @@ async function uploadVideoFile(
     // whenever they report a higher value; the ticker is cleared on completion.
     let reportedPct = 0;
     const TICK_MS = 300;
-    // Asymptotic curve: each tick advances ~40 % of the remaining gap to 90 %.
+    // Asymptotic curve: each tick advances ~8 % of the remaining gap to 90 %.
     const CAP = 90;
     const simulatedTimer = onProgress
       ? setInterval(() => {
@@ -89,6 +108,7 @@ async function uploadVideoFile(
 
     const finish = () => {
       if (simulatedTimer !== null) clearInterval(simulatedTimer);
+      if (xhrRef) xhrRef.current = null;
     };
 
     xhr.upload.onprogress = (e) => {
@@ -111,6 +131,7 @@ async function uploadVideoFile(
     };
     xhr.onerror = () => { finish(); reject(new Error('Video upload failed (network error)')); };
     xhr.ontimeout = () => { finish(); reject(new Error('Video upload timed out')); };
+    xhr.onabort = () => { finish(); reject(new Error(UPLOAD_CANCELLED_MSG)); };
     xhr.send(blob);
   });
   return objectPath;
@@ -159,6 +180,11 @@ export default function ScorekeeperScreen() {
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const uploadXhrRef = useRef<XMLHttpRequest | null>(null);
+  // Per-attempt cancel token. Each handleSave() creates a fresh object; async stages
+  // close over their own token so a subsequent attempt's reset can't un-cancel an
+  // in-flight attempt.
+  const uploadAttemptRef = useRef<{ cancelled: boolean } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
 
@@ -365,6 +391,10 @@ export default function ScorekeeperScreen() {
       Alert.alert('No players', 'Add players to your team before saving a game.');
       return;
     }
+    // Create a fresh per-attempt token. The async stages below close over this
+    // object, so a subsequent attempt's fresh token can never un-cancel us.
+    const attemptToken = { cancelled: false };
+    uploadAttemptRef.current = attemptToken;
     setSaving(true);
     try {
       let videoObjectPath: string | null = null;
@@ -399,9 +429,14 @@ export default function ScorekeeperScreen() {
               uris[i],
               (body) => requestUploadUrlMutation.mutateAsync({ data: body }),
               (pct) => setUploadProgress(segStart + Math.round((pct / 100) * (segEnd - segStart))),
+              uploadXhrRef,
+              attemptToken,
             );
+            if (attemptToken.cancelled) return;
             uploadedPaths.push(p);
           }
+
+          if (attemptToken.cancelled) return;
 
           if (uploadedPaths.length === 1) {
             videoObjectPath = uploadedPaths[0];
@@ -428,7 +463,13 @@ export default function ScorekeeperScreen() {
           }
 
           setUploadProgress(null);
+          // Guard: if cancel was pressed just as the last upload finished, honour
+          // the cancellation and let handleCancelUpload's alert drive next action.
+          if (attemptToken.cancelled) return;
         } catch (uploadErr: any) {
+          // Silently return if the coach deliberately cancelled — handleCancelUpload
+          // already reset state and showed the "save without video" prompt.
+          if (attemptToken.cancelled) return;
           setUploadProgress(null);
           Alert.alert(
             'Video upload failed',
@@ -476,6 +517,26 @@ export default function ScorekeeperScreen() {
       Alert.alert('Save failed', err?.message ?? 'Could not save game');
       setSaving(false);
     }
+  }
+
+  function handleCancelUpload() {
+    // Mark the current attempt's token first so every in-flight async stage sees
+    // it — even if the XHR doesn't exist yet (fetch/presign phase). Because each
+    // handleSave() captures its own token object by closure, a subsequent save
+    // attempt's fresh token is unaffected by this mutation.
+    if (uploadAttemptRef.current) uploadAttemptRef.current.cancelled = true;
+    uploadXhrRef.current?.abort();
+    uploadXhrRef.current = null;
+    setUploadProgress(null);
+    setSaving(false);
+    Alert.alert(
+      'Upload cancelled',
+      'Your game stats are still saved. Would you like to save without the video?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Save without video', style: 'default', onPress: () => saveGame(null) },
+      ],
+    );
   }
 
   function confirmSave() {
@@ -698,13 +759,23 @@ export default function ScorekeeperScreen() {
       {/* Save button */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         {uploadProgress !== null ? (
-          <View style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'column', gap: 6 }]}>
-            <Text style={[styles.saveBtnText, { fontSize: 14 }]}>
-              Uploading video… {uploadProgress}%
-            </Text>
-            <View style={styles.uploadTrack}>
-              <View style={[styles.uploadFill, { width: `${uploadProgress}%` as any }]} />
+          <View style={{ gap: 8 }}>
+            <View style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'column', gap: 6 }]}>
+              <Text style={[styles.saveBtnText, { fontSize: 14 }]}>
+                Uploading video… {uploadProgress}%
+              </Text>
+              <View style={styles.uploadTrack}>
+                <View style={[styles.uploadFill, { width: `${uploadProgress}%` as any }]} />
+              </View>
             </View>
+            <TouchableOpacity
+              onPress={handleCancelUpload}
+              activeOpacity={0.8}
+              style={[styles.cancelUploadBtn, { borderColor: colors.border }]}
+            >
+              <Ionicons name="close-circle-outline" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.cancelUploadText, { color: colors.mutedForeground }]}>Cancel upload</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity
@@ -1050,6 +1121,13 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     uploadFill: {
       height: 4, borderRadius: 2,
       backgroundColor: '#fff',
+    },
+    cancelUploadBtn: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 6, height: 36, borderRadius: 10, borderWidth: 1,
+    },
+    cancelUploadText: {
+      fontSize: 13, fontFamily: 'Inter_600SemiBold',
     },
   });
 }
