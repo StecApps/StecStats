@@ -2354,7 +2354,10 @@ export default function RecordGame() {
     liveWsRef.current = ws;
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "join-broadcaster", code }));
+      // Include the current scores so the server can immediately correct its
+      // in-memory scoreboard if it restarted and reset to 0-0.  Any viewers
+      // already watching (or who join next) will receive the real score.
+      ws.send(JSON.stringify({ type: "join-broadcaster", code, teamScore, opponentScore }));
       setIsLive(true);
       setIsStartingLive(false);
       setIsReconnectingLive(false);

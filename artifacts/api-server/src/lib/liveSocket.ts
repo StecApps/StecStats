@@ -8,7 +8,7 @@ import { logger } from "./logger";
 const LIVE_WS_PATH = "/api/live/ws";
 
 type ClientMessage =
-  | { type: "join-broadcaster"; code: string }
+  | { type: "join-broadcaster"; code: string; teamScore?: number; opponentScore?: number }
   | { type: "join-viewer"; code: string }
   | { type: "offer"; code: string; targetId: string; sdp: unknown; renegotiate?: boolean }
   | { type: "answer"; code: string; targetId: string; sdp: unknown }
@@ -93,6 +93,22 @@ export function attachLiveSocketServer(upgradeEmitter: {
           session.broadcaster = ws;
           role = "broadcaster";
           sessionCode = session.code;
+          // If the broadcaster sends its current scores on (re)connect, update
+          // the in-memory scoreboard immediately.  This corrects the 0-0 reset
+          // that happens when the server restarts and rebuilds the session from
+          // the database — any viewers who join (or rejoin) after the restart
+          // will receive the real score in their initial scoreboard snapshot.
+          if (
+            typeof message.teamScore === "number" &&
+            typeof message.opponentScore === "number"
+          ) {
+            const teamScore = Math.max(0, Math.round(message.teamScore));
+            const opponentScore = Math.max(0, Math.round(message.opponentScore));
+            session.scoreboard = { teamScore, opponentScore };
+            for (const viewerWs of session.viewers.values()) {
+              safeSend(viewerWs, { type: "scoreboard", teamScore, opponentScore });
+            }
+          }
           for (const [id] of session.viewers) {
             safeSend(ws, { type: "new-viewer", viewerId: id });
           }
