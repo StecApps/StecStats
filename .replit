@@ -41,7 +41,6 @@ REVENUECAT_APPLE_APP_STORE_APP_ID = "appd9f226b50a"
 REVENUECAT_GOOGLE_PLAY_STORE_APP_ID = "appd8208d5dd8"
 REVENUECAT_PROJECT_ID = "projd07f5316"
 REVENUECAT_TEST_STORE_APP_ID = "appce03651cb3"
-EXPO_PUBLIC_DOMAIN = "stecstats.com"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-f1eb7a0b-6a3e-447a-8144-8ac17c074ecd"
