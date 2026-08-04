@@ -36,7 +36,7 @@ vi.mock("../logger", () => ({
 // ---------------------------------------------------------------------------
 // Real import (after mocks are registered)
 // ---------------------------------------------------------------------------
-import { getEntitlements } from "../entitlements";
+import { getEntitlements, requirePro, requirePremium } from "../entitlements";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -283,6 +283,82 @@ describe("getEntitlements() — RC soccer add-on with Stripe customer", () => {
 
     expect(result.hasSoccer).toBe(false);
     expect(result.plan).toBe("pro");
+  });
+});
+
+describe("requirePro() — RC-only subscriber", () => {
+  it("returns true for an RC-only pro subscriber (no Stripe customer)", async () => {
+    const result = await requirePro({
+      stripeCustomerId: null,
+      email: null,
+      revenueCatEntitlement: "pro",
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("returns true for an RC-only premium subscriber (premium >= pro)", async () => {
+    const result = await requirePro({
+      stripeCustomerId: null,
+      email: null,
+      revenueCatEntitlement: "premium",
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false when RC entitlement is null and there is no Stripe customer", async () => {
+    const result = await requirePro({
+      stripeCustomerId: null,
+      email: null,
+      revenueCatEntitlement: null,
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it("returns true when Stripe is cancelled but RC entitlement is 'pro'", async () => {
+    mockExecuteResult.rows = [makeRow({ status: "canceled" })];
+
+    const result = await requirePro({
+      stripeCustomerId: "cus_stripe123",
+      email: null,
+      revenueCatEntitlement: "pro",
+    });
+
+    expect(result).toBe(true);
+  });
+});
+
+describe("requirePremium() — RC-only subscriber", () => {
+  it("returns true for an RC-only premium subscriber (no Stripe customer)", async () => {
+    const result = await requirePremium({
+      stripeCustomerId: null,
+      email: null,
+      revenueCatEntitlement: "premium",
+    });
+
+    expect(result).toBe(true);
+  });
+
+  it("returns false for an RC-only pro subscriber (pro < premium)", async () => {
+    const result = await requirePremium({
+      stripeCustomerId: null,
+      email: null,
+      revenueCatEntitlement: "pro",
+    });
+
+    expect(result).toBe(false);
+  });
+
+  it("returns false when RC entitlement is null and there is no Stripe customer", async () => {
+    const result = await requirePremium({
+      stripeCustomerId: null,
+      email: null,
+      revenueCatEntitlement: null,
+    });
+
+    expect(result).toBe(false);
   });
 });
 

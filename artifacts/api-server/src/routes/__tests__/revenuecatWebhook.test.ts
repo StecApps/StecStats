@@ -509,7 +509,9 @@ describe("Soccer add-on → billing status: pure RC path (no Stripe customer)", 
     const before = await getBillingStatus();
     expect(before.hasSoccer).toBe(true);
 
-    const res = await postWebhook(makeWebhookBody("EXPIRATION"));
+    // Pass no entitlement_ids so the handler takes the "clear everything" path —
+    // semantically correct when a subscriber's entire access ends at once.
+    const res = await postWebhook(makeWebhookBody("EXPIRATION", []));
     expect(res.status).toBe(200);
     expect(testUserState.revenueCatEntitlement).toBeNull();
 
@@ -570,7 +572,7 @@ describe("Soccer add-on → billing status: cancelled Stripe sub path (RC fallba
           product_name: "Basketball Pro",
         },
       ],
-    } as Awaited<ReturnType<typeof db.execute>>);
+    } as unknown as Awaited<ReturnType<typeof db.execute>>);
   }
 
   // -------------------------------------------------------------------------
@@ -628,8 +630,8 @@ describe("Soccer add-on → billing status: cancelled Stripe sub path (RC fallba
     // Start with soccer entitlement.
     testUserState.revenueCatEntitlement = "soccer";
 
-    // RC subscription expires.
-    const expireRes = await postWebhook(makeWebhookBody("EXPIRATION"));
+    // RC subscription expires — no entitlement_ids so the handler clears everything.
+    const expireRes = await postWebhook(makeWebhookBody("EXPIRATION", []));
     expect(expireRes.status).toBe(200);
     expect(testUserState.revenueCatEntitlement).toBeNull();
 

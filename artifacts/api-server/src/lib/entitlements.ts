@@ -178,13 +178,35 @@ export function isPro(entitlements: Entitlements): boolean {
   return entitlements.plan === "pro" || entitlements.plan === "premium";
 }
 
-export async function requirePro(stripeCustomerId: string | null): Promise<boolean> {
-  const entitlements = await getEntitlements(stripeCustomerId);
+/**
+ * Returns true when the user holds a Pro-or-better plan.
+ * Accepts the full user row so that mobile-only (RevenueCat) subscribers are
+ * not locked out. Passing only `stripeCustomerId` would silently skip the RC
+ * entitlement check — always prefer this overload at call sites where
+ * `req.appUser` is available.
+ */
+export async function requirePro(appUser: {
+  stripeCustomerId?: string | null;
+  email?: string | null;
+  revenueCatEntitlement?: string | null;
+}): Promise<boolean> {
+  const entitlements = await getEntitlementsForUser(appUser);
   return isPro(entitlements);
 }
 
-export async function requirePremium(stripeCustomerId: string | null): Promise<boolean> {
-  const entitlements = await getEntitlements(stripeCustomerId);
+/**
+ * Returns true when the user holds a Premium plan.
+ * Accepts the full user row so that mobile-only (RevenueCat) subscribers are
+ * not locked out. Passing only `stripeCustomerId` would silently skip the RC
+ * entitlement check — always prefer this overload at call sites where
+ * `req.appUser` is available.
+ */
+export async function requirePremium(appUser: {
+  stripeCustomerId?: string | null;
+  email?: string | null;
+  revenueCatEntitlement?: string | null;
+}): Promise<boolean> {
+  const entitlements = await getEntitlementsForUser(appUser);
   return entitlements.plan === "premium";
 }
 
