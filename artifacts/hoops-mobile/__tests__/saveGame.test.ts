@@ -142,6 +142,20 @@ describe('saveGame(null) — success path', () => {
       expect.objectContaining({ queryKey: ['listTeamGames'] }),
     );
   });
+
+  test('forwards a non-empty events array in the createGame payload when saving without video', async () => {
+    const events = [
+      { playerId: 1, statField: 'twoMade', delta: 1, videoTimestampMs: 12000 },
+      { playerId: 2, statField: 'assists', delta: 1, videoTimestampMs: 34500 },
+      { playerId: 1, statField: 'threeMade', delta: 1, videoTimestampMs: 61000 },
+    ];
+    const deps = makeDeps({ events });
+    await saveGame(null, deps);
+
+    expect(deps.createGameMutateAsync).toHaveBeenCalledTimes(1);
+    const [call] = (deps.createGameMutateAsync as jest.Mock).mock.calls;
+    expect(call[0].data.events).toEqual(events);
+  });
 });
 
 // ─── Inflated-made-counts rejection (400) ─────────────────────────────────────
