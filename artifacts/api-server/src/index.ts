@@ -267,6 +267,32 @@ async function boot() {
       }
     } else {
       logger.info("Stripe key probe succeeded — credentials are valid");
+
+      // After a successful probe, check whether the key is a test key.
+      // A sk_test_ key will pass authentication but will never settle real
+      // money — deploying with one is a silent billing failure.
+      if (resolvedKey.startsWith("sk_test_")) {
+        console.error(
+          "[FATAL] Stripe test key (sk_test_) detected in production. " +
+            "Test keys do not process real payments. " +
+            "Replace STRIPE_SECRET_KEY with a live key (sk_live_) and redeploy.",
+        );
+        process.exit(1);
+      }
+    }
+  }
+
+  // In development, warn if a test key is in use so it's visible in logs
+  // (normal and expected in dev, but worth surfacing so developers notice
+  // if they accidentally swap environments).
+  if (process.env["NODE_ENV"] !== "production") {
+    const devKey =
+      process.env["STRIPE_SECRET_KEY"] ?? "";
+    if (devKey.startsWith("sk_test_")) {
+      logger.warn(
+        "Stripe test key (sk_test_) detected — this is expected in development " +
+          "but ensure a live key (sk_live_) is used before going to production.",
+      );
     }
   }
 
