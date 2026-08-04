@@ -68,12 +68,38 @@ async function uploadVideoFile(
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', uploadURL);
     xhr.setRequestHeader('Content-Type', contentType);
+
+    // iOS WebKit can suppress or fire onprogress only once. Run a simulated
+    // progress ticker so the bar always advances visibly. Real XHR events win
+    // whenever they report a higher value; the ticker is cleared on completion.
+    let reportedPct = 0;
+    const TICK_MS = 300;
+    // Asymptotic curve: each tick advances ~40 % of the remaining gap to 90 %.
+    const CAP = 90;
+    const simulatedTimer = onProgress
+      ? setInterval(() => {
+          if (reportedPct < CAP) {
+            reportedPct = Math.min(CAP, reportedPct + Math.ceil((CAP - reportedPct) * 0.08));
+            onProgress(reportedPct);
+          }
+        }, TICK_MS)
+      : null;
+
+    const finish = () => {
+      if (simulatedTimer !== null) clearInterval(simulatedTimer);
+    };
+
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
+        const real = Math.round((e.loaded / e.total) * 100);
+        if (real > reportedPct) {
+          reportedPct = real;
+          onProgress(real);
+        }
       }
     };
     xhr.onload = () => {
+      finish();
       if (xhr.status >= 200 && xhr.status < 300) {
         onProgress?.(100);
         resolve();
@@ -81,7 +107,8 @@ async function uploadVideoFile(
         reject(new Error(`Video upload failed (${xhr.status})`));
       }
     };
-    xhr.onerror = () => reject(new Error('Video upload failed (network error)'));
+    xhr.onerror = () => { finish(); reject(new Error('Video upload failed (network error)')); };
+    xhr.ontimeout = () => { finish(); reject(new Error('Video upload timed out')); };
     xhr.send(blob);
   });
   return objectPath;
