@@ -10,6 +10,8 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
+import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,61 +27,8 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 
-const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : '';
-
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
-}
-
-async function uploadPhoto(uri: string, mimeType: string, token: string): Promise<string> {
-  let reqRes: Response;
-  try {
-    reqRes = await fetch(`${API_BASE}/api/storage/uploads/request-url`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        name: `player-photo-${Date.now()}.jpg`,
-        size: 0,
-        contentType: mimeType || 'image/jpeg',
-      }),
-    });
-  } catch {
-    throw new Error('Network error — check your connection and try again.');
-  }
-  if (reqRes.status === 401 || reqRes.status === 403) {
-    throw new Error('Not authorised — please sign out and back in, then try again.');
-  }
-  if (!reqRes.ok) {
-    throw new Error(`Server error (${reqRes.status}) — please try again.`);
-  }
-  const { uploadURL, objectPath } = await reqRes.json();
-
-  let blob: Blob;
-  try {
-    blob = await (await fetch(uri)).blob();
-  } catch {
-    throw new Error('Could not read the photo — please try a different image.');
-  }
-
-  let upRes: Response;
-  try {
-    upRes = await fetch(uploadURL, {
-      method: 'PUT',
-      headers: { 'Content-Type': mimeType || 'image/jpeg' },
-      body: blob,
-    });
-  } catch {
-    throw new Error('Network error during upload — check your connection and try again.');
-  }
-  if (!upRes.ok) {
-    throw new Error(`Upload failed (${upRes.status}) — please try again.`);
-  }
-  return objectPath;
 }
 
 // ─── Arc Gauge ─────────────────────────────────────────────────────────────
@@ -212,18 +161,32 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
     setPhotoLoadFailed(false);
   }, [player.photoObjectPath]);
 
-  async function attemptUpload(asset: ImagePicker.ImagePickerAsset) {
+  async function attemptUpload(
+    asset: ImagePicker.ImagePickerAsset,
+    pendingEntryId?: string,
+  ) {
     setUploading(true);
     try {
       const token = await getToken();
       if (!token) throw new Error('Not signed in — please sign out and back in.');
-      const objectPath = await uploadPhoto(asset.uri, asset.mimeType ?? 'image/jpeg', token);
+      const mimeType = asset.mimeType ?? 'image/jpeg';
+      const objectPath = await uploadPhoto(asset.uri, mimeType, token);
       await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
       qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
+      // Remove from the pending queue now that the upload succeeded.
+      if (pendingEntryId) {
+        await dequeuePhoto(pendingEntryId);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Please try again.';
+      // Persist the failed upload so it can be retried on next app open.
+      const entryId = pendingEntryId ?? await enqueuePhoto(
+        asset.uri,
+        asset.mimeType ?? 'image/jpeg',
+        player.id,
+      );
       Alert.alert('Upload failed', msg, [
-        { text: 'Retry', onPress: () => attemptUpload(asset) },
+        { text: 'Retry', onPress: () => attemptUpload(asset, entryId) },
         { text: 'Cancel', style: 'cancel' },
       ]);
     } finally {
