@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Alert,
   Linking,
   Platform,
 } from 'react-native';
@@ -257,7 +258,33 @@ export default function ProfileScreen() {
                 }
               } else {
                 // Stripe / web subscription — open billing portal
-                Linking.openURL(`https://${process.env.EXPO_PUBLIC_DOMAIN}/billing`);
+                const domain = process.env.EXPO_PUBLIC_DOMAIN;
+                if (!domain) {
+                  console.warn('[Profile] EXPO_PUBLIC_DOMAIN is not set — cannot open billing portal');
+                  Alert.alert(
+                    'Billing Unavailable',
+                    'Unable to open billing management right now. Please try again later or visit the website.',
+                  );
+                  return;
+                }
+                const billingUrl = `https://${domain}/billing`;
+                try {
+                  const canOpen = await Linking.canOpenURL(billingUrl);
+                  if (!canOpen) {
+                    Alert.alert(
+                      'Billing Unavailable',
+                      'Your device was unable to open the billing page. Please visit the website to manage your subscription.',
+                    );
+                    return;
+                  }
+                  await Linking.openURL(billingUrl);
+                } catch (err) {
+                  console.warn('[Profile] Failed to open billing portal:', err);
+                  Alert.alert(
+                    'Billing Unavailable',
+                    'Something went wrong opening billing management. Please try again later.',
+                  );
+                }
               }
             }}
             colors={colors}
