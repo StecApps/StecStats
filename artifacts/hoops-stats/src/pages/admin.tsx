@@ -50,6 +50,9 @@ type StripeSyncHealth = {
   syncStatus: SyncStatusRow[];
 };
 
+/** Alert threshold: warn when the newest subscription record is older than this. */
+const STRIPE_SYNC_STALENESS_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
+
 export default function AdminFeedback() {
   const { isLoaded } = useUser();
   const { toast } = useToast();
@@ -163,6 +166,32 @@ export default function AdminFeedback() {
               {stripeSyncError}
             </div>
           )}
+
+          {stripeSyncHealth && (() => {
+            const ts = stripeSyncHealth.newestSubscriptionAt;
+            const isStale = !ts || (Date.now() - new Date(ts).getTime() > STRIPE_SYNC_STALENESS_THRESHOLD_MS);
+            return isStale ? (
+              <div className="rounded-xl border border-yellow-600/50 bg-yellow-950/25 p-4 flex items-start gap-3 text-sm text-yellow-300">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-yellow-400" />
+                <div>
+                  <p className="font-semibold">Stripe sync may be stalled</p>
+                  <p className="text-yellow-400/80 mt-0.5">
+                    {ts
+                      ? <>The newest subscription record is from{" "}
+                          <span className="font-medium text-yellow-300">
+                            {new Date(ts).toLocaleString("en-US", {
+                              month: "short", day: "numeric", year: "numeric",
+                              hour: "numeric", minute: "2-digit",
+                            })}
+                          </span>{" "}
+                          — more than 1 hour ago. Check that the Stripe webhook is active.</>
+                      : <>No subscription records have synced yet. Check that the Stripe webhook is active.</>
+                    }
+                  </p>
+                </div>
+              </div>
+            ) : null;
+          })()}
 
           {stripeSyncHealth && (
             <div className="space-y-3">
