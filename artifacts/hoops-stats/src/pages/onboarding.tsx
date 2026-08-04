@@ -47,9 +47,18 @@ export default function Onboarding() {
   // Existing players from before this session
   const existingPlayers = players ?? [];
 
-  // Total player count visible in the session: existing + newly confirmed
-  const totalPlayers = existingPlayers.length + confirmedPlayers.length;
+  // All players shown in the list: existing (from server) merged with newly
+  // confirmed (local), deduplicated by ID. After creating a player we both
+  // invalidate the query AND push to confirmedPlayers so the item appears
+  // immediately before the refetch returns — deduplication ensures the same
+  // player isn't counted or rendered twice once the refetch completes.
+  const existingPlayerIds = new Set(existingPlayers.map((p) => p.id));
+  const allPlayers: { id: number; name: string }[] = [
+    ...existingPlayers.map((p) => ({ id: p.id, name: p.name })),
+    ...confirmedPlayers.filter((cp) => !existingPlayerIds.has(cp.id)),
+  ];
 
+  const totalPlayers = allPlayers.length;
   const hasAnyPlayer = totalPlayers > 0;
   const hasTeam = (teams?.length ?? 0) > 0;
 
@@ -70,12 +79,6 @@ export default function Onboarding() {
   // to the first pre-existing player name.
   const primaryPlayerName =
     confirmedPlayers[0]?.name || existingPlayers[0]?.name || "";
-
-  // All players shown in the list (existing + newly confirmed), with IDs for deletion
-  const allPlayers: { id: number; name: string }[] = [
-    ...existingPlayers.map((p) => ({ id: p.id, name: p.name })),
-    ...confirmedPlayers,
-  ];
 
   // All player names shown on the done screen
   const allPlayerNames: string[] = allPlayers.map((p) => p.name);

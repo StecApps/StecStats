@@ -41,6 +41,7 @@ import { AdaptiveQualityController, type AdaptiveLevel } from "@/lib/adaptiveStr
 import { Gauge } from "lucide-react";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
 import { getSportProfile, SPORT_EMOJI } from "@/lib/sport-profiles";
+import MusicTrackSelector from "@/components/MusicTrackSelector";
 
 type StatCounters = {
   playerId: number;
@@ -3494,20 +3495,7 @@ export default function RecordGame() {
                   <div className="flex items-center gap-2">
                     <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                     <span className="text-xs text-muted-foreground">Music</span>
-                    <Select value={highlightMusicTrack ?? "none"} onValueChange={v => setHighlightMusicTrack(v === "none" ? null : v)}>
-                      <SelectTrigger className="h-7 w-32 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No music</SelectItem>
-                        <SelectItem value="energetic">Energetic</SelectItem>
-                        <SelectItem value="upbeat">Upbeat</SelectItem>
-                        <SelectItem value="dynamic">Dynamic</SelectItem>
-                        <SelectItem value="cinematic">Cinematic</SelectItem>
-                        <SelectItem value="oldschool">Old School</SelectItem>
-                        <SelectItem value="lofi">Lo-Fi</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <MusicTrackSelector value={highlightMusicTrack} onChange={setHighlightMusicTrack} />
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button type="button" onClick={handleShareHighlight} disabled={isPreparingShare}>
@@ -3650,20 +3638,7 @@ export default function RecordGame() {
                   <div className="flex items-center gap-2">
                     <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                     <span className="text-xs text-muted-foreground">Music</span>
-                    <Select value={highlightMusicTrack ?? "none"} onValueChange={v => setHighlightMusicTrack(v === "none" ? null : v)}>
-                      <SelectTrigger className="h-7 w-32 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No music</SelectItem>
-                        <SelectItem value="energetic">Energetic</SelectItem>
-                        <SelectItem value="upbeat">Upbeat</SelectItem>
-                        <SelectItem value="dynamic">Dynamic</SelectItem>
-                        <SelectItem value="cinematic">Cinematic</SelectItem>
-                        <SelectItem value="oldschool">Old School</SelectItem>
-                        <SelectItem value="lofi">Lo-Fi</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <MusicTrackSelector value={highlightMusicTrack} onChange={setHighlightMusicTrack} />
                   </div>
                   <Button type="button" onClick={handleGenerateHighlight} disabled={isGeneratingHighlight}>
                     {isGeneratingHighlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
@@ -3732,20 +3707,7 @@ export default function RecordGame() {
                     <div className="flex items-center gap-2">
                       <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       <span className="text-xs text-muted-foreground">Music</span>
-                      <Select value={lowlightMusicTrack ?? "none"} onValueChange={v => setLowlightMusicTrack(v === "none" ? null : v)}>
-                        <SelectTrigger className="h-7 w-32 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No music</SelectItem>
-                          <SelectItem value="energetic">Energetic</SelectItem>
-                          <SelectItem value="upbeat">Upbeat</SelectItem>
-                          <SelectItem value="dynamic">Dynamic</SelectItem>
-                          <SelectItem value="cinematic">Cinematic</SelectItem>
-                          <SelectItem value="oldschool">Old School</SelectItem>
-                          <SelectItem value="lofi">Lo-Fi</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <MusicTrackSelector value={lowlightMusicTrack} onChange={setLowlightMusicTrack} />
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button type="button" onClick={handleShareLowlight} disabled={isPreparingLowlightShare}>
@@ -3775,20 +3737,7 @@ export default function RecordGame() {
                     <div className="flex items-center gap-2">
                       <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                       <span className="text-xs text-muted-foreground">Music</span>
-                      <Select value={lowlightMusicTrack ?? "none"} onValueChange={v => setLowlightMusicTrack(v === "none" ? null : v)}>
-                        <SelectTrigger className="h-7 w-32 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">No music</SelectItem>
-                          <SelectItem value="energetic">Energetic</SelectItem>
-                          <SelectItem value="upbeat">Upbeat</SelectItem>
-                          <SelectItem value="dynamic">Dynamic</SelectItem>
-                          <SelectItem value="cinematic">Cinematic</SelectItem>
-                          <SelectItem value="oldschool">Old School</SelectItem>
-                          <SelectItem value="lofi">Lo-Fi</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <MusicTrackSelector value={lowlightMusicTrack} onChange={setLowlightMusicTrack} />
                     </div>
                     <Button type="button" onClick={handleGenerateLowlight} disabled={isGeneratingLowlight}>
                       {isGeneratingLowlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
