@@ -190,6 +190,10 @@ vi.mock("@workspace/db", () => {
       values: vi.fn().mockImplementation((vals: any[]) => {
         if (table === PGS_T)   store.stats.push(...vals);
         if (table === EVENTS_T) store.events.push(...vals);
+        if (table === GAMES_T) {
+          const row = { id: 99, ownerId: 1, videoObjectPath: null, ...vals[0] };
+          return { returning: vi.fn().mockResolvedValue([row]) };
+        }
         return Promise.resolve(undefined);
       }),
     })),
@@ -500,5 +504,83 @@ describe("PATCH /api/games/:gameId — career stat round-trip", () => {
     const summary = await getPlayerSummary(20);
     expect(summary.rebounds).toBe(12);
     expect(summary.rpg).toBe(12);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers — POST /api/games
+// ---------------------------------------------------------------------------
+
+/** Build a minimal valid POST /games body with one stat line for player 20. */
+function buildPostBody(statOverrides: Record<string, number> = {}) {
+  return {
+    teamId: 5,
+    opponent: "Rivals",
+    date: "2024-01-15",
+    result: "W",
+    teamScore: 80,
+    opponentScore: 70,
+    events: [],
+    stats: [
+      {
+        playerId: 20,
+        ftMade: 2, ftAttempted: 4,
+        twoMade: 3, twoAttempted: 5,
+        threeMade: 1, threeAttempted: 3,
+        assists: 5, rebounds: 7, steals: 2, turnovers: 1, blocks: 1,
+        goals: 0, shots: 0, shotsOffTarget: 0, saves: 0,
+        yellowCards: 0, redCards: 0,
+        ...statOverrides,
+      },
+    ],
+  };
+}
+
+async function postGame(body: object) {
+  return fetch(`${baseUrl}/api/games`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Tests — POST /api/games made ≤ attempted invariant
+// ---------------------------------------------------------------------------
+
+describe("POST /api/games — made ≤ attempted invariant", () => {
+  it("accepts ftMade === ftAttempted (boundary condition)", async () => {
+    const res = await postGame(buildPostBody({ ftMade: 4, ftAttempted: 4 }));
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects ftMade > ftAttempted with 400", async () => {
+    const res = await postGame(buildPostBody({ ftMade: 5, ftAttempted: 4 }));
+    expect(res.status).toBe(400);
+    const body = await res.json() as any;
+    expect(body.error).toMatch(/made.*cannot exceed.*attempted/i);
+  });
+
+  it("rejects twoMade > twoAttempted with 400", async () => {
+    const res = await postGame(buildPostBody({ twoMade: 6, twoAttempted: 5 }));
+    expect(res.status).toBe(400);
+    const body = await res.json() as any;
+    expect(body.error).toMatch(/made.*cannot exceed.*attempted/i);
+  });
+
+  it("rejects threeMade > threeAttempted with 400", async () => {
+    const res = await postGame(buildPostBody({ threeMade: 4, threeAttempted: 3 }));
+    expect(res.status).toBe(400);
+    const body = await res.json() as any;
+    expect(body.error).toMatch(/made.*cannot exceed.*attempted/i);
+  });
+
+  it("accepts all-zero stat line without error", async () => {
+    const res = await postGame(buildPostBody({
+      ftMade: 0, ftAttempted: 0,
+      twoMade: 0, twoAttempted: 0,
+      threeMade: 0, threeAttempted: 0,
+    }));
+    expect(res.status).toBe(201);
   });
 });
