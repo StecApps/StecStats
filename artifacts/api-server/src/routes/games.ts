@@ -1031,6 +1031,30 @@ async function startBackgroundVideoConcat(
       contentType,
     );
 
+    // Guard: if the primary game was deleted while the concat job was running,
+    // the newly uploaded blob would be orphaned forever.  Check existence now
+    // (after the slow upload) and clean up if the game is gone.
+    const stillExists = await db.query.gamesTable.findFirst({
+      columns: { id: true },
+      where: eq(gamesTable.id, primaryGameId),
+    });
+    if (!stillExists) {
+      log.warn(
+        { primaryGameId, newObjectPath },
+        "merge-video: primary game deleted mid-job — deleting orphaned blob",
+      );
+      try {
+        const orphanFile = await objectStorageService.getObjectEntityFile(newObjectPath);
+        await orphanFile.delete();
+      } catch (delErr) {
+        log.error(
+          { primaryGameId, newObjectPath, err: String(delErr) },
+          "merge-video: failed to delete orphaned blob",
+        );
+      }
+      return;
+    }
+
     await db
       .update(gamesTable)
       .set({
