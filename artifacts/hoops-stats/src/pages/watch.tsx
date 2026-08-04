@@ -15,14 +15,16 @@ export default function WatchStream() {
   const code = (params.code ?? "").toUpperCase();
 
   // Test-mode overrides: ?__watchElapsedS=N reduces the "Still connecting…" timer
-  // threshold and ?__watchRetryS=N reduces the "Tap to retry" threshold. These
-  // are intentionally only read on mount so they don't interfere with production
-  // rendering (the params won't be present in normal use).
+  // threshold, ?__watchRetryS=N reduces the "Tap to retry" threshold, and
+  // ?__offerWatchdogMs=N shrinks both stages of the offer-arrival watchdog.
+  // These are intentionally only read on mount so they don't interfere with
+  // production rendering (the params won't be present in normal use).
   const searchParams = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : ""
   );
-  const ELAPSED_THRESHOLD_S = Number(searchParams.get("__watchElapsedS") ?? "5");
-  const RETRY_THRESHOLD_S   = Number(searchParams.get("__watchRetryS")   ?? "45");
+  const ELAPSED_THRESHOLD_S  = Number(searchParams.get("__watchElapsedS")    ?? "5");
+  const RETRY_THRESHOLD_S    = Number(searchParams.get("__watchRetryS")      ?? "45");
+  const OFFER_WATCHDOG_MS    = Number(searchParams.get("__offerWatchdogMs")  ?? "30000");
 
   const [state, setState] = useState<ConnectionState>("connecting");
   const [status, setStatus] = useState<LiveStatus | null>(null);
@@ -359,13 +361,13 @@ export default function WatchStream() {
     startConnectingTimer(false /* preserve cumulative */);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "request-offer", code }));
-      // Same 30-s offer watchdog as the ICE watchdog path — if no offer
+      // Same offer watchdog as the ICE watchdog path — if no offer
       // arrives the broadcaster is offline; fall back gracefully.
       if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
       offerWatchdogRef.current = setTimeout(() => {
         offerWatchdogRef.current = null;
         setState((prev) => (prev === "connecting" ? "waiting-for-broadcaster" : prev));
-      }, 30_000);
+      }, OFFER_WATCHDOG_MS);
     }
   };
 
@@ -436,8 +438,8 @@ export default function WatchStream() {
           setIceRetryCount(iceRetryCountRef.current);
           startConnectingTimer(false /* preserve cumulative */);
           ws.send(JSON.stringify({ type: "request-offer", code }));
-          // Second stage: if the broadcaster still doesn't respond in 30 s,
-          // they are offline — show "waiting-for-broadcaster" gracefully.
+          // Second stage: if the broadcaster still doesn't respond within the
+          // watchdog window, they are offline — show "waiting-for-broadcaster".
           offerWatchdogRef.current = setTimeout(() => {
             offerWatchdogRef.current = null;
             setState((prev) =>
@@ -445,8 +447,8 @@ export default function WatchStream() {
                 ? "waiting-for-broadcaster"
                 : prev
             );
-          }, 30_000);
-        }, 30_000);
+          }, OFFER_WATCHDOG_MS);
+        }, OFFER_WATCHDOG_MS);
         if (isReconnect) {
           reconnectAttemptsRef.current = 0;
           // Re-check status rather than assuming a broadcaster is present —
@@ -574,7 +576,7 @@ export default function WatchStream() {
                     ? "waiting-for-broadcaster"
                     : prev
                 );
-              }, 30_000);
+              }, OFFER_WATCHDOG_MS);
             }
           }, 20_000);
         } else if (message.type === "ice-candidate") {
