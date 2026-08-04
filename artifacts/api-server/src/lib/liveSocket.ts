@@ -15,6 +15,7 @@ type ClientMessage =
   | { type: "ice-candidate"; code: string; targetId: string; candidate: unknown }
   | { type: "scoreboard"; code: string; teamScore: number; opponentScore: number }
   | { type: "stat-event"; code: string; playerName: string; label: string }
+  | { type: "resync-events"; code: string; events: Array<{ playerName: string; label: string; timestamp: number }> }
   | { type: "peer-connection-failed"; code: string; targetId: string }
   | { type: "request-offer"; code: string };
 
@@ -112,6 +113,13 @@ export function attachLiveSocketServer(upgradeEmitter: {
           for (const [id] of session.viewers) {
             safeSend(ws, { type: "new-viewer", viewerId: id });
           }
+          // Ack so the broadcaster knows it is fully registered and can safely
+          // send resync-events.  Without this ack the client sends resync-events
+          // immediately after join-broadcaster on ws.onopen; because
+          // getOrResumeSession() is async both messages race and resync-events
+          // can arrive before role/session.broadcaster are set, causing it to
+          // be silently dropped.
+          safeSend(ws, { type: "broadcaster-joined" });
           break;
         }
         case "join-viewer": {
@@ -189,6 +197,32 @@ export function attachLiveSocketServer(upgradeEmitter: {
           session.recentEvents = [...session.recentEvents, statEvent].slice(-MAX_RECENT_STAT_EVENTS);
           for (const viewerWs of session.viewers.values()) {
             safeSend(viewerWs, { type: "stat-event", event: statEvent });
+          }
+          break;
+        }
+        case "resync-events": {
+          // The broadcaster re-sends its local event log on every (re)connect
+          // so the server's recentEvents list is repopulated after a restart
+          // instead of staying empty until new stats are tapped.
+          if (role !== "broadcaster") break;
+          if (!Array.isArray(message.events) || message.events.length === 0) break;
+          const incoming = message.events
+            .filter((e) => typeof e.playerName === "string" && typeof e.label === "string")
+            .slice(-MAX_RECENT_STAT_EVENTS)
+            .map((e) => ({
+              id: nanoid(8),
+              playerName: String(e.playerName).slice(0, 80),
+              label: String(e.label).slice(0, 40),
+              // Preserve the original client-side timestamp so relative ordering
+              // is correct on the viewer ticker; fall back to now only when absent.
+              timestamp: typeof e.timestamp === "number" ? e.timestamp : Date.now(),
+            }));
+          if (incoming.length === 0) break;
+          session.recentEvents = incoming;
+          // Push the repopulated list to every viewer currently watching so
+          // their ticker fills in immediately without a page reload.
+          for (const viewerWs of session.viewers.values()) {
+            safeSend(viewerWs, { type: "stat-events", events: session.recentEvents });
           }
           break;
         }

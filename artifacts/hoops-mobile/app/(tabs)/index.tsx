@@ -11,8 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
-import { API_BASE } from '@/lib/photoUpload';
-import { uploadPhoto } from '@/lib/uploadPhoto';
+import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -27,6 +26,7 @@ import {
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
 }
@@ -170,7 +170,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
       const token = await getToken();
       if (!token) throw new Error('Not signed in — please sign out and back in.');
       const mimeType = asset.mimeType ?? 'image/jpeg';
-      const objectPath = await uploadPhoto(asset.uri, mimeType, token, API_BASE);
+      const objectPath = await uploadPhoto(asset.uri, mimeType, token);
       await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
       qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
       // Remove from the pending queue now that the upload succeeded.

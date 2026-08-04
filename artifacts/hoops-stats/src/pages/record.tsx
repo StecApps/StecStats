@@ -793,6 +793,10 @@ export default function RecordGame() {
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const liveCodeRef = useRef<string | null>(null);
+  // Mirrors the last MAX_RECENT_STAT_EVENTS ticker entries sent to the server
+  // so they can be re-sent as resync-events whenever the WS reconnects after
+  // an api-server restart (which wipes the in-memory recentEvents list).
+  const liveRecentEventsRef = useRef<Array<{ playerName: string; label: string; timestamp: number }>>([]);
   const livePregenDoneRef = useRef(false);
   const rawStreamRef = useRef<MediaStream | null>(null);
   const sourceVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -2403,6 +2407,13 @@ export default function RecordGame() {
   };
 
   const connectBroadcasterSocket = (code: string, isReconnect: boolean) => {
+    // A fresh session (not a same-session reconnect) must start with an empty
+    // event mirror so previous-game plays are never resynced into the new
+    // session's viewer ticker.  stopGoingLive() also clears the ref; this
+    // guards any path that reaches here without going through stopGoingLive.
+    if (!isReconnect) {
+      liveRecentEventsRef.current = [];
+    }
     const ws = new WebSocket(liveWsUrl());
     liveWsRef.current = ws;
 
@@ -2410,6 +2421,9 @@ export default function RecordGame() {
       // Include the current scores so the server can immediately correct its
       // in-memory scoreboard if it restarted and reset to 0-0.  Any viewers
       // already watching (or who join next) will receive the real score.
+      // resync-events is sent only after we receive the "broadcaster-joined"
+      // ack so the server has already registered this socket as the broadcaster
+      // before it processes the resync payload.
       ws.send(JSON.stringify({ type: "join-broadcaster", code, teamScore, opponentScore }));
       setIsLive(true);
       setIsStartingLive(false);
@@ -2430,6 +2444,19 @@ export default function RecordGame() {
 
     ws.onmessage = async (event) => {
       const message = JSON.parse(event.data);
+      if (message.type === "broadcaster-joined") {
+        // Server has fully registered this socket as the broadcaster.
+        // Now it is safe to send resync-events — the server will not
+        // drop it due to role === null from a concurrent getOrResumeSession.
+        if (liveRecentEventsRef.current.length > 0) {
+          ws.send(JSON.stringify({
+            type: "resync-events",
+            code,
+            events: liveRecentEventsRef.current,
+          }));
+        }
+        return;
+      }
       if (message.type === "new-viewer") {
         const pc = await createPeerConnectionForViewer(message.viewerId);
         const rawOffer = await pc.createOffer();
@@ -2585,6 +2612,9 @@ export default function RecordGame() {
       stopLiveSession(liveCodeRef.current);
     }
     liveCodeRef.current = null;
+    // Clear the event mirror so a subsequent broadcast doesn't resync
+    // this game's plays into a brand-new session's viewer ticker.
+    liveRecentEventsRef.current = [];
     setIsLive(false);
     setIsReconnectingLive(false);
     setLiveInterrupted(false);
@@ -2669,12 +2699,19 @@ export default function RecordGame() {
       const playerName = players?.find(p => p.id === pid)?.name;
       const label = STAT_LABELS[field];
       if (playerName && label) {
+        const timestamp = Date.now();
         liveWsRef.current.send(JSON.stringify({
           type: "stat-event",
           code: liveCodeRef.current,
           playerName,
           label,
         }));
+        // Keep a local mirror of the last N ticker entries so they can be
+        // re-sent via resync-events whenever the signaling socket reconnects.
+        liveRecentEventsRef.current = [
+          ...liveRecentEventsRef.current,
+          { playerName, label, timestamp },
+        ].slice(-8);
       }
     }
   };
