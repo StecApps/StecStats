@@ -1916,15 +1916,13 @@ async function renderGameSegments(
       );
     }
     const mainFilters = filterParts.join(",");
-    // Build filter_complex.  Music is added as input 2 (0=video, 1=logo, 2=music)
-    // when a musicTrackPath is provided.  The audio filter runs INSIDE
-    // filter_complex so that the amix output can be routed with -map [aout].
+    // Build filter_complex.
     // Music is intentionally NOT mixed into individual segments.  Doing so
     // causes the music track to reset to the beginning for every clip after
     // concatenation, producing an audible pop/restart at every clip boundary.
     // Instead, segments carry only the source audio (or are audio-free when
-    // the source has no audio), and a single music-mixing pass is applied over
-    // the final concatenated MP4 in mixMusicIntoReel() after concatSegments().
+    // the source has no audio), and music is mixed in a single combined
+    // concat+music pass inside concatSegments() after all segments are ready.
     const fcParts = [
       `[0:v]${mainFilters}[main]`,
       `[1:v]scale=-1:${wmLogoHeight},format=rgba,colorchannelmixer=aa=0.65[logo]`,
@@ -2143,6 +2141,7 @@ export async function concatSegments(
   tmpDir: string,
   outPath: string,
   hasAudio: boolean,
+  musicTrackPath?: string,
 ): Promise<void> {
   const listPath = path.join(tmpDir, `list_${path.basename(outPath)}.txt`);
   await fs.writeFile(
@@ -2150,6 +2149,53 @@ export async function concatSegments(
     segPaths.map((p) => `file '${p}'`).join("\n"),
     "utf8",
   );
+
+  if (musicTrackPath) {
+    // Single-pass: concat segments and mix music in one ffmpeg invocation.
+    // This eliminates the intermediate highlight_concat.mp4 file and saves
+    // one trip through the global ffmpeg queue serialiser compared to the
+    // old two-pass approach (concatSegments → mixMusicIntoReel).
+    //
+    // Input 0: MPEG-TS segments via concat demuxer.
+    // Input 1: music track looped for the full reel duration.
+    // Video is stream-copied; audio is decoded, mixed, and re-encoded to AAC
+    // (so aac_adtstoasc is not needed — we're not copying TS audio packets).
+    const concatArgs = [
+      "-y",
+      "-f", "concat", "-safe", "0", "-i", listPath,
+      "-stream_loop", "-1", "-i", musicTrackPath,
+    ];
+
+    if (hasAudio) {
+      // Blend original game audio (weight 1) with background music (weight 0.2).
+      // duration=first trims the music to the video length.
+      concatArgs.push(
+        "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.2[aout]",
+        "-map", "0:v",
+        "-map", "[aout]",
+      );
+    } else {
+      // No source audio — music only, trimmed to video length.
+      concatArgs.push(
+        "-filter_complex", "[1:a]volume=0.3[aout]",
+        "-map", "0:v",
+        "-map", "[aout]",
+      );
+    }
+
+    concatArgs.push(
+      "-c:v", "copy",
+      "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
+      "-shortest",
+      "-movflags", "+faststart",
+      outPath,
+    );
+
+    await runFfmpegQueued(concatArgs);
+    return;
+  }
+
+  // No music: plain stream-copy concat.
   const concatArgs = [
     "-y",
     "-f", "concat",
@@ -2357,15 +2403,11 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       throw new HighlightError("No qualifying highlight moments in this game");
     }
 
-    // Music is mixed in a single post-concat pass so the track plays
-    // continuously across all clips without resetting at each boundary.
-    let outPath = path.join(tmpDir, "highlight.mp4");
-    await concatSegments(segPaths, tmpDir, outPath, hasAudio);
-    if (musicTrackPath) {
-      const musicOutPath = path.join(tmpDir, "highlight_music.mp4");
-      await mixMusicIntoReel(outPath, musicOutPath, musicTrackPath, hasAudio);
-      outPath = musicOutPath;
-    }
+    // Music is combined with the concat in a single ffmpeg pass (see
+    // concatSegments) so the track plays continuously across all clips without
+    // resetting at each boundary, and no intermediate file is written to disk.
+    const outPath = path.join(tmpDir, "highlight.mp4");
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath);
 
     const objectPath = await uploadHighlight(outPath, game.ownerId);
 
@@ -2489,15 +2531,11 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       throw new HighlightError("No lowlight moments could be rendered");
     }
 
-    // Music is mixed in a single post-concat pass so the track plays
-    // continuously across all clips without resetting at each boundary.
-    let outPath = path.join(tmpDir, "lowlight.mp4");
-    await concatSegments(segPaths, tmpDir, outPath, hasAudio);
-    if (musicTrackPath) {
-      const musicOutPath = path.join(tmpDir, "lowlight_music.mp4");
-      await mixMusicIntoReel(outPath, musicOutPath, musicTrackPath, hasAudio);
-      outPath = musicOutPath;
-    }
+    // Music is combined with the concat in a single ffmpeg pass (see
+    // concatSegments) so the track plays continuously across all clips without
+    // resetting at each boundary, and no intermediate file is written to disk.
+    const outPath = path.join(tmpDir, "lowlight.mp4");
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath);
 
     const objectPath = await uploadHighlight(outPath, game.ownerId);
 
