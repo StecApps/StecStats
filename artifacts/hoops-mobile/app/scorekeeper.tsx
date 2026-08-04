@@ -22,18 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-
-interface StatLine {
-  ftMade: number; ftAttempted: number;
-  twoMade: number; twoAttempted: number;
-  threeMade: number; threeAttempted: number;
-  assists: number; rebounds: number;
-  steals: number; turnovers: number; blocks: number;
-}
-
-interface GameEvent {
-  playerId: number; statField: string; delta: number; videoTimestampMs: number;
-}
+import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
 
 const defaultLine = (): StatLine => ({
   ftMade: 0, ftAttempted: 0,
@@ -329,7 +318,7 @@ export default function ScorekeeperScreen() {
         }
 
         if (recordedUrisRef.current.length === 0) {
-          showNoVideoAlert(recordingStartedRef.current, setSaving, saveGame);
+          showNoVideoAlert(recordingStartedRef.current, setSaving, doSaveGame);
           return;
         }
 
@@ -393,13 +382,13 @@ export default function ScorekeeperScreen() {
             uploadErr?.message ?? 'Could not upload video. Save game without video?',
             [
               { text: 'Cancel', style: 'cancel', onPress: () => setSaving(false) },
-              { text: 'Save without video', style: 'default', onPress: () => saveGame(null) },
+              { text: 'Save without video', style: 'default', onPress: () => doSaveGame(null) },
             ],
           );
           return;
         }
       }
-      await saveGame(videoObjectPath);
+      await doSaveGame(videoObjectPath);
     } catch (err: any) {
       setUploadProgress(null);
       Alert.alert('Save failed', err?.message ?? 'Could not save game');
@@ -407,33 +396,21 @@ export default function ScorekeeperScreen() {
     }
   }
 
-  async function saveGame(videoObjectPath: string | null) {
-    try {
-      const statLines = (players as any[]).map((p) => {
-        const line = stats[p.id] ?? defaultLine();
-        return { playerId: p.id, ...line };
-      });
-      const result = teamScore > opponentScore ? 'W' : 'L';
-      const game = await createGame.mutateAsync({
-        data: {
-          teamId: Number(teamId),
-          opponent: opponent as string,
-          date: date as string,
-          result: result as 'W' | 'L',
-          teamScore,
-          opponentScore,
-          stats: statLines,
-          events,
-          ...(videoObjectPath ? { videoObjectPath } : {}),
-        },
-      });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await qc.invalidateQueries({ queryKey: ['listTeamGames'] });
-      router.replace(`/game/${game.id}`);
-    } catch (err: any) {
-      Alert.alert('Save failed', err?.message ?? 'Could not save game');
-      setSaving(false);
-    }
+  function doSaveGame(videoObjectPath: string | null) {
+    return saveGame(videoObjectPath, {
+      players: (players as any[]),
+      stats,
+      teamScore,
+      opponentScore,
+      teamId: Number(teamId),
+      opponent: opponent as string,
+      date: date as string,
+      events,
+      createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
+      invalidateQueries: (opts) => qc.invalidateQueries(opts),
+      routerReplace: (path) => router.replace(path as any),
+      setSaving,
+    });
   }
 
   function handleCancelUpload() {
@@ -451,7 +428,7 @@ export default function ScorekeeperScreen() {
       'Your game stats are still saved. Would you like to save without the video?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Save without video', style: 'default', onPress: () => saveGame(null) },
+        { text: 'Save without video', style: 'default', onPress: () => doSaveGame(null) },
       ],
     );
   }
