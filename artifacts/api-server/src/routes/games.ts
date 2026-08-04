@@ -675,9 +675,48 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
 
 router.delete("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = DeleteGameParams.parse(req.params);
+  const ownerId = req.appUser!.id;
+
+  // Fetch the game first so we can clean up its GCS objects after deletion.
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+    columns: { id: true, videoObjectPath: true, highlightObjectPath: true },
+  });
+
+  if (!game) {
+    // Row doesn't exist or belongs to another coach — return 204 (idempotent).
+    res.status(204).send();
+    return;
+  }
+
+  // Delete the DB row first so concurrent requests can no longer reference it.
   await db
     .delete(gamesTable)
-    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)));
+    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+
+  // Delete GCS blobs in parallel. Normalize paths first so legacy rows that
+  // stored an absolute GCS URL (instead of /objects/...) are handled correctly.
+  // Log errors but don't fail the response — the row is already gone and the
+  // blob is orphaned at worst, not cross-accessible.
+  const deletions: Promise<void>[] = [];
+  if (game.videoObjectPath) {
+    const normalizedPath = objectStorageService.normalizeObjectEntityPath(game.videoObjectPath);
+    deletions.push(
+      objectStorageService.deleteObjectEntity(normalizedPath).catch((err) =>
+        req.log.error({ err, objectPath: normalizedPath }, "Failed to delete game video object")
+      ),
+    );
+  }
+  if (game.highlightObjectPath) {
+    const normalizedPath = objectStorageService.normalizeObjectEntityPath(game.highlightObjectPath);
+    deletions.push(
+      objectStorageService.deleteObjectEntity(normalizedPath).catch((err) =>
+        req.log.error({ err, objectPath: normalizedPath }, "Failed to delete game highlight object")
+      ),
+    );
+  }
+  await Promise.all(deletions);
+
   res.status(204).send();
 });
 

@@ -254,4 +254,37 @@ describe("Storage ACL — POST /api/storage/concat-segments", () => {
     const res = await postConcat([SEG_A1]); // only 1 segment
     expect(res.status).toBe(400);
   });
+
+  it("returns 403 for an orphaned path whose game row was deleted (no DB match, ACL fallback denies)", async () => {
+    // Simulate a path whose game row no longer exists — e.g. the game was
+    // deleted but the GCS blob was not cleaned up.  The DB mock returns
+    // undefined for all users on this path; the ACL mock also returns false.
+    // Both gates should deny access, resulting in a 403.
+    const { db } = await import("@workspace/db");
+    const findFirst = db.query.gamesTable.findFirst as ReturnType<typeof vi.fn>;
+    const originalImpl = findFirst.getMockImplementation();
+
+    findFirst.mockResolvedValueOnce(undefined); // first segment: no DB row
+    findFirst.mockResolvedValueOnce(undefined); // second segment: no DB row
+
+    // Use a path that doesn't match any game (orphaned after deletion).
+    const ORPHANED_SEG_1 = "/objects/private/orphaned-half1.mp4";
+    const ORPHANED_SEG_2 = "/objects/private/orphaned-half2.mp4";
+
+    currentUser.value = COACH_A; // even the "owner" can't access it
+
+    const res = await postConcat([ORPHANED_SEG_1, ORPHANED_SEG_2]);
+    expect(res.status).toBe(403);
+
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/forbidden/i);
+
+    // Restore original implementation (getMockImplementation() may return
+    // undefined when using the default factory — guard before restoring).
+    if (originalImpl) {
+      findFirst.mockImplementation(originalImpl);
+    } else {
+      findFirst.mockReset();
+    }
+  });
 });

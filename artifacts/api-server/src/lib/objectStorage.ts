@@ -309,6 +309,28 @@ export class ObjectStorageService {
       file.createWriteStream({ metadata: { contentType }, resumable: false }),
     );
   }
+
+  /**
+   * Delete an object entity from GCS by its /objects/... path.
+   * If the object does not exist this is a no-op (idempotent).
+   */
+  async deleteObjectEntity(objectPath: string): Promise<void> {
+    if (!objectPath.startsWith("/objects/")) return;
+    const entityId = objectPath.slice("/objects/".length);
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
+    const fullPath = `${entityDir}${entityId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    try {
+      await file.delete();
+    } catch (err: any) {
+      // 404 means the blob is already gone — treat as success.
+      if (err?.code === 404 || err?.message?.includes("No such object")) return;
+      throw err;
+    }
+  }
 }
 
 function parseObjectPath(path: string): {
