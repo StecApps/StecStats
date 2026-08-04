@@ -347,7 +347,7 @@ function makeStyles(colors: any, insets: any) {
     row: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, borderWidth: 1, marginBottom: 8 },
     datePill: { width: 52, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
     dateStr: { fontSize: 10, textTransform: 'uppercase', fontFamily: 'Inter_500Medium' },
-    dateDay: { fontSize: 22, lineHeight: 24 },
+    dateDay: { fontSize: 22, lineHeight: 29 },
     rowMid: { flex: 1, paddingHorizontal: 12, paddingVertical: 10 },
     opponent: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 2 },
     score: { fontSize: 13, fontFamily: 'Inter_400Regular' },

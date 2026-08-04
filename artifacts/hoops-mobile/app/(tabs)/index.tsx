@@ -68,7 +68,7 @@ function ArcGauge({
 const gaugeS = StyleSheet.create({
   wrap: { alignItems: 'center', flex: 1 },
   center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  pctNum: { fontSize: 17, lineHeight: 19 },
+  pctNum: { fontSize: 17, lineHeight: 23 },
   pctLabel: { fontSize: 7, fontFamily: 'Inter_500Medium', letterSpacing: 0.3 },
   gaugeLabel: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5, textTransform: 'uppercase', marginTop: 6 },
   made: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
@@ -106,7 +106,7 @@ function StatCard({ label, value, sub, colors }: { label: string; value: string;
 const statS = StyleSheet.create({
   card: { flex: 1, borderRadius: 10, borderWidth: 1, padding: 12, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { fontSize: 30, lineHeight: 38 },
+  value: { fontSize: 30, lineHeight: 39 },
   sub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
 });
 
@@ -361,14 +361,14 @@ const heroS = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
   avatarImg: { width: '100%', height: '100%' },
-  avatarText: { fontSize: 28, lineHeight: 32 },
+  avatarText: { fontSize: 28, lineHeight: 37 },
   cameraBadge: {
     position: 'absolute', bottom: -2, right: -2,
     width: 24, height: 24, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: '#0C0A09',
   },
-  playerName: { fontSize: 34, lineHeight: 38, letterSpacing: 1 },
+  playerName: { fontSize: 34, lineHeight: 45, letterSpacing: 1 },
   scopeBadge: { marginTop: 8, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
   scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
 });

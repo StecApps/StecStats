@@ -242,6 +242,7 @@ function makeStyles(colors: any, insets: any) {
     heroLogo: { width: 180, height: 42, marginBottom: 12 },
     heroTitle: {
       fontSize: 28,
+      lineHeight: 37,
       fontFamily: 'Teko_700Bold',
       color: colors.foreground,
       textAlign: 'center',
@@ -274,10 +275,12 @@ function makeStyles(colors: any, insets: any) {
     },
     tierName: {
       fontSize: 22,
+      lineHeight: 29,
       letterSpacing: 1,
     },
     tierPrice: {
       fontSize: 24,
+      lineHeight: 32,
     },
     tierPriceSub: {
       fontSize: 14,

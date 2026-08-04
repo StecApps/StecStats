@@ -1060,9 +1060,9 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       marginBottom: 1, fontFamily: 'Inter_500Medium',
       color: 'rgba(255,255,255,0.7)', maxWidth: 110,
     },
-    scoreNum: { fontSize: 44, lineHeight: 46, color: '#fff' },
+    scoreNum: { fontSize: 44, lineHeight: 58, color: '#fff' },
     scoreCenter: { alignItems: 'center', gap: 5, paddingHorizontal: 8 },
-    timer: { fontSize: 20, lineHeight: 22, color: 'rgba(255,255,255,0.75)' },
+    timer: { fontSize: 20, lineHeight: 26, color: 'rgba(255,255,255,0.75)' },
     timerBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
     halfBtn: {
       borderWidth: 1, borderRadius: 6,
@@ -1251,7 +1251,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       padding: 9, alignItems: 'center', gap: 5,
     },
     shootLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-    shootValue: { fontSize: 20, lineHeight: 22 },
+    shootValue: { fontSize: 20, lineHeight: 26 },
     makeBtn: {
       width: '100%', height: 34, borderRadius: 8,
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
@@ -1275,7 +1275,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       padding: 9, alignItems: 'center', gap: 5,
     },
     countLabel: { fontSize: 11, fontFamily: 'Inter_700Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-    countValue: { fontSize: 26, lineHeight: 28 },
+    countValue: { fontSize: 26, lineHeight: 34 },
     countBtns: { flexDirection: 'row', gap: 5, width: '100%' },
     countBtn: {
       flex: 1, height: 26, borderRadius: 8,
@@ -1371,7 +1371,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     codeValue: {
       fontSize: 36,
-      lineHeight: 38,
+      lineHeight: 47,
       letterSpacing: 6,
     },
     shareLinkBtn: {
