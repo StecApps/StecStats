@@ -605,7 +605,7 @@ export default function ScorekeeperScreen() {
         <View style={[styles.oppScoreStrip, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <View style={styles.oppScoreStripTeam}>
             <Text style={[styles.oppScoreStripLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{teamName}</Text>
-            <Text style={[styles.oppScoreStripNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{teamScore}</Text>
+            <Text style={[styles.oppScoreStripNum, { color: colors.foreground }]}>{teamScore}</Text>
           </View>
           <Text style={[styles.oppScoreStripVs, { color: colors.mutedForeground }]}>vs</Text>
           <View style={styles.oppScoreStripTeam}>
@@ -617,7 +617,7 @@ export default function ScorekeeperScreen() {
               >
                 <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
               </TouchableOpacity>
-              <Text style={[styles.oppScoreStripNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{opponentScore}</Text>
+              <Text style={[styles.oppScoreStripNum, { color: colors.foreground }]}>{opponentScore}</Text>
               <TouchableOpacity
                 onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                 style={[styles.oppBtn, { backgroundColor: colors.muted }]}
@@ -1163,10 +1163,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       letterSpacing: 0.5,
       marginBottom: 1,
     },
-    oppScoreStripNum: {
-      fontSize: 28,
-      lineHeight: 36,
-    },
+    oppScoreStripNum: { ...tekoStyle(28) },
     oppScoreStripVs: {
       fontSize: 11,
       fontFamily: 'Inter_500Medium',
