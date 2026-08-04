@@ -1048,20 +1048,26 @@ export default function ScorekeeperScreen() {
             )}
           </>
         ) : (
-          /* Preview hidden — dark overlay with expand button + back nav */
+          /* Preview hidden — full-width banner with prominent restore CTA */
           <View style={styles.previewHiddenOverlay}>
             {/* Back button — always reachable even when preview is collapsed */}
             <TouchableOpacity onPress={() => router.back()} activeOpacity={0.75} style={styles.collapsedCloseBtn}>
-              <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.7)" />
+              <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.55)" />
             </TouchableOpacity>
 
-            {/* Expand button with visible label so coaches know how to restore the preview */}
+            {/* Full-width restore CTA — fills the bar so it's impossible to miss */}
             <TouchableOpacity onPress={togglePreview} activeOpacity={0.75} style={styles.expandPreviewBtn}>
-              <Ionicons name="videocam" size={16} color="#fff" />
-              <Text style={styles.expandPreviewText}>Show camera</Text>
+              <Ionicons name="videocam" size={17} color="#fff" />
+              <Text style={styles.expandPreviewText}>Tap to show camera</Text>
+              <Ionicons name="chevron-up" size={15} color="rgba(255,255,255,0.7)" style={{ marginLeft: 2 }} />
             </TouchableOpacity>
 
-            {recordVideo && isRecording && <View style={styles.recDotSmall} />}
+            {recordVideo && isRecording && (
+              <View style={styles.recDotSmallRight}>
+                <View style={styles.recDotSmall} />
+                <Text style={styles.recDotSmallLabel}>REC</Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -1167,8 +1173,8 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
 
     // Collapsed camera section (preview hidden)
     cameraSectionCollapsed: {
-      height: 72,
-      minHeight: 72,
+      height: 56,
+      minHeight: 56,
     },
     // Hidden camera section (not recording — collapses to nothing)
     cameraSectionHidden: {
@@ -1202,33 +1208,47 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     // Overlay shown when preview is hidden
     previewHiddenOverlay: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.85)',
+      backgroundColor: 'rgba(0,0,0,0.92)',
+      borderTopWidth: 2,
+      borderTopColor: 'rgba(255,255,255,0.18)',
       flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 10,
+      alignItems: 'stretch',
     },
     expandPreviewBtn: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      backgroundColor: 'rgba(255,255,255,0.12)',
-      borderRadius: 8,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
+      justifyContent: 'center',
+      gap: 7,
+      backgroundColor: 'rgba(255,255,255,0.10)',
+      borderRadius: 0,
     },
     expandPreviewText: {
-      fontSize: 13,
+      fontSize: 14,
       fontFamily: 'Inter_600SemiBold',
       color: '#fff',
+      letterSpacing: 0.2,
     },
     collapsedCloseBtn: {
-      position: 'absolute',
-      left: 10,
-      top: 0,
-      bottom: 0,
+      width: 48,
+      alignItems: 'center',
       justifyContent: 'center',
-      padding: 6,
+      borderRightWidth: 1,
+      borderRightColor: 'rgba(255,255,255,0.1)',
+    },
+    recDotSmallRight: {
+      width: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 2,
+      borderLeftWidth: 1,
+      borderLeftColor: 'rgba(255,255,255,0.1)',
+    },
+    recDotSmallLabel: {
+      fontSize: 8,
+      fontFamily: 'Inter_700Bold',
+      color: '#EF4444',
+      letterSpacing: 0.5,
     },
     cameraHiddenBadge: {
       flexDirection: 'row',
