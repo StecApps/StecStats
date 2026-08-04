@@ -245,8 +245,12 @@ export default function ProfileScreen() {
                 const supported = await Linking.canOpenURL(url);
                 if (supported) {
                   Linking.openURL(url).catch(() => {
-                    // openURL resolved but the OS still rejected it (e.g. simulator);
-                    // swallow silently — the user is on a platform that can't open it.
+                    Alert.alert(
+                      'Store Unavailable',
+                      Platform.OS === 'android'
+                        ? 'Unable to open Google Play. Please manage your subscription from the Play Store app.'
+                        : 'Unable to open the App Store. Please manage your subscription from the App Store app.',
+                    );
                   });
                 } else {
                   // Fallback: open the https equivalent in Safari so the user still
@@ -254,7 +258,14 @@ export default function ProfileScreen() {
                   const fallback = Platform.OS === 'android'
                     ? 'https://play.google.com/store/account/subscriptions'
                     : 'https://apps.apple.com/account/subscriptions';
-                  Linking.openURL(fallback);
+                  Linking.openURL(fallback).catch(() => {
+                    Alert.alert(
+                      'Store Unavailable',
+                      Platform.OS === 'android'
+                        ? 'Unable to open Google Play. Please manage your subscription from the Play Store app.'
+                        : 'Unable to open the App Store. Please manage your subscription from the App Store app.',
+                    );
+                  });
                 }
               } else {
                 // Stripe / web subscription — open billing portal
