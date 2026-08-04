@@ -167,4 +167,45 @@ test.describe("Billing page – resume-checkout banner", () => {
     expect(body?.data?.tier).toBe("pro");
     expect(body?.data?.interval).toBe("month");
   });
+
+  test("Premium banner shows 'Premium' label and sends tier:premium on monthly click", async ({
+    page,
+    context,
+  }) => {
+    await signInAndSetupPlayer(page, context, user.email);
+
+    await page.evaluate(
+      ({ key, value }) => localStorage.setItem(key, value),
+      { key: FAILED_CHECKOUT_KEY, value: JSON.stringify({ interval: "month", tier: "premium" }) },
+    );
+
+    await page.goto("/billing");
+
+    const banner = page.getByTestId("resume-checkout-banner");
+    await expect(banner).toBeVisible({ timeout: 15000 });
+
+    // Description must mention "Premium", not "Pro"
+    await expect(banner).toContainText("Premium");
+    await expect(banner).not.toContainText("Pro checkout");
+
+    const monthlyBtn = page.getByTestId("button-resume-monthly");
+    await expect(monthlyBtn).toBeVisible();
+    await expect(monthlyBtn).toContainText("Premium");
+    await expect(monthlyBtn).toBeEnabled();
+
+    const [checkoutRequest] = await Promise.all([
+      page.waitForRequest(
+        (req) =>
+          req.url().includes("/api/billing/checkout") &&
+          req.method() === "POST",
+        { timeout: 15000 },
+      ),
+      monthlyBtn.click(),
+    ]);
+
+    expect(checkoutRequest).toBeTruthy();
+    const body = checkoutRequest.postDataJSON() as { data?: { interval?: string; tier?: string } };
+    expect(body?.data?.tier).toBe("premium");
+    expect(body?.data?.interval).toBe("month");
+  });
 });

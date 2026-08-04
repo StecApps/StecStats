@@ -195,8 +195,9 @@ export default function RecordGame() {
   const highlightSelectorSyncedRef = useRef(false);
   const lowlightSelectorSyncedRef = useRef(false);
 
-  // Reset the sync guards when gameId changes so a new game seeds from its
-  // own server data instead of being blocked by a previous game's flag.
+  // Reset the one-time hydration guards whenever the gameId changes so that
+  // navigating from /record/:gameA to /record/:gameB (same component instance)
+  // seeds the selector from game B's server data instead of inheriting A's state.
   useEffect(() => {
     highlightSelectorSyncedRef.current = false;
     lowlightSelectorSyncedRef.current = false;
@@ -671,16 +672,6 @@ export default function RecordGame() {
       setIsReconnectingLive(true);
       setLiveReconnectAttempt(attempt);
     };
-    // Test hook: simulate a ws.onclose drop including the retry-at timestamp so
-    // that the countdown display (liveReconnectCountdownSec) can be exercised.
-    // Mirrors the real ws.onclose path: sets reconnecting state + overwrites the
-    // retryAt ref so the interval picks up the new countdown on its next tick.
-    w.__hoopsSimulateLiveReconnectDrop = (attempt: number, delayMs: number) => {
-      setIsLive(false);
-      setIsReconnectingLive(true);
-      setLiveReconnectAttempt(attempt);
-      liveReconnectRetryAtRef.current = Date.now() + delayMs;
-    };
     // Test hook: simulate a successful reconnect completing — mirrors ws.onopen logic.
     w.__hoopsSimulateLiveReconnectSuccess = () => {
       setIsLive(true);
@@ -691,7 +682,6 @@ export default function RecordGame() {
       delete w.__hoopsTurnCheckNow;
       delete w.__hoopsSetTurnAtGoLive;
       delete w.__hoopsSimulateLiveReconnect;
-      delete w.__hoopsSimulateLiveReconnectDrop;
       delete w.__hoopsSimulateLiveReconnectSuccess;
     };
   // runTurnHealthCheck is re-created on every render (it closes over toast/state);
