@@ -257,4 +257,53 @@ test.describe("TURN expiry warnings", () => {
     const countAfterSecond = await page.getByText("TURN relay unavailable").count();
     expect(countAfterSecond).toBeLessThanOrEqual(countAfterFirst);
   });
+
+  // -------------------------------------------------------------------------
+  // Test E: full broadcast lifecycle — warning clears after end and does NOT
+  // re-fire when a new broadcast starts with TURN available
+  // -------------------------------------------------------------------------
+  test("E – broadcast lifecycle: TURN warning clears on end and does not stale-fire on new broadcast", async ({ page }) => {
+    await setupClerkTestingToken({ page, userId });
+    await setupRouteMocks(page);
+
+    await page.goto("/record");
+    await expect(page.getByText("Live stream link")).toBeVisible({ timeout: 10_000 });
+
+    // Step 1: Simulate the first broadcast going live with TURN available.
+    await page.evaluate(() => (window as any).__hoopsSetTurnAtGoLive(true));
+
+    // Step 2: TURN becomes unavailable mid-broadcast — trigger the health check.
+    turnAvailableOnServer = false;
+    await page.evaluate(() => (window as any).__hoopsTurnCheckNow());
+
+    // The warning badge must appear.
+    await expect(page.locator('[data-testid="turn-warning-badge"]')).toBeVisible({ timeout: 5_000 });
+
+    // Step 3: Simulate ending the broadcast — stopGoingLive() sets
+    // turnAtGoLiveRef.current = null.  We drive that via the dev hook.
+    await page.evaluate(() => (window as any).__hoopsSetTurnAtGoLive(null));
+
+    // The badge should disappear as soon as turnAtGoLive is null (no active
+    // broadcast) — run one more health check to let the component react.
+    await page.evaluate(() => (window as any).__hoopsTurnCheckNow());
+    await expect(page.locator('[data-testid="turn-warning-badge"]')).not.toBeVisible({ timeout: 5_000 });
+
+    // Step 4: TURN relay comes back online before the new broadcast.
+    turnAvailableOnServer = true;
+
+    // Simulate the coach starting a new broadcast — goLive() snaps the current
+    // turnAvailable value (true) into turnAtGoLiveRef.current.
+    await page.evaluate(() => (window as any).__hoopsSetTurnAtGoLive(true));
+
+    // Step 5: Health check fires — TURN is now available, turnAtGoLive is true
+    // (match = no degradation).  No stale "unavailable" toast should appear.
+    await page.evaluate(() => (window as any).__hoopsTurnCheckNow());
+    await page.waitForTimeout(500);
+
+    // Badge must remain hidden — no stale warning from the previous session.
+    await expect(page.locator('[data-testid="turn-warning-badge"]')).not.toBeVisible();
+
+    // No "TURN relay unavailable" toast should be visible either.
+    await expect(page.getByText("TURN relay unavailable")).not.toBeVisible();
+  });
 });
