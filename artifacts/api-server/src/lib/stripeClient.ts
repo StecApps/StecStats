@@ -65,6 +65,32 @@ export async function getStripeCredentials(): Promise<{ secretKey: string; webho
 }
 
 /**
+ * Probes whether the given secret key is accepted by Stripe.
+ *
+ * Uses `stripe.balance.retrieve()` — the cheapest authenticated Stripe call.
+ * Returns `{ ok: true }` on success.
+ * Returns `{ ok: false, authError: true }` when Stripe rejects the key with a
+ * 401/authentication_error (revoked, mistyped, or wrong-mode key).
+ * Returns `{ ok: false, authError: false }` for transient errors (network
+ * timeouts, Stripe outages) that should not abort boot.
+ */
+export async function probeStripeKey(secretKey: string): Promise<{
+  ok: boolean;
+  authError: boolean;
+  message?: string;
+}> {
+  try {
+    const stripe = new Stripe(secretKey);
+    await stripe.balance.retrieve();
+    return { ok: true, authError: false };
+  } catch (err: unknown) {
+    const isAuthError =
+      err instanceof Stripe.errors.StripeAuthenticationError;
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, authError: isAuthError, message };
+  }
+}
+/**
  * Returns a fresh authenticated Stripe client.
  * Not cached -- fetches credentials on every call so rotated keys are picked up.
  */

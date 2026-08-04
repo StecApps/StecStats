@@ -8,7 +8,7 @@ import { logger } from "./lib/logger";
 import { seedDatabase, applyVideoOffsetFixes } from "./lib/seed";
 import { attachLiveSocketServer } from "./lib/liveSocket";
 import { liveStreamRegistry, checkTurnAvailability } from "./lib/liveStream";
-import { getStripeSync, getStripeCredentials } from "./lib/stripeClient";
+import { getStripeSync, getStripeCredentials, probeStripeKey } from "./lib/stripeClient";
 import { db } from "@workspace/db";
 import { resumeHighlightJob } from "./routes/highlights";
 import { resumeLowlightJob } from "./routes/lowlights";
@@ -203,10 +203,12 @@ async function boot() {
   // present but Stripe is not connected (or the connector fetch fails), which
   // the synchronous env-var heuristic above cannot detect.
   if (process.env["NODE_ENV"] === "production") {
+    let resolvedKey: string;
     try {
-      const { source } = await getStripeCredentials();
+      const creds = await getStripeCredentials();
+      resolvedKey = creds.secretKey;
       const sourceLabel =
-        source === "direct-secret"
+        creds.source === "direct-secret"
           ? "direct secret key (STRIPE_SECRET_KEY)"
           : "Replit connector";
       logger.info(`Stripe credentials loaded from ${sourceLabel}`);
@@ -219,6 +221,30 @@ async function boot() {
           `Error: ${message}`,
       );
       process.exit(1);
+    }
+
+    // Probe the key — a key that exists can still be revoked, expired, or
+    // mistyped. stripe.balance.retrieve() is the cheapest authenticated call.
+    const probe = await probeStripeKey(resolvedKey);
+    if (!probe.ok) {
+      if (probe.authError) {
+        console.error(
+          "[FATAL] Stripe key is invalid (authentication error). " +
+            "The key may be revoked, expired, or mistyped. " +
+            "Update STRIPE_SECRET_KEY in Secrets and redeploy. " +
+            `Error: ${probe.message}`,
+        );
+        process.exit(1);
+      } else {
+        // Transient error (network timeout, Stripe outage) — warn but continue.
+        logger.warn(
+          { message: probe.message },
+          "Stripe key probe failed with a non-auth error. " +
+            "Continuing boot — Stripe's API may be briefly unreachable.",
+        );
+      }
+    } else {
+      logger.info("Stripe key probe succeeded — credentials are valid");
     }
   }
 
