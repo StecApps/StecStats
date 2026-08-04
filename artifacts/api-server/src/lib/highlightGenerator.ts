@@ -2247,6 +2247,17 @@ export async function mixMusicIntoReel(
   musicTrackPath: string,
   reelHasAudio: boolean,
 ): Promise<void> {
+  // Guard: verify the music track file exists before handing it to ffmpeg.
+  // A missing track causes an opaque ffmpeg error; catch it early with a clear message.
+  try {
+    await fs.access(musicTrackPath);
+  } catch {
+    throw new HighlightError(
+      `Music track file could not be opened: "${musicTrackPath}". ` +
+      `Check that the track asset exists at the expected path.`,
+    );
+  }
+
   const args = [
     "-y",
     "-i", concatPath,

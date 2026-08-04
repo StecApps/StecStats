@@ -31,7 +31,7 @@ import os from "os";
 import path from "path";
 import { promisify } from "util";
 
-import { concatSegments, mixMusicIntoReel } from "../highlightGenerator";
+import { concatSegments, mixMusicIntoReel, HighlightError } from "../highlightGenerator";
 
 const execFileAsync = promisify(execFile);
 
@@ -215,5 +215,51 @@ describe("mixMusicIntoReel — music continuity across clip boundaries", () => {
       ).toBeLessThan(SILENT_DB_MAX);
     },
     120_000,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Missing music track — pre-flight guard
+// ---------------------------------------------------------------------------
+
+describe("mixMusicIntoReel — missing music track file", () => {
+  let tmpDir: string;
+  let videoPath: string;
+  let outPath: string;
+
+  beforeAll(async () => {
+    tmpDir    = await fs.mkdtemp(path.join(os.tmpdir(), "music-missing-"));
+    videoPath = path.join(tmpDir, "clip.mp4");
+    outPath   = path.join(tmpDir, "reel.mp4");
+
+    // Make a minimal silent video clip to use as the reel input.
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-f", "lavfi", "-i", "color=c=black:size=320x240:rate=30:duration=2",
+      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "40",
+      "-an",
+      videoPath,
+    ]);
+  }, 60_000);
+
+  afterAll(async () => {
+    if (tmpDir) {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  it(
+    "rejects with a HighlightError when the music track path does not exist",
+    async () => {
+      const missingTrack = path.join(tmpDir, "no_such_track.wav");
+
+      await expect(
+        mixMusicIntoReel(videoPath, outPath, missingTrack, /* reelHasAudio */ false),
+      ).rejects.toSatisfy((err: unknown) => {
+        if (!(err instanceof HighlightError)) return false;
+        return err.message.includes("Music track file could not be opened");
+      });
+    },
+    30_000,
   );
 });
