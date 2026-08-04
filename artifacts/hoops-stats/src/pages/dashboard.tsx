@@ -1593,10 +1593,24 @@ function EditStatsDialog({
   const updateGame = useUpdateGame();
   const [lines, setLines] = useState<EditableStatLine[]>([]);
 
+  // Game metadata state
+  const [editOpponent, setEditOpponent] = useState(game.opponent);
+  const [editDate, setEditDate] = useState(game.date);
+  const [editTeamScore, setEditTeamScore] = useState(game.teamScore);
+  const [editOpponentScore, setEditOpponentScore] = useState(game.opponentScore);
+  const [editResult, setEditResult] = useState<"W" | "L">(game.result as "W" | "L");
+
   // Re-initialize when dialog opens
   useEffect(() => {
-    if (open) setLines(initEditableStats(game.stats));
-  }, [open, game.stats]);
+    if (open) {
+      setLines(initEditableStats(game.stats));
+      setEditOpponent(game.opponent);
+      setEditDate(game.date);
+      setEditTeamScore(game.teamScore);
+      setEditOpponentScore(game.opponentScore);
+      setEditResult(game.result as "W" | "L");
+    }
+  }, [open, game]);
 
   const setLineStat = (
     playerId: number,
@@ -1622,16 +1636,20 @@ function EditStatsDialog({
   };
 
   const handleSave = async () => {
+    if (!editOpponent.trim()) {
+      toast({ title: "Opponent name is required", variant: "destructive" });
+      return;
+    }
     try {
       await updateGame.mutateAsync({
         gameId: game.id,
         data: {
           teamId: game.teamId,
-          opponent: game.opponent,
-          date: game.date,
-          result: game.result,
-          teamScore: game.teamScore,
-          opponentScore: game.opponentScore,
+          opponent: editOpponent.trim(),
+          date: editDate,
+          result: editResult,
+          teamScore: editTeamScore,
+          opponentScore: editOpponentScore,
           videoObjectPath: game.videoObjectPath ?? null,
           videoOffsetMs: game.videoOffsetMs ?? null,
           stats: lines.map(l => ({
@@ -1663,7 +1681,7 @@ function EditStatsDialog({
           })),
         },
       });
-      toast({ title: "Stats updated", description: "Game stats have been saved." });
+      toast({ title: "Game updated", description: "Opponent, score, date, and stats saved." });
       onOpenChange(false);
       onSaved();
     } catch (err) {
@@ -1687,6 +1705,75 @@ function EditStatsDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-2">
+          {/* Game metadata */}
+          <div className="rounded-lg border border-border/60 p-4 space-y-3">
+            <p className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground">Game Info</p>
+            <div className="space-y-2">
+              <Label htmlFor="edit-opponent">Opponent</Label>
+              <Input
+                id="edit-opponent"
+                value={editOpponent}
+                onChange={e => setEditOpponent(e.target.value)}
+                placeholder="Opponent name"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-date">Date</Label>
+                <Input
+                  id="edit-date"
+                  type="date"
+                  value={editDate}
+                  onChange={e => setEditDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Result</Label>
+                <div className="flex gap-2">
+                  {(["W", "L"] as const).map(r => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setEditResult(r)}
+                      className={`flex-1 py-1.5 rounded text-sm font-bold border transition-colors ${
+                        editResult === r
+                          ? r === "W"
+                            ? "bg-green-600 text-white border-green-600"
+                            : "bg-red-600 text-white border-red-600"
+                          : "bg-transparent text-muted-foreground border-border hover:bg-muted"
+                      }`}
+                    >
+                      {r === "W" ? "Win" : "Loss"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="edit-team-score">Our Score</Label>
+                <Input
+                  id="edit-team-score"
+                  type="number"
+                  min={0}
+                  value={editTeamScore}
+                  onChange={e => setEditTeamScore(Math.max(0, parseInt(e.target.value) || 0))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-opp-score">Their Score</Label>
+                <Input
+                  id="edit-opp-score"
+                  type="number"
+                  min={0}
+                  value={editOpponentScore}
+                  onChange={e => setEditOpponentScore(Math.max(0, parseInt(e.target.value) || 0))}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Player stats */}
           {lines.map(line => (
             <div key={line.playerId} className="space-y-3 rounded-lg border border-border/60 p-4">
               <p className="font-display font-bold uppercase tracking-wide text-sm text-foreground">
