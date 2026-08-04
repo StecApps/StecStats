@@ -2138,7 +2138,7 @@ async function renderGameSegments(
   return { segPaths, hasAudio };
 }
 
-async function concatSegments(
+export async function concatSegments(
   segPaths: string[],
   tmpDir: string,
   outPath: string,
@@ -2172,7 +2172,7 @@ async function concatSegments(
  * - When the source reel has no audio: music only at 30% volume.
  * Music is always truncated to the video duration (-shortest).
  */
-async function mixMusicIntoReel(
+export async function mixMusicIntoReel(
   concatPath: string,
   outPath: string,
   musicTrackPath: string,
