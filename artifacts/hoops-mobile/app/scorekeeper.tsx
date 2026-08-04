@@ -11,6 +11,7 @@ import {
   Platform,
   useWindowDimensions,
 } from 'react-native';
+import { useAuth } from '@clerk/clerk-expo';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { showNoVideoAlert } from '@/lib/noVideoAlert';
 import { useColors } from '@/hooks/useColors';
@@ -126,6 +127,8 @@ export default function ScorekeeperScreen() {
 
   const recordVideo = recordVideoParam === 'true';
 
+  const { getToken } = useAuth();
+
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -164,7 +167,11 @@ export default function ScorekeeperScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [isRecording, setIsRecording] = useState(false);
   const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
-  const recordedUriRef = useRef<string | null>(null);
+  // All clip URIs collected so far (one per camera-flip segment + final clip).
+  const recordedUrisRef = useRef<string[]>([]);
+  // Generation counter: incremented on each new startRecording call so the
+  // finally block of an older recording doesn't clobber a newer one's state.
+  const recordingGenerationRef = useRef(0);
   const recordingStartedRef = useRef(false);
   const cameraReadyRef = useRef(false);
   const pendingRecordRef = useRef(false);
@@ -174,9 +181,41 @@ export default function ScorekeeperScreen() {
   const [previewVisible, setPreviewVisible] = useState(true);
 
   function toggleCameraFacing() {
-    if (isRecording) return; // can't switch mid-recording
-    setCameraFacing((f) => (f === 'back' ? 'front' : 'back'));
-    cameraReadyRef.current = false; // will be set again via onCameraReady
+    if (!isRecording) {
+      // Not recording — switch immediately
+      setCameraFacing((f) => (f === 'back' ? 'front' : 'back'));
+      cameraReadyRef.current = false;
+      return;
+    }
+    // Recording — confirm before stopping the clip and switching
+    Alert.alert(
+      'Switch Camera?',
+      'Current clip will be saved as Part 1. Recording will resume from the new camera.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Switch',
+          style: 'default',
+          onPress: async () => {
+            // Stop the active recording and capture the URI
+            cameraRef.current?.stopRecording();
+            if (recordingPromiseRef.current) {
+              try {
+                const result = await recordingPromiseRef.current;
+                if (result?.uri) recordedUrisRef.current.push(result.uri);
+              } catch { /* recording stopped cleanly */ }
+            }
+            // Reset so startRecording can be called again
+            recordingStartedRef.current = false;
+            recordingPromiseRef.current = null;
+            // Switch camera; onCameraReady will restart recording via pendingRecordRef
+            cameraReadyRef.current = false;
+            pendingRecordRef.current = true;
+            setCameraFacing((f) => (f === 'back' ? 'front' : 'back'));
+          },
+        },
+      ],
+    );
   }
 
   function togglePreview() {
@@ -218,19 +257,24 @@ export default function ScorekeeperScreen() {
     if (!cameraRef.current || recordingStartedRef.current) return;
     if (!cameraPermission?.granted || !micPermission?.granted) return;
     recordingStartedRef.current = true;
+    const myGen = ++recordingGenerationRef.current;
     setIsRecording(true);
     try {
       recordingPromiseRef.current = cameraRef.current.recordAsync() as Promise<{ uri: string } | undefined>;
-      const result = await recordingPromiseRef.current;
-      if (result?.uri) recordedUriRef.current = result.uri;
+      await recordingPromiseRef.current;
+      // URI is captured by whoever calls stopRecording (handleSave or toggleCameraFacing)
     } catch (err: any) {
-      if (!recordedUriRef.current) {
+      if (myGen === recordingGenerationRef.current) {
+        // Error on this specific session (not superseded by a camera flip)
         recordingStartedRef.current = false;
         recordingPromiseRef.current = null;
       }
       console.warn('Camera recording ended:', err?.message);
     } finally {
-      setIsRecording(false);
+      // Only update isRecording if a newer recording session hasn't already taken over
+      if (myGen === recordingGenerationRef.current) {
+        setIsRecording(false);
+      }
     }
   }
 
@@ -310,6 +354,10 @@ export default function ScorekeeperScreen() {
 
   const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0);
 
+  const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+    : '';
+
   async function handleSave() {
     if (saving) return;
     if (!players || (players as any[]).length === 0) {
@@ -320,27 +368,64 @@ export default function ScorekeeperScreen() {
     try {
       let videoObjectPath: string | null = null;
       if (recordVideo) {
+        // Stop the active recording and capture its URI into the array
         if (recordingStartedRef.current) {
           cameraRef.current?.stopRecording();
           setIsRecording(false);
           if (recordingPromiseRef.current) {
             try {
               const result = await recordingPromiseRef.current;
-              if (result?.uri) recordedUriRef.current = result.uri;
+              if (result?.uri) recordedUrisRef.current.push(result.uri);
             } catch { /* already stopped cleanly */ }
           }
         }
-        if (!recordedUriRef.current) {
+
+        if (recordedUrisRef.current.length === 0) {
           showNoVideoAlert(recordingStartedRef.current, setSaving, saveGame);
           return;
         }
+
         try {
+          const uris = recordedUrisRef.current;
+          const uploadedPaths: string[] = [];
+
           setUploadProgress(0);
-          videoObjectPath = await uploadVideoFile(
-            recordedUriRef.current,
-            (body) => requestUploadUrlMutation.mutateAsync({ data: body }),
-            setUploadProgress,
-          );
+          for (let i = 0; i < uris.length; i++) {
+            // Scale overall progress: each clip gets an equal slice of 0–90 %
+            const segStart = Math.round((i / uris.length) * 90);
+            const segEnd   = Math.round(((i + 1) / uris.length) * 90);
+            const p = await uploadVideoFile(
+              uris[i],
+              (body) => requestUploadUrlMutation.mutateAsync({ data: body }),
+              (pct) => setUploadProgress(segStart + Math.round((pct / 100) * (segEnd - segStart))),
+            );
+            uploadedPaths.push(p);
+          }
+
+          if (uploadedPaths.length === 1) {
+            videoObjectPath = uploadedPaths[0];
+            setUploadProgress(100);
+          } else {
+            // Multiple clips from camera flips — concat server-side
+            setUploadProgress(92);
+            const token = await getToken();
+            const concatRes = await fetch(`${API_BASE}/api/storage/concat-segments`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+              },
+              body: JSON.stringify({ segmentPaths: uploadedPaths }),
+            });
+            if (!concatRes.ok) {
+              const errBody = await concatRes.json().catch(() => ({}));
+              throw new Error((errBody as any)?.error ?? `Concat failed (${concatRes.status})`);
+            }
+            const { videoObjectPath: merged } = await concatRes.json();
+            videoObjectPath = merged;
+            setUploadProgress(100);
+          }
+
           setUploadProgress(null);
         } catch (uploadErr: any) {
           setUploadProgress(null);
@@ -682,12 +767,11 @@ export default function ScorekeeperScreen() {
             {/* Camera controls — top-left */}
             {cameraReady && (
               <View style={styles.camControls}>
-                {/* Flip front/back — disabled while recording */}
+                {/* Flip front/back — always enabled; prompts to save clip while recording */}
                 <TouchableOpacity
                   onPress={toggleCameraFacing}
-                  disabled={isRecording}
                   activeOpacity={0.75}
-                  style={[styles.camControlBtn, isRecording && { opacity: 0.35 }]}
+                  style={styles.camControlBtn}
                 >
                   <Ionicons name="camera-reverse" size={18} color="#fff" />
                 </TouchableOpacity>
