@@ -151,13 +151,26 @@ async function initStripe() {
   // with the customer base. After the one-time backfill, webhooks keep the
   // tables in sync.
   //
-  // Two-tier guard:
+  // Three-tier guard:
   //  1. No products → genuinely fresh DB, run a full backfill.
   //  2. Products exist but no subscriptions → the webhook was briefly down
   //     during initial customer sign-ups so subscriptions (and their parent
   //     customers) never landed in the DB.  Re-sync customers + subscriptions
   //     only; products/prices are already present so this is fast.
-  //  3. Both exist → skip entirely (performance guard, the common case).
+  //  3. Both exist — consult stripe._sync_status to determine whether the
+  //     sync pipeline has been silent for longer than the recovery threshold.
+  //     _sync_status.updated_at is stamped by markSyncRunning/markSyncComplete
+  //     at the start and end of every syncSubscriptions() call, even when 0
+  //     items are returned.  This makes it a true "last sync heartbeat" — it
+  //     reflects sync activity, not subscription-creation recency — so a
+  //     healthy team with no new sign-ups for >24 h will NOT trigger recovery
+  //     as long as the webhook kept firing on renewals/updates/cancellations
+  //     that caused at least one explicit sync run within the threshold window.
+  //     When the gap IS stale (webhook truly down), run a targeted sync using
+  //     last_incremental_cursor as the lower bound so we only ask Stripe for
+  //     the missing window.
+  //  4. Both exist and sync is current → skip entirely (performance guard, the
+  //     common case — zero Stripe API calls on normal boots).
   const seeded = await db.execute(sql`SELECT 1 FROM stripe.products LIMIT 1`);
   if (seeded.rows.length === 0) {
     logger.info("Stripe tables empty — running one-time full backfill");
@@ -175,6 +188,121 @@ async function initStripe() {
       // Sync customers first so FK references from subscriptions resolve.
       await stripeSync.syncCustomers();
       await stripeSync.syncSubscriptions();
+    } else {
+      // Tier 3: subscriptions exist — check stripe._sync_status for sync lag.
+      //
+      // STRIPE_SUBSCRIPTION_RECOVERY_HOURS controls the threshold (default
+      // 24 h). Set to 0 to disable the gap check entirely.
+      const recoveryHours = Math.max(
+        0,
+        Number(process.env["STRIPE_SUBSCRIPTION_RECOVERY_HOURS"] ?? "24"),
+      );
+
+      if (recoveryHours > 0) {
+        // _sync_status.updated_at is set by markSyncRunning/markSyncComplete
+        // on every syncSubscriptions() invocation, even when Stripe returns
+        // 0 results. This is a true sync-health heartbeat (not signup
+        // recency), so it does NOT produce false positives on teams that
+        // simply haven't had new subscribers lately.
+        //
+        // last_incremental_cursor is the max `created` epoch of all
+        // subscriptions seen via explicit syncs; used as the lower bound for
+        // the targeted recovery window so we only fetch missed subscriptions.
+        //
+        // NOTE: EXTRACT(EPOCH FROM …) returns PostgreSQL float8 (double
+        // precision). node-postgres maps float8 → JS number, so no cast is
+        // needed. We still run every value through Number() + Number.isFinite()
+        // to guard against unexpected driver or ORM coercions (e.g. bigint
+        // columns returned as strings in some environments).
+        const syncStatusResult = await db.execute(
+          sql`
+            SELECT
+              EXTRACT(EPOCH FROM updated_at)          AS last_sync_epoch,
+              EXTRACT(EPOCH FROM last_incremental_cursor) AS cursor_epoch
+            FROM stripe._sync_status
+            WHERE resource = 'subscriptions'
+            LIMIT 1
+          `,
+        );
+
+        const statusRow = syncStatusResult.rows[0];
+
+        // Coerce to number and guard against NULL / non-finite values.
+        const lastSyncEpoch = statusRow
+          ? Number(statusRow.last_sync_epoch)
+          : NaN;
+
+        if (!statusRow || !Number.isFinite(lastSyncEpoch)) {
+          // No _sync_status row for subscriptions — sync has never completed
+          // via the cursor mechanism (e.g. library state was reset). Skip
+          // recovery conservatively; the tier-2 guard already handles the
+          // empty-table case.
+          logger.info(
+            "No stripe._sync_status row for subscriptions — cannot determine sync lag; skipping gap recovery",
+          );
+        } else {
+          const thresholdEpoch =
+            Math.floor(Date.now() / 1000) - recoveryHours * 3600;
+
+          if (lastSyncEpoch >= thresholdEpoch) {
+            logger.info(
+              { lastSyncEpoch, recoveryHours },
+              "Stripe subscription sync is current — skipping gap recovery",
+            );
+          } else {
+            // Sync pipeline has been silent for longer than the threshold.
+            // Determine the lower bound for the recovery window.
+            let syncFromEpoch: number;
+            // Explicit null/undefined guard before Number() coercion:
+            // Number(null) === 0, which is finite and would silently skip the
+            // MAX(created) fallback. Treat null/undefined cursor as "no cursor".
+            const rawCursor = statusRow.cursor_epoch;
+            const cursorEpoch =
+              rawCursor == null ? NaN : Number(rawCursor);
+            if (Number.isFinite(cursorEpoch)) {
+              // Use the cursor: the last subscription `created` timestamp we
+              // successfully ingested, so we only fetch what came after.
+              syncFromEpoch = cursorEpoch;
+            } else {
+              // Cursor is NULL (all subscriptions arrived via webhook, never
+              // via an explicit sync). Fall back to MAX(created) from the
+              // table so we don't re-fetch the entire history.
+              const maxCreatedResult = await db.execute(
+                sql`SELECT MAX(created) AS max_created FROM stripe.subscriptions`,
+              );
+              const maxCreated = Number(
+                maxCreatedResult.rows[0]?.max_created,
+              );
+              syncFromEpoch = Number.isFinite(maxCreated)
+                ? maxCreated
+                : thresholdEpoch;
+            }
+
+            const gapHours = (
+              (Date.now() / 1000 - lastSyncEpoch) /
+              3600
+            ).toFixed(1);
+            logger.warn(
+              {
+                lastSyncEpoch,
+                syncFromEpoch,
+                gapHours,
+                recoveryHours,
+              },
+              "Stripe subscription sync gap detected — last sync was " +
+                `${gapHours}h ago (threshold: ${recoveryHours}h). ` +
+                "Webhook may have been down; syncing gap period only.",
+            );
+
+            // Sync customers first so FK references from subscriptions resolve.
+            await stripeSync.syncCustomers({ created: { gt: syncFromEpoch } });
+            await stripeSync.syncSubscriptions({
+              created: { gt: syncFromEpoch },
+            });
+            logger.info("Stripe gap recovery sync complete");
+          }
+        }
+      }
     }
   }
 }
