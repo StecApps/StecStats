@@ -342,6 +342,8 @@ export default function ScorekeeperScreen() {
         // Only undo a miss if there are more attempts than makes
         if (att > made) nextAtt = att - 1;
       }
+      // Safety clamp: made must never exceed attempted
+      nextMade = Math.min(nextMade, nextAtt);
       return { ...prev, [selectedPlayerId]: { ...line, [madeKey]: nextMade, [attKey]: nextAtt } };
     });
     if (action === 'make') {

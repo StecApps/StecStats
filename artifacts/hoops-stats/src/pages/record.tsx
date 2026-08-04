@@ -2789,8 +2789,19 @@ export default function RecordGame() {
         field === 'threeMade' ? 'threeAttempted' :
         field === 'ftMade' ? 'ftAttempted' : null;
 
+      // When incrementing a made field, keep attempted ≥ made.
       if (attemptField) {
         updates[attemptField] = Math.max(nextVal, pStats[attemptField] + increment);
+      }
+
+      // When decrementing an attempted field, keep made ≤ attempted.
+      const madeField: keyof StatCounters | null =
+        field === 'twoAttempted' ? 'twoMade' :
+        field === 'threeAttempted' ? 'threeMade' :
+        field === 'ftAttempted' ? 'ftMade' : null;
+
+      if (madeField && increment < 0) {
+        updates[madeField] = Math.min(pStats[madeField] as number, nextVal);
       }
       
       return { ...prev, [pid]: { ...pStats, ...updates } };
