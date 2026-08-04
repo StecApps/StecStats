@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, usersTable } from "@workspace/db";
 import {
   CreateCheckoutSessionBody,
@@ -198,6 +198,56 @@ router.post("/admin/stripe/sync", requireAuth, async (req, res) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: `Stripe sync failed: ${message}` });
+  }
+});
+
+/**
+ * GET /api/admin/stripe/sync-status
+ *
+ * Owner-only endpoint that returns a snapshot of Stripe sync health:
+ * - Newest subscription and customer record timestamps from the stripe.* tables
+ * - Managed webhook endpoint URL, enabled flag, and status
+ * - Per-resource sync status from stripe._sync_status
+ */
+router.get("/admin/stripe/sync-status", requireAuth, async (req, res) => {
+  if (req.appUser!.id !== 1) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  try {
+    // Query newest record timestamps and webhook info in parallel
+    const [subResult, custResult, webhookResult, syncResult] = await Promise.all([
+      db.execute(sql`
+        SELECT MAX(_updated_at) AS newest_subscription_at
+        FROM stripe.subscriptions
+      `),
+      db.execute(sql`
+        SELECT MAX(_updated_at) AS newest_customer_at
+        FROM stripe.customers
+      `),
+      db.execute(sql`
+        SELECT id, url, enabled, status, created, last_synced_at
+        FROM stripe._managed_webhooks
+        ORDER BY created DESC
+        LIMIT 5
+      `),
+      db.execute(sql`
+        SELECT resource, status, last_synced_at, last_incremental_cursor, error_message, updated_at
+        FROM stripe._sync_status
+        ORDER BY resource ASC
+      `),
+    ]);
+
+    res.json({
+      newestSubscriptionAt: subResult.rows[0]?.newest_subscription_at ?? null,
+      newestCustomerAt: custResult.rows[0]?.newest_customer_at ?? null,
+      managedWebhooks: webhookResult.rows,
+      syncStatus: syncResult.rows,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: `Failed to fetch sync status: ${message}` });
   }
 });
 
