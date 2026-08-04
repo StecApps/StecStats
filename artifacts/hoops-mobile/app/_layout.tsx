@@ -15,6 +15,12 @@ import {
   Teko_600SemiBold,
   Teko_700Bold,
 } from '@expo-google-fonts/teko';
+// ⚠️  TEKO LINE-HEIGHT RULE: every Text node using Teko_600SemiBold or
+// Teko_700Bold MUST set lineHeight ≥ fontSize × 1.3 in its StyleSheet.
+// Without this, Teko's tall cap-height causes digit tops (0–9) to be clipped
+// on iOS — the default React Native lineHeight is too tight for this typeface.
+// Example: fontSize 30 → lineHeight must be at least 39.
+// Run a visual check on iPhone 14 Pro simulator after adding any new Teko node.
 import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
