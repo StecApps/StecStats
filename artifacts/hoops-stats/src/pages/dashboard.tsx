@@ -17,19 +17,22 @@ import {
   useGetTeamHighlight,
   useGenerateTeamHighlight,
   useGetBillingStatus,
+  useUpdateGame,
   getListPlayersQueryKey,
   getGetPlayerSummaryQueryKey,
   getListPlayerTeamGroupsQueryKey,
   getListTeamGamesQueryKey,
   getListTeamsQueryKey,
-  getGetTeamHighlightQueryKey
+  getGetTeamHighlightQueryKey,
+  type Game,
+  type PlayerGameStatLine,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video, Check, GitMerge, Square, SquareCheck } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video, Check, GitMerge, Square, SquareCheck, Pencil, Minus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -977,6 +980,9 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
   const [selectedGameIds, setSelectedGameIds] = useState<Set<number>>(new Set());
   const [showMergeDialog, setShowMergeDialog] = useState(false);
 
+  // Edit stats dialog
+  const [editStatsGame, setEditStatsGame] = useState<Game | null>(null);
+
   const toggleGameSelection = (gameId: number) => {
     setSelectedGameIds(prev => {
       const next = new Set(prev);
@@ -1337,8 +1343,17 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
                               <Link href="/pricing"><Lock className="h-3.5 w-3.5" /></Link>
                             </Button>
                           )}
-                          <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
-                            <Link href={`/record/${game.id}`}><Edit className="h-4 w-4" /></Link>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                            title="Edit stats"
+                            onClick={() => {
+                              const fullGame = games?.find(g => g.id === game.id);
+                              if (fullGame) setEditStatsGame(fullGame);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteGame(game.id)}>
                             <Trash2 className="h-4 w-4" />
@@ -1421,6 +1436,20 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
         )}
       </AccordionContent>
 
+      {/* Edit stats dialog */}
+      {editStatsGame && (
+        <EditStatsDialog
+          game={editStatsGame}
+          open={!!editStatsGame}
+          onOpenChange={open => { if (!open) setEditStatsGame(null); }}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: getListTeamGamesQueryKey(team.teamId) });
+            queryClient.invalidateQueries({ queryKey: getGetPlayerSummaryQueryKey(playerId) });
+            queryClient.invalidateQueries({ queryKey: getListPlayerTeamGroupsQueryKey(playerId) });
+          }}
+        />
+      )}
+
       {/* Merge games confirmation dialog */}
       <Dialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>
         <DialogContent>
@@ -1469,5 +1498,322 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
         </DialogContent>
       </Dialog>
     </AccordionItem>
+  );
+}
+
+// ─── Edit Stats Dialog ────────────────────────────────────────────────────────
+
+type EditableStatLine = {
+  playerId: number;
+  playerName: string;
+  ftMade: number;
+  ftAttempted: number;
+  twoMade: number;
+  twoAttempted: number;
+  threeMade: number;
+  threeAttempted: number;
+  assists: number;
+  rebounds: number;
+  steals: number;
+  turnovers: number;
+  blocks: number;
+  // soccer fields — preserved as-is so they aren't zeroed on save
+  goals: number;
+  shots: number;
+  shotsOffTarget: number;
+  saves: number;
+  yellowCards: number;
+  redCards: number;
+};
+
+function initEditableStats(stats: PlayerGameStatLine[]): EditableStatLine[] {
+  return stats.map(s => ({
+    playerId: s.playerId,
+    playerName: s.playerName,
+    ftMade: s.ftMade,
+    ftAttempted: s.ftAttempted,
+    twoMade: s.twoMade,
+    twoAttempted: s.twoAttempted,
+    threeMade: s.threeMade,
+    threeAttempted: s.threeAttempted,
+    assists: s.assists,
+    rebounds: s.rebounds,
+    steals: s.steals,
+    turnovers: s.turnovers,
+    blocks: s.blocks,
+    goals: s.goals ?? 0,
+    shots: s.shots ?? 0,
+    shotsOffTarget: s.shotsOffTarget ?? 0,
+    saves: s.saves ?? 0,
+    yellowCards: s.yellowCards ?? 0,
+    redCards: s.redCards ?? 0,
+  }));
+}
+
+function EditStatsDialog({
+  game,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  game: Game;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const updateGame = useUpdateGame();
+  const [lines, setLines] = useState<EditableStatLine[]>([]);
+
+  // Re-initialize when dialog opens
+  useEffect(() => {
+    if (open) setLines(initEditableStats(game.stats));
+  }, [open, game.stats]);
+
+  const setLineStat = (
+    playerId: number,
+    field: keyof Omit<EditableStatLine, "playerId" | "playerName">,
+    delta: number,
+  ) => {
+    setLines(prev =>
+      prev.map(l => {
+        if (l.playerId !== playerId) return l;
+        const raw = l[field] + delta;
+        const next = Math.max(0, raw);
+        // enforce made ≤ attempted
+        const updated = { ...l, [field]: next };
+        if (field === "ftMade") updated.ftAttempted = Math.max(updated.ftAttempted, next);
+        if (field === "ftAttempted") updated.ftMade = Math.min(updated.ftMade, next);
+        if (field === "twoMade") updated.twoAttempted = Math.max(updated.twoAttempted, next);
+        if (field === "twoAttempted") updated.twoMade = Math.min(updated.twoMade, next);
+        if (field === "threeMade") updated.threeAttempted = Math.max(updated.threeAttempted, next);
+        if (field === "threeAttempted") updated.threeMade = Math.min(updated.threeMade, next);
+        return updated;
+      }),
+    );
+  };
+
+  const handleSave = async () => {
+    try {
+      await updateGame.mutateAsync({
+        gameId: game.id,
+        data: {
+          teamId: game.teamId,
+          opponent: game.opponent,
+          date: game.date,
+          result: game.result,
+          teamScore: game.teamScore,
+          opponentScore: game.opponentScore,
+          videoObjectPath: game.videoObjectPath ?? null,
+          videoOffsetMs: game.videoOffsetMs ?? null,
+          stats: lines.map(l => ({
+            playerId: l.playerId,
+            ftMade: l.ftMade,
+            ftAttempted: l.ftAttempted,
+            twoMade: l.twoMade,
+            twoAttempted: l.twoAttempted,
+            threeMade: l.threeMade,
+            threeAttempted: l.threeAttempted,
+            assists: l.assists,
+            rebounds: l.rebounds,
+            steals: l.steals,
+            turnovers: l.turnovers,
+            blocks: l.blocks,
+            // preserve soccer fields unchanged so they aren't zeroed
+            goals: l.goals,
+            shots: l.shots,
+            shotsOffTarget: l.shotsOffTarget,
+            saves: l.saves,
+            yellowCards: l.yellowCards,
+            redCards: l.redCards,
+          })),
+          events: game.events.map(e => ({
+            playerId: e.playerId,
+            statField: e.statField,
+            delta: e.delta,
+            videoTimestampMs: e.videoTimestampMs ?? 0,
+          })),
+        },
+      });
+      toast({ title: "Stats updated", description: "Game stats have been saved." });
+      onOpenChange(false);
+      onSaved();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.replace(/^HTTP \d+ [^:]*:\s*/, "") : "Failed to save stats";
+      toast({ title: "Error", description: msg, variant: "destructive" });
+    }
+  };
+
+  const gameDate = new Date(game.date).toLocaleDateString();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="font-display uppercase text-xl">
+            Edit Stats — vs {game.opponent}
+          </DialogTitle>
+          <p className="text-xs text-muted-foreground">
+            {gameDate} · {game.result === "W" ? "Win" : "Loss"} {game.teamScore}–{game.opponentScore}
+          </p>
+        </DialogHeader>
+
+        <div className="space-y-6 py-2">
+          {lines.map(line => (
+            <div key={line.playerId} className="space-y-3 rounded-lg border border-border/60 p-4">
+              <p className="font-display font-bold uppercase tracking-wide text-sm text-foreground">
+                {line.playerName}
+              </p>
+
+              {/* Shooting stats: made / attempted pairs */}
+              <div className="grid grid-cols-3 gap-3">
+                <ShootingCounter
+                  label="Free Throws"
+                  made={line.ftMade}
+                  attempted={line.ftAttempted}
+                  onMadeChange={d => setLineStat(line.playerId, "ftMade", d)}
+                  onAttChange={d => setLineStat(line.playerId, "ftAttempted", d)}
+                />
+                <ShootingCounter
+                  label="2-Pointers"
+                  made={line.twoMade}
+                  attempted={line.twoAttempted}
+                  onMadeChange={d => setLineStat(line.playerId, "twoMade", d)}
+                  onAttChange={d => setLineStat(line.playerId, "twoAttempted", d)}
+                />
+                <ShootingCounter
+                  label="3-Pointers"
+                  made={line.threeMade}
+                  attempted={line.threeAttempted}
+                  onMadeChange={d => setLineStat(line.playerId, "threeMade", d)}
+                  onAttChange={d => setLineStat(line.playerId, "threeAttempted", d)}
+                />
+              </div>
+
+              {/* Counting stats */}
+              <div className="grid grid-cols-5 gap-2">
+                {(
+                  [
+                    { label: "AST", field: "assists" },
+                    { label: "REB", field: "rebounds" },
+                    { label: "STL", field: "steals" },
+                    { label: "BLK", field: "blocks" },
+                    { label: "TO",  field: "turnovers" },
+                  ] as { label: string; field: keyof Omit<EditableStatLine, "playerId" | "playerName"> }[]
+                ).map(({ label, field }) => (
+                  <CountingCounter
+                    key={field}
+                    label={label}
+                    value={line[field] as number}
+                    onChange={d => setLineStat(line.playerId, field, d)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSave} disabled={updateGame.isPending}>
+            {updateGame.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ShootingCounter({
+  label,
+  made,
+  attempted,
+  onMadeChange,
+  onAttChange,
+}: {
+  label: string;
+  made: number;
+  attempted: number;
+  onMadeChange: (d: number) => void;
+  onAttChange: (d: number) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1 text-center">
+      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</span>
+      <div className="flex flex-col gap-1 w-full">
+        <div className="flex items-center justify-between gap-1 rounded border border-border/60 px-1 py-0.5">
+          <button
+            type="button"
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
+            onClick={() => onMadeChange(-1)}
+            disabled={made <= 0}
+          >
+            <Minus className="w-3 h-3" />
+          </button>
+          <span className="text-xs font-mono font-bold w-4 text-center">{made}</span>
+          <button
+            type="button"
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
+            onClick={() => onMadeChange(1)}
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-1 rounded border border-border/40 bg-muted/30 px-1 py-0.5">
+          <button
+            type="button"
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
+            onClick={() => onAttChange(-1)}
+            disabled={attempted <= 0}
+          >
+            <Minus className="w-3 h-3" />
+          </button>
+          <span className="text-[0.65rem] font-mono text-muted-foreground w-4 text-center">{attempted}</span>
+          <button
+            type="button"
+            className="w-5 h-5 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
+            onClick={() => onAttChange(1)}
+          >
+            <Plus className="w-3 h-3" />
+          </button>
+        </div>
+        <div className="text-[0.55rem] text-muted-foreground/60 text-center leading-none">made / att</div>
+      </div>
+    </div>
+  );
+}
+
+function CountingCounter({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (d: number) => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</span>
+      <div className="flex flex-col items-center gap-0.5">
+        <button
+          type="button"
+          className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
+          onClick={() => onChange(1)}
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+        <span className="text-sm font-mono font-bold w-6 text-center">{value}</span>
+        <button
+          type="button"
+          className="w-6 h-6 flex items-center justify-center rounded hover:bg-muted transition-colors text-muted-foreground"
+          onClick={() => onChange(-1)}
+          disabled={value <= 0}
+        >
+          <Minus className="w-3 h-3" />
+        </button>
+      </div>
+    </div>
   );
 }
