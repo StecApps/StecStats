@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.libxkbcommon
     pkgs.chromium
     pkgs.libGL
     pkgs.alsa-lib
