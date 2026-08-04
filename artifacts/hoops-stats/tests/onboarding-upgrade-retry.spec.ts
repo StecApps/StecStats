@@ -14,6 +14,8 @@
  *  G – three consecutive 403s → banner shown after the last attempt,
  *      sessionStorage stamp NOT cleared (user still needs to upgrade)
  *  H – "Upgrade to Pro" button sets the sessionStorage stamp
+ *  I – no stamp (or expired stamp >5 min) → banner appears immediately,
+ *      no 2-second retry delay
  */
 
 import { test, expect } from "@playwright/test";
@@ -220,6 +222,119 @@ test.describe("Onboarding – upgrade retry window", () => {
       const age = Date.now() - Number(stamp);
       expect(age).toBeGreaterThanOrEqual(0);
       expect(age).toBeLessThan(5000);
+    } finally {
+      await deleteTestUser(user.id);
+    }
+  });
+
+  test("I (no stamp) – 403 with no sessionStorage stamp → banner appears immediately, no retry delay", async ({
+    page,
+  }) => {
+    const user = await createTestUser();
+
+    try {
+      await setupClerkTestingToken({ page, userId: user.id });
+
+      // Track how many times POST /api/players is called
+      let postCallCount = 0;
+      await page.route("**/api/players", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        postCallCount++;
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Upgrade required", code: "UPGRADE_REQUIRED" }),
+        });
+      });
+
+      await page.goto("/onboarding");
+      await expect(page.getByTestId("input-onboarding-player-name")).toBeVisible();
+
+      // Ensure no stamp is present
+      await page.evaluate(
+        ({ key }) => sessionStorage.removeItem(key),
+        { key: RECENTLY_UPGRADED_KEY },
+      );
+
+      // Attempt to add a player
+      await page.getByTestId("input-onboarding-player-name").fill("Eve");
+      const clickTime = Date.now();
+      await page.getByTestId("button-onboarding-add-player").click();
+
+      // Banner must appear quickly — well under the 2-second retry delay
+      await expect(page.getByTestId("onboarding-upgrade-prompt")).toBeVisible({
+        timeout: 1500,
+      });
+      const bannerTime = Date.now() - clickTime;
+
+      // Confirm it appeared in under 1.5 seconds (no 2-second retry pause)
+      expect(bannerTime).toBeLessThan(1500);
+
+      // Only one POST should have been made — no silent retry
+      expect(postCallCount).toBe(1);
+
+      // Add-player form must be hidden while the banner is showing
+      await expect(page.getByTestId("input-onboarding-player-name")).not.toBeVisible();
+    } finally {
+      await deleteTestUser(user.id);
+    }
+  });
+
+  test("I (expired stamp) – 403 with stamp older than 5 min → banner appears immediately, no retry delay", async ({
+    page,
+  }) => {
+    const user = await createTestUser();
+
+    try {
+      await setupClerkTestingToken({ page, userId: user.id });
+
+      // Track how many times POST /api/players is called
+      let postCallCount = 0;
+      await page.route("**/api/players", async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        postCallCount++;
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Upgrade required", code: "UPGRADE_REQUIRED" }),
+        });
+      });
+
+      await page.goto("/onboarding");
+      await expect(page.getByTestId("input-onboarding-player-name")).toBeVisible();
+
+      // Set an expired stamp: 6 minutes ago (older than the 5-minute window)
+      const expiredTs = String(Date.now() - 6 * 60 * 1000);
+      await page.evaluate(
+        ({ key, value }) => sessionStorage.setItem(key, value),
+        { key: RECENTLY_UPGRADED_KEY, value: expiredTs },
+      );
+
+      // Attempt to add a player
+      await page.getByTestId("input-onboarding-player-name").fill("Frank");
+      const clickTime = Date.now();
+      await page.getByTestId("button-onboarding-add-player").click();
+
+      // Banner must appear quickly — well under the 2-second retry delay
+      await expect(page.getByTestId("onboarding-upgrade-prompt")).toBeVisible({
+        timeout: 1500,
+      });
+      const bannerTime = Date.now() - clickTime;
+
+      // Confirm it appeared in under 1.5 seconds (no 2-second retry pause)
+      expect(bannerTime).toBeLessThan(1500);
+
+      // Only one POST should have been made — no silent retry
+      expect(postCallCount).toBe(1);
+
+      // Add-player form must be hidden while the banner is showing
+      await expect(page.getByTestId("input-onboarding-player-name")).not.toBeVisible();
     } finally {
       await deleteTestUser(user.id);
     }
