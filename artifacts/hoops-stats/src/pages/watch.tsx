@@ -369,6 +369,18 @@ export default function WatchStream() {
     };
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reset the "Check again" cooldown whenever the viewer (re-)enters the
+  // waiting-for-broadcaster screen — e.g. after an offer-watchdog timeout on
+  // a flaky network — so the button is immediately available on each fresh wait.
+  useEffect(() => {
+    if (state !== "waiting-for-broadcaster") return;
+    if (checkAgainCooldownRef.current) {
+      clearInterval(checkAgainCooldownRef.current);
+      checkAgainCooldownRef.current = null;
+    }
+    setCheckAgainCooldown(0);
+  }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Manual "Tap to retry" — close the dead PC and ask for a fresh offer.
   const handleManualRetry = () => {
     if (iceWatchdogRef.current) {
