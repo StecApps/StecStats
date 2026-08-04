@@ -8,7 +8,7 @@ import {
   CreateBillingPortalSessionResponse,
 } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
-import { getUncachableStripeClient } from "../lib/stripeClient";
+import { getUncachableStripeClient, getStripeSync } from "../lib/stripeClient";
 import { getEntitlements } from "../lib/entitlements";
 
 const router: IRouter = Router();
@@ -144,6 +144,61 @@ router.post("/billing/portal", requireAuth, async (req, res) => {
   });
 
   res.json(CreateBillingPortalSessionResponse.parse({ url: session.url }));
+});
+
+/**
+ * POST /api/admin/stripe/sync
+ *
+ * Owner-only endpoint that triggers a full Stripe data backfill, re-syncing
+ * all customers, subscriptions, products, and prices from the Stripe API into
+ * the stripe.* schema tables.
+ *
+ * Use this to recover from missed webhook events (e.g. the webhook endpoint
+ * was not registered when purchases occurred). Accepts an optional `sinceDate`
+ * ISO string to limit the sync to objects created after that timestamp;
+ * defaults to 30 days ago so routine calls stay fast.
+ *
+ * Example:
+ *   curl -X POST /api/admin/stripe/sync \
+ *     -H "Authorization: Bearer <clerk-token>" \
+ *     -H "Content-Type: application/json" \
+ *     -d '{"sinceDate":"2026-07-01T00:00:00Z"}'
+ */
+router.post("/admin/stripe/sync", requireAuth, async (req, res) => {
+  if (req.appUser!.id !== 1) {
+    res.status(403).json({ error: "Forbidden" });
+    return;
+  }
+
+  // Optional ISO date string — default to 30 days ago so a plain POST without
+  // a body still catches typical missed-event windows without doing a full
+  // historical sweep every time.
+  const { sinceDate } = req.body as { sinceDate?: string };
+  const sinceTimestamp = sinceDate
+    ? Math.floor(new Date(sinceDate).getTime() / 1000)
+    : Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+
+  if (!Number.isFinite(sinceTimestamp) || sinceTimestamp <= 0) {
+    res.status(400).json({ error: "Invalid sinceDate — must be an ISO 8601 date string." });
+    return;
+  }
+
+  try {
+    const sync = await getStripeSync();
+    const result = await sync.syncBackfill({
+      object: "all",
+      created: { gte: sinceTimestamp },
+    });
+
+    res.json({
+      ok: true,
+      sinceDate: new Date(sinceTimestamp * 1000).toISOString(),
+      result,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: `Stripe sync failed: ${message}` });
+  }
 });
 
 export default router;
