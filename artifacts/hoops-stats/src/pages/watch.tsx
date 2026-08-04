@@ -400,12 +400,17 @@ export default function WatchStream() {
       wsRef.current.send(JSON.stringify({ type: "request-offer", code }));
       // Same offer watchdog as the ICE watchdog path — if no offer
       // arrives the broadcaster is offline; fall back gracefully.
+      // After MAX_WATCH_RECONNECT_ATTEMPTS total unanswered requests
+      // (shared with the ws.onopen watchdog via offerWatchdogAttemptsRef)
+      // we give up and transition to "ended" instead of looping forever.
       if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
       offerWatchdogRef.current = setTimeout(() => {
         offerWatchdogRef.current = null;
+        offerWatchdogAttemptsRef.current += 1;
+        const exhausted = offerWatchdogAttemptsRef.current >= MAX_WATCH_RECONNECT_ATTEMPTS;
         setState((prev) =>
           prev === "connecting" || prev === "reconnecting"
-            ? "waiting-for-broadcaster"
+            ? exhausted ? "ended" : "waiting-for-broadcaster"
             : prev
         );
       }, OFFER_WATCHDOG_MS);
@@ -434,10 +439,19 @@ export default function WatchStream() {
         // Always arm the offer watchdog regardless of WS state. If the WS is
         // closed (e.g. after a brief network drop) there is no other recovery
         // path — without this the viewer stays stuck on "connecting" forever.
+        // After MAX_WATCH_RECONNECT_ATTEMPTS total unanswered requests
+        // (shared with the ws.onopen and handleManualRetry watchdogs via
+        // offerWatchdogAttemptsRef) we give up and show "ended".
         if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
         offerWatchdogRef.current = setTimeout(() => {
           offerWatchdogRef.current = null;
-          setState((prev) => (prev === "connecting" ? "waiting-for-broadcaster" : prev));
+          offerWatchdogAttemptsRef.current += 1;
+          const exhausted = offerWatchdogAttemptsRef.current >= MAX_WATCH_RECONNECT_ATTEMPTS;
+          setState((prev) =>
+            prev === "connecting"
+              ? exhausted ? "ended" : "waiting-for-broadcaster"
+              : prev
+          );
         }, OFFER_WATCHDOG_MS);
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: "request-offer", code }));
