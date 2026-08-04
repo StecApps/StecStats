@@ -301,6 +301,43 @@ router.post("/storage/concat-segments", requireAuth, async (req: Request, res: R
   let tmpDir: string | null = null;
 
   try {
+    // --- Ownership check ---------------------------------------------------
+    // Verify every segment path is owned by the requesting user before
+    // issuing any signed URLs.  Uses the same DB-first / ACL-fallback pattern
+    // as GET /storage/objects/* and GET /storage/objects-signed-url/*.
+    for (const segPath of segmentPaths as string[]) {
+      const ownedGame = await db.query.gamesTable.findFirst({
+        where: and(
+          eq(gamesTable.ownerId, ownerId),
+          or(
+            eq(gamesTable.videoObjectPath, segPath),
+            eq(gamesTable.highlightObjectPath, segPath),
+          ),
+        ),
+      });
+
+      if (!ownedGame) {
+        // Fall back to ACL metadata (covers segments not yet linked to a game row).
+        let objectFile;
+        try {
+          objectFile = await objectStorageService.getObjectEntityFile(segPath);
+        } catch {
+          res.status(403).json({ error: "Forbidden: segment not owned by requesting user" });
+          return;
+        }
+        const canAccess = await objectStorageService.canAccessObjectEntity({
+          userId: String(ownerId),
+          objectFile,
+          requestedPermission: ObjectPermission.READ,
+        });
+        if (!canAccess) {
+          res.status(403).json({ error: "Forbidden: segment not owned by requesting user" });
+          return;
+        }
+      }
+    }
+    // ----------------------------------------------------------------------
+
     // Get 2-hour signed read URLs so ffmpeg can stream directly from GCS
     const signedUrls: string[] = await Promise.all(
       (segmentPaths as string[]).map((p) =>
