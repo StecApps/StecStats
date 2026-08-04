@@ -354,11 +354,12 @@ async function assertPlayersOwned(
  * could otherwise be "claimed" by referencing their path.
  */
 async function claimVideoObjectPath(objectPath: string, ownerId: number): Promise<void> {
-  const [linkedByVideoPath, linkedByHighlightPath] = await Promise.all([
+  const [linkedByVideoPath, linkedByHighlightPath, linkedByLowlightPath] = await Promise.all([
     db.query.gamesTable.findFirst({ where: eq(gamesTable.videoObjectPath, objectPath) }),
     db.query.gamesTable.findFirst({ where: eq(gamesTable.highlightObjectPath, objectPath) }),
+    db.query.gamesTable.findFirst({ where: eq(gamesTable.lowlightObjectPath, objectPath) }),
   ]);
-  for (const linked of [linkedByVideoPath, linkedByHighlightPath]) {
+  for (const linked of [linkedByVideoPath, linkedByHighlightPath, linkedByLowlightPath]) {
     if (linked && linked.ownerId != null && linked.ownerId !== ownerId) {
       throw new ObjectOwnershipConflictError();
     }

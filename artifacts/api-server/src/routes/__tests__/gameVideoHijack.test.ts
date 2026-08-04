@@ -111,6 +111,31 @@ const COACH_A_HIGHLIGHT_GAME_ROW = () => ({
   createdAt: new Date(),
 });
 
+/**
+ * Coach A's game row where PATH_A is stored in lowlightObjectPath, not
+ * videoObjectPath or highlightObjectPath.  Used to verify the DB-linkage
+ * guard covers the lowlight column as well.
+ */
+const COACH_A_LOWLIGHT_GAME_ROW = () => ({
+  id: 12,
+  ownerId: COACH_A.id,
+  videoObjectPath: null,
+  highlightObjectPath: null,
+  teamId: 1,
+  opponent: "Rivals",
+  date: "2024-01-15",
+  result: "W",
+  teamScore: 80,
+  opponentScore: 70,
+  videoOffsetMs: null,
+  videoDurationMs: null,
+  videoHalf2StartMs: null,
+  videoHalftimeGapMs: null,
+  highlightStatus: null,
+  highlightError: null,
+  createdAt: new Date(),
+});
+
 /** Full game row for Coach B — used in PATCH ownership checks. */
 const COACH_B_GAME_ROW = () => ({
   id: 20,
@@ -551,6 +576,40 @@ describe("POST /api/games — cross-tenant video hijack guard", () => {
       return undefined;
     });
   });
+
+  it("returns 409 when Coach B references a path already in Coach A's lowlightObjectPath (DB linkage via lowlight column)", async () => {
+    /**
+     * PATH_A appears in Coach A's lowlightObjectPath, not videoObjectPath or
+     * highlightObjectPath.  claimVideoObjectPath checks all three columns via
+     * Promise.all; the third branch (lowlightObjectPath) must still trigger
+     * the 409.
+     *
+     * Mock layout:
+     *   call 1 — videoObjectPath check    → undefined (no match)
+     *   call 2 — highlightObjectPath check → undefined (no match)
+     *   call 3 — lowlightObjectPath check  → COACH_A_LOWLIGHT_GAME_ROW
+     */
+    currentUser.value = COACH_B;
+    aclState.value = null; // No ACL metadata; guard must fire via DB
+
+    const { db } = await import("@workspace/db");
+    (vi.mocked(db.query.gamesTable.findFirst) as any)
+      .mockImplementationOnce(async () => undefined)                   // videoObjectPath: no match
+      .mockImplementationOnce(async () => undefined)                   // highlightObjectPath: no match
+      .mockImplementation(async () => COACH_A_LOWLIGHT_GAME_ROW());   // lowlightObjectPath: Coach A
+
+    const res = await postGame({ ...baseGameBody(), videoObjectPath: PATH_A });
+    expect(res.status).toBe(409);
+
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/already owned/i);
+
+    // Restore the default state-based implementation for subsequent tests.
+    (vi.mocked(db.query.gamesTable.findFirst) as any).mockImplementation(async () => {
+      if (gamesFinderState.value === "coach-a-owns-path") return COACH_A_GAME_ROW();
+      return undefined;
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -637,6 +696,42 @@ describe("PATCH /api/games/:id — cross-tenant video hijack guard", () => {
       .mockImplementationOnce(async () => COACH_B_GAME_ROW())          // call 1: game ownership
       .mockImplementationOnce(async () => undefined)                    // call 2: videoObjectPath → no match
       .mockImplementation(async () => COACH_A_HIGHLIGHT_GAME_ROW());   // call 3: highlightObjectPath → Coach A
+
+    const res = await patchGame(20, { ...baseGameBody(), videoObjectPath: PATH_A });
+    expect(res.status).toBe(409);
+
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/already owned/i);
+
+    // Restore the default state-based implementation for subsequent tests.
+    (vi.mocked(db.query.gamesTable.findFirst) as any).mockImplementation(async () => {
+      if (gamesFinderState.value === "coach-a-owns-path") return COACH_A_GAME_ROW();
+      return undefined;
+    });
+  });
+
+  it("returns 409 when Coach B patches to reference a path already in Coach A's lowlightObjectPath (DB linkage via lowlight column)", async () => {
+    /**
+     * PATH_A is stored in Coach A's lowlightObjectPath, not videoObjectPath or
+     * highlightObjectPath.  claimVideoObjectPath checks all three columns;
+     * the lowlightObjectPath branch must still fire even when the other two
+     * branches find nothing.
+     *
+     * Mock layout:
+     *   call 1 — ownership check for game 20          → COACH_B_GAME_ROW
+     *   call 2 — videoObjectPath check                → undefined (no match)
+     *   call 3 — highlightObjectPath check            → undefined (no match)
+     *   call 4 — lowlightObjectPath check             → COACH_A_LOWLIGHT_GAME_ROW
+     */
+    currentUser.value = COACH_B;
+    aclState.value = null; // No ACL metadata; guard must fire via DB
+
+    const { db } = await import("@workspace/db");
+    (vi.mocked(db.query.gamesTable.findFirst) as any)
+      .mockImplementationOnce(async () => COACH_B_GAME_ROW())          // call 1: game ownership
+      .mockImplementationOnce(async () => undefined)                    // call 2: videoObjectPath → no match
+      .mockImplementationOnce(async () => undefined)                    // call 3: highlightObjectPath → no match
+      .mockImplementation(async () => COACH_A_LOWLIGHT_GAME_ROW());    // call 4: lowlightObjectPath → Coach A
 
     const res = await patchGame(20, { ...baseGameBody(), videoObjectPath: PATH_A });
     expect(res.status).toBe(409);
