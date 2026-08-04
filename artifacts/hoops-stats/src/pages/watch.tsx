@@ -24,8 +24,12 @@ export default function WatchStream() {
   const searchParams = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : ""
   );
-  const ELAPSED_THRESHOLD_S  = Number(searchParams.get("__watchElapsedS")    ?? "5");
-  const RETRY_THRESHOLD_S    = Number(searchParams.get("__watchRetryS")      ?? "45");
+  const ELAPSED_THRESHOLD_S          = Number(searchParams.get("__watchElapsedS")          ?? "5");
+  const RETRY_THRESHOLD_S            = Number(searchParams.get("__watchRetryS")            ?? "45");
+  // How many seconds the viewer must be stuck in "reconnecting" before the
+  // "Tap to retry" button appears.  Gated to avoid showing it on brief drops.
+  // Override with ?__watchReconnectRetryS=N in tests.
+  const RECONNECT_RETRY_THRESHOLD_S  = Number(searchParams.get("__watchReconnectRetryS")  ?? "15");
   const OFFER_WATCHDOG_MS    = searchParams.has("__watchOfferS")
     ? Number(searchParams.get("__watchOfferS")) * 1000
     : Number(searchParams.get("__offerWatchdogMs") ?? "30000");
@@ -1093,13 +1097,15 @@ export default function WatchStream() {
                 </p>
               )}
               <p className="text-xs text-white/40 max-w-xs text-center">Stay on this page — the stream will resume automatically.</p>
-              <button
-                onClick={handleManualRetry}
-                className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Tap to retry
-              </button>
+              {reconnectElapsedSec >= RECONNECT_RETRY_THRESHOLD_S && (
+                <button
+                  onClick={handleManualRetry}
+                  className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Tap to retry
+                </button>
+              )}
             </>
           )}
           {state === "ended" && (() => {

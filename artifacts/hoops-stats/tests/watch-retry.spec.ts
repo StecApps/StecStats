@@ -323,11 +323,14 @@ test.describe("Watch page – reconnecting state retry flow", () => {
         }
       );
 
-      // ── Navigate with fast reconnect and short offer watchdog ──────────────
+      // ── Navigate with fast reconnect, short offer watchdog, and threshold=0
+      //    so the button is always visible while in "reconnecting" state.
+      //    The threshold test is covered by the separate brief-drop test.
       // __watchReconnectDelayMs=0  → reconnect fires immediately (no 1s delay)
       // __watchOfferS=2            → offer watchdog fires after 2 s
+      // __watchReconnectRetryS=0   → button shows immediately while reconnecting
       await page.goto(
-        `/watch/${CODE}?__watchReconnectDelayMs=0&__watchOfferS=2`
+        `/watch/${CODE}?__watchReconnectDelayMs=0&__watchOfferS=2&__watchReconnectRetryS=0`
       );
 
       // ── 1. WS closes immediately → state enters "reconnecting" ─────────────
@@ -335,7 +338,7 @@ test.describe("Watch page – reconnecting state retry flow", () => {
       // so fast that "connecting" is transient and Playwright may miss it.)
       await expect(page.getByText(/Reconnecting/)).toBeVisible({ timeout: 10_000 });
 
-      // ── 2. "Tap to retry" button appears in reconnecting state ──────────────
+      // ── 2. "Tap to retry" button appears after the reconnect-retry threshold ─
       const retryBtn = page.getByRole("button", { name: /Tap to retry/i });
       await expect(retryBtn).toBeVisible({ timeout: 10_000 });
 
@@ -353,6 +356,133 @@ test.describe("Watch page – reconnecting state retry flow", () => {
 
       // Reconnecting overlay must be gone.
       await expect(page.getByText(/^Reconnecting…$/)).not.toBeVisible();
+    }
+  );
+
+  test(
+    "Tap to retry button is hidden during a brief reconnect (below threshold) but appears once the threshold passes",
+    async ({ page }) => {
+      // Scenario: WS drops and immediately reconnects (e.g. a 1-second hiccup).
+      // The "Tap to retry" button must NOT appear while reconnectElapsedSec is
+      // below RECONNECT_RETRY_THRESHOLD_S, but MUST appear after it passes.
+      // We verify both sides: absence below the threshold and presence above it.
+
+      await page.addInitScript({ content: FAKE_PC_SCRIPT });
+
+      // ── HTTP mocks ─────────────────────────────────────────────────────────
+
+      await page.route(
+        (url) => url.pathname === "/api",
+        (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" })
+      );
+
+      // First call (mount): instant so the component enters "connecting".
+      // Second call (ws.onopen on reconnect): long delay so the component stays
+      // in "reconnecting" long enough for the threshold timer to fire.
+      let briefStatusCount = 0;
+      await page.route(
+        (url) => url.pathname === `/api/live/${CODE}/status`,
+        async (route) => {
+          briefStatusCount++;
+          if (briefStatusCount === 1) {
+            await route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                active: true, opponent: "Away", teamName: "Home",
+                viewerCount: 0, teamScore: 0, opponentScore: 0,
+              }),
+            });
+          } else {
+            // Hold the response for 8 s — long enough to observe both sides
+            // of the threshold (button absent before 4 s, present after 4 s).
+            await new Promise<void>((r) => setTimeout(r, 8000));
+            await route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                active: true, opponent: "Away", teamName: "Home",
+                viewerCount: 0, teamScore: 0, opponentScore: 0,
+              }),
+            });
+          }
+        }
+      );
+
+      await page.route(
+        (url) => url.pathname === "/api/live/ice-servers",
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+              turnAvailable: false,
+            }),
+          })
+      );
+
+      // ── WebSocket mock: close on first join, stay open on second ───────────
+      let wsConnCount = 0;
+
+      await page.routeWebSocket(
+        (url) => url.pathname === "/api/live/ws",
+        (ws) => {
+          wsConnCount++;
+          const idx = wsConnCount;
+          ws.onMessage((raw) => {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(
+                typeof raw === "string"
+                  ? raw
+                  : new TextDecoder().decode(raw as ArrayBuffer)
+              );
+            } catch {
+              return;
+            }
+            if (msg.type === "join-viewer") {
+              ws.send(JSON.stringify({ type: "joined", viewerId: "test-viewer-brief" }));
+              if (idx === 1) {
+                // First connection: close immediately → state enters "reconnecting"
+                ws.close();
+              }
+              // Second connection: stay open, never send an offer
+            }
+          });
+        }
+      );
+
+      // ── Navigate with:
+      //   __watchReconnectDelayMs=0  → reconnect fires immediately
+      //   __watchReconnectRetryS=4   → button appears after 4 s reconnecting
+      //   __watchOfferS=9999         → offer watchdog won't interfere
+      await page.goto(
+        `/watch/${CODE}?__watchReconnectDelayMs=0&__watchReconnectRetryS=4&__watchOfferS=9999`
+      );
+
+      // ── 1. State enters "reconnecting" ─────────────────────────────────────
+      // (The second getLiveStatus is delayed 8 s, so we stay in "reconnecting"
+      // long enough to observe both sides of the 4 s threshold.)
+      await expect(page.getByText(/Reconnecting/)).toBeVisible({ timeout: 10_000 });
+
+      // ── 2. Button must NOT appear immediately (we are below the threshold) ──
+      await expect(
+        page.getByRole("button", { name: /Tap to retry/i })
+      ).not.toBeVisible();
+
+      // Brief pause to confirm it stays hidden well below the 4-second threshold.
+      await page.waitForTimeout(1500);
+      await expect(
+        page.getByRole("button", { name: /Tap to retry/i })
+      ).not.toBeVisible();
+
+      // ── 3. After threshold passes the button must appear ───────────────────
+      // Give up to 8 s: threshold is 4 s, we're already ~1.5 s in, so the
+      // button should appear in the next ~2.5 s.
+      await expect(
+        page.getByRole("button", { name: /Tap to retry/i })
+      ).toBeVisible({ timeout: 8_000 });
     }
   );
 });
