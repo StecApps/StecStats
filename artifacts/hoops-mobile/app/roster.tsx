@@ -10,6 +10,8 @@ import {
   Alert,
   Platform,
   Animated,
+  Modal,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +20,8 @@ import {
   useListPlayers,
   useCreatePlayer,
   useDeletePlayer,
+  useUpdatePlayer,
+  getListPlayersQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
@@ -74,10 +78,12 @@ const actionStyles = StyleSheet.create({
 function PlayerRow({
   player,
   onDelete,
+  onEdit,
   colors,
 }: {
   player: { id: number; name: string };
   onDelete: (id: number, name: string) => void;
+  onEdit: (player: { id: number; name: string }) => void;
   colors: any;
 }) {
   const swipeRef = useRef<Swipeable>(null);
@@ -85,6 +91,11 @@ function PlayerRow({
   function handleDelete() {
     swipeRef.current?.close();
     onDelete(player.id, player.name);
+  }
+
+  function handleEdit() {
+    swipeRef.current?.close();
+    onEdit(player);
   }
 
   return (
@@ -96,7 +107,9 @@ function PlayerRow({
         <DeleteAction progress={progress} onDelete={handleDelete} colors={colors} />
       )}
     >
-      <View
+      <TouchableOpacity
+        activeOpacity={0.75}
+        onPress={handleEdit}
         style={[
           rowStyles.row,
           { backgroundColor: colors.card, borderColor: colors.border },
@@ -110,8 +123,8 @@ function PlayerRow({
         <Text style={[rowStyles.name, { color: colors.foreground }]} numberOfLines={1}>
           {player.name}
         </Text>
-        <Feather name="menu" size={16} color={colors.mutedForeground} />
-      </View>
+        <Feather name="edit-2" size={15} color={colors.mutedForeground} />
+      </TouchableOpacity>
     </Swipeable>
   );
 }
@@ -147,10 +160,15 @@ export default function RosterScreen() {
   const { data: players, isLoading } = useListPlayers();
   const createMutation = useCreatePlayer();
   const deleteMutation = useDeletePlayer();
+  const updateMutation = useUpdatePlayer();
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const [editingPlayer, setEditingPlayer] = useState<{ id: number; name: string } | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   async function handleAdd() {
     const name = newName.trim();
@@ -158,7 +176,7 @@ export default function RosterScreen() {
     setSaving(true);
     try {
       await createMutation.mutateAsync({ data: { name } });
-      await qc.invalidateQueries({ queryKey: ['listPlayers'] });
+      await qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setNewName('');
       setShowAdd(false);
@@ -166,6 +184,27 @@ export default function RosterScreen() {
       Alert.alert('Error', 'Could not add player. Please try again.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  function handleEditOpen(player: { id: number; name: string }) {
+    setEditingPlayer(player);
+    setEditName(player.name);
+  }
+
+  async function handleEditSave() {
+    const name = editName.trim();
+    if (!name || !editingPlayer) return;
+    setEditSaving(true);
+    try {
+      await updateMutation.mutateAsync({ playerId: editingPlayer.id, data: { name } });
+      await qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setEditingPlayer(null);
+    } catch {
+      Alert.alert('Error', 'Could not rename player. Please try again.');
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -181,7 +220,7 @@ export default function RosterScreen() {
           onPress: async () => {
             try {
               await deleteMutation.mutateAsync({ playerId: id });
-              await qc.invalidateQueries({ queryKey: ['listPlayers'] });
+              await qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
               await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             } catch {
               Alert.alert('Error', 'Could not remove player. Please try again.');
@@ -276,22 +315,135 @@ export default function RosterScreen() {
         ) : (
           <>
             <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-              {players!.length} {players!.length === 1 ? 'PLAYER' : 'PLAYERS'} — SWIPE LEFT TO REMOVE
+              {players!.length} {players!.length === 1 ? 'PLAYER' : 'PLAYERS'} — TAP TO RENAME · SWIPE TO REMOVE
             </Text>
             {players!.map((player) => (
               <PlayerRow
                 key={player.id}
                 player={player}
                 onDelete={handleDeleteConfirm}
+                onEdit={handleEditOpen}
                 colors={colors}
               />
             ))}
           </>
         )}
       </ScrollView>
+
+      {/* Rename modal */}
+      <Modal
+        visible={editingPlayer !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingPlayer(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={modalStyles.overlay}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setEditingPlayer(null)}
+          />
+          <View style={[modalStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[modalStyles.modalTitle, { color: colors.foreground }]}>Rename Player</Text>
+            <View style={[modalStyles.inputWrap, { borderColor: colors.border, backgroundColor: colors.input }]}>
+              <Ionicons name="person-outline" size={16} color={colors.mutedForeground} style={{ paddingLeft: 12 }} />
+              <TextInput
+                style={[modalStyles.input, { color: colors.foreground }]}
+                placeholder="Player name"
+                placeholderTextColor={colors.mutedForeground}
+                value={editName}
+                onChangeText={setEditName}
+                autoFocus
+                autoCapitalize="words"
+                returnKeyType="done"
+                onSubmitEditing={handleEditSave}
+                selectTextOnFocus
+              />
+            </View>
+            <View style={modalStyles.modalActions}>
+              <TouchableOpacity
+                onPress={() => setEditingPlayer(null)}
+                style={modalStyles.cancelBtn}
+              >
+                <Text style={[modalStyles.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleEditSave}
+                disabled={!editName.trim() || editName.trim() === editingPlayer?.name || editSaving}
+                style={[
+                  modalStyles.saveBtn,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: editName.trim() && editName.trim() !== editingPlayer?.name && !editSaving ? 1 : 0.4,
+                  },
+                ]}
+              >
+                {editSaving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={modalStyles.saveText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </GestureHandlerRootView>
   );
 }
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  sheet: {
+    width: '100%',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontFamily: 'Inter_700Bold',
+    marginBottom: 2,
+  },
+  inputWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 44,
+  },
+  input: {
+    flex: 1,
+    paddingHorizontal: 10,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 8, justifyContent: 'center' },
+  cancelText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
+  saveBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  saveText: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+});
 
 function makeStyles(colors: any, insets: any) {
   return StyleSheet.create({
