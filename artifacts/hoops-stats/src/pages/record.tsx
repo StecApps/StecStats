@@ -130,10 +130,13 @@ export default function RecordGame() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Stop any in-progress music preview when the coach navigates away from this page.
+  // Stop any in-progress music preview when the coach navigates away from this page
+  // OR when the coach navigates directly from one game's edit page to another.
+  // Using [gameId] (not []) ensures cleanup fires on gameId changes too, covering
+  // the case where React reuses this component without unmounting it.
   useEffect(() => {
     return () => { stopMusicPreview(); };
-  }, []);
+  }, [gameId]);
 
   const preselectedTeamId = new URLSearchParams(search).get("teamId") || "";
 

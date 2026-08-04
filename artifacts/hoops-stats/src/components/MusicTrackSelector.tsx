@@ -41,6 +41,14 @@ export function stopPreview() {
   notifyPreviewListeners(null);
 }
 
+// ── DEV-only window hooks ─────────────────────────────────────────────────────
+// Exposed in development builds so Playwright tests can drive and observe the
+// module-level audio singleton without needing camera or real audio hardware.
+if (import.meta.env.DEV) {
+  (window as any).__hoopsStartMusicPreview = (trackId: string) => startPreview(trackId);
+  (window as any).__hoopsGetPreviewTrackId = () => sharedAudioTrackId;
+}
+
 function startPreview(trackId: string) {
   stopPreview();
   const audio = new Audio(`/api/music/tracks/${trackId}/preview`);
