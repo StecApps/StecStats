@@ -40,6 +40,31 @@ if (process.env["NODE_ENV"] === "production" && !process.env["REVENUECAT_WEBHOOK
   process.exit(1);
 }
 
+// Preflight: SESSION_SECRET must be set in production.
+// Without it, session cookies cannot be signed and every authenticated request
+// will fail immediately. Fail at boot rather than silently serving broken traffic.
+if (process.env["NODE_ENV"] === "production" && !process.env["SESSION_SECRET"]) {
+  console.error(
+    "[FATAL] SESSION_SECRET is not set in production. " +
+      "Session cookies cannot be signed; every authenticated request will fail. " +
+      "Set the secret and redeploy.",
+  );
+  process.exit(1);
+}
+
+// Preflight: CLERK_SECRET_KEY must be set in production.
+// Without it, Clerk server-side auth is completely broken — middleware cannot
+// verify JWTs so all protected routes become inaccessible to every user.
+// Fail at boot rather than silently serving broken traffic.
+if (process.env["NODE_ENV"] === "production" && !process.env["CLERK_SECRET_KEY"]) {
+  console.error(
+    "[FATAL] CLERK_SECRET_KEY is not set in production. " +
+      "Clerk server-side authentication is completely broken without this key. " +
+      "Set the secret and redeploy.",
+  );
+  process.exit(1);
+}
+
 // Preflight: fast synchronous check — if STRIPE_SECRET_KEY is absent and the
 // connector env vars are also absent, we can fail immediately without an async
 // fetch. The definitive check (getStripeCredentials()) runs async below and
