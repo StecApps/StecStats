@@ -115,6 +115,9 @@ export default function ScorekeeperScreen() {
   // Camera UI state
   const [cameraFacing, setCameraFacing] = useState<'back' | 'front'>('back');
   const [previewVisible, setPreviewVisible] = useState(true);
+  const [micMuted, setMicMuted] = useState(false);
+  // null = follow device rotation; true/false = locked to landscape/portrait
+  const [layoutLandscape, setLayoutLandscape] = useState<boolean | null>(null);
 
   // Live broadcast state
   const [liveCode, setLiveCode] = useState<string | null>(null);
@@ -268,7 +271,7 @@ export default function ScorekeeperScreen() {
     const myGen = ++recordingGenerationRef.current;
     setIsRecording(true);
     try {
-      recordingPromiseRef.current = cameraRef.current.recordAsync() as Promise<{ uri: string } | undefined>;
+      recordingPromiseRef.current = cameraRef.current.recordAsync({ mute: micMuted } as any) as Promise<{ uri: string } | undefined>;
       await recordingPromiseRef.current;
       // URI is captured by whoever calls stopRecording (handleSave or toggleCameraFacing)
     } catch (err: any) {
@@ -524,7 +527,7 @@ export default function ScorekeeperScreen() {
   }
 
   const { width: sw, height: sh } = useWindowDimensions();
-  const isLandscape = sw > sh;
+  const isLandscape = layoutLandscape !== null ? layoutLandscape : sw > sh;
 
   const styles = makeStyles(colors, insets, sw, sh, isLandscape);
   const cameraReady = recordVideo && cameraPermission?.granted && micPermission?.granted;
@@ -594,6 +597,35 @@ export default function ScorekeeperScreen() {
   // ── Shared: stat area ──
   const statArea = (
     <>
+      {/* ── Opponent score strip — visible in the stat area during video recording ── */}
+      {recordVideo && (
+        <View style={[styles.oppScoreStrip, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <View style={styles.oppScoreStripTeam}>
+            <Text style={[styles.oppScoreStripLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{teamName}</Text>
+            <Text style={[styles.oppScoreStripNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{teamScore}</Text>
+          </View>
+          <Text style={[styles.oppScoreStripVs, { color: colors.mutedForeground }]}>vs</Text>
+          <View style={styles.oppScoreStripTeam}>
+            <Text style={[styles.oppScoreStripLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{opponent}</Text>
+            <View style={styles.oppScoreRow}>
+              <TouchableOpacity
+                onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+              >
+                <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
+              </TouchableOpacity>
+              <Text style={[styles.oppScoreStripNum, { color: colors.foreground, fontFamily: 'Teko_700Bold' }]}>{opponentScore}</Text>
+              <TouchableOpacity
+                onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+              >
+                <Text style={[styles.oppBtnText, { color: colors.foreground }]}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Camera hidden badge — subtle reminder that recording is still running */}
       {recordVideo && !previewVisible && (
         <View style={[styles.cameraHiddenBadge, { backgroundColor: colors.muted, borderColor: colors.border }]}>
@@ -947,6 +979,30 @@ export default function ScorekeeperScreen() {
                   <Ionicons name="camera-reverse" size={18} color="#fff" />
                 </TouchableOpacity>
 
+                {/* Mute / unmute mic */}
+                <TouchableOpacity
+                  onPress={() => { setMicMuted((m) => !m); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  activeOpacity={0.75}
+                  style={[styles.camControlBtn, micMuted && { backgroundColor: 'rgba(239,68,68,0.75)' }]}
+                >
+                  <Ionicons name={micMuted ? 'mic-off' : 'mic'} size={18} color="#fff" />
+                </TouchableOpacity>
+
+                {/* Orientation lock */}
+                <TouchableOpacity
+                  onPress={() => {
+                    const next = !(layoutLandscape !== null ? layoutLandscape : sw > sh);
+                    setLayoutLandscape(next);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  activeOpacity={0.75}
+                  style={[styles.camControlBtn, layoutLandscape !== null && { borderWidth: 1, borderColor: 'rgba(255,255,255,0.55)' }]}
+                >
+                  <View style={{ transform: [{ rotate: isLandscape ? '90deg' : '0deg' }] }}>
+                    <Ionicons name="phone-portrait-outline" size={18} color="#fff" />
+                  </View>
+                </TouchableOpacity>
+
                 {/* Dismiss preview */}
                 <TouchableOpacity
                   onPress={togglePreview}
@@ -1077,6 +1133,37 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       backgroundColor: 'rgba(255,255,255,0.15)',
     },
     oppBtnText: { fontSize: 17, lineHeight: 19, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+
+    // Opponent score strip in stat area (recording mode)
+    oppScoreStrip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+    },
+    oppScoreStripTeam: {
+      alignItems: 'center',
+      minWidth: 90,
+    },
+    oppScoreStripLabel: {
+      fontSize: 10,
+      fontFamily: 'Inter_500Medium',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 1,
+    },
+    oppScoreStripNum: {
+      fontSize: 28,
+      lineHeight: 36,
+    },
+    oppScoreStripVs: {
+      fontSize: 11,
+      fontFamily: 'Inter_500Medium',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+    },
 
     // Collapsed camera section (preview hidden)
     cameraSectionCollapsed: {
