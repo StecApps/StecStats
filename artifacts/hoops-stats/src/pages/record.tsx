@@ -672,6 +672,15 @@ export default function RecordGame() {
       setIsReconnectingLive(true);
       setLiveReconnectAttempt(attempt);
     };
+    // Test hook: mirror the real ws.onclose path — sets reconnecting state,
+    // updates the attempt counter, and writes liveReconnectRetryAtRef so the
+    // countdown interval picks up the new target on its next tick.
+    w.__hoopsSimulateLiveReconnectDrop = (attempt: number, delayMs: number) => {
+      setIsLive(false);
+      setIsReconnectingLive(true);
+      setLiveReconnectAttempt(attempt);
+      liveReconnectRetryAtRef.current = Date.now() + delayMs;
+    };
     // Test hook: simulate a successful reconnect completing — mirrors ws.onopen logic.
     w.__hoopsSimulateLiveReconnectSuccess = () => {
       setIsLive(true);
@@ -698,6 +707,7 @@ export default function RecordGame() {
       delete w.__hoopsTurnCheckNow;
       delete w.__hoopsSetTurnAtGoLive;
       delete w.__hoopsSimulateLiveReconnect;
+      delete w.__hoopsSimulateLiveReconnectDrop;
       delete w.__hoopsSimulateLiveReconnectSuccess;
       delete w.__hoopsArmReconnectTimeout;
     };
