@@ -151,7 +151,7 @@ test('shows "Upload failed" alert with the photo-read error message', async () =
     new Error('Could not read the photo — please try a different image.'),
   );
 
-  await runAttemptUpload(ASSET);
+  await makeAttemptUpload()(ASSET);
 
   expect(alertSpy).toHaveBeenCalledWith(
     'Upload failed',
@@ -168,7 +168,7 @@ test('shows "Upload failed" alert with the storage PUT error message', async () 
     new Error('Upload failed (503) — please try again.'),
   );
 
-  await runAttemptUpload(ASSET);
+  await makeAttemptUpload()(ASSET);
 
   expect(alertSpy).toHaveBeenCalledWith(
     'Upload failed',

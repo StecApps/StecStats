@@ -87,6 +87,7 @@ function makeUpdatePlayer() {
 function wireAuth(isSignedIn: boolean, token: string | null = 'auth-token') {
   mockUseAuth.mockReturnValue({
     isSignedIn,
+    userId: isSignedIn ? TEST_USER_ID : null,
     getToken: jest.fn(async () => token),
   });
 }
@@ -95,6 +96,7 @@ function wireQueryClient() {
   mockUseQueryClient.mockReturnValue({ invalidateQueries: jest.fn() });
 }
 
+const TEST_USER_ID = 'user_test123';
 const ENTRY = { uri: 'file:///photo.jpg', mimeType: 'image/jpeg', playerId: 42 };
 
 // ── Setup / teardown ─────────────────────────────────────────────────────────
@@ -114,8 +116,8 @@ describe('PendingPhotoRetry component — mounts and processes queue automatical
   // 1. Success path ─────────────────────────────────────────────────────────────
 
   test('success: entry dequeued and player updated on app open', async () => {
-    await enqueuePhoto(ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
-    expect(await getPendingPhotos()).toHaveLength(1);
+    await enqueuePhoto(TEST_USER_ID, ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
+    expect(await getPendingPhotos(TEST_USER_ID)).toHaveLength(1);
 
     mockUploadPhoto.mockResolvedValueOnce('objects/player-photo-ok.jpg');
     const updatePlayer = makeUpdatePlayer();
@@ -129,14 +131,14 @@ describe('PendingPhotoRetry component — mounts and processes queue automatical
       playerId: ENTRY.playerId,
       data: { photoObjectPath: 'objects/player-photo-ok.jpg' },
     });
-    expect(await getPendingPhotos()).toHaveLength(0);
+    expect(await getPendingPhotos(TEST_USER_ID)).toHaveLength(0);
     expect(alertSpy).not.toHaveBeenCalled();
   });
 
   // 2. Upload failure ────────────────────────────────────────────────────────────
 
   test('failure: entry kept and single alert shown on app open', async () => {
-    await enqueuePhoto(ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
+    await enqueuePhoto(TEST_USER_ID, ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
 
     mockUploadPhoto.mockRejectedValueOnce(new Error('Network error'));
     const updatePlayer = makeUpdatePlayer();
@@ -146,7 +148,7 @@ describe('PendingPhotoRetry component — mounts and processes queue automatical
     await act(async () => { renderer.create(<PendingPhotoRetry />); });
 
     expect(updatePlayer.mutateAsync).not.toHaveBeenCalled();
-    expect(await getPendingPhotos()).toHaveLength(1);
+    expect(await getPendingPhotos(TEST_USER_ID)).toHaveLength(1);
     expect(alertSpy).toHaveBeenCalledTimes(1);
     expect(alertSpy).toHaveBeenCalledWith(
       'Photo upload incomplete',
@@ -158,7 +160,7 @@ describe('PendingPhotoRetry component — mounts and processes queue automatical
   // 3. Not signed in — nothing runs ─────────────────────────────────────────────
 
   test('not signed in: queue untouched, no upload, no alert', async () => {
-    await enqueuePhoto(ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
+    await enqueuePhoto(TEST_USER_ID, ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
 
     mockUseUpdatePlayer.mockReturnValue(makeUpdatePlayer());
     wireAuth(false);
@@ -167,13 +169,13 @@ describe('PendingPhotoRetry component — mounts and processes queue automatical
 
     expect(mockUploadPhoto).not.toHaveBeenCalled();
     expect(alertSpy).not.toHaveBeenCalled();
-    expect(await getPendingPhotos()).toHaveLength(1);
+    expect(await getPendingPhotos(TEST_USER_ID)).toHaveLength(1);
   });
 
   // 4. Sign-in transition (false → true) fires retry exactly once ───────────────
 
   test('sign-in transition: retry fires once when isSignedIn becomes true', async () => {
-    await enqueuePhoto(ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
+    await enqueuePhoto(TEST_USER_ID, ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
 
     mockUploadPhoto.mockResolvedValueOnce('objects/late-ok.jpg');
     const updatePlayer = makeUpdatePlayer();
@@ -193,14 +195,14 @@ describe('PendingPhotoRetry component — mounts and processes queue automatical
 
     // Retry fired now that we're signed in
     expect(mockUploadPhoto).toHaveBeenCalledTimes(1);
-    expect(await getPendingPhotos()).toHaveLength(0);
+    expect(await getPendingPhotos(TEST_USER_ID)).toHaveLength(0);
     expect(alertSpy).not.toHaveBeenCalled();
   });
 
   // 5. One-shot guard — second render does not re-fire ──────────────────────────
 
   test('one-shot guard: retry does not run again on a re-render within the same session', async () => {
-    await enqueuePhoto(ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
+    await enqueuePhoto(TEST_USER_ID, ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
 
     mockUploadPhoto.mockResolvedValue('objects/ok.jpg');
     mockUseUpdatePlayer.mockReturnValue(makeUpdatePlayer());
@@ -211,7 +213,7 @@ describe('PendingPhotoRetry component — mounts and processes queue automatical
 
     // First mount processed and dequeued
     expect(mockUploadPhoto).toHaveBeenCalledTimes(1);
-    expect(await getPendingPhotos()).toHaveLength(0);
+    expect(await getPendingPhotos(TEST_USER_ID)).toHaveLength(0);
 
     // Simulate a re-render (e.g. parent state change) — still signed in
     await act(async () => { tree.update(<PendingPhotoRetry />); });
@@ -234,7 +236,7 @@ async function runRetryLoop(
   getToken: () => Promise<string | null>,
   updatePlayer: (args: { playerId: number; data: { photoObjectPath: string } }) => Promise<void>,
 ): Promise<void> {
-  const pending = await getPendingPhotos();
+  const pending = await getPendingPhotos(TEST_USER_ID);
   if (pending.length === 0) return;
   let failCount = 0;
   for (const entry of pending) {
@@ -243,7 +245,7 @@ async function runRetryLoop(
       if (!token) { failCount += pending.length; break; }
       const objectPath = await mockUploadPhoto(entry.uri, entry.mimeType, token);
       await updatePlayer({ playerId: entry.playerId, data: { photoObjectPath: objectPath } });
-      await dequeuePhoto(entry.id);
+      await dequeuePhoto(TEST_USER_ID, entry.id);
     } catch {
       failCount++;
     }
@@ -262,13 +264,13 @@ describe('PendingPhotoRetry retry loop — branch coverage', () => {
   // 6. No token ─────────────────────────────────────────────────────────────────
 
   test('no token: all entries stay queued, alert mentions count', async () => {
-    await enqueuePhoto(ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
-    await enqueuePhoto('file:///photo2.jpg', 'image/jpeg', 99);
+    await enqueuePhoto(TEST_USER_ID, ENTRY.uri, ENTRY.mimeType, ENTRY.playerId);
+    await enqueuePhoto(TEST_USER_ID, 'file:///photo2.jpg', 'image/jpeg', 99);
 
     await runRetryLoop(async () => null, jest.fn());
 
     expect(mockUploadPhoto).not.toHaveBeenCalled();
-    expect(await getPendingPhotos()).toHaveLength(2);
+    expect(await getPendingPhotos(TEST_USER_ID)).toHaveLength(2);
     expect(alertSpy).toHaveBeenCalledWith(
       'Photo upload incomplete',
       "2 player photos couldn't be uploaded. Open the player's profile and tap their photo to try again.",
@@ -289,8 +291,8 @@ describe('PendingPhotoRetry retry loop — branch coverage', () => {
   // 8. Mixed batch ──────────────────────────────────────────────────────────────
 
   test('mixed batch: successes dequeued, failures kept, alert count correct', async () => {
-    await enqueuePhoto('file:///ok.jpg',   'image/jpeg', 1);
-    await enqueuePhoto('file:///fail.jpg', 'image/jpeg', 2);
+    await enqueuePhoto(TEST_USER_ID, 'file:///ok.jpg',   'image/jpeg', 1);
+    await enqueuePhoto(TEST_USER_ID, 'file:///fail.jpg', 'image/jpeg', 2);
 
     mockUploadPhoto
       .mockResolvedValueOnce('objects/ok.jpg')
@@ -299,7 +301,7 @@ describe('PendingPhotoRetry retry loop — branch coverage', () => {
     const updatePlayer = jest.fn(async () => {});
     await runRetryLoop(async () => 'tok', updatePlayer);
 
-    const remaining = await getPendingPhotos();
+    const remaining = await getPendingPhotos(TEST_USER_ID);
     expect(remaining).toHaveLength(1);
     expect(remaining[0].uri).toBe('file:///fail.jpg');
 

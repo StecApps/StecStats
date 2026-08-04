@@ -1277,6 +1277,18 @@ export default function RecordGame() {
     setFocusPlayerId(selectedPlayerIds[0] ?? null);
   }, [selectedPlayerIds, focusPlayerId]);
 
+  // Prune selectedPlayerIds whenever the roster changes — e.g. a player is
+  // deleted from the dashboard while a game session is open in another tab or
+  // while the record page is mounted. Without this, the deleted player's stat
+  // card remains visible as a ghost (player?.name is undefined) and their ID
+  // is still submitted with handleSave, causing a foreign-key reference to a
+  // row that no longer exists.
+  useEffect(() => {
+    if (!players) return;
+    const liveIds = new Set(players.map((p) => p.id));
+    setSelectedPlayerIds((prev) => prev.filter((id) => liveIds.has(id)));
+  }, [players]);
+
   useEffect(() => {
     if (!isRecording) return;
     const el = previewContainerRef.current;
