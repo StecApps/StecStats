@@ -17,7 +17,7 @@
  * layers are replaced with an in-memory store that both routers share.
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import express from "express";
 import { createServer, type Server } from "http";
 import type { AddressInfo } from "net";
@@ -165,39 +165,57 @@ vi.mock("@workspace/db", () => {
   const TEAMS_T  = "teamsTable";
   const PLAYERS_T = "playersTable";
 
-  const makeTx = () => ({
-    update: vi.fn().mockImplementation((table: string) => ({
-      set: vi.fn().mockImplementation((vals: any) => ({
+  const makeTx = () => {
+    // Track whether a stat-line delete is pending so the subsequent insert can
+    // scope the actual removal to just the patched game's rows — leaving stats
+    // for other games intact (matching the real `WHERE gameId = ?` clause).
+    let pendingStatsDelete = false;
+
+    return {
+      update: vi.fn().mockImplementation((table: string) => ({
+        set: vi.fn().mockImplementation((vals: any) => ({
+          where: vi.fn().mockImplementation(() => {
+            // Apply game-level field changes (result, scores, opponent…) to the
+            // in-memory store so serializeGame and getPlayerSummary both see the
+            // updated values after the transaction commits.
+            if (table === GAMES_T) {
+              Object.assign(store.games[0], vals);
+            }
+            return Promise.resolve(undefined);
+          }),
+        })),
+      })),
+      delete: vi.fn().mockImplementation((table: string) => ({
         where: vi.fn().mockImplementation(() => {
-          // Apply game-level field changes (result, scores, opponent…) to the
-          // in-memory store so serializeGame and getPlayerSummary both see the
-          // updated values after the transaction commits.
+          // Real query: DELETE … WHERE gameId = <patched game>.
+          // Flag it; the subsequent insert will tell us which gameId to remove.
+          if (table === PGS_T)    pendingStatsDelete = true;
+          if (table === EVENTS_T) store.events.length = 0;
+          return Promise.resolve(undefined);
+        }),
+      })),
+      insert: vi.fn().mockImplementation((table: string) => ({
+        values: vi.fn().mockImplementation((vals: any[]) => {
+          if (table === PGS_T) {
+            if (pendingStatsDelete && vals.length > 0) {
+              // Scope removal to just the game being re-written, preserving
+              // other games' stats (mirrors the real WHERE gameId = ? delete).
+              const patchedGameId = vals[0].gameId;
+              store.stats = store.stats.filter((s: any) => s.gameId !== patchedGameId);
+              pendingStatsDelete = false;
+            }
+            store.stats.push(...vals);
+          }
+          if (table === EVENTS_T) store.events.push(...vals);
           if (table === GAMES_T) {
-            Object.assign(store.games[0], vals);
+            const row = { id: 99, ownerId: 1, videoObjectPath: null, ...vals[0] };
+            return { returning: vi.fn().mockResolvedValue([row]) };
           }
           return Promise.resolve(undefined);
         }),
       })),
-    })),
-    delete: vi.fn().mockImplementation((table: string) => ({
-      where: vi.fn().mockImplementation(() => {
-        if (table === PGS_T)   store.stats.length = 0;
-        if (table === EVENTS_T) store.events.length = 0;
-        return Promise.resolve(undefined);
-      }),
-    })),
-    insert: vi.fn().mockImplementation((table: string) => ({
-      values: vi.fn().mockImplementation((vals: any[]) => {
-        if (table === PGS_T)   store.stats.push(...vals);
-        if (table === EVENTS_T) store.events.push(...vals);
-        if (table === GAMES_T) {
-          const row = { id: 99, ownerId: 1, videoObjectPath: null, ...vals[0] };
-          return { returning: vi.fn().mockResolvedValue([row]) };
-        }
-        return Promise.resolve(undefined);
-      }),
-    })),
-  });
+    };
+  };
 
   const db = {
     query: {
@@ -582,5 +600,105 @@ describe("POST /api/games — made ≤ attempted invariant", () => {
       threeMade: 0, threeAttempted: 0,
     }));
     expect(res.status).toBe(201);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — multi-team career aggregation
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/games/:gameId — career totals aggregate across teams", () => {
+  /**
+   * Game 11 lives on a different team (id: 6) from game 10 (id: 5).
+   * Stat line: 4 FT/4 + 0 twos/2 + 2 threes/3 → 4 + 0 + 6 = 10 pts
+   */
+  const GAME2_STAT = {
+    gameId: 11,
+    playerId: 20,
+    ftMade: 4,  ftAttempted: 4,
+    twoMade: 0, twoAttempted: 2,
+    threeMade: 2, threeAttempted: 3,
+    assists: 3, rebounds: 5, steals: 1, turnovers: 2, blocks: 0,
+    goals: 0, shots: 0, shotsOffTarget: 0, saves: 0, yellowCards: 0, redCards: 0,
+  };
+
+  const GAME2 = {
+    id: 11,
+    ownerId: 1,
+    teamId: 6,
+    opponent: "Cross-Town",
+    date: "2024-02-10",
+    result: "L" as string,
+    teamScore: 60,
+    opponentScore: 65,
+    videoObjectPath: null as string | null,
+    videoOffsetMs: null,
+    videoDurationMs: null,
+    videoHalf2StartMs: null,
+    videoHalftimeGapMs: null,
+    highlightObjectPath: null,
+    highlightStatus: "idle",
+    highlightError: null,
+    highlightStartedAt: null,
+    lowlightObjectPath: null,
+    lowlightStatus: "idle",
+    lowlightError: null,
+    lowlightStartedAt: null,
+    videoProxyObjectPath: null,
+    videoProxyVersion: null,
+    highlightGeneratorVersion: null,
+    createdAt: new Date("2024-02-10"),
+  };
+
+  beforeEach(() => {
+    // Seed game 11 into the store for this suite.
+    // store.resetStats() (outer beforeEach) already reset stats to game 10 only.
+    if (!store.games.find((g: any) => g.id === 11)) {
+      store.games.push(GAME2);
+    }
+    store.stats.push({ ...GAME2_STAT });
+  });
+
+  afterEach(() => {
+    // Remove the extra game so it doesn't leak into other suites.
+    const idx = store.games.findIndex((g: any) => g.id === 11);
+    if (idx !== -1) store.games.splice(idx, 1);
+  });
+
+  it("career PPG aggregates both games after editing a stat on one team", async () => {
+    // PATCH game 10 (team 5): change to 0 FT + 0 twos + 2 threes → 6 pts
+    // Game 11 (team 6) unchanged: 4 + 0 + 6 = 10 pts
+    // Expected career: (6 + 10) = 16 pts over 2 games → PPG = 8
+    const patchRes = await patchGame(10, buildPatchBody({
+      ftMade: 0, ftAttempted: 0,
+      twoMade: 0, twoAttempted: 0,
+      threeMade: 2, threeAttempted: 3,
+    }));
+    expect(patchRes.status).toBe(200);
+
+    const summary = await getPlayerSummary(20);
+    expect(summary.games).toBe(2);
+    expect(summary.points).toBe(16);
+    expect(summary.ppg).toBe(8);
+  });
+
+  it("game 11 stat is not lost when game 10 is patched (scoped delete)", async () => {
+    // A scoping bug would clear ALL stats on PATCH, so game 11's rebound total
+    // would vanish. Verify it survives intact.
+    const patchRes = await patchGame(10, buildPatchBody({ rebounds: 3 }));
+    expect(patchRes.status).toBe(200);
+
+    const summary = await getPlayerSummary(20);
+    // game 10: 3 reb (patched) + game 11: 5 reb = 8 total
+    expect(summary.rebounds).toBe(8);
+    expect(summary.rpg).toBe(4);
+  });
+
+  it("win/loss record counts both games across teams", async () => {
+    // game 10 = W (default), game 11 = L (seeded above)
+    const summary = await getPlayerSummary(20);
+    expect(summary.wins).toBe(1);
+    expect(summary.losses).toBe(1);
+    expect(summary.games).toBe(2);
   });
 });
