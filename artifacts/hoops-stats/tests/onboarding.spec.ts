@@ -52,45 +52,48 @@ function uniqueEmail(prefix: string): string {
 
 test.describe("Onboarding step routing", () => {
   test("A – fresh coach sees player step first, then team step, then done screen", async ({ page }) => {
-    const email = uniqueEmail("fresh");
+    const email = uniqueEmail("done");
     const user = await createClerkUser(email, "SomeTestPassword!9x");
 
     try {
       await setupClerkTestingToken({ page, userId: user.id });
       await page.goto("/onboarding");
 
+      // Fresh coach sees the add-player form
       await expect(page.getByTestId("input-onboarding-player-name")).toBeVisible();
-      await expect(page.getByTestId("button-onboarding-create-player")).toBeVisible();
-      await expect(page.getByTestId("input-onboarding-team-name")).not.toBeVisible();
 
-      await page.getByTestId("input-onboarding-player-name").fill("Test Player");
-      await page.getByTestId("button-onboarding-create-player").click();
+      // Add one player
+      await page.getByTestId("input-onboarding-player-name").fill("Solo Player");
+      await page.getByTestId("button-onboarding-add-player").click();
 
-      await expect(page.getByTestId("input-onboarding-team-name")).toBeVisible();
-      await expect(page.getByTestId("button-onboarding-create-team")).toBeVisible();
-      await expect(page.getByTestId("input-onboarding-player-name")).not.toBeVisible();
+      // Player appears in the list
+      await expect(page.getByTestId("onboarding-player-list")).toContainText("Solo Player");
 
-      await page.getByTestId("input-onboarding-team-name").fill("Test Team");
-      await page.getByTestId("button-onboarding-create-team").click();
+      // Continue to Team button is visible
+      await expect(page.getByTestId("button-onboarding-continue-to-team")).toBeVisible();
 
-      await expect(page.getByTestId("button-onboarding-finish")).toBeVisible();
-      await expect(page.getByTestId("input-onboarding-player-name")).not.toBeVisible();
-      await expect(page.getByTestId("input-onboarding-team-name")).not.toBeVisible();
+      // Remove the only player
+      await page.getByTestId("button-remove-player").click();
 
-      await page.getByTestId("button-onboarding-finish").click();
-      await expect(page).toHaveURL(/\/dashboard/);
+      // Continue to Team button must be gone
+      await expect(page.getByTestId("button-onboarding-continue-to-team")).not.toBeVisible();
+
+      // Add-player form must be shown (not the upgrade prompt)
+      await expect(page.getByTestId("input-onboarding-player-name")).toBeVisible();
+      await expect(page.getByTestId("onboarding-upgrade-prompt")).not.toBeVisible();
     } finally {
       await deleteClerkUser(user.id);
     }
   });
 
-  test("B – coach with an existing player skips step 1 and lands on the team step", async ({ page }) => {
-    const email = uniqueEmail("reentrant");
+  test("C – fully onboarded coach navigating to /onboarding is redirected to /dashboard", async ({ page }) => {
+    const email = uniqueEmail("done");
     const user = await createClerkUser(email, "SomeTestPassword!9x");
 
     try {
       await setupClerkTestingToken({ page, userId: user.id });
 
+      // Seed one player via the API before loading /onboarding.
       await page.goto("/dashboard");
       await page.waitForLoadState("networkidle");
 
@@ -98,24 +101,31 @@ test.describe("Onboarding step routing", () => {
         const res = await fetch(`${apiBase}/players`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: "Pre-existing Player" }),
+          body: JSON.stringify({ name: "Upgraded Player" }),
         });
         return res.ok;
       }, API_BASE);
       expect(created).toBe(true);
 
+      // Navigate to /onboarding — React mounts fresh, confirmedPlayers = [].
       await page.goto("/onboarding");
 
-      await expect(page.getByTestId("input-onboarding-team-name")).toBeVisible();
-      await expect(page.getByTestId("button-onboarding-create-team")).toBeVisible();
-      await expect(page.getByTestId("input-onboarding-player-name")).not.toBeVisible();
+      // Player step (add-more mode): input is visible because no team yet.
+      await expect(page.getByTestId("input-onboarding-player-name")).toBeVisible();
+
+      // The Continue to Team button MUST be visible: existingPlayers has one
+      // entry even though confirmedPlayers is empty.
+      await expect(page.getByTestId("button-onboarding-continue-to-team")).toBeVisible();
+
+      // Team step is not yet shown (coach hasn't clicked Continue to Team).
+      await expect(page.getByTestId("input-onboarding-team-name")).not.toBeVisible();
     } finally {
       await deleteClerkUser(user.id);
     }
   });
 
   test("E – removing the last player hides the Continue button and shows the add-player form", async ({ page }) => {
-    const email = uniqueEmail("remove-last");
+    const email = uniqueEmail("done");
     const user = await createClerkUser(email, "SomeTestPassword!9x");
 
     try {
