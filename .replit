@@ -4,6 +4,12 @@ modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 router = "application"
 deploymentTarget = "autoscale"
 
+[deployment.build]
+# Run the secrets check before building. If any required secret is missing the
+# script exits 1 and the deploy is aborted before serving any traffic.
+args = ["bash", "-c", "bash scripts/check-production-secrets.sh && pnpm run build"]
+env = { "CI" = "true" }
+
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
 env = { "CI" = "true" }
