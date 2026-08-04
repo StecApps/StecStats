@@ -5,6 +5,7 @@
  *   1. A failed upload surfaces an "Upload failed" alert with the error message.
  *   2. Tapping "Retry" re-calls attemptUpload with the same asset.
  *   3. Tapping "Cancel" does nothing further.
+ *   4. A second failure while an alert is already visible does NOT open a second alert.
  *
  * Uses a self-contained helper that replicates the component's attemptUpload
  * logic, so there's no need to render the full PlayerDashboard tree.
@@ -32,22 +33,43 @@ const mockUploadPhoto = uploadPhoto as jest.MockedFunction<typeof uploadPhoto>;
 // ── minimal replica of PlayerDashboard.attemptUpload ─────────────────────────
 // Mirrors the component logic exactly so any change to the Alert call or
 // error handling breaks these tests first.
+//
+// Returns a bound attemptUpload so each test gets its own alertVisible guard
+// (matching the per-component useRef in the real component).
 
-async function runAttemptUpload(
-  asset: { uri: string; mimeType?: string },
+function makeAttemptUpload(
   getToken: () => Promise<string | null> = async () => 'tok',
 ) {
-  try {
-    const token = await getToken();
-    if (!token) throw new Error('Not signed in — please sign out and back in.');
-    await mockUploadPhoto(asset.uri, asset.mimeType ?? 'image/jpeg', token);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Please try again.';
-    Alert.alert('Upload failed', msg, [
-      { text: 'Retry', onPress: () => runAttemptUpload(asset, getToken) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  let alertVisible = false;
+
+  async function attemptUpload(asset: { uri: string; mimeType?: string }) {
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not signed in — please sign out and back in.');
+      await mockUploadPhoto(asset.uri, asset.mimeType ?? 'image/jpeg', token);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Please try again.';
+      // Guard: don't open a second alert if one is already visible.
+      if (alertVisible) return;
+      alertVisible = true;
+      Alert.alert('Upload failed', msg, [
+        {
+          text: 'Retry',
+          onPress: () => {
+            alertVisible = false;
+            attemptUpload(asset);
+          },
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => { alertVisible = false; },
+        },
+      ]);
+    }
   }
+
+  return attemptUpload;
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────
@@ -63,7 +85,7 @@ test('shows "Upload failed" alert with the error message on network failure', as
     new Error('Network error — check your connection and try again.'),
   );
 
-  await runAttemptUpload(ASSET);
+  await makeAttemptUpload()(ASSET);
 
   expect(alertSpy).toHaveBeenCalledWith(
     'Upload failed',
@@ -80,7 +102,7 @@ test('shows "Upload failed" alert with the error message on auth failure', async
     new Error('Not authorised — please sign out and back in, then try again.'),
   );
 
-  await runAttemptUpload(ASSET);
+  await makeAttemptUpload()(ASSET);
 
   expect(alertSpy).toHaveBeenCalledWith(
     'Upload failed',
@@ -90,7 +112,7 @@ test('shows "Upload failed" alert with the error message on auth failure', async
 });
 
 test('shows "Upload failed" when getToken returns null (not signed in)', async () => {
-  await runAttemptUpload(ASSET, async () => null);
+  await makeAttemptUpload(async () => null)(ASSET);
 
   expect(alertSpy).toHaveBeenCalledWith(
     'Upload failed',
@@ -107,7 +129,8 @@ test('Retry button re-attempts the upload', async () => {
     .mockRejectedValueOnce(new Error('Network error — check your connection and try again.'))
     .mockResolvedValueOnce('/objects/player-photo-ok.jpg');
 
-  await runAttemptUpload(ASSET);
+  const attemptUpload = makeAttemptUpload();
+  await attemptUpload(ASSET);
 
   // Grab the Retry button's onPress from the first Alert call
   const buttons: Array<{ text: string; onPress?: () => void }> = alertSpy.mock.calls[0][2];
@@ -162,17 +185,56 @@ test('Cancel button does not trigger another upload attempt', async () => {
     new Error('Network error — check your connection and try again.'),
   );
 
-  await runAttemptUpload(ASSET);
+  await makeAttemptUpload()(ASSET);
 
   const buttons: Array<{ text: string; onPress?: () => void; style?: string }> =
     alertSpy.mock.calls[0][2];
   const cancelBtn = buttons.find((b) => b.text === 'Cancel');
   expect(cancelBtn).toBeDefined();
   expect(cancelBtn!.style).toBe('cancel');
-  // Cancel carries no onPress — invoking it does nothing
+  // Cancel carries no side effects beyond clearing the guard
   cancelBtn?.onPress?.();
 
   // Still only one upload attempt, one alert
   expect(mockUploadPhoto).toHaveBeenCalledTimes(1);
   expect(alertSpy).toHaveBeenCalledTimes(1);
+});
+
+test('second failure while alert is visible does not open a second alert', async () => {
+  // Both attempts fail
+  mockUploadPhoto
+    .mockRejectedValueOnce(new Error('Network error — check your connection and try again.'))
+    .mockRejectedValueOnce(new Error('Network error — check your connection and try again.'));
+
+  const attemptUpload = makeAttemptUpload();
+
+  // First attempt opens the alert
+  await attemptUpload(ASSET);
+  expect(alertSpy).toHaveBeenCalledTimes(1);
+
+  // Second attempt fires while alert is still visible (Retry not yet tapped → guard is set)
+  await attemptUpload(ASSET);
+
+  // Guard must have blocked the second alert
+  expect(alertSpy).toHaveBeenCalledTimes(1);
+});
+
+test('alert can reopen after Cancel clears the guard', async () => {
+  mockUploadPhoto
+    .mockRejectedValueOnce(new Error('Network error — check your connection and try again.'))
+    .mockRejectedValueOnce(new Error('Network error — check your connection and try again.'));
+
+  const attemptUpload = makeAttemptUpload();
+
+  // First failure → alert shown
+  await attemptUpload(ASSET);
+  expect(alertSpy).toHaveBeenCalledTimes(1);
+
+  // Coach taps Cancel → guard cleared
+  const buttons: Array<{ text: string; onPress?: () => void }> = alertSpy.mock.calls[0][2];
+  buttons.find((b) => b.text === 'Cancel')?.onPress?.();
+
+  // Now a fresh attempt fails — a new alert should appear
+  await attemptUpload(ASSET);
+  expect(alertSpy).toHaveBeenCalledTimes(2);
 });

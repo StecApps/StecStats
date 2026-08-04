@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -151,6 +151,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
   const [uploading, setUploading] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
+  const alertVisibleRef = useRef(false);
 
   useEffect(() => {
     getToken().then((t) => setAuthToken(t ?? null)).catch(() => {});
@@ -189,12 +190,16 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
         asset.mimeType ?? 'image/jpeg',
         player.id,
       ) : undefined);
+      // Guard: don't open a second alert if one is already visible.
+      if (alertVisibleRef.current) return;
+      alertVisibleRef.current = true;
+
       if (retryCount >= MAX_RETRIES) {
         // Cap reached — show a terminal message with no Retry button.
         Alert.alert(
           'Upload failed',
           'Upload failed — please check your connection and try again later.',
-          [{ text: 'OK', style: 'cancel' }],
+          [{ text: 'OK', style: 'cancel', onPress: () => { alertVisibleRef.current = false; } }],
         );
       } else {
         const delay = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s
@@ -202,10 +207,11 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
           {
             text: 'Retry',
             onPress: () => {
+              alertVisibleRef.current = false;
               setTimeout(() => attemptUpload(asset, entryId, retryCount + 1), delay);
             },
           },
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Cancel', style: 'cancel', onPress: () => { alertVisibleRef.current = false; } },
         ]);
       }
     } finally {
