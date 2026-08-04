@@ -206,13 +206,13 @@ export default function GamesScreen() {
               style={[
                 styles.playerChip,
                 {
-                  backgroundColor: selectedPlayerId === p.id ? colors.primary : colors.muted,
-                  borderColor: selectedPlayerId === p.id ? colors.primary : colors.border,
+                  backgroundColor: selectedPlayerId === p.id ? colors.primary : colors.secondary,
+                  borderColor: selectedPlayerId === p.id ? colors.primary : colors.mutedForeground,
                 },
               ]}
             >
-              <Text style={[styles.playerChipText, { color: selectedPlayerId === p.id ? '#fff' : colors.foreground }]} numberOfLines={1}>
-                {p.name.split(' ')[0]}
+              <Text style={[styles.playerChipText, { color: '#FFFFFF' }]} numberOfLines={1}>
+                {p.name.trim().split(/\s+/)[0]}
               </Text>
             </TouchableOpacity>
           ))}

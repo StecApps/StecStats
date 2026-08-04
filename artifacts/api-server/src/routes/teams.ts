@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   db,
   teamsTable,
@@ -63,7 +63,7 @@ router.get("/teams", requireAuth, async (req, res) => {
     .select()
     .from(teamsTable)
     .where(eq(teamsTable.ownerId, req.appUser!.id))
-    .orderBy(teamsTable.name);
+    .orderBy(desc(teamsTable.createdAt));
   res.json(ListTeamsResponse.parse(teams));
 });
 

@@ -412,6 +412,13 @@ export default function DashboardScreen() {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.primary} />}
     >
+      {/* ── Brand logo banner ── */}
+      <Image
+        source={require('../../assets/images/logo-banner.png')}
+        style={styles.logoBanner}
+        contentFit="contain"
+      />
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {(players as any[]).map((p) => (
           <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} colors={colors} />
@@ -435,6 +442,7 @@ function makeStyles(colors: any, insets: any) {
       paddingBottom: insets.bottom + 100,
     },
     chips: { paddingBottom: 16 },
+    logoBanner: { alignSelf: 'stretch', aspectRatio: 7, marginHorizontal: -16, marginBottom: 12 },
     emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', color: colors.foreground, marginTop: 16, marginBottom: 8 },
     emptySub: { fontSize: 14, color: colors.mutedForeground, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
   });
