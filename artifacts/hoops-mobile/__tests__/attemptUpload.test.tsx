@@ -123,6 +123,40 @@ test('Retry button re-attempts the upload', async () => {
   expect(alertSpy).toHaveBeenCalledTimes(1);
 });
 
+test('shows "Upload failed" alert with the photo-read error message', async () => {
+  mockUploadPhoto.mockRejectedValueOnce(
+    new Error('Could not read the photo — please try a different image.'),
+  );
+
+  await runAttemptUpload(ASSET);
+
+  expect(alertSpy).toHaveBeenCalledWith(
+    'Upload failed',
+    'Could not read the photo — please try a different image.',
+    expect.arrayContaining([
+      expect.objectContaining({ text: 'Retry' }),
+      expect.objectContaining({ text: 'Cancel' }),
+    ]),
+  );
+});
+
+test('shows "Upload failed" alert with the storage PUT error message', async () => {
+  mockUploadPhoto.mockRejectedValueOnce(
+    new Error('Upload failed (503) — please try again.'),
+  );
+
+  await runAttemptUpload(ASSET);
+
+  expect(alertSpy).toHaveBeenCalledWith(
+    'Upload failed',
+    'Upload failed (503) — please try again.',
+    expect.arrayContaining([
+      expect.objectContaining({ text: 'Retry' }),
+      expect.objectContaining({ text: 'Cancel' }),
+    ]),
+  );
+});
+
 test('Cancel button does not trigger another upload attempt', async () => {
   mockUploadPhoto.mockRejectedValueOnce(
     new Error('Network error — check your connection and try again.'),
