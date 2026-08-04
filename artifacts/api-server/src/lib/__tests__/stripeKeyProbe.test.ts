@@ -328,4 +328,36 @@ describe("boot-time Stripe probe (NODE_ENV=production)", () => {
     // The server should have bound its port.
     expect(listenMock).toHaveBeenCalled();
   });
+
+  it("calls process.exit(1) and does NOT call app.listen when a sk_test_ key passes probe in production", async () => {
+    // The probe succeeds (the key is technically valid) but the key begins with
+    // sk_test_ — deploying a test key to production means real payments are
+    // never settled.  The boot guard must catch this and refuse to open the port.
+    registerBootMocks({ ok: true, authError: false });
+
+    // Spy on console.error so we can assert the [FATAL] message is emitted.
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await import("../../index");
+    } catch {
+      // Expected: process.exit throws to halt boot execution.
+    }
+
+    // Flush any remaining microtasks.
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+
+    // Must have exited with code 1.
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    // Must NOT have opened the port — server should never accept connections.
+    expect(listenMock).not.toHaveBeenCalled();
+
+    // The [FATAL] message about the test key must appear in stderr.
+    const stderrCalls = consoleErrorSpy.mock.calls.flat().join("\n");
+    expect(stderrCalls).toMatch(/\[FATAL\]/);
+    expect(stderrCalls).toMatch(/sk_test_/);
+
+    consoleErrorSpy.mockRestore();
+  });
 });
