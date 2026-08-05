@@ -18,7 +18,14 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import * as Crypto from 'expo-crypto';
+
+// Simple UUID v4 — no native module needed, Expo Go safe
+function makeNonce(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
 
 type Phase = 'email' | 'otp';
 type Mode = 'signIn' | 'signUp';
@@ -53,7 +60,7 @@ export default function AuthScreen() {
     setError('');
     try {
       // Nonce ties the Apple identity token to this exact request (replay protection)
-      const nonce = Crypto.randomUUID();
+      const nonce = makeNonce();
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
