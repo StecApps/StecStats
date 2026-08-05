@@ -12,7 +12,7 @@ import {
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useSubscription } from '@/lib/revenuecat';
+import { useSubscription, PRO_ENTITLEMENT, PREMIUM_ENTITLEMENT } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
@@ -83,13 +83,24 @@ export default function PaywallScreen() {
 
   async function handleRestore() {
     try {
-      await restore();
+      const customerInfo = await restore();
       queryClient.invalidateQueries({ queryKey: getGetBillingStatusQueryKey() });
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Purchases restored', 'Your subscription has been restored.');
-      router.back();
+      const activeEntitlements = customerInfo?.entitlements.active ?? {};
+      const isNowPro =
+        PRO_ENTITLEMENT in activeEntitlements || PREMIUM_ENTITLEMENT in activeEntitlements;
+      if (isNowPro) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Purchases restored', 'Your Pro subscription has been restored.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      } else {
+        Alert.alert(
+          'No active subscription',
+          'No active Pro subscription was found to restore.',
+        );
+      }
     } catch {
-      Alert.alert('Restore failed', 'No purchases found to restore.');
+      Alert.alert('Restore failed', 'Unable to restore purchases. Please try again.');
     }
   }
 
