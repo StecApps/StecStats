@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  useColorScheme,
 } from 'react-native';
 import { useSignIn, useSignUp } from '@clerk/clerk-expo';
 import { useColors } from '@/hooks/useColors';
@@ -24,6 +25,7 @@ type Mode = 'signIn' | 'signUp';
 export default function AuthScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
   const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn();
   const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp();
 
@@ -239,7 +241,11 @@ export default function AuthScreen() {
                 </View>
                 <AppleAuthentication.AppleAuthenticationButton
                   buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  buttonStyle={
+                    colorScheme === 'light'
+                      ? AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+                      : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                  }
                   cornerRadius={colors.radius + 6}
                   style={styles.appleBtn}
                   onPress={handleAppleSignIn}
@@ -294,7 +300,6 @@ export default function AuthScreen() {
     </KeyboardAvoidingView>
   );
 }
-
 function makeStyles(colors: ReturnType<typeof import('@/hooks/useColors').useColors>, insets: ReturnType<typeof useSafeAreaInsets>) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },

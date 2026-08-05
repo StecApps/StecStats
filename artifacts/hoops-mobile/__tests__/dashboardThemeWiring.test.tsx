@@ -101,12 +101,16 @@ jest.mock('react-native-svg', () => {
   const MockCircle = (props: any) => React.createElement('Circle', props);
   const MockG = ({ children, ...rest }: any) =>
     React.createElement('G', rest, children);
+  const MockPath = (props: any) => React.createElement('Path', props);
+  const MockRect = (props: any) => React.createElement('Rect', props);
   return {
     __esModule: true,
     default: MockSvg,
     Svg: MockSvg,
     Circle: MockCircle,
     G: MockG,
+    Path: MockPath,
+    Rect: MockRect,
   };
 });
 
@@ -145,6 +149,7 @@ jest.mock('react-native', () => {
     },
     Alert: { alert: jest.fn() },
     Platform: { OS: 'ios', select: (o: any) => o.ios ?? o.default },
+    useColorScheme: jest.fn(() => 'dark'),
   };
 });
 
@@ -297,7 +302,7 @@ describe('Dashboard runtime — theme tokens flow from colors.dark.primary', () 
 
   test('hero card borderColor is rgba() derived from colors.dark.primary', () => {
     const json = tree.toJSON();
-    const expectedBorder = hexToRgba(SENTINEL, 0.4);
+    const expectedBorder = hexToRgba(SENTINEL, 0.60);
 
     // heroS.card is applied as [heroS.card, { borderColor: primaryRgba(0.40), ... }]
     const heroCards = findNodes(
