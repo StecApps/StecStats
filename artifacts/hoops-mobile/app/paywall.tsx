@@ -45,6 +45,13 @@ export default function PaywallScreen() {
 
   // Derive the price string shown in the card
   const proPrice = activePkg?.product?.priceString ?? (billingPeriod === 'annual' ? '$59.99' : '$9.99');
+
+  // Monthly equivalent for annual plan (annualPkg.product.price / 12)
+  const annualMonthlyEquiv = (() => {
+    const annualPrice = annualPkg?.product?.price;
+    if (!annualPrice) return null;
+    return `~$${(annualPrice / 12).toFixed(2)}`;
+  })();
   const annualSavings = (() => {
     if (!annualPkg || !monthlyPkg) return null;
     const annual  = annualPkg?.product?.price ?? 0;
@@ -178,12 +185,20 @@ export default function PaywallScreen() {
               <Text style={[styles.tierName, { color: colors.primary }]}>PRO</Text>
             </View>
             {configured ? (
-              <Text style={[styles.tierPrice, { color: colors.foreground }]}>
-                {proPrice}{' '}
-                <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>
-                  / {billingPeriod === 'annual' ? 'year' : 'month'}
+              billingPeriod === 'annual' && annualMonthlyEquiv ? (
+                <Text style={[styles.tierPriceSub, { color: colors.mutedForeground, textAlign: 'right' }]}>
+                  <Text style={[styles.tierPrice, { color: colors.foreground }]}>{annualMonthlyEquiv}</Text>
+                  {' / mo\n'}
+                  <Text style={{ fontSize: 12 }}>{proPrice} billed annually</Text>
                 </Text>
-              </Text>
+              ) : (
+                <Text style={[styles.tierPrice, { color: colors.foreground }]}>
+                  {proPrice}{' '}
+                  <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>
+                    / month
+                  </Text>
+                </Text>
+              )
             ) : (
               <Text style={[styles.tierPrice, { color: colors.foreground }]}>
                 $9.99 <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>/ month</Text>
