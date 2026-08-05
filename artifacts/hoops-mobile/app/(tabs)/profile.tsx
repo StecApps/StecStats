@@ -303,6 +303,21 @@ export default function ProfileScreen() {
         </>
       )}
 
+      {/* Support & Legal */}
+      <Text style={styles.sectionTitle}>Support & Legal</Text>
+      <ProfileRow
+        icon="mail-outline"
+        label="Contact Support"
+        onPress={() => Linking.openURL('mailto:support@stecstats.com')}
+        colors={colors}
+      />
+      <ProfileRow
+        icon="shield-checkmark-outline"
+        label="Privacy Policy"
+        onPress={() => Linking.openURL('https://stecstats.com/privacy')}
+        colors={colors}
+      />
+
       {/* Account */}
       <Text style={styles.sectionTitle}>Account</Text>
       <ProfileRow

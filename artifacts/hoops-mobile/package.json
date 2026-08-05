@@ -66,6 +66,7 @@
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.31",
     "@expo-google-fonts/teko": "^0.4.1",
+    "expo-apple-authentication": "^57.0.1",
     "expo-auth-session": "^7.0.11",
     "expo-camera": "^17.0.10",
     "expo-secure-store": "^15.0.8",

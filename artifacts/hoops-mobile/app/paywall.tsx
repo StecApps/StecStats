@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -31,15 +31,33 @@ export default function PaywallScreen() {
     useSubscription();
 
   const [selectedPkg, setSelectedPkg] = useState<any | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('annual');
   const currentOffering = offerings?.current;
   const packages = currentOffering?.availablePackages ?? [];
 
-  // Pre-select first package
-  React.useEffect(() => {
-    if (packages.length > 0 && !selectedPkg) {
-      setSelectedPkg(packages[0]);
-    }
-  }, [packages]);
+  // Separate monthly / annual packages from RevenueCat
+  const monthlyPkg = packages.find((p: any) => p.packageType === '$rc_monthly') ?? packages[0] ?? null;
+  const annualPkg  = packages.find((p: any) => p.packageType === '$rc_annual') ?? null;
+  const hasAnnual  = !!annualPkg;
+
+  // Pick active package based on toggle; default to annual when available
+  const activePkg = hasAnnual && billingPeriod === 'annual' ? annualPkg : (monthlyPkg ?? packages[0] ?? null);
+
+  // Derive the price string shown in the card
+  const proPrice = activePkg?.product?.priceString ?? (billingPeriod === 'annual' ? '$59.99' : '$9.99');
+  const annualSavings = (() => {
+    if (!annualPkg || !monthlyPkg) return null;
+    const annual  = annualPkg?.product?.price ?? 0;
+    const monthly = monthlyPkg?.product?.price ?? 0;
+    if (!annual || !monthly) return null;
+    const saved = Math.round((1 - annual / (monthly * 12)) * 100);
+    return saved > 0 ? `Save ${saved}%` : null;
+  })();
+
+  // Pre-select on load; re-select when period changes
+  useEffect(() => {
+    if (activePkg) setSelectedPkg(activePkg);
+  }, [billingPeriod, packages.length]);
 
   async function handlePurchase() {
     if (!selectedPkg) return;
@@ -70,9 +88,7 @@ export default function PaywallScreen() {
 
   const styles = makeStyles(colors, insets);
 
-  // Find the pro package from RevenueCat offerings
-  const proPackage = packages[0] ?? null;
-  const proPrice = proPackage?.product?.priceString ?? '$9.99';
+  // proPrice and activePkg are derived above from billingPeriod state
 
   return (
     <View style={styles.root}>
@@ -120,6 +136,35 @@ export default function PaywallScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Billing period toggle — only shown if RevenueCat has annual packages */}
+        {hasAnnual && (
+          <View style={[styles.periodToggle, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() => setBillingPeriod('monthly')}
+              style={[styles.periodBtn, billingPeriod === 'monthly' && { backgroundColor: colors.card }]}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.periodBtnText, { color: billingPeriod === 'monthly' ? colors.foreground : colors.mutedForeground }]}>
+                Monthly
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setBillingPeriod('annual')}
+              style={[styles.periodBtn, billingPeriod === 'annual' && { backgroundColor: colors.card }]}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.periodBtnText, { color: billingPeriod === 'annual' ? colors.foreground : colors.mutedForeground }]}>
+                Annual
+              </Text>
+              {annualSavings && (
+                <View style={[styles.savingsBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.savingsBadgeText}>{annualSavings}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* PRO tier */}
         <View style={[styles.tierCard, styles.proCard, { backgroundColor: colors.card, borderColor: colors.primary }]}>
           {/* Badge */}
@@ -134,7 +179,10 @@ export default function PaywallScreen() {
             </View>
             {configured ? (
               <Text style={[styles.tierPrice, { color: colors.foreground }]}>
-                {proPrice} <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>/ month</Text>
+                {proPrice}{' '}
+                <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>
+                  / {billingPeriod === 'annual' ? 'year' : 'month'}
+                </Text>
               </Text>
             ) : (
               <Text style={[styles.tierPrice, { color: colors.foreground }]}>
@@ -378,5 +426,28 @@ function makeStyles(colors: any, insets: any) {
       fontFamily: 'Inter_400Regular',
       lineHeight: 17,
     },
+    periodToggle: {
+      flexDirection: 'row',
+      borderRadius: 12,
+      borderWidth: 1,
+      padding: 4,
+      gap: 4,
+    },
+    periodBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 9,
+    },
+    periodBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+    savingsBadge: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    savingsBadgeText: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#fff' },
   });
 }

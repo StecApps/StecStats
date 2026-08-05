@@ -13,7 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
-import Svg, { Circle, G } from 'react-native-svg';
+import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
@@ -41,6 +41,86 @@ function hexToRgba(hex: string, alpha: number): string {
 
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
+}
+
+// ─── Screen-level background layers ──────────────────────────────────────────
+
+// Deep orange sunburst from the top of the screen — bleeds down ~55% of height.
+function ScreenGlow({ primary }: { primary: string }) {
+  const r = (a: number) => hexToRgba(primary, a);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      {/* Central radial cone — bright at crown, gone by mid-screen */}
+      <LinearGradient
+        colors={[r(0.38), r(0.18), r(0.06), r(0)]}
+        locations={[0, 0.22, 0.45, 0.70]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      {/* Slight left-lean so the glow hugs the basketball watermark */}
+      <LinearGradient
+        colors={[r(0.14), r(0)]}
+        locations={[0, 0.5]}
+        start={{ x: 0.75, y: 0 }}
+        end={{ x: 0.25, y: 0.5 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+    </View>
+  );
+}
+
+// Large basketball seam drawing, clipped into the top-right corner.
+function BasketballWatermark({ color }: { color: string }) {
+  const S = 340, CX = S / 2, CY = S / 2, R = 155, SW = 9;
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', top: -60, right: -100, width: S, height: S, opacity: 0.11 }}
+    >
+      <Svg width={S} height={S}>
+        {/* Outer circle */}
+        <Circle cx={CX} cy={CY} r={R} stroke={color} strokeWidth={SW} fill="none" />
+        {/* Vertical S-seam through centre */}
+        <Path
+          d={`M${CX},${CY - R} C${CX - 62},${CY - R * 0.38} ${CX + 62},${CY + R * 0.38} ${CX},${CY + R}`}
+          stroke={color} strokeWidth={SW} fill="none" strokeLinecap="round"
+        />
+        {/* Upper horizontal seam */}
+        <Path
+          d={`M${CX - R},${CY} Q${CX},${CY - R * 0.68} ${CX + R},${CY}`}
+          stroke={color} strokeWidth={SW} fill="none" strokeLinecap="round"
+        />
+        {/* Lower horizontal seam */}
+        <Path
+          d={`M${CX - R},${CY} Q${CX},${CY + R * 0.68} ${CX + R},${CY}`}
+          stroke={color} strokeWidth={SW} fill="none" strokeLinecap="round"
+        />
+      </Svg>
+    </View>
+  );
+}
+
+// Tiny bar-chart ghost — floats behind the shooting efficiency card.
+function StatsWatermark({ color }: { color: string }) {
+  const W = 180, H = 140;
+  const bars: [number, number][] = [[0.50, 0], [0.78, 1], [0.40, 2], [0.92, 3], [0.65, 4]];
+  const barW = 26, gap = 12, maxH = 100, baseY = 120;
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', bottom: 120, right: -10, width: W, height: H, opacity: 0.055 }}
+    >
+      <Svg width={W} height={H}>
+        {bars.map(([h, i]) => {
+          const bH = h * maxH;
+          return (
+            <Rect key={i} x={10 + i * (barW + gap)} y={baseY - bH} width={barW} height={bH} rx={5} fill={color} />
+          );
+        })}
+      </Svg>
+    </View>
+  );
 }
 
 // ─── Glass glare components ──────────────────────────────────────────────────
@@ -334,7 +414,7 @@ function PlayerDashboard({ player }: { player: any }) {
       {/* ── Hero card ──────────────────────────────────────────────────── */}
       <View style={[heroS.card, { borderColor: primaryRgba(0.60), backgroundColor: c.card }]}>
         {/* Orange glow radiates from the top edge of the hero card */}
-        <OrangeGlow primary={c.primary} strength={1} />
+        <OrangeGlow primary={c.primary} strength={1.5} />
         {/* Top orange accent bar */}
         <LinearGradient
           colors={[c.primary, primaryRgba(0)]}
@@ -527,6 +607,11 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
+      {/* ── Screen-level visual layers (behind everything) ── */}
+      <ScreenGlow primary={c.primary} />
+      <BasketballWatermark color={c.primary} />
+      <StatsWatermark color={c.primary} />
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[

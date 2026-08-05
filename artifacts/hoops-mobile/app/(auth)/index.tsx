@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as AppleAuthentication from 'expo-apple-authentication';
 
 type Phase = 'email' | 'otp';
 type Mode = 'signIn' | 'signUp';
@@ -32,9 +33,65 @@ export default function AuthScreen() {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const otpRef = useRef<TextInput>(null);
 
   const isLoaded = signInLoaded && signUpLoaded;
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => {});
+    }
+  }, []);
+
+  async function handleAppleSignIn() {
+    if (!isLoaded) return;
+    setLoading(true);
+    setError('');
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) throw new Error('No identity token returned from Apple');
+
+      // Try sign-in with the Apple token first
+      try {
+        const result = await signIn!.create({
+          strategy: 'oauth_token_apple',
+          token: credential.identityToken,
+        } as any);
+        if (result.status === 'complete') {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          await setSignInActive!({ session: result.createdSessionId });
+        }
+      } catch (err: any) {
+        const code = err?.errors?.[0]?.code ?? '';
+        if (code === 'external_account_not_found' || code === 'form_identifier_not_found') {
+          // New user — create account with Apple token
+          const suResult = await signUp!.create({
+            strategy: 'oauth_token_apple',
+            token: credential.identityToken,
+            ...(credential.fullName?.givenName  ? { firstName: credential.fullName.givenName  } : {}),
+            ...(credential.fullName?.familyName ? { lastName:  credential.fullName.familyName } : {}),
+          } as any);
+          if (suResult.status === 'complete') {
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            await setSignUpActive!({ session: suResult.createdSessionId });
+          }
+        } else {
+          throw err;
+        }
+      }
+    } catch (err: any) {
+      if (err?.code === 'ERR_REQUEST_CANCELED') return; // User dismissed the sheet
+      setError(err?.errors?.[0]?.longMessage ?? err?.message ?? 'Apple Sign-In failed');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleEmailSubmit() {
     if (!isLoaded || !email.trim()) return;
@@ -172,6 +229,23 @@ export default function AuthScreen() {
                 <Text style={styles.btnText}>Continue</Text>
               )}
             </TouchableOpacity>
+
+            {appleAvailable && (
+              <>
+                <View style={styles.dividerRow}>
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.dividerText, { color: colors.mutedForeground }]}>or</Text>
+                  <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+                </View>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                  cornerRadius={colors.radius + 6}
+                  style={styles.appleBtn}
+                  onPress={handleAppleSignIn}
+                />
+              </>
+            )}
           </>
         ) : (
           <>
@@ -284,5 +358,9 @@ function makeStyles(colors: ReturnType<typeof import('@/hooks/useColors').useCol
     },
     back: { marginTop: 20, alignItems: 'center' },
     backText: { color: colors.mutedForeground, fontSize: 14, fontFamily: 'Inter_400Regular' },
+    dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 16 },
+    dividerLine: { flex: 1, height: 1 },
+    dividerText: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+    appleBtn: { height: 52, width: '100%' },
   });
 }

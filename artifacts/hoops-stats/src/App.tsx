@@ -23,6 +23,7 @@ import Dashboard from "@/pages/dashboard";
 import RecordGame from "@/pages/record";
 import ImportData from "@/pages/import";
 import Billing from "@/pages/billing";
+import PrivacyPolicy from "@/pages/privacy";
 import WatchStream from "@/pages/watch";
 import AdminFeedback from "@/pages/admin";
 import Layout from "@/components/layout";
@@ -694,6 +695,7 @@ function ClerkProviderWithRoutes() {
         <TooltipProvider>
           <Switch>
             <Route path="/watch/:code" component={WatchStream} />
+            <Route path="/privacy" component={PrivacyPolicy} />
             <Route path="/pricing" component={Pricing} />
             <Route path="/print-cards" component={PrintCards} />
             <Route path="/card-render" component={CardRender} />
