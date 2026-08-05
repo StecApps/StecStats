@@ -17,7 +17,6 @@ import Svg, { Circle, G } from 'react-native-svg';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
-import colors from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
 import {
@@ -39,7 +38,6 @@ function hexToRgba(hex: string, alpha: number): string {
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
-const primaryRgba = (alpha: number) => hexToRgba(colors.dark.primary, alpha);
 
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
@@ -78,14 +76,15 @@ function Gloss() {
 }
 
 // Orange glow from the top edge — only used on the hero card.
-function OrangeGlow({ strength = 1 }: { strength?: number }) {
+function OrangeGlow({ primary, strength = 1 }: { primary: string; strength?: number }) {
+  const rgba = (a: number) => hexToRgba(primary, a);
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
       <LinearGradient
         colors={[
-          primaryRgba(0.30 * strength),
-          primaryRgba(0.10 * strength),
-          primaryRgba(0),
+          rgba(0.30 * strength),
+          rgba(0.10 * strength),
+          rgba(0),
         ]}
         locations={[0, 0.35, 1]}
         start={{ x: 0.5, y: 0 }}
@@ -128,30 +127,32 @@ function ArcGauge({
       <View style={{ width: SIZE, height: SIZE }}>
         <Svg width={SIZE} height={SIZE}>
           <G rotation="-90" origin={`${SIZE / 2},${SIZE / 2}`}>
+            {/* Track uses the border token so it's readable in both themes */}
             <Circle cx={SIZE/2} cy={SIZE/2} r={r}
-              stroke="rgba(255,255,255,0.08)" strokeWidth={SW} fill="none" />
+              stroke={c.border} strokeWidth={SW} fill="none" />
             <Circle cx={SIZE/2} cy={SIZE/2} r={r}
               stroke={c.primary} strokeWidth={SW} fill="none"
               strokeDasharray={`${filled} ${circ}`} strokeLinecap="round" />
           </G>
         </Svg>
         <View style={gaugeS.center}>
-          <Text style={gaugeS.pctNum}>{pctStr}</Text>
+          {/* Percentage lives inside the card — use cardForeground */}
+          <Text style={[gaugeS.pctNum, { color: c.cardForeground }]}>{pctStr}</Text>
           {made != null && attempted != null && (
-            <Text style={gaugeS.madeFrac}>{made}/{attempted}</Text>
+            <Text style={[gaugeS.madeFrac, { color: c.mutedForeground }]}>{made}/{attempted}</Text>
           )}
         </View>
       </View>
-      <Text style={gaugeS.label}>{label.toUpperCase()}</Text>
+      <Text style={[gaugeS.label, { color: c.mutedForeground }]}>{label.toUpperCase()}</Text>
     </View>
   );
 }
 const gaugeS = StyleSheet.create({
   wrap:     { alignItems: 'center', flex: 1 },
   center:   { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  pctNum:   { ...tekoStyle(20), color: '#fff' },
-  madeFrac: { fontSize: 10, fontFamily: 'Inter_400Regular', color: colors.dark.mutedForeground, marginTop: 1 },
-  label:    { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, color: colors.dark.mutedForeground, marginTop: 8 },
+  pctNum:   { ...tekoStyle(20) },
+  madeFrac: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  label:    { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, marginTop: 8 },
 });
 
 // ─── Player chip ─────────────────────────────────────────────────────────────
@@ -172,7 +173,8 @@ function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: 
       ]}
     >
       {isSelected && <GlareOverlay intensity={0.18} />}
-      <Text style={[chipS.name, { color: '#fff' }]}>{player.name}</Text>
+      {/* When selected: white text on primary bg. When unselected: card text on card bg. */}
+      <Text style={[chipS.name, { color: isSelected ? c.primaryForeground : c.cardForeground }]}>{player.name}</Text>
       <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.75)' : c.mutedForeground }]}>
         {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
       </Text>
@@ -187,59 +189,66 @@ const chipS = StyleSheet.create({
 
 // ─── Big stat card ────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  const c = useColors();
   return (
-    <View style={[statS.card, { overflow: 'hidden' }]}>
+    <View style={[statS.card, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
       <Gloss />
-      <Text style={statS.label}>{label}</Text>
-      <Text style={statS.value}>{value}</Text>
-      {sub && <Text style={statS.sub}>{sub}</Text>}
+      <Text style={[statS.label, { color: c.mutedForeground }]}>{label}</Text>
+      <Text style={[statS.value, { color: c.primary }]}>{value}</Text>
+      {sub && <Text style={[statS.sub, { color: c.mutedForeground }]}>{sub}</Text>}
     </View>
   );
 }
 const statS = StyleSheet.create({
-  card:  { flex: 1, borderRadius: 16, borderWidth: 1, borderColor: colors.dark.border, backgroundColor: colors.dark.card, padding: 16, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase', color: colors.dark.mutedForeground, marginBottom: 6, textAlign: 'center' },
-  value: { ...tekoStyle(38), color: colors.dark.primary },
-  sub:   { fontSize: 10, fontFamily: 'Inter_400Regular', color: colors.dark.mutedForeground, marginTop: 2, textAlign: 'center' },
+  card:  { flex: 1, borderRadius: 16, borderWidth: 1, padding: 16, alignItems: 'center' },
+  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, textAlign: 'center' },
+  value: { ...tekoStyle(38) },
+  sub:   { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
 });
 
 // ─── Mini stat (playmaking / defense) ────────────────────────────────────────
 function MiniStat({ label, value, total }: { label: string; value: string; total?: string }) {
+  const c = useColors();
   return (
-    <View style={[miniS.wrap, { overflow: 'hidden' }]}>
+    <View style={[miniS.wrap, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
       <Gloss />
-      <Text style={miniS.label}>{label}</Text>
-      <Text style={miniS.value}>{value}</Text>
-      {total && <Text style={miniS.total}>{total} TOT</Text>}
+      <Text style={[miniS.label, { color: c.mutedForeground }]}>{label}</Text>
+      {/* Large value uses cardForeground so it reads on both light and dark cards */}
+      <Text style={[miniS.value, { color: c.cardForeground }]}>{value}</Text>
+      {total && <Text style={[miniS.total, { color: c.mutedForeground }]}>{total} TOT</Text>}
     </View>
   );
 }
 const miniS = StyleSheet.create({
-  wrap:  { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: colors.dark.border, backgroundColor: colors.dark.card, padding: 14, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', color: colors.dark.mutedForeground, marginBottom: 4, textAlign: 'center' },
-  value: { ...tekoStyle(30), color: '#fff' },
-  total: { fontSize: 9, fontFamily: 'Inter_400Regular', color: colors.dark.mutedForeground, marginTop: 2 },
+  wrap:  { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, alignItems: 'center' },
+  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
+  value: { ...tekoStyle(30) },
+  total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
 // ─── Section header ───────────────────────────────────────────────────────────
 function SectionHeader({ title }: { title: string }) {
+  const c = useColors();
   return (
     <View style={secS.row}>
-      <View style={secS.dot} />
-      <Text style={secS.title}>{title.toUpperCase()}</Text>
-      <View style={{ flex: 1, height: 1, backgroundColor: colors.dark.border, marginLeft: 10, alignSelf: 'center' }} />
+      <View style={[secS.dot, { backgroundColor: c.primary }]} />
+      <Text style={[secS.title, { color: c.foreground }]}>{title.toUpperCase()}</Text>
+      <View style={{ flex: 1, height: 1, backgroundColor: c.border, marginLeft: 10, alignSelf: 'center' }} />
     </View>
   );
 }
 const secS = StyleSheet.create({
   row:   { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 24 },
-  dot:   { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.dark.primary, marginRight: 8 },
-  title: { ...tekoStyle(20), letterSpacing: 2, color: '#fff' },
+  dot:   { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
+  title: { ...tekoStyle(20), letterSpacing: 2 },
 });
 
 // ─── Player Dashboard ─────────────────────────────────────────────────────────
 function PlayerDashboard({ player }: { player: any }) {
   const c = useColors();
+  // Local rgba helper keyed to the current palette's primary color
+  const primaryRgba = (alpha: number) => hexToRgba(c.primary, alpha);
+
   const { data: summary, isLoading } = useGetPlayerSummary(player.id);
   const updatePlayer = useUpdatePlayer();
   const qc = useQueryClient();
@@ -325,7 +334,7 @@ function PlayerDashboard({ player }: { player: any }) {
       {/* ── Hero card ──────────────────────────────────────────────────── */}
       <View style={[heroS.card, { borderColor: primaryRgba(0.40), backgroundColor: c.card }]}>
         {/* Orange glow radiates from the top edge of the hero card */}
-        <OrangeGlow strength={1} />
+        <OrangeGlow primary={c.primary} strength={1} />
         {/* Top orange accent bar */}
         <LinearGradient
           colors={[c.primary, primaryRgba(0)]}
@@ -378,15 +387,15 @@ function PlayerDashboard({ player }: { player: any }) {
           </View>
           {/* Camera badge */}
           <View style={[heroS.cameraBadge, { backgroundColor: c.primary, borderColor: c.background }]}>
-            {uploading ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="camera" size={12} color="#fff" />}
+            {uploading ? <ActivityIndicator size="small" color={c.primaryForeground} /> : <Ionicons name="camera" size={12} color={c.primaryForeground} />}
           </View>
         </TouchableOpacity>
 
-        {/* Name */}
-        <Text style={heroS.name}>{player.name.toUpperCase()}</Text>
+        {/* Name — lives on the card background, use cardForeground */}
+        <Text style={[heroS.name, { color: c.cardForeground }]}>{player.name.toUpperCase()}</Text>
 
         {/* Season scope pill */}
-        <View style={[heroS.scopePill, { borderColor: c.border }]}>
+        <View style={[heroS.scopePill, { borderColor: c.border, backgroundColor: c.muted }]}>
           <Text style={[heroS.scopeText, { color: c.mutedForeground }]}>
             {summary.seasonScope === 'career' ? 'CAREER' : 'SEASON'} OVERVIEW
           </Text>
@@ -416,12 +425,12 @@ function PlayerDashboard({ player }: { player: any }) {
 
       {/* ── Shooting Efficiency (biggest section, listed last) ────────── */}
       <SectionHeader title="Shooting Efficiency" />
-      <View style={[shootS.card, { overflow: 'hidden' }]}>
+      <View style={[shootS.card, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
         <Gloss />
         <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
-        <View style={shootS.divider} />
+        <View style={[shootS.divider, { backgroundColor: c.border }]} />
         <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
-        <View style={shootS.divider} />
+        <View style={[shootS.divider, { backgroundColor: c.border }]} />
         <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
       </View>
       <View style={{ height: 32 }} />
@@ -474,9 +483,8 @@ const heroS = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2,
   },
-  name: { ...tekoStyle(46), color: '#fff', letterSpacing: 1.5, marginBottom: 8 },
+  name: { ...tekoStyle(46), letterSpacing: 1.5, marginBottom: 8 },
   scopePill: {
-    backgroundColor: 'rgba(255,255,255,0.07)',
     borderRadius: 20, borderWidth: 1,
     paddingHorizontal: 14, paddingVertical: 4,
   },
@@ -484,8 +492,8 @@ const heroS = StyleSheet.create({
 });
 
 const shootS = StyleSheet.create({
-  card:    { flexDirection: 'row', alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: colors.dark.border, backgroundColor: colors.dark.card, padding: 20 },
-  divider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.dark.border, marginHorizontal: 4 },
+  card:    { flexDirection: 'row', alignItems: 'center', borderRadius: 18, borderWidth: 1, padding: 20 },
+  divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 4 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -510,8 +518,8 @@ export default function DashboardScreen() {
   if (!players?.length) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: c.background }]}>
-        <Ionicons name="basketball-outline" size={52} color="rgba(255,255,255,0.25)" />
-        <Text style={styles.emptyTitle}>No players yet</Text>
+        <Ionicons name="basketball-outline" size={52} color={c.border} />
+        <Text style={[styles.emptyTitle, { color: c.foreground }]}>No players yet</Text>
         <Text style={[styles.emptySub, { color: c.mutedForeground }]}>Add players from the Profile tab to start tracking.</Text>
       </View>
     );
@@ -573,6 +581,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   logoBannerImage: { width: '100%', height: 60 },
-  emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', color: '#fff', marginTop: 16, marginBottom: 8 },
+  emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginTop: 16, marginBottom: 8 },
   emptySub:   { fontSize: 14, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
 });
