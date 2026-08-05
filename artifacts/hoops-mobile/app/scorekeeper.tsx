@@ -1092,7 +1092,14 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
   // use a dimension heuristic that works cross-platform.
   const shortEdge = Math.min(sw, sh);
   const isTablet = shortEdge >= 768;
-  const cameraH = isLandscape ? sh : Math.round(sh * (isTablet ? 0.62 : 0.54));
+  // Small phones (iPhone SE, etc.) have a screen height ≤ 667 pt.  At 54 % the
+  // camera alone takes ~360 pt, leaving only ~307 pt for the chip bar, stat
+  // buttons, and Save button — too cramped.  Drop back to 46 % on those devices
+  // so the controls section keeps the same space it had before the height bump.
+  // Larger phones (≥ 750 pt) and tablets keep the 54 % / 62 % values.
+  const isSmallPhone = !isTablet && sh <= 667;
+  const portraitRatio = isTablet ? 0.62 : isSmallPhone ? 0.46 : 0.54;
+  const cameraH = isLandscape ? sh : Math.round(sh * portraitRatio);
   const cameraLandW = isTablet ? '62%' : '55%';
 
   return StyleSheet.create({
