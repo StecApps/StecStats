@@ -18,6 +18,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 
 type Phase = 'email' | 'otp';
 type Mode = 'signIn' | 'signUp';
@@ -51,44 +52,42 @@ export default function AuthScreen() {
     setLoading(true);
     setError('');
     try {
+      // Nonce ties the Apple identity token to this exact request (replay protection)
+      const nonce = Crypto.randomUUID();
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
+        nonce,
       });
       if (!credential.identityToken) throw new Error('No identity token returned from Apple');
 
-      // Try sign-in with the Apple token first
-      try {
-        const result = await signIn!.create({
-          strategy: 'oauth_token_apple',
-          token: credential.identityToken,
+      // Attempt sign-in for returning users
+      const signInResult = await signIn!.create({
+        strategy: 'oauth_token_apple',
+        token: credential.identityToken,
+      } as any);
+
+      const isTransferable = signInResult.firstFactorVerification?.status === 'transferable';
+
+      if (isTransferable) {
+        // New user — transfer the verified Apple credential into a sign-up
+        const suResult = await signUp!.create({
+          transfer: true,
+          ...(credential.fullName?.givenName  ? { firstName: credential.fullName.givenName  } : {}),
+          ...(credential.fullName?.familyName ? { lastName:  credential.fullName.familyName } : {}),
         } as any);
-        if (result.status === 'complete') {
+        if (suResult.status === 'complete') {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await setSignInActive!({ session: result.createdSessionId });
+          await setSignUpActive!({ session: suResult.createdSessionId });
         }
-      } catch (err: any) {
-        const code = err?.errors?.[0]?.code ?? '';
-        if (code === 'external_account_not_found' || code === 'form_identifier_not_found') {
-          // New user — create account with Apple token
-          const suResult = await signUp!.create({
-            strategy: 'oauth_token_apple',
-            token: credential.identityToken,
-            ...(credential.fullName?.givenName  ? { firstName: credential.fullName.givenName  } : {}),
-            ...(credential.fullName?.familyName ? { lastName:  credential.fullName.familyName } : {}),
-          } as any);
-          if (suResult.status === 'complete') {
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            await setSignUpActive!({ session: suResult.createdSessionId });
-          }
-        } else {
-          throw err;
-        }
+      } else if (signInResult.status === 'complete') {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await setSignInActive!({ session: signInResult.createdSessionId });
       }
     } catch (err: any) {
-      if (err?.code === 'ERR_REQUEST_CANCELED') return; // User dismissed the sheet
+      if (err?.code === 'ERR_REQUEST_CANCELED') return; // User dismissed the Apple sheet
       setError(err?.errors?.[0]?.longMessage ?? err?.message ?? 'Apple Sign-In failed');
     } finally {
       setLoading(false);
