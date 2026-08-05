@@ -1084,8 +1084,16 @@ export default function ScorekeeperScreen() {
 }
 
 function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscape: boolean) {
-  // Camera section height: top half in portrait, full height in landscape
-  const cameraH = isLandscape ? sh : Math.round(sh * 0.46);
+  // Camera section height — bigger on tablet.
+  // Portrait: 54 % of screen height (was 46 %).
+  // Landscape: tablet gets 62 % width, phone gets 55 %.
+  // Tablet detection: iPads (and large Android tablets) report at least 768px on
+  // their short edge. Platform.isPad only exists on the iOS static type, so we
+  // use a dimension heuristic that works cross-platform.
+  const shortEdge = Math.min(sw, sh);
+  const isTablet = shortEdge >= 768;
+  const cameraH = isLandscape ? sh : Math.round(sh * (isTablet ? 0.62 : 0.54));
+  const cameraLandW = isTablet ? '62%' : '55%';
 
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
@@ -1100,7 +1108,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       overflow: 'hidden',
     },
     cameraSectionLand: {
-      width: '48%',
+      width: cameraLandW,
       height: '100%',
       backgroundColor: '#0d0d0d',
       overflow: 'hidden',

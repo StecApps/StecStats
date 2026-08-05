@@ -29,47 +29,43 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 
+// ─── Brand palette (dark theme) ─────────────────────────────────────────────
+const BRAND = {
+  orange:  '#FF531A',
+  black:   '#080808',
+  card:    '#101010',
+  border:  'rgba(255,255,255,0.09)',
+  dimText: 'rgba(255,255,255,0.45)',
+};
+
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
 }
 
-// ─── Glass glare layers ──────────────────────────────────────────────────────
+// ─── Glass glare components ──────────────────────────────────────────────────
 
-// Warm orange-to-amber gradient — the brand "light source" coming from above
-function OrangeGlareOverlay({ strength = 1 }: { strength?: number }) {
+// A clean white sheen at the top of a card — like light catching glass.
+function Gloss() {
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      {/* Very subtle white wash from top */}
       <LinearGradient
-        colors={[
-          `rgba(255,83,26,${0.26 * strength})`,
-          `rgba(255,130,50,${0.14 * strength})`,
-          'rgba(0,0,0,0.0)',
-        ]}
-        locations={[0, 0.38, 1]}
-        start={{ x: 0.1, y: 0 }}
-        end={{ x: 0.9, y: 0.82 }}
-        style={{ flex: 1 }}
+        colors={['rgba(255,255,255,0.07)', 'rgba(255,255,255,0.0)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 0.6 }}
+        style={{ ...StyleSheet.absoluteFillObject }}
       />
-    </View>
-  );
-}
-
-// Sharp specular highlight — the bright white streak at the very top of a
-// glass surface. Gives the "glossy" iOS icon / liquid-glass look.
-function SpecularHighlight({ wide = false }: { wide?: boolean }) {
-  return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      {/* Specular highlight — bright narrow pill at very top */}
       <LinearGradient
-        colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0.0)']}
-        locations={[0, 1]}
+        colors={['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.0)']}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={{
           position: 'absolute',
           top: 0,
-          left: wide ? '5%' : '18%',
-          right: wide ? '5%' : '18%',
-          height: wide ? 22 : 18,
+          left: '22%',
+          right: '22%',
+          height: 14,
           borderBottomLeftRadius: 999,
           borderBottomRightRadius: 999,
         }}
@@ -78,8 +74,27 @@ function SpecularHighlight({ wide = false }: { wide?: boolean }) {
   );
 }
 
-// Neutral white glare for selected chips
-function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
+// Orange glow from the top edge — only used on the hero card.
+function OrangeGlow({ strength = 1 }: { strength?: number }) {
+  return (
+    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <LinearGradient
+        colors={[
+          `rgba(255,83,26,${0.30 * strength})`,
+          `rgba(255,83,26,${0.10 * strength})`,
+          'rgba(255,83,26,0)',
+        ]}
+        locations={[0, 0.35, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={{ flex: 1 }}
+      />
+    </View>
+  );
+}
+
+// White neutral glare for selected chips
+function GlareOverlay({ intensity = 0.15 }: { intensity?: number }) {
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
       <LinearGradient
@@ -92,51 +107,51 @@ function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
   );
 }
 
-// ─── Arc Gauge ─────────────────────────────────────────────────────────────
+// ─── Arc Gauge ───────────────────────────────────────────────────────────────
 function ArcGauge({
-  pct, label, made, attempted, colors, size = 118,
+  pct, label, made, attempted,
 }: {
-  pct?: number | null; label: string; made?: number; attempted?: number; colors: any; size?: number;
+  pct?: number | null; label: string; made?: number; attempted?: number;
 }) {
-  const SW = 9;
-  const r = (size - SW) / 2;
+  const SIZE = 120, SW = 9;
+  const r = (SIZE - SW) / 2;
   const circ = 2 * Math.PI * r;
   const filled = Math.max(0, Math.min(1, pct ?? 0)) * circ;
-  const pctStr = pct != null && pct > 0 ? (pct * 100).toFixed(1) : '—';
+  const pctStr = pct != null && pct > 0 ? `${(pct * 100).toFixed(1)}%` : '—';
 
   return (
     <View style={gaugeS.wrap}>
-      <View style={{ width: size, height: size }}>
-        <Svg width={size} height={size}>
-          <G rotation="-90" origin={`${size / 2},${size / 2}`}>
-            <Circle cx={size/2} cy={size/2} r={r} stroke={colors.muted} strokeWidth={SW} fill="none" />
-            <Circle cx={size/2} cy={size/2} r={r} stroke={colors.primary} strokeWidth={SW} fill="none"
+      <View style={{ width: SIZE, height: SIZE }}>
+        <Svg width={SIZE} height={SIZE}>
+          <G rotation="-90" origin={`${SIZE / 2},${SIZE / 2}`}>
+            <Circle cx={SIZE/2} cy={SIZE/2} r={r}
+              stroke="rgba(255,255,255,0.08)" strokeWidth={SW} fill="none" />
+            <Circle cx={SIZE/2} cy={SIZE/2} r={r}
+              stroke={BRAND.orange} strokeWidth={SW} fill="none"
               strokeDasharray={`${filled} ${circ}`} strokeLinecap="round" />
           </G>
         </Svg>
         <View style={gaugeS.center}>
-          <Text style={[gaugeS.pctNum, { color: colors.foreground }]}>{pctStr}</Text>
-          {pct != null && pct > 0 && <Text style={[gaugeS.pctLabel, { color: colors.mutedForeground }]}>PCT</Text>}
+          <Text style={gaugeS.pctNum}>{pctStr}</Text>
+          {made != null && attempted != null && (
+            <Text style={gaugeS.madeFrac}>{made}/{attempted}</Text>
+          )}
         </View>
       </View>
-      <Text style={[gaugeS.gaugeLabel, { color: colors.mutedForeground }]}>{label}</Text>
-      {made != null && attempted != null && (
-        <Text style={[gaugeS.made, { color: colors.mutedForeground }]}>{made} / {attempted}</Text>
-      )}
+      <Text style={gaugeS.label}>{label.toUpperCase()}</Text>
     </View>
   );
 }
 const gaugeS = StyleSheet.create({
-  wrap: { alignItems: 'center', flex: 1 },
-  center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  pctNum: { ...tekoStyle(22) },
-  pctLabel: { fontSize: 8, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
-  gaugeLabel: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 8 },
-  made: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 3 },
+  wrap:     { alignItems: 'center', flex: 1 },
+  center:   { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  pctNum:   { ...tekoStyle(20), color: '#fff' },
+  madeFrac: { fontSize: 10, fontFamily: 'Inter_400Regular', color: BRAND.dimText, marginTop: 1 },
+  label:    { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, color: BRAND.dimText, marginTop: 8 },
 });
 
-// ─── Player Chip ───────────────────────────────────────────────────────────
-function PlayerChip({ player, isSelected, onPress, colors }: { player: any; isSelected: boolean; onPress: () => void; colors: any }) {
+// ─── Player chip ─────────────────────────────────────────────────────────────
+function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: boolean; onPress: () => void }) {
   const { data: summary } = useGetPlayerSummary(player.id);
   return (
     <TouchableOpacity
@@ -145,82 +160,81 @@ function PlayerChip({ player, isSelected, onPress, colors }: { player: any; isSe
       style={[
         chipS.chip,
         {
-          backgroundColor: isSelected ? colors.primary : colors.card,
-          borderColor: isSelected ? colors.primary : colors.border,
+          backgroundColor: isSelected ? BRAND.orange : BRAND.card,
+          borderColor: isSelected ? BRAND.orange : BRAND.border,
           overflow: 'hidden',
         },
       ]}
     >
-      {isSelected && <GlareOverlay intensity={0.2} />}
-      {isSelected && <SpecularHighlight />}
-      <Text style={[chipS.name, { color: isSelected ? '#fff' : colors.foreground }]}>{player.name}</Text>
-      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.72)' : colors.mutedForeground }]}>
+      {isSelected && <GlareOverlay intensity={0.18} />}
+      <Text style={[chipS.name, { color: '#fff' }]}>{player.name}</Text>
+      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.75)' : BRAND.dimText }]}>
         {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
       </Text>
     </TouchableOpacity>
   );
 }
 const chipS = StyleSheet.create({
-  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 22, borderWidth: 1, marginRight: 8, minWidth: 110 },
+  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 24, borderWidth: 1, marginRight: 8, minWidth: 110 },
   name: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  sub: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  sub:  { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
-// ─── Stat Card ─────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, colors }: { label: string; value: string; sub?: string; colors: any }) {
+// ─── Big stat card ────────────────────────────────────────────────────────────
+function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <View style={[statS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.35)', overflow: 'hidden' }]}>
-      <OrangeGlareOverlay />
-      <SpecularHighlight />
-      <Text style={[statS.label, { color: colors.mutedForeground }]}>{label}</Text>
-      <Text style={[statS.value, { color: colors.primary }]}>{value}</Text>
-      {sub && <Text style={[statS.sub, { color: colors.mutedForeground }]}>{sub}</Text>}
+    <View style={[statS.card, { overflow: 'hidden' }]}>
+      <Gloss />
+      <Text style={statS.label}>{label}</Text>
+      <Text style={statS.value}>{value}</Text>
+      {sub && <Text style={statS.sub}>{sub}</Text>}
     </View>
   );
 }
 const statS = StyleSheet.create({
-  card: { flex: 1, borderRadius: 14, borderWidth: 1.5, padding: 14, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { ...tekoStyle(34) },
-  sub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
+  card:  { flex: 1, borderRadius: 16, borderWidth: 1, borderColor: BRAND.border, backgroundColor: BRAND.card, padding: 16, alignItems: 'center' },
+  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase', color: BRAND.dimText, marginBottom: 6, textAlign: 'center' },
+  value: { ...tekoStyle(38), color: BRAND.orange },
+  sub:   { fontSize: 10, fontFamily: 'Inter_400Regular', color: BRAND.dimText, marginTop: 2, textAlign: 'center' },
 });
 
-// ─── Mini Stat ──────────────────────────────────────────────────────────────
-function MiniStat({ label, value, total, colors }: { label: string; value: string; total?: string; colors: any }) {
+// ─── Mini stat (playmaking / defense) ────────────────────────────────────────
+function MiniStat({ label, value, total }: { label: string; value: string; total?: string }) {
   return (
-    <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.28)', overflow: 'hidden' }]}>
-      <OrangeGlareOverlay strength={0.8} />
-      <SpecularHighlight />
-      <Text style={[miniS.label, { color: colors.mutedForeground }]}>{label}</Text>
-      <Text style={[miniS.value, { color: colors.foreground }]}>{value}</Text>
-      {total && <Text style={[miniS.total, { color: colors.mutedForeground }]}>{total} TOTAL</Text>}
+    <View style={[miniS.wrap, { overflow: 'hidden' }]}>
+      <Gloss />
+      <Text style={miniS.label}>{label}</Text>
+      <Text style={miniS.value}>{value}</Text>
+      {total && <Text style={miniS.total}>{total} TOT</Text>}
     </View>
   );
 }
 const miniS = StyleSheet.create({
-  wrap: { flex: 1, borderRadius: 14, borderWidth: 1.5, padding: 14, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { ...tekoStyle(28) },
-  total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  wrap:  { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: BRAND.border, backgroundColor: BRAND.card, padding: 14, alignItems: 'center' },
+  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', color: BRAND.dimText, marginBottom: 4, textAlign: 'center' },
+  value: { ...tekoStyle(30), color: '#fff' },
+  total: { fontSize: 9, fontFamily: 'Inter_400Regular', color: BRAND.dimText, marginTop: 2 },
 });
 
-// ─── Section Header ────────────────────────────────────────────────────────
-function SectionHeader({ title, colors }: { title: string; colors: any }) {
+// ─── Section header ───────────────────────────────────────────────────────────
+function SectionHeader({ title }: { title: string }) {
   return (
-    <View style={secS.wrap}>
-      <Text style={[secS.title, { color: colors.foreground }]}>{title.toUpperCase()}</Text>
-      <View style={[secS.accent, { backgroundColor: colors.primary }]} />
+    <View style={secS.row}>
+      <View style={secS.dot} />
+      <Text style={secS.title}>{title.toUpperCase()}</Text>
+      <View style={{ flex: 1, height: 1, backgroundColor: BRAND.border, marginLeft: 10, alignSelf: 'center' }} />
     </View>
   );
 }
 const secS = StyleSheet.create({
-  wrap: { marginBottom: 12, marginTop: 22 },
-  title: { ...tekoStyle(22), letterSpacing: 1.5 },
-  accent: { height: 2.5, width: 44, borderRadius: 2, marginTop: 3 },
+  row:   { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 24 },
+  dot:   { width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND.orange, marginRight: 8 },
+  title: { ...tekoStyle(20), letterSpacing: 2, color: '#fff' },
 });
 
-// ─── Player Dashboard ──────────────────────────────────────────────────────
-function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
+// ─── Player Dashboard ─────────────────────────────────────────────────────────
+function PlayerDashboard({ player }: { player: any }) {
+  const colors = useColors();
   const { data: summary, isLoading } = useGetPlayerSummary(player.id);
   const updatePlayer = useUpdatePlayer();
   const qc = useQueryClient();
@@ -234,17 +248,11 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
     getToken().then((t) => setAuthToken(t ?? null)).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    setPhotoLoadFailed(false);
-  }, [player.photoObjectPath]);
+  useEffect(() => { setPhotoLoadFailed(false); }, [player.photoObjectPath]);
 
   const MAX_RETRIES = 3;
 
-  async function attemptUpload(
-    asset: ImagePicker.ImagePickerAsset,
-    pendingEntryId?: string,
-    retryCount: number = 0,
-  ) {
+  async function attemptUpload(asset: ImagePicker.ImagePickerAsset, pendingEntryId?: string, retryCount = 0) {
     setUploading(true);
     try {
       const token = await getToken();
@@ -253,42 +261,25 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
       const objectPath = await uploadPhoto(asset.uri, mimeType, token);
       await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
       qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
-      if (pendingEntryId && userId) {
-        await dequeuePhoto(userId, pendingEntryId);
-      }
+      if (pendingEntryId && userId) await dequeuePhoto(userId, pendingEntryId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Please try again.';
-      const entryId = pendingEntryId ?? (userId ? await enqueuePhoto(
-        userId,
-        asset.uri,
-        asset.mimeType ?? 'image/jpeg',
-        player.id,
-      ) : undefined);
+      const entryId = pendingEntryId ?? (userId
+        ? await enqueuePhoto(userId, asset.uri, asset.mimeType ?? 'image/jpeg', player.id)
+        : undefined);
       if (alertVisibleRef.current) return;
       alertVisibleRef.current = true;
-
       if (retryCount >= MAX_RETRIES) {
-        Alert.alert(
-          'Upload failed',
-          'Upload failed — please check your connection and try again later.',
-          [{ text: 'OK', style: 'cancel', onPress: () => { alertVisibleRef.current = false; } }],
-        );
+        Alert.alert('Upload failed', 'Check your connection and try again later.', [
+          { text: 'OK', style: 'cancel', onPress: () => { alertVisibleRef.current = false; } },
+        ]);
       } else {
-        const delay = 1000 * Math.pow(2, retryCount);
         Alert.alert('Upload failed', msg, [
-          {
-            text: 'Retry',
-            onPress: () => {
-              alertVisibleRef.current = false;
-              setTimeout(() => attemptUpload(asset, entryId, retryCount + 1), delay);
-            },
-          },
+          { text: 'Retry', onPress: () => { alertVisibleRef.current = false; setTimeout(() => attemptUpload(asset, entryId, retryCount + 1), 1000 * Math.pow(2, retryCount)); } },
           { text: 'Cancel', style: 'cancel', onPress: () => { alertVisibleRef.current = false; } },
         ]);
       }
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   }
 
   async function handlePhotoTap() {
@@ -297,31 +288,18 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
         text: 'Choose from Library',
         onPress: async () => {
           const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (!perm.granted) {
-            Alert.alert('Permission needed', 'Allow photo access in Settings to set a player photo.');
-            return;
-          }
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: 'images',
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          });
+          if (!perm.granted) { Alert.alert('Permission needed', 'Allow photo access in Settings.'); return; }
+          const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: 'images', allowsEditing: true, aspect: [1, 1], quality: 0.8 });
           if (result.canceled || !result.assets[0]) return;
           await attemptUpload(result.assets[0]);
         },
       },
       ...(player.photoObjectPath ? [{
-        text: 'Remove Photo',
-        style: 'destructive' as const,
+        text: 'Remove Photo', style: 'destructive' as const,
         onPress: async () => {
           setUploading(true);
-          try {
-            await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: null } });
-            qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
-          } finally {
-            setUploading(false);
-          }
+          try { await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: null } }); qc.invalidateQueries({ queryKey: getListPlayersQueryKey() }); }
+          finally { setUploading(false); }
         },
       }] : []),
       { text: 'Cancel', style: 'cancel' },
@@ -329,146 +307,189 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
   }
 
   if (isLoading || !summary) {
-    return (
-      <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
+    return <View style={{ paddingVertical: 40, alignItems: 'center' }}><ActivityIndicator color={BRAND.orange} /></View>;
   }
 
   const fgMade = summary.twoMade + summary.threeMade;
-  const fgAtt = summary.twoAttempted + summary.threeAttempted;
+  const fgAtt  = summary.twoAttempted + summary.threeAttempted;
   const winRate = summary.games > 0 ? Math.round((summary.wins / summary.games) * 100) : 0;
   const hasPhoto = !!player.photoObjectPath;
 
   return (
     <>
-      {/* ── Player Hero ──────────────────────────────────────────────── */}
-      <View style={[heroS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.55)', overflow: 'hidden' }]}>
-        {/* Deep orange glare — strongest treatment; this is the hero */}
-        <OrangeGlareOverlay strength={1.6} />
-        {/* Wide specular streak across the hero card */}
-        <SpecularHighlight wide />
-
-        <View style={heroS.flashRow}>
-          <Ionicons name="flash" size={13} color={colors.primary} />
-          <Text style={[heroS.liveLabel, { color: colors.primary }]}>LIVE PLAYER STATS</Text>
-          <Ionicons name="flash" size={13} color={colors.primary} />
+      {/* ── Hero card ──────────────────────────────────────────────────── */}
+      <View style={heroS.card}>
+        {/* Orange glow radiates from the top edge of the hero card */}
+        <OrangeGlow strength={1} />
+        {/* Top orange accent bar */}
+        <LinearGradient
+          colors={[BRAND.orange, 'rgba(255,83,26,0)']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+          style={heroS.topBar}
+        />
+        {/* Glass sheen */}
+        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+          <LinearGradient
+            colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.5 }}
+            style={{ flex: 1 }}
+          />
         </View>
 
-        {/* Tappable avatar */}
-        <TouchableOpacity onPress={handlePhotoTap} activeOpacity={0.8} style={heroS.avatarWrap}>
-          <View style={[heroS.avatar, { borderColor: colors.primary, overflow: 'hidden' }]}>
+        {/* Live badge */}
+        <View style={heroS.liveBadge}>
+          <Ionicons name="flash" size={11} color={BRAND.orange} />
+          <Text style={heroS.liveText}>LIVE STATS</Text>
+          <Ionicons name="flash" size={11} color={BRAND.orange} />
+        </View>
+
+        {/* Avatar */}
+        <TouchableOpacity onPress={handlePhotoTap} activeOpacity={0.85} style={heroS.avatarOuter}>
+          {/* Orange glow ring behind avatar */}
+          <View style={heroS.avatarGlow} />
+          <View style={heroS.avatarRing}>
             {hasPhoto && authToken !== null && !photoLoadFailed ? (
               <Image
-                source={{
-                  uri: photoSrc(player.photoObjectPath),
-                  headers: { Authorization: `Bearer ${authToken}` },
-                }}
+                source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
                 style={heroS.avatarImg}
                 contentFit="cover"
                 onError={() => setPhotoLoadFailed(true)}
               />
             ) : (
-              <Text style={[heroS.avatarText, { color: colors.primary }]}>
-                {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
-              </Text>
+              <View style={heroS.avatarFallback}>
+                <Text style={heroS.avatarInitials}>
+                  {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                </Text>
+              </View>
             )}
-            {/* Glare on avatar */}
+            {/* Diagonal glass shine over photo */}
             <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
               <LinearGradient
-                colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.0)']}
-                start={{ x: 0.15, y: 0 }}
-                end={{ x: 0.85, y: 0.55 }}
+                colors={['rgba(255,255,255,0.30)', 'rgba(255,255,255,0.0)']}
+                start={{ x: 0.1, y: 0 }} end={{ x: 0.85, y: 0.55 }}
                 style={{ flex: 1 }}
               />
             </View>
           </View>
           {/* Camera badge */}
-          <View style={[heroS.cameraBadge, { backgroundColor: colors.primary }]}>
-            {uploading
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Ionicons name="camera" size={13} color="#fff" />}
+          <View style={heroS.cameraBadge}>
+            {uploading ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="camera" size={12} color="#fff" />}
           </View>
         </TouchableOpacity>
 
-        <Text style={[heroS.playerName, { color: colors.foreground }]}>
-          {player.name.toUpperCase()}
-        </Text>
-        <View style={[heroS.scopeBadge, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
-          <Text style={[heroS.scopeText, { color: colors.mutedForeground }]}>
-            {summary.seasonScope === 'career' ? '● CAREER SUMMARY DASHBOARD' : '● CURRENT SEASON SUMMARY'}
+        {/* Name */}
+        <Text style={heroS.name}>{player.name.toUpperCase()}</Text>
+
+        {/* Season scope pill */}
+        <View style={heroS.scopePill}>
+          <Text style={heroS.scopeText}>
+            {summary.seasonScope === 'career' ? 'CAREER' : 'SEASON'} OVERVIEW
           </Text>
         </View>
       </View>
 
-      {/* ── 4 Stat Cards ─────────────────────────────────────────────── */}
-      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
-        <StatCard label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} TOTAL`} colors={colors} />
-        <StatCard label="Games Played" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} colors={colors} />
+      {/* ── 4 big stat cards ──────────────────────────────────────────── */}
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+        <StatCard label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} total`} />
+        <StatCard label="Games" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} />
       </View>
-      <View style={{ flexDirection: 'row', gap: 6 }}>
-        <StatCard label="Win Record" value={`${summary.wins}-${summary.losses}`} sub={`${winRate}% WIN RATE`} colors={colors} />
-        <StatCard label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} TOTAL`} colors={colors} />
-      </View>
-
-      {/* ── Playmaking & Defense — smaller boxes, listed first ───────── */}
-      <SectionHeader title="Playmaking & Defense" colors={colors} />
-      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
-        <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} colors={colors} />
-        <MiniStat label="Steals / GM" value={summary.spg.toFixed(1)} total={String(summary.steals)} colors={colors} />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
-        <MiniStat label="Blocks / GM" value={summary.bpg.toFixed(1)} total={String(summary.blocks)} colors={colors} />
-        <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} colors={colors} />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <StatCard label="Win Rate" value={`${winRate}%`} sub={`${summary.wins}–${summary.losses}`} />
+        <StatCard label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} total`} />
       </View>
 
-      {/* ── Shooting Efficiency — bigger gauges, placed last for emphasis ── */}
-      <SectionHeader title="Shooting Efficiency" colors={colors} />
-      <View style={[shootS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.35)', overflow: 'hidden' }]}>
-        <OrangeGlareOverlay strength={1.0} />
-        <SpecularHighlight wide />
-        <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} colors={colors} />
-        <View style={[shootS.divider, { backgroundColor: colors.border }]} />
-        <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} colors={colors} />
-        <View style={[shootS.divider, { backgroundColor: colors.border }]} />
-        <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} colors={colors} />
+      {/* ── Playmaking & Defense ──────────────────────────────────────── */}
+      <SectionHeader title="Playmaking & Defense" />
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+        <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} />
+        <MiniStat label="Steals / GM"  value={summary.spg.toFixed(1)} total={String(summary.steals)}  />
       </View>
-      {/* bottom spacer so the last card breathes */}
-      <View style={{ height: 28 }} />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <MiniStat label="Blocks / GM"   value={summary.bpg.toFixed(1)}  total={String(summary.blocks)}    />
+        <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} />
+      </View>
+
+      {/* ── Shooting Efficiency (biggest section, listed last) ────────── */}
+      <SectionHeader title="Shooting Efficiency" />
+      <View style={[shootS.card, { overflow: 'hidden' }]}>
+        <Gloss />
+        <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
+        <View style={shootS.divider} />
+        <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
+        <View style={shootS.divider} />
+        <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
+      </View>
+      <View style={{ height: 32 }} />
     </>
   );
 }
 
 const heroS = StyleSheet.create({
-  card: { borderRadius: 18, borderWidth: 1.5, alignItems: 'center', paddingVertical: 24, paddingHorizontal: 16, marginBottom: 10 },
-  flashRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 16 },
-  liveLabel: { ...tekoStyle(13), letterSpacing: 2.5 },
-  avatarWrap: { marginBottom: 14 },
-  avatar: {
-    width: 116, height: 116, borderRadius: 58, borderWidth: 4,
-    backgroundColor: 'rgba(255,83,26,0.15)',
+  card: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: `rgba(255,83,26,0.40)`,
+    backgroundColor: BRAND.card,
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  // Horizontal orange→transparent bar along the very top edge
+  topBar: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+  },
+  liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 18 },
+  liveText:  { ...tekoStyle(12), color: BRAND.orange, letterSpacing: 3 },
+
+  avatarOuter:   { marginBottom: 16, position: 'relative' },
+  // Diffuse orange radial glow behind the avatar
+  avatarGlow: {
+    position: 'absolute',
+    top: -14, left: -14, right: -14, bottom: -14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,83,26,0.18)',
+    // soft glow via shadow
+    shadowColor: BRAND.orange,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    elevation: 0,
+  },
+  avatarRing: {
+    width: 124, height: 124, borderRadius: 62,
+    borderWidth: 3, borderColor: BRAND.orange,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,83,26,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarImg: { width: '100%', height: '100%' },
-  avatarText: { ...tekoStyle(40) },
+  avatarImg:      { width: '100%', height: '100%' },
+  avatarFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  avatarInitials: { ...tekoStyle(44), color: BRAND.orange },
   cameraBadge: {
     position: 'absolute', bottom: 0, right: 0,
     width: 28, height: 28, borderRadius: 14,
+    backgroundColor: BRAND.orange,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#000',
+    borderWidth: 2, borderColor: BRAND.black,
   },
-  playerName: { ...tekoStyle(44), letterSpacing: 1.5 },
-  scopeBadge: { marginTop: 8, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
-  scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
+  name: { ...tekoStyle(46), color: '#fff', letterSpacing: 1.5, marginBottom: 8 },
+  scopePill: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 20, borderWidth: 1, borderColor: BRAND.border,
+    paddingHorizontal: 14, paddingVertical: 4,
+  },
+  scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 1, color: BRAND.dimText },
 });
 
 const shootS = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1.5, padding: 20 },
-  divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 6 },
+  card:    { flexDirection: 'row', alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: BRAND.border, backgroundColor: BRAND.card, padding: 20 },
+  divider: { width: 1, alignSelf: 'stretch', backgroundColor: BRAND.border, marginHorizontal: 4 },
 });
 
-// ─── Main Screen ────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -479,39 +500,34 @@ export default function DashboardScreen() {
   const activeId = selectedId ?? (players?.[0] as any)?.id ?? null;
   const activePlayer = (players as any[])?.find((p) => p.id === activeId) ?? null;
 
-  const styles = makeStyles(colors, insets);
-
   if (isLoading) {
-    return <View style={[styles.root, styles.centered]}><ActivityIndicator color={colors.primary} /></View>;
+    return (
+      <View style={[styles.root, styles.centered]}>
+        <ActivityIndicator color={BRAND.orange} />
+      </View>
+    );
   }
 
   if (!players?.length) {
     return (
       <View style={[styles.root, styles.centered]}>
-        <Ionicons name="basketball-outline" size={52} color={colors.mutedForeground} />
+        <Ionicons name="basketball-outline" size={52} color="rgba(255,255,255,0.25)" />
         <Text style={styles.emptyTitle}>No players yet</Text>
-        <Text style={styles.emptySub}>Add players from the Profile tab to start tracking stats.</Text>
+        <Text style={styles.emptySub}>Add players from the Profile tab to start tracking.</Text>
       </View>
     );
   }
 
   return (
-    // Deep black gradient background — screen goes near-pure-black at the top,
-    // warming slightly toward a rich dark brown at the bottom. Creates the
-    // contrast that makes orange and white card elements "pop".
-    <LinearGradient
-      colors={['#020101', '#070504', '#0C0A09', '#0F0C0A']}
-      locations={[0, 0.15, 0.5, 1]}
-      style={{ flex: 1 }}
-    >
+    <View style={styles.root}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 16 : 24), paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={BRAND.orange} />}
       >
-        {/* ── Brand logo banner ── */}
-        <View style={styles.logoBannerContainer}>
+        {/* ── Logo banner ── */}
+        <View style={[styles.logoBannerContainer, { height: insets.top + 60, marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)) }]}>
           <Image
             source={require('../../assets/images/logo-banner.png')}
             style={styles.logoBannerImage}
@@ -519,45 +535,35 @@ export default function DashboardScreen() {
           />
         </View>
 
+        {/* ── Player chips ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           {(players as any[]).map((p) => (
-            <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} colors={colors} />
+            <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} />
           ))}
         </ScrollView>
 
         {activePlayer
-          ? <PlayerDashboard player={activePlayer} colors={colors} />
-          : <View style={styles.centered}><ActivityIndicator color={colors.primary} /></View>}
+          ? <PlayerDashboard player={activePlayer} />
+          : <View style={styles.centered}><ActivityIndicator color={BRAND.orange} /></View>}
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
-function makeStyles(colors: any, insets: any) {
-  return StyleSheet.create({
-    root: { flex: 1, backgroundColor: '#020101' },
-    centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    content: {
-      paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 16 : 24),
-      paddingHorizontal: 16,
-      paddingBottom: insets.bottom + 100,
-    },
-    chips: { paddingBottom: 16 },
-    logoBannerContainer: {
-      alignSelf: 'stretch',
-      height: insets.top + 60,
-      marginHorizontal: -16,
-      marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)),
-      marginBottom: 16,
-      backgroundColor: '#050302',
-      justifyContent: 'flex-end',
-      overflow: 'hidden',
-    },
-    logoBannerImage: {
-      width: '100%',
-      height: 60,
-    },
-    emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', color: colors.foreground, marginTop: 16, marginBottom: 8 },
-    emptySub: { fontSize: 14, color: colors.mutedForeground, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
-  });
-}
+const styles = StyleSheet.create({
+  root:    { flex: 1, backgroundColor: BRAND.black },
+  centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
+  content: { paddingHorizontal: 16 },
+  chips:   { paddingBottom: 14 },
+  logoBannerContainer: {
+    alignSelf: 'stretch',
+    marginHorizontal: -16,
+    marginBottom: 14,
+    backgroundColor: '#050302',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  logoBannerImage: { width: '100%', height: 60 },
+  emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', color: '#fff', marginTop: 16, marginBottom: 8 },
+  emptySub:   { fontSize: 14, color: BRAND.dimText, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
+});
