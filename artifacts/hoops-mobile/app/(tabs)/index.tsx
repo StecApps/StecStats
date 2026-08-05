@@ -17,6 +17,7 @@ import Svg, { Circle, G } from 'react-native-svg';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
+import colors from '@/constants/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
 import {
@@ -29,14 +30,16 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 
-// ─── Brand palette (dark theme) ─────────────────────────────────────────────
-const BRAND = {
-  orange:  '#FF531A',
-  black:   '#080808',
-  card:    '#101010',
-  border:  'rgba(255,255,255,0.09)',
-  dimText: 'rgba(255,255,255,0.45)',
-};
+// ─── Theme helpers ────────────────────────────────────────────────────────────
+// Derive rgba strings from the design-token palette so a single change to
+// colors.ts flows through to every opacity variant used below.
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+const primaryRgba = (alpha: number) => hexToRgba(colors.dark.primary, alpha);
 
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
@@ -80,9 +83,9 @@ function OrangeGlow({ strength = 1 }: { strength?: number }) {
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
       <LinearGradient
         colors={[
-          `rgba(255,83,26,${0.30 * strength})`,
-          `rgba(255,83,26,${0.10 * strength})`,
-          'rgba(255,83,26,0)',
+          primaryRgba(0.30 * strength),
+          primaryRgba(0.10 * strength),
+          primaryRgba(0),
         ]}
         locations={[0, 0.35, 1]}
         start={{ x: 0.5, y: 0 }}
@@ -113,6 +116,7 @@ function ArcGauge({
 }: {
   pct?: number | null; label: string; made?: number; attempted?: number;
 }) {
+  const c = useColors();
   const SIZE = 120, SW = 9;
   const r = (SIZE - SW) / 2;
   const circ = 2 * Math.PI * r;
@@ -127,7 +131,7 @@ function ArcGauge({
             <Circle cx={SIZE/2} cy={SIZE/2} r={r}
               stroke="rgba(255,255,255,0.08)" strokeWidth={SW} fill="none" />
             <Circle cx={SIZE/2} cy={SIZE/2} r={r}
-              stroke={BRAND.orange} strokeWidth={SW} fill="none"
+              stroke={c.primary} strokeWidth={SW} fill="none"
               strokeDasharray={`${filled} ${circ}`} strokeLinecap="round" />
           </G>
         </Svg>
@@ -146,12 +150,13 @@ const gaugeS = StyleSheet.create({
   wrap:     { alignItems: 'center', flex: 1 },
   center:   { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   pctNum:   { ...tekoStyle(20), color: '#fff' },
-  madeFrac: { fontSize: 10, fontFamily: 'Inter_400Regular', color: BRAND.dimText, marginTop: 1 },
-  label:    { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, color: BRAND.dimText, marginTop: 8 },
+  madeFrac: { fontSize: 10, fontFamily: 'Inter_400Regular', color: colors.dark.mutedForeground, marginTop: 1 },
+  label:    { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, color: colors.dark.mutedForeground, marginTop: 8 },
 });
 
 // ─── Player chip ─────────────────────────────────────────────────────────────
 function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: boolean; onPress: () => void }) {
+  const c = useColors();
   const { data: summary } = useGetPlayerSummary(player.id);
   return (
     <TouchableOpacity
@@ -160,15 +165,15 @@ function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: 
       style={[
         chipS.chip,
         {
-          backgroundColor: isSelected ? BRAND.orange : BRAND.card,
-          borderColor: isSelected ? BRAND.orange : BRAND.border,
+          backgroundColor: isSelected ? c.primary : c.card,
+          borderColor: isSelected ? c.primary : c.border,
           overflow: 'hidden',
         },
       ]}
     >
       {isSelected && <GlareOverlay intensity={0.18} />}
       <Text style={[chipS.name, { color: '#fff' }]}>{player.name}</Text>
-      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.75)' : BRAND.dimText }]}>
+      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.75)' : c.mutedForeground }]}>
         {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
       </Text>
     </TouchableOpacity>
@@ -192,10 +197,10 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 const statS = StyleSheet.create({
-  card:  { flex: 1, borderRadius: 16, borderWidth: 1, borderColor: BRAND.border, backgroundColor: BRAND.card, padding: 16, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase', color: BRAND.dimText, marginBottom: 6, textAlign: 'center' },
-  value: { ...tekoStyle(38), color: BRAND.orange },
-  sub:   { fontSize: 10, fontFamily: 'Inter_400Regular', color: BRAND.dimText, marginTop: 2, textAlign: 'center' },
+  card:  { flex: 1, borderRadius: 16, borderWidth: 1, borderColor: colors.dark.border, backgroundColor: colors.dark.card, padding: 16, alignItems: 'center' },
+  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase', color: colors.dark.mutedForeground, marginBottom: 6, textAlign: 'center' },
+  value: { ...tekoStyle(38), color: colors.dark.primary },
+  sub:   { fontSize: 10, fontFamily: 'Inter_400Regular', color: colors.dark.mutedForeground, marginTop: 2, textAlign: 'center' },
 });
 
 // ─── Mini stat (playmaking / defense) ────────────────────────────────────────
@@ -210,10 +215,10 @@ function MiniStat({ label, value, total }: { label: string; value: string; total
   );
 }
 const miniS = StyleSheet.create({
-  wrap:  { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: BRAND.border, backgroundColor: BRAND.card, padding: 14, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', color: BRAND.dimText, marginBottom: 4, textAlign: 'center' },
+  wrap:  { flex: 1, borderRadius: 14, borderWidth: 1, borderColor: colors.dark.border, backgroundColor: colors.dark.card, padding: 14, alignItems: 'center' },
+  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', color: colors.dark.mutedForeground, marginBottom: 4, textAlign: 'center' },
   value: { ...tekoStyle(30), color: '#fff' },
-  total: { fontSize: 9, fontFamily: 'Inter_400Regular', color: BRAND.dimText, marginTop: 2 },
+  total: { fontSize: 9, fontFamily: 'Inter_400Regular', color: colors.dark.mutedForeground, marginTop: 2 },
 });
 
 // ─── Section header ───────────────────────────────────────────────────────────
@@ -222,19 +227,19 @@ function SectionHeader({ title }: { title: string }) {
     <View style={secS.row}>
       <View style={secS.dot} />
       <Text style={secS.title}>{title.toUpperCase()}</Text>
-      <View style={{ flex: 1, height: 1, backgroundColor: BRAND.border, marginLeft: 10, alignSelf: 'center' }} />
+      <View style={{ flex: 1, height: 1, backgroundColor: colors.dark.border, marginLeft: 10, alignSelf: 'center' }} />
     </View>
   );
 }
 const secS = StyleSheet.create({
   row:   { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 24 },
-  dot:   { width: 6, height: 6, borderRadius: 3, backgroundColor: BRAND.orange, marginRight: 8 },
+  dot:   { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.dark.primary, marginRight: 8 },
   title: { ...tekoStyle(20), letterSpacing: 2, color: '#fff' },
 });
 
 // ─── Player Dashboard ─────────────────────────────────────────────────────────
 function PlayerDashboard({ player }: { player: any }) {
-  const colors = useColors();
+  const c = useColors();
   const { data: summary, isLoading } = useGetPlayerSummary(player.id);
   const updatePlayer = useUpdatePlayer();
   const qc = useQueryClient();
@@ -307,7 +312,7 @@ function PlayerDashboard({ player }: { player: any }) {
   }
 
   if (isLoading || !summary) {
-    return <View style={{ paddingVertical: 40, alignItems: 'center' }}><ActivityIndicator color={BRAND.orange} /></View>;
+    return <View style={{ paddingVertical: 40, alignItems: 'center' }}><ActivityIndicator color={c.primary} /></View>;
   }
 
   const fgMade = summary.twoMade + summary.threeMade;
@@ -318,12 +323,12 @@ function PlayerDashboard({ player }: { player: any }) {
   return (
     <>
       {/* ── Hero card ──────────────────────────────────────────────────── */}
-      <View style={heroS.card}>
+      <View style={[heroS.card, { borderColor: primaryRgba(0.40), backgroundColor: c.card }]}>
         {/* Orange glow radiates from the top edge of the hero card */}
         <OrangeGlow strength={1} />
         {/* Top orange accent bar */}
         <LinearGradient
-          colors={[BRAND.orange, 'rgba(255,83,26,0)']}
+          colors={[c.primary, primaryRgba(0)]}
           start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
           style={heroS.topBar}
         />
@@ -338,16 +343,16 @@ function PlayerDashboard({ player }: { player: any }) {
 
         {/* Live badge */}
         <View style={heroS.liveBadge}>
-          <Ionicons name="flash" size={11} color={BRAND.orange} />
-          <Text style={heroS.liveText}>LIVE STATS</Text>
-          <Ionicons name="flash" size={11} color={BRAND.orange} />
+          <Ionicons name="flash" size={11} color={c.primary} />
+          <Text style={[heroS.liveText, { color: c.primary }]}>LIVE STATS</Text>
+          <Ionicons name="flash" size={11} color={c.primary} />
         </View>
 
         {/* Avatar */}
         <TouchableOpacity onPress={handlePhotoTap} activeOpacity={0.85} style={heroS.avatarOuter}>
           {/* Orange glow ring behind avatar */}
-          <View style={heroS.avatarGlow} />
-          <View style={heroS.avatarRing}>
+          <View style={[heroS.avatarGlow, { backgroundColor: primaryRgba(0.18), shadowColor: c.primary }]} />
+          <View style={[heroS.avatarRing, { borderColor: c.primary, backgroundColor: primaryRgba(0.12) }]}>
             {hasPhoto && authToken !== null && !photoLoadFailed ? (
               <Image
                 source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
@@ -357,7 +362,7 @@ function PlayerDashboard({ player }: { player: any }) {
               />
             ) : (
               <View style={heroS.avatarFallback}>
-                <Text style={heroS.avatarInitials}>
+                <Text style={[heroS.avatarInitials, { color: c.primary }]}>
                   {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
                 </Text>
               </View>
@@ -372,7 +377,7 @@ function PlayerDashboard({ player }: { player: any }) {
             </View>
           </View>
           {/* Camera badge */}
-          <View style={heroS.cameraBadge}>
+          <View style={[heroS.cameraBadge, { backgroundColor: c.primary, borderColor: c.background }]}>
             {uploading ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="camera" size={12} color="#fff" />}
           </View>
         </TouchableOpacity>
@@ -381,8 +386,8 @@ function PlayerDashboard({ player }: { player: any }) {
         <Text style={heroS.name}>{player.name.toUpperCase()}</Text>
 
         {/* Season scope pill */}
-        <View style={heroS.scopePill}>
-          <Text style={heroS.scopeText}>
+        <View style={[heroS.scopePill, { borderColor: c.border }]}>
+          <Text style={[heroS.scopeText, { color: c.mutedForeground }]}>
             {summary.seasonScope === 'career' ? 'CAREER' : 'SEASON'} OVERVIEW
           </Text>
         </View>
@@ -428,8 +433,6 @@ const heroS = StyleSheet.create({
   card: {
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: `rgba(255,83,26,0.40)`,
-    backgroundColor: BRAND.card,
     alignItems: 'center',
     paddingVertical: 28,
     paddingHorizontal: 16,
@@ -442,7 +445,7 @@ const heroS = StyleSheet.create({
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
   },
   liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 18 },
-  liveText:  { ...tekoStyle(12), color: BRAND.orange, letterSpacing: 3 },
+  liveText:  { ...tekoStyle(12), letterSpacing: 3 },
 
   avatarOuter:   { marginBottom: 16, position: 'relative' },
   // Diffuse orange radial glow behind the avatar
@@ -450,9 +453,7 @@ const heroS = StyleSheet.create({
     position: 'absolute',
     top: -14, left: -14, right: -14, bottom: -14,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,83,26,0.18)',
     // soft glow via shadow
-    shadowColor: BRAND.orange,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.55,
     shadowRadius: 20,
@@ -460,38 +461,36 @@ const heroS = StyleSheet.create({
   },
   avatarRing: {
     width: 124, height: 124, borderRadius: 62,
-    borderWidth: 3, borderColor: BRAND.orange,
+    borderWidth: 3,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,83,26,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
   avatarImg:      { width: '100%', height: '100%' },
   avatarFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-  avatarInitials: { ...tekoStyle(44), color: BRAND.orange },
+  avatarInitials: { ...tekoStyle(44) },
   cameraBadge: {
     position: 'absolute', bottom: 0, right: 0,
     width: 28, height: 28, borderRadius: 14,
-    backgroundColor: BRAND.orange,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: BRAND.black,
+    borderWidth: 2,
   },
   name: { ...tekoStyle(46), color: '#fff', letterSpacing: 1.5, marginBottom: 8 },
   scopePill: {
     backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 20, borderWidth: 1, borderColor: BRAND.border,
+    borderRadius: 20, borderWidth: 1,
     paddingHorizontal: 14, paddingVertical: 4,
   },
-  scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 1, color: BRAND.dimText },
+  scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 1 },
 });
 
 const shootS = StyleSheet.create({
-  card:    { flexDirection: 'row', alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: BRAND.border, backgroundColor: BRAND.card, padding: 20 },
-  divider: { width: 1, alignSelf: 'stretch', backgroundColor: BRAND.border, marginHorizontal: 4 },
+  card:    { flexDirection: 'row', alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: colors.dark.border, backgroundColor: colors.dark.card, padding: 20 },
+  divider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.dark.border, marginHorizontal: 4 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
-  const colors = useColors();
+  const c = useColors();
   const insets = useSafeAreaInsets();
 
   const { data: players, isLoading, refetch } = useListPlayers();
@@ -502,24 +501,24 @@ export default function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.root, styles.centered]}>
-        <ActivityIndicator color={BRAND.orange} />
+      <View style={[styles.root, styles.centered, { backgroundColor: c.background }]}>
+        <ActivityIndicator color={c.primary} />
       </View>
     );
   }
 
   if (!players?.length) {
     return (
-      <View style={[styles.root, styles.centered]}>
+      <View style={[styles.root, styles.centered, { backgroundColor: c.background }]}>
         <Ionicons name="basketball-outline" size={52} color="rgba(255,255,255,0.25)" />
         <Text style={styles.emptyTitle}>No players yet</Text>
-        <Text style={styles.emptySub}>Add players from the Profile tab to start tracking.</Text>
+        <Text style={[styles.emptySub, { color: c.mutedForeground }]}>Add players from the Profile tab to start tracking.</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: c.background }]}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
@@ -532,7 +531,7 @@ export default function DashboardScreen() {
           },
         ]}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={BRAND.orange} />}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={c.primary} />}
       >
         {/* ── Logo banner ── */}
         <View style={[styles.logoBannerContainer, { height: insets.top + 60, marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)) }]}>
@@ -552,7 +551,7 @@ export default function DashboardScreen() {
 
         {activePlayer
           ? <PlayerDashboard player={activePlayer} />
-          : <View style={styles.centered}><ActivityIndicator color={BRAND.orange} /></View>}
+          : <View style={styles.centered}><ActivityIndicator color={c.primary} /></View>}
       </ScrollView>
     </View>
   );
@@ -561,7 +560,7 @@ export default function DashboardScreen() {
 // Note: horizontal padding for landscape safe areas is applied dynamically via
 // contentContainerStyle in the ScrollView (using insets.left / insets.right).
 const styles = StyleSheet.create({
-  root:    { flex: 1, backgroundColor: BRAND.black },
+  root:    { flex: 1 },
   centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: {},
   chips:   { paddingBottom: 14 },
@@ -575,5 +574,5 @@ const styles = StyleSheet.create({
   },
   logoBannerImage: { width: '100%', height: 60 },
   emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', color: '#fff', marginTop: 16, marginBottom: 8 },
-  emptySub:   { fontSize: 14, color: BRAND.dimText, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
+  emptySub:   { fontSize: 14, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
 });
