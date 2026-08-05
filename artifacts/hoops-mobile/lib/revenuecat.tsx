@@ -1,7 +1,7 @@
 import React, { createContext, useContext } from 'react';
 import { Platform } from 'react-native';
 import Purchases from 'react-native-purchases';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
@@ -95,6 +95,7 @@ export async function logoutRevenueCat(): Promise<void> {
 
 function useSubscriptionContext() {
   const configured = !!getRevenueCatApiKey();
+  const queryClient = useQueryClient();
 
   const customerInfoQuery = useQuery({
     queryKey: ['revenuecat', 'customer-info'],
@@ -119,7 +120,13 @@ function useSubscriptionContext() {
       const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
       return customerInfo;
     },
-    onSuccess: () => customerInfoQuery.refetch(),
+    onSuccess: (customerInfo) => {
+      // Immediately seed the cache so isPro flips to true before mutateAsync resolves.
+      // This prevents the dashboard from briefly showing Free mode after a purchase.
+      queryClient.setQueryData(['revenuecat', 'customer-info'], customerInfo);
+      // Background refetch to keep the cache fresh.
+      customerInfoQuery.refetch();
+    },
   });
 
   const restoreMutation = useMutation({

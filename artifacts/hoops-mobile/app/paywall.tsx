@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,11 @@ export default function PaywallScreen() {
 
   const [selectedPkg, setSelectedPkg] = useState<any | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('annual');
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  // Keep a ref so the async verification loop can read the latest isPro value.
+  const isProRef = useRef(isPro);
+  useEffect(() => { isProRef.current = isPro; }, [isPro]);
   const currentOffering = offerings?.current;
   const packages = currentOffering?.availablePackages ?? [];
 
@@ -71,13 +76,33 @@ export default function PaywallScreen() {
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await purchase(selectedPkg);
+      // Invalidate the server-side billing status in parallel.
       queryClient.invalidateQueries({ queryKey: getGetBillingStatusQueryKey() });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Show a "Verifying your subscription…" overlay and wait for isPro to
+      // flip to true (the cache was already seeded by onSuccess in revenuecat.tsx,
+      // so this is usually instantaneous). Cap the wait at 2 s to avoid hanging.
+      setIsVerifying(true);
+      await new Promise<void>((resolve) => {
+        const deadline = Date.now() + 2000;
+        const tick = () => {
+          if (isProRef.current || Date.now() >= deadline) {
+            resolve();
+          } else {
+            setTimeout(tick, 50);
+          }
+        };
+        tick();
+      });
+
       router.back();
     } catch (err: any) {
       if (!err?.userCancelled) {
         Alert.alert('Purchase failed', err?.message ?? 'Please try again');
       }
+    } finally {
+      setIsVerifying(false);
     }
   }
 
@@ -110,6 +135,17 @@ export default function PaywallScreen() {
 
   return (
     <View style={styles.root}>
+      {/* Verifying overlay — shown briefly after a successful purchase while
+          the entitlement cache propagates, so the coach never sees a Free flash. */}
+      {isVerifying && (
+        <View style={styles.verifyingOverlay}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.verifyingText, { color: colors.foreground }]}>
+            Verifying your subscription…
+          </Text>
+        </View>
+      )}
+
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
@@ -451,6 +487,19 @@ function makeStyles(colors: any, insets: any) {
       textAlign: 'center',
       fontFamily: 'Inter_400Regular',
       lineHeight: 17,
+    },
+    verifyingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 100,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 16,
+    },
+    verifyingText: {
+      fontSize: 16,
+      fontFamily: 'Inter_600SemiBold',
+      textAlign: 'center',
     },
     periodToggle: {
       flexDirection: 'row',
