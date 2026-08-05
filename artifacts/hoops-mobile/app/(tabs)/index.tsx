@@ -430,6 +430,25 @@ function PlayerDashboard({ player }: { player: any }) {
           />
         </View>
 
+        {/* Basketball watermark inside the hero card — clipped by overflow:hidden */}
+        <View pointerEvents="none" style={{ position: 'absolute', right: -55, bottom: -38, width: 220, height: 220, opacity: 0.13 }}>
+          <Svg width={220} height={220}>
+            <Circle cx={110} cy={110} r={100} stroke={c.primary} strokeWidth={7} fill="none" />
+            <Path
+              d="M110,10 C68,45 152,175 110,210"
+              stroke={c.primary} strokeWidth={7} fill="none" strokeLinecap="round"
+            />
+            <Path
+              d="M10,110 Q110,43 210,110"
+              stroke={c.primary} strokeWidth={7} fill="none" strokeLinecap="round"
+            />
+            <Path
+              d="M10,110 Q110,177 210,110"
+              stroke={c.primary} strokeWidth={7} fill="none" strokeLinecap="round"
+            />
+          </Svg>
+        </View>
+
         {/* Live badge */}
         <View style={heroS.liveBadge}>
           <Ionicons name="flash" size={11} color={c.primary} />
@@ -626,12 +645,20 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={c.primary} />}
       >
-        {/* ── Logo banner ── */}
-        <View style={[styles.logoBannerContainer, { height: insets.top + 60, marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)) }]}>
+        {/* ── Logo banner — stretches edge-to-edge, compensating for all paddings ── */}
+        <View style={[
+          styles.logoBannerContainer,
+          {
+            height: insets.top + 68,
+            marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)),
+            marginLeft: -(16 + (insets.left ?? 0)),
+            marginRight: -(16 + (insets.right ?? 0)),
+          },
+        ]}>
           <Image
             source={require('../../assets/images/logo-banner.png')}
             style={styles.logoBannerImage}
-            contentFit="contain"
+            contentFit="cover"
           />
         </View>
 
