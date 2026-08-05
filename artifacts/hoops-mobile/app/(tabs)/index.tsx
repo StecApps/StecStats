@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { useAuth } from '@clerk/clerk-expo';
 import {
   useListPlayers,
@@ -369,13 +370,21 @@ function PlayerDashboard({ player }: { player: any }) {
   const { getToken, userId } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  // undefined = still fetching; string = token ready; null = unavailable
+  const [authToken, setAuthToken] = useState<string | null | undefined>(undefined);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const alertVisibleRef = useRef(false);
 
-  useEffect(() => {
-    getToken().then((t) => setAuthToken(t ?? null)).catch(() => {});
-  }, []);
+  // Re-fetch the token whenever the screen comes into focus (handles expiry/refocus)
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getToken()
+        .then((t) => { if (!cancelled) setAuthToken(t ?? null); })
+        .catch(() => { if (!cancelled) setAuthToken(null); });
+      return () => { cancelled = true; };
+    }, [getToken]),
+  );
 
   async function handleShareProfile() {
     setSharing(true);
@@ -544,7 +553,7 @@ function PlayerDashboard({ player }: { player: any }) {
           {/* Orange glow ring behind avatar */}
           <View style={[heroS.avatarGlow, { backgroundColor: primaryRgba(0.18), shadowColor: c.primary }]} />
           <View style={[heroS.avatarRing, { borderColor: c.primary, backgroundColor: primaryRgba(0.12) }]}>
-            {hasPhoto && authToken !== null && !photoLoadFailed ? (
+            {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
               <Image
                 source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
                 style={heroS.avatarImg}

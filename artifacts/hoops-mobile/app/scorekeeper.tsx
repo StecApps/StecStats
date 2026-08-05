@@ -1,4 +1,19 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export const PENDING_UPLOAD_KEY = 'stec:pending-mobile-upload';
+export type PendingUpload = {
+  uris: string[];
+  teamId: number;
+  teamName: string;
+  opponent: string;
+  date: string;
+  teamScore: number;
+  opponentScore: number;
+  stats: Record<number, StatLine>;
+  events: GameEvent[];
+  savedAt: string;
+};
 import {
   View,
   Text,
@@ -97,6 +112,12 @@ export default function ScorekeeperScreen() {
   const uploadAttemptRef = useRef<{ cancelled: boolean } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
+  // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
+  const liveWsRef = useRef<WebSocket | null>(null);
+  const liveWsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirrors the latest team/opponent scores so reconnect callbacks don't
+  // depend on derived consts that are declared later in the function body.
+  const latestScoresRef = useRef({ teamScore: 0, opponentScore: 0 });
 
   // Camera / recording state
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -171,6 +192,7 @@ export default function ScorekeeperScreen() {
       setLiveCode(code);
       setIsLive(true);
       setShowGoLiveSheet(true);
+      connectBroadcasterWs(code, teamScore, opponentScore);
     } catch (err: any) {
       Alert.alert('Go Live failed', err?.message ?? 'Could not start broadcast');
     } finally {
@@ -179,6 +201,15 @@ export default function ScorekeeperScreen() {
   }
 
   async function stopLiveBroadcast(code: string) {
+    // Close broadcaster WS first so viewers get the broadcaster-left signal
+    if (liveWsReconnectRef.current) {
+      clearTimeout(liveWsReconnectRef.current);
+      liveWsReconnectRef.current = null;
+    }
+    if (liveWsRef.current) {
+      liveWsRef.current.close();
+      liveWsRef.current = null;
+    }
     try {
       const token = await getToken();
       await fetch(`${API_BASE}/api/live/${encodeURIComponent(code)}/stop`, {
@@ -190,6 +221,64 @@ export default function ScorekeeperScreen() {
     }
     setIsLive(false);
     setLiveCode(null);
+  }
+
+  // ─── Broadcaster WebSocket helpers ───────────────────────────────────────
+  // Map StatLine field names to the readable labels shown in the viewer ticker.
+  const STAT_LABELS: Record<string, string> = {
+    twoMade: '2PT', threeMade: '3PT', ftMade: 'FT',
+    rebounds: 'REB', assists: 'AST', steals: 'STL',
+    blocks: 'BLK', turnovers: 'TO',
+  };
+
+  function broadcastWsSend(payload: object) {
+    const ws = liveWsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(payload));
+    }
+  }
+
+  function connectBroadcasterWs(code: string, initTeamScore: number, initOppScore: number) {
+    if (liveWsRef.current) {
+      liveWsRef.current.close();
+      liveWsRef.current = null;
+    }
+    // Build wss:// URL from the same base the HTTP calls use
+    const wsBase = API_BASE
+      ? API_BASE.replace(/^https?:\/\//, (m) => (m.startsWith('https') ? 'wss://' : 'ws://'))
+      : `${typeof window !== 'undefined' && window.location?.protocol === 'https:' ? 'wss' : 'ws'}://localhost`;
+    const ws = new WebSocket(`${wsBase}/api/live/ws`);
+    liveWsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        type: 'join-broadcaster',
+        code,
+        teamScore: initTeamScore,
+        opponentScore: initOppScore,
+      }));
+    };
+
+    ws.onclose = () => {
+      if (liveWsRef.current !== ws) return; // already replaced
+      liveWsRef.current = null;
+      // Auto-reconnect while we're still live (api-server may have restarted)
+      liveWsReconnectRef.current = setTimeout(() => {
+        liveWsReconnectRef.current = null;
+        // Read current liveCode from state — only reconnect if still live.
+        // Use latestScoresRef so this closure doesn't depend on derived consts
+        // (teamScore / opponentScore) that are declared later in the render body.
+        setLiveCode((current) => {
+          if (current) {
+            const { teamScore: ts, opponentScore: os } = latestScoresRef.current;
+            connectBroadcasterWs(current, ts, os);
+          }
+          return current;
+        });
+      }, 3000);
+    };
+
+    ws.onerror = () => ws.close();
   }
 
   function toggleCameraFacing() {
@@ -348,6 +437,10 @@ export default function ScorekeeperScreen() {
     });
     if (action === 'make') {
       setEvents((prev) => [...prev, { playerId: selectedPlayerId, statField, delta: 1, videoTimestampMs: ts }]);
+      if (isLive && liveCode) {
+        const playerName = (players as any[])?.find((p: any) => p.id === selectedPlayerId)?.name ?? 'Player';
+        broadcastWsSend({ type: 'stat-event', code: liveCode, playerName, label: STAT_LABELS[statField] ?? statField });
+      }
     }
   }
 
@@ -363,10 +456,29 @@ export default function ScorekeeperScreen() {
     });
     if (delta === 1) {
       setEvents((prev) => [...prev, { playerId: selectedPlayerId, statField: field as string, delta: 1, videoTimestampMs: ts }]);
+      if (isLive && liveCode) {
+        const playerName = (players as any[])?.find((p: any) => p.id === selectedPlayerId)?.name ?? 'Player';
+        broadcastWsSend({ type: 'stat-event', code: liveCode, playerName, label: STAT_LABELS[field as string] ?? String(field) });
+      }
     }
   }
 
   const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0);
+
+  // ─── Live scoreboard push — fires whenever score changes while broadcasting ──
+  useEffect(() => {
+    latestScoresRef.current = { teamScore, opponentScore };
+    if (!isLive || !liveCode) return;
+    broadcastWsSend({ type: 'scoreboard', code: liveCode, teamScore, opponentScore });
+  }, [teamScore, opponentScore, isLive, liveCode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Cleanup broadcaster WS on unmount ───────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (liveWsReconnectRef.current) clearTimeout(liveWsReconnectRef.current);
+      liveWsRef.current?.close();
+    };
+  }, []);
 
   const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -410,6 +522,22 @@ export default function ScorekeeperScreen() {
         try {
           const uris = recordedUrisRef.current;
           const uploadedPaths: string[] = [];
+
+          // Persist video URIs + game data now — before any bytes are sent.
+          // If the upload is cancelled or the app is killed, the games tab can
+          // offer recovery so nothing is permanently lost.
+          await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify({
+            uris,
+            teamId: Number(teamId),
+            teamName: teamName as string,
+            opponent: opponent as string,
+            date: date as string,
+            teamScore,
+            opponentScore,
+            stats,
+            events,
+            savedAt: new Date().toISOString(),
+          } satisfies PendingUpload)).catch(() => {/* non-fatal */});
 
           setUploadProgress(0);
           for (let i = 0; i < uris.length; i++) {
@@ -493,7 +621,11 @@ export default function ScorekeeperScreen() {
       events,
       createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
       invalidateQueries: (opts) => qc.invalidateQueries(opts),
-      routerReplace: (path) => router.replace(path as any),
+      routerReplace: async (path) => {
+        // Clear the pending-upload marker only after the game is confirmed saved.
+        await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
+        router.replace(path as any);
+      },
       setSaving,
     });
   }
@@ -510,10 +642,11 @@ export default function ScorekeeperScreen() {
     setSaving(false);
     Alert.alert(
       'Upload cancelled',
-      'Your game stats are still saved. Would you like to save without the video?',
+      'Your recording is still on this device. Retry the upload, or save your stats now without video.',
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Save without video', style: 'default', onPress: () => doSaveGame(null) },
+        { text: 'Retry upload', style: 'default', onPress: handleSave },
+        { text: 'Save without video', onPress: () => doSaveGame(null) },
+        { text: 'Dismiss', style: 'cancel' },
       ],
     );
   }
@@ -581,6 +714,7 @@ export default function ScorekeeperScreen() {
             <TouchableOpacity
               onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               style={styles.oppBtn}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
             >
               <Text style={styles.oppBtnText}>−</Text>
             </TouchableOpacity>
@@ -588,6 +722,7 @@ export default function ScorekeeperScreen() {
             <TouchableOpacity
               onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
               style={styles.oppBtn}
+              hitSlop={{ top: 14, bottom: 14, left: 8, right: 14 }}
             >
               <Text style={styles.oppBtnText}>+</Text>
             </TouchableOpacity>
@@ -614,6 +749,7 @@ export default function ScorekeeperScreen() {
               <TouchableOpacity
                 onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                 style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+                hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
               >
                 <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
               </TouchableOpacity>
@@ -621,6 +757,7 @@ export default function ScorekeeperScreen() {
               <TouchableOpacity
                 onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                 style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+                hitSlop={{ top: 14, bottom: 14, left: 8, right: 14 }}
               >
                 <Text style={[styles.oppBtnText, { color: colors.foreground }]}>+</Text>
               </TouchableOpacity>
@@ -913,6 +1050,7 @@ export default function ScorekeeperScreen() {
                 <TouchableOpacity
                   onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                   style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+                  hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
                 >
                   <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
                 </TouchableOpacity>
@@ -920,6 +1058,7 @@ export default function ScorekeeperScreen() {
                 <TouchableOpacity
                   onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                   style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+                  hitSlop={{ top: 14, bottom: 14, left: 8, right: 14 }}
                 >
                   <Text style={[styles.oppBtnText, { color: colors.foreground }]}>+</Text>
                 </TouchableOpacity>
