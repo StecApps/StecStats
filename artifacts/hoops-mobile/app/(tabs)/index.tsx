@@ -33,8 +33,52 @@ function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
 }
 
-// ─── Glass glare overlays ────────────────────────────────────────────────────
-// White glare — neutral cards
+// ─── Glass glare layers ──────────────────────────────────────────────────────
+
+// Warm orange-to-amber gradient — the brand "light source" coming from above
+function OrangeGlareOverlay({ strength = 1 }: { strength?: number }) {
+  return (
+    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <LinearGradient
+        colors={[
+          `rgba(255,83,26,${0.26 * strength})`,
+          `rgba(255,130,50,${0.14 * strength})`,
+          'rgba(0,0,0,0.0)',
+        ]}
+        locations={[0, 0.38, 1]}
+        start={{ x: 0.1, y: 0 }}
+        end={{ x: 0.9, y: 0.82 }}
+        style={{ flex: 1 }}
+      />
+    </View>
+  );
+}
+
+// Sharp specular highlight — the bright white streak at the very top of a
+// glass surface. Gives the "glossy" iOS icon / liquid-glass look.
+function SpecularHighlight({ wide = false }: { wide?: boolean }) {
+  return (
+    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <LinearGradient
+        colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0.0)']}
+        locations={[0, 1]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: wide ? '5%' : '18%',
+          right: wide ? '5%' : '18%',
+          height: wide ? 22 : 18,
+          borderBottomLeftRadius: 999,
+          borderBottomRightRadius: 999,
+        }}
+      />
+    </View>
+  );
+}
+
+// Neutral white glare for selected chips
 function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
@@ -48,46 +92,25 @@ function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
   );
 }
 
-// Orange-warm glare — used on primary stat cards and hero to give the
-// "orange and black" depth the design needs. The orange fades to a white
-// shimmer then to transparent so it reads as a warm 3-D light hit.
-function OrangeGlareOverlay({ strength = 1 }: { strength?: number }) {
-  return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      <LinearGradient
-        colors={[
-          `rgba(255,83,26,${0.18 * strength})`,
-          `rgba(255,140,60,${0.10 * strength})`,
-          'rgba(255,255,255,0.0)',
-        ]}
-        locations={[0, 0.35, 1]}
-        start={{ x: 0.1, y: 0 }}
-        end={{ x: 0.9, y: 0.85 }}
-        style={{ flex: 1 }}
-      />
-    </View>
-  );
-}
-
 // ─── Arc Gauge ─────────────────────────────────────────────────────────────
 function ArcGauge({
-  pct, label, made, attempted, colors,
+  pct, label, made, attempted, colors, size = 118,
 }: {
-  pct?: number | null; label: string; made?: number; attempted?: number; colors: any;
+  pct?: number | null; label: string; made?: number; attempted?: number; colors: any; size?: number;
 }) {
-  const SIZE = 90, SW = 8;
-  const r = (SIZE - SW) / 2;
+  const SW = 9;
+  const r = (size - SW) / 2;
   const circ = 2 * Math.PI * r;
   const filled = Math.max(0, Math.min(1, pct ?? 0)) * circ;
   const pctStr = pct != null && pct > 0 ? (pct * 100).toFixed(1) : '—';
 
   return (
     <View style={gaugeS.wrap}>
-      <View style={{ width: SIZE, height: SIZE }}>
-        <Svg width={SIZE} height={SIZE}>
-          <G rotation="-90" origin={`${SIZE / 2},${SIZE / 2}`}>
-            <Circle cx={SIZE/2} cy={SIZE/2} r={r} stroke={colors.muted} strokeWidth={SW} fill="none" />
-            <Circle cx={SIZE/2} cy={SIZE/2} r={r} stroke={colors.primary} strokeWidth={SW} fill="none"
+      <View style={{ width: size, height: size }}>
+        <Svg width={size} height={size}>
+          <G rotation="-90" origin={`${size / 2},${size / 2}`}>
+            <Circle cx={size/2} cy={size/2} r={r} stroke={colors.muted} strokeWidth={SW} fill="none" />
+            <Circle cx={size/2} cy={size/2} r={r} stroke={colors.primary} strokeWidth={SW} fill="none"
               strokeDasharray={`${filled} ${circ}`} strokeLinecap="round" />
           </G>
         </Svg>
@@ -106,10 +129,10 @@ function ArcGauge({
 const gaugeS = StyleSheet.create({
   wrap: { alignItems: 'center', flex: 1 },
   center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  pctNum: { ...tekoStyle(19) },
-  pctLabel: { fontSize: 7, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
-  gaugeLabel: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 6 },
-  made: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  pctNum: { ...tekoStyle(22) },
+  pctLabel: { fontSize: 8, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
+  gaugeLabel: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 8 },
+  made: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 3 },
 });
 
 // ─── Player Chip ───────────────────────────────────────────────────────────
@@ -129,6 +152,7 @@ function PlayerChip({ player, isSelected, onPress, colors }: { player: any; isSe
       ]}
     >
       {isSelected && <GlareOverlay intensity={0.2} />}
+      {isSelected && <SpecularHighlight />}
       <Text style={[chipS.name, { color: isSelected ? '#fff' : colors.foreground }]}>{player.name}</Text>
       <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.72)' : colors.mutedForeground }]}>
         {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
@@ -145,8 +169,9 @@ const chipS = StyleSheet.create({
 // ─── Stat Card ─────────────────────────────────────────────────────────────
 function StatCard({ label, value, sub, colors }: { label: string; value: string; sub?: string; colors: any }) {
   return (
-    <View style={[statS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.28)', overflow: 'hidden' }]}>
+    <View style={[statS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.35)', overflow: 'hidden' }]}>
       <OrangeGlareOverlay />
+      <SpecularHighlight />
       <Text style={[statS.label, { color: colors.mutedForeground }]}>{label}</Text>
       <Text style={[statS.value, { color: colors.primary }]}>{value}</Text>
       {sub && <Text style={[statS.sub, { color: colors.mutedForeground }]}>{sub}</Text>}
@@ -154,7 +179,7 @@ function StatCard({ label, value, sub, colors }: { label: string; value: string;
   );
 }
 const statS = StyleSheet.create({
-  card: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, alignItems: 'center' },
+  card: { flex: 1, borderRadius: 14, borderWidth: 1.5, padding: 14, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
   value: { ...tekoStyle(34) },
   sub: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
@@ -163,8 +188,9 @@ const statS = StyleSheet.create({
 // ─── Mini Stat ──────────────────────────────────────────────────────────────
 function MiniStat({ label, value, total, colors }: { label: string; value: string; total?: string; colors: any }) {
   return (
-    <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.22)', overflow: 'hidden' }]}>
-      <OrangeGlareOverlay strength={0.7} />
+    <View style={[miniS.wrap, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.28)', overflow: 'hidden' }]}>
+      <OrangeGlareOverlay strength={0.8} />
+      <SpecularHighlight />
       <Text style={[miniS.label, { color: colors.mutedForeground }]}>{label}</Text>
       <Text style={[miniS.value, { color: colors.foreground }]}>{value}</Text>
       {total && <Text style={[miniS.total, { color: colors.mutedForeground }]}>{total} TOTAL</Text>}
@@ -172,7 +198,7 @@ function MiniStat({ label, value, total, colors }: { label: string; value: strin
   );
 }
 const miniS = StyleSheet.create({
-  wrap: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, alignItems: 'center' },
+  wrap: { flex: 1, borderRadius: 14, borderWidth: 1.5, padding: 14, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
   value: { ...tekoStyle(28) },
   total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
@@ -190,7 +216,7 @@ function SectionHeader({ title, colors }: { title: string; colors: any }) {
 const secS = StyleSheet.create({
   wrap: { marginBottom: 12, marginTop: 22 },
   title: { ...tekoStyle(22), letterSpacing: 1.5 },
-  accent: { height: 2, width: 36, borderRadius: 1, marginTop: 3 },
+  accent: { height: 2.5, width: 44, borderRadius: 2, marginTop: 3 },
 });
 
 // ─── Player Dashboard ──────────────────────────────────────────────────────
@@ -208,7 +234,6 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
     getToken().then((t) => setAuthToken(t ?? null)).catch(() => {});
   }, []);
 
-  // Reset photo error state whenever the player's photo path changes (different player or photo updated)
   useEffect(() => {
     setPhotoLoadFailed(false);
   }, [player.photoObjectPath]);
@@ -228,32 +253,28 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
       const objectPath = await uploadPhoto(asset.uri, mimeType, token);
       await updatePlayer.mutateAsync({ playerId: player.id, data: { photoObjectPath: objectPath } });
       qc.invalidateQueries({ queryKey: getListPlayersQueryKey() });
-      // Remove from the pending queue now that the upload succeeded.
       if (pendingEntryId && userId) {
         await dequeuePhoto(userId, pendingEntryId);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Please try again.';
-      // Persist the failed upload so it can be retried on next app open.
       const entryId = pendingEntryId ?? (userId ? await enqueuePhoto(
         userId,
         asset.uri,
         asset.mimeType ?? 'image/jpeg',
         player.id,
       ) : undefined);
-      // Guard: don't open a second alert if one is already visible.
       if (alertVisibleRef.current) return;
       alertVisibleRef.current = true;
 
       if (retryCount >= MAX_RETRIES) {
-        // Cap reached — show a terminal message with no Retry button.
         Alert.alert(
           'Upload failed',
           'Upload failed — please check your connection and try again later.',
           [{ text: 'OK', style: 'cancel', onPress: () => { alertVisibleRef.current = false; } }],
         );
       } else {
-        const delay = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s
+        const delay = 1000 * Math.pow(2, retryCount);
         Alert.alert('Upload failed', msg, [
           {
             text: 'Retry',
@@ -322,10 +343,12 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
 
   return (
     <>
-      {/* Player Hero */}
-      <View style={[heroS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.45)', overflow: 'hidden' }]}>
-        {/* Warm orange-to-transparent glass — makes the card look like it's lit by the orange brand color */}
-        <OrangeGlareOverlay strength={1.2} />
+      {/* ── Player Hero ──────────────────────────────────────────────── */}
+      <View style={[heroS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.55)', overflow: 'hidden' }]}>
+        {/* Deep orange glare — strongest treatment; this is the hero */}
+        <OrangeGlareOverlay strength={1.6} />
+        {/* Wide specular streak across the hero card */}
+        <SpecularHighlight wide />
 
         <View style={heroS.flashRow}>
           <Ionicons name="flash" size={13} color={colors.primary} />
@@ -333,7 +356,7 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
           <Ionicons name="flash" size={13} color={colors.primary} />
         </View>
 
-        {/* Tappable avatar — larger with a glare highlight on the photo */}
+        {/* Tappable avatar */}
         <TouchableOpacity onPress={handlePhotoTap} activeOpacity={0.8} style={heroS.avatarWrap}>
           <View style={[heroS.avatar, { borderColor: colors.primary, overflow: 'hidden' }]}>
             {hasPhoto && authToken !== null && !photoLoadFailed ? (
@@ -351,10 +374,10 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
                 {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
               </Text>
             )}
-            {/* Glare on avatar — diagonal highlight across the top */}
+            {/* Glare on avatar */}
             <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
               <LinearGradient
-                colors={['rgba(255,255,255,0.28)', 'rgba(255,255,255,0.0)']}
+                colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0.0)']}
                 start={{ x: 0.15, y: 0 }}
                 end={{ x: 0.85, y: 0.55 }}
                 style={{ flex: 1 }}
@@ -372,14 +395,14 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
         <Text style={[heroS.playerName, { color: colors.foreground }]}>
           {player.name.toUpperCase()}
         </Text>
-        <View style={[heroS.scopeBadge, { backgroundColor: colors.muted }]}>
+        <View style={[heroS.scopeBadge, { backgroundColor: 'rgba(0,0,0,0.35)' }]}>
           <Text style={[heroS.scopeText, { color: colors.mutedForeground }]}>
             {summary.seasonScope === 'career' ? '● CAREER SUMMARY DASHBOARD' : '● CURRENT SEASON SUMMARY'}
           </Text>
         </View>
       </View>
 
-      {/* 4 Stat Cards */}
+      {/* ── 4 Stat Cards ─────────────────────────────────────────────── */}
       <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
         <StatCard label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} TOTAL`} colors={colors} />
         <StatCard label="Games Played" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} colors={colors} />
@@ -389,40 +412,42 @@ function PlayerDashboard({ player, colors }: { player: any; colors: any }) {
         <StatCard label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} TOTAL`} colors={colors} />
       </View>
 
-      {/* Shooting Efficiency */}
+      {/* ── Playmaking & Defense — smaller boxes, listed first ───────── */}
+      <SectionHeader title="Playmaking & Defense" colors={colors} />
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
+        <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} colors={colors} />
+        <MiniStat label="Steals / GM" value={summary.spg.toFixed(1)} total={String(summary.steals)} colors={colors} />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 4 }}>
+        <MiniStat label="Blocks / GM" value={summary.bpg.toFixed(1)} total={String(summary.blocks)} colors={colors} />
+        <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} colors={colors} />
+      </View>
+
+      {/* ── Shooting Efficiency — bigger gauges, placed last for emphasis ── */}
       <SectionHeader title="Shooting Efficiency" colors={colors} />
-      <View style={[shootS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.22)', overflow: 'hidden' }]}>
-        <OrangeGlareOverlay strength={0.8} />
+      <View style={[shootS.card, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.35)', overflow: 'hidden' }]}>
+        <OrangeGlareOverlay strength={1.0} />
+        <SpecularHighlight wide />
         <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} colors={colors} />
         <View style={[shootS.divider, { backgroundColor: colors.border }]} />
         <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} colors={colors} />
         <View style={[shootS.divider, { backgroundColor: colors.border }]} />
         <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} colors={colors} />
       </View>
-
-      {/* Playmaking & Defense */}
-      <SectionHeader title="Playmaking & Defense" colors={colors} />
-      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
-        <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} colors={colors} />
-        <MiniStat label="Steals / GM" value={summary.spg.toFixed(1)} total={String(summary.steals)} colors={colors} />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 24 }}>
-        <MiniStat label="Blocks / GM" value={summary.bpg.toFixed(1)} total={String(summary.blocks)} colors={colors} />
-        <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} colors={colors} />
-      </View>
+      {/* bottom spacer so the last card breathes */}
+      <View style={{ height: 28 }} />
     </>
   );
 }
 
 const heroS = StyleSheet.create({
-  card: { borderRadius: 16, borderWidth: 1, alignItems: 'center', paddingVertical: 22, paddingHorizontal: 16, marginBottom: 10 },
+  card: { borderRadius: 18, borderWidth: 1.5, alignItems: 'center', paddingVertical: 24, paddingHorizontal: 16, marginBottom: 10 },
   flashRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 16 },
-  // "LIVE PLAYER STATS" in Teko for a bold, condensed display feel
   liveLabel: { ...tekoStyle(13), letterSpacing: 2.5 },
   avatarWrap: { marginBottom: 14 },
   avatar: {
     width: 116, height: 116, borderRadius: 58, borderWidth: 4,
-    backgroundColor: 'rgba(255,83,26,0.12)',
+    backgroundColor: 'rgba(255,83,26,0.15)',
     alignItems: 'center', justifyContent: 'center',
   },
   avatarImg: { width: '100%', height: '100%' },
@@ -431,17 +456,16 @@ const heroS = StyleSheet.create({
     position: 'absolute', bottom: 0, right: 0,
     width: 28, height: 28, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: '#0C0A09',
+    borderWidth: 2, borderColor: '#000',
   },
-  // Bigger, wider letter-spacing for a dramatic name display
   playerName: { ...tekoStyle(44), letterSpacing: 1.5 },
   scopeBadge: { marginTop: 8, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
   scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
 });
 
 const shootS = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, padding: 16 },
-  divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 8 },
+  card: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: 1.5, padding: 20 },
+  divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 6 },
 });
 
 // ─── Main Screen ────────────────────────────────────────────────────────────
@@ -472,38 +496,46 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.primary} />}
+    // Deep black gradient background — screen goes near-pure-black at the top,
+    // warming slightly toward a rich dark brown at the bottom. Creates the
+    // contrast that makes orange and white card elements "pop".
+    <LinearGradient
+      colors={['#020101', '#070504', '#0C0A09', '#0F0C0A']}
+      locations={[0, 0.15, 0.5, 1]}
+      style={{ flex: 1 }}
     >
-      {/* ── Brand logo banner — dark bg bleeds behind status bar,
-           image sits at its natural proportions below it ── */}
-      <View style={styles.logoBannerContainer}>
-        <Image
-          source={require('../../assets/images/logo-banner.png')}
-          style={styles.logoBannerImage}
-          contentFit="contain"
-        />
-      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.primary} />}
+      >
+        {/* ── Brand logo banner ── */}
+        <View style={styles.logoBannerContainer}>
+          <Image
+            source={require('../../assets/images/logo-banner.png')}
+            style={styles.logoBannerImage}
+            contentFit="contain"
+          />
+        </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {(players as any[]).map((p) => (
-          <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} colors={colors} />
-        ))}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          {(players as any[]).map((p) => (
+            <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} colors={colors} />
+          ))}
+        </ScrollView>
+
+        {activePlayer
+          ? <PlayerDashboard player={activePlayer} colors={colors} />
+          : <View style={styles.centered}><ActivityIndicator color={colors.primary} /></View>}
       </ScrollView>
-
-      {activePlayer
-        ? <PlayerDashboard player={activePlayer} colors={colors} />
-        : <View style={styles.centered}><ActivityIndicator color={colors.primary} /></View>}
-    </ScrollView>
+    </LinearGradient>
   );
 }
 
 function makeStyles(colors: any, insets: any) {
   return StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.background },
+    root: { flex: 1, backgroundColor: '#020101' },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     content: {
       paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 16 : 24),
@@ -511,17 +543,13 @@ function makeStyles(colors: any, insets: any) {
       paddingBottom: insets.bottom + 100,
     },
     chips: { paddingBottom: 16 },
-    // The container bleeds all the way to the top of the screen behind the
-    // status bar. Its background matches the logo's dark bg so the zone above
-    // the image fills seamlessly. The image itself sits at the bottom of the
-    // container at its natural 60 pt height — no stretching.
     logoBannerContainer: {
       alignSelf: 'stretch',
       height: insets.top + 60,
       marginHorizontal: -16,
       marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)),
       marginBottom: 16,
-      backgroundColor: '#0B0806',
+      backgroundColor: '#050302',
       justifyContent: 'flex-end',
       overflow: 'hidden',
     },
