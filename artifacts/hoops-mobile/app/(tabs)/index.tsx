@@ -522,7 +522,15 @@ export default function DashboardScreen() {
     <View style={styles.root}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 16 : 24), paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[
+          styles.content,
+          {
+            paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 16 : 24),
+            paddingBottom: insets.bottom + 100,
+            paddingLeft: 16 + (insets.left ?? 0),
+            paddingRight: 16 + (insets.right ?? 0),
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={BRAND.orange} />}
       >
@@ -550,10 +558,12 @@ export default function DashboardScreen() {
   );
 }
 
+// Note: horizontal padding for landscape safe areas is applied dynamically via
+// contentContainerStyle in the ScrollView (using insets.left / insets.right).
 const styles = StyleSheet.create({
   root:    { flex: 1, backgroundColor: BRAND.black },
   centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: 16 },
+  content: {},
   chips:   { paddingBottom: 14 },
   logoBannerContainer: {
     alignSelf: 'stretch',

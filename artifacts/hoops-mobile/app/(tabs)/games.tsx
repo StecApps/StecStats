@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
@@ -143,7 +144,10 @@ export default function GamesScreen() {
   const seasonWins = seasonGames.filter((g) => g.result === 'W').length;
   const seasonLosses = seasonGames.filter((g) => g.result === 'L').length;
 
-  const styles = makeStyles(colors, insets);
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+
+  const styles = makeStyles(colors, insets, isLandscape);
   const isLoading = teamsLoading || gamesLoading;
   const hasPlayers = (players as any[])?.length > 0;
   const hasTeams = (teams?.length ?? 0) > 0;
@@ -355,7 +359,11 @@ export default function GamesScreen() {
   );
 }
 
-function makeStyles(colors: any, insets: any) {
+function makeStyles(colors: any, insets: any, isLandscape = false) {
+  // In landscape, compact the filter card so the game list has more room.
+  const hPad = 16 + (insets.left ?? 0);   // left-side horizontal padding (safe area + margin)
+  const hPadR = 16 + (insets.right ?? 0); // right-side horizontal padding
+
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -365,20 +373,24 @@ function makeStyles(colors: any, insets: any) {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
-      paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 14 : 24),
-      paddingHorizontal: 16,
-      paddingBottom: 14,
+      paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? (isLandscape ? 6 : 14) : 24),
+      paddingLeft: hPad,
+      paddingRight: hPadR,
+      paddingBottom: isLandscape ? 6 : 14,
     },
-    title: { ...tekoStyle(52), letterSpacing: 0.5 },
+    title: { ...tekoStyle(isLandscape ? 38 : 52), letterSpacing: 0.5 },
     record: { fontSize: 13, fontFamily: 'Inter_500Medium', marginTop: -2 },
     newBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
 
     // ── Unified filter card ──────────────────────────────────────────
     // One glass card for season + chips + search, so the screen has a
     // single cohesive block of controls instead of floating fragments.
+    // In landscape, margins and inner padding are tightened so the card
+    // takes less vertical space and leaves more room for the game list.
     filterCard: {
-      marginHorizontal: 16,
-      marginBottom: 12,
+      marginLeft: hPad,
+      marginRight: hPadR,
+      marginBottom: isLandscape ? 6 : 12,
       borderRadius: 16,
       borderWidth: 1.5,
     },
@@ -387,7 +399,7 @@ function makeStyles(colors: any, insets: any) {
       alignItems: 'center',
       gap: 8,
       paddingHorizontal: 14,
-      paddingVertical: 13,
+      paddingVertical: isLandscape ? 7 : 13,
     },
     seasonDot: { width: 8, height: 8, borderRadius: 4 },
     seasonName: { flex: 1, fontSize: 15, fontFamily: 'Inter_600SemiBold' },
@@ -395,8 +407,19 @@ function makeStyles(colors: any, insets: any) {
 
     filterDivider: { height: 1, marginHorizontal: 0 },
 
-    chipsContent: { paddingHorizontal: 12, paddingVertical: 10, gap: 8, alignItems: 'center', flexDirection: 'row' },
-    chip: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 22, borderWidth: 1 },
+    chipsContent: {
+      paddingHorizontal: 12,
+      paddingVertical: isLandscape ? 6 : 10,
+      gap: 8,
+      alignItems: 'center',
+      flexDirection: 'row',
+    },
+    chip: {
+      paddingHorizontal: isLandscape ? 12 : 16,
+      paddingVertical: isLandscape ? 4 : 7,
+      borderRadius: 22,
+      borderWidth: 1,
+    },
     chipText: { fontSize: 13, fontFamily: 'Inter_700Bold' },
 
     searchRow: {
@@ -404,12 +427,12 @@ function makeStyles(colors: any, insets: any) {
       alignItems: 'center',
       gap: 8,
       paddingHorizontal: 14,
-      paddingVertical: 10,
+      paddingVertical: isLandscape ? 6 : 10,
     },
     search: { flex: 1, fontSize: 14, fontFamily: 'Inter_400Regular', height: 24 },
 
     // ── Game rows ────────────────────────────────────────────────────
-    list: { paddingHorizontal: 16, paddingBottom: insets.bottom + 100, paddingTop: 2 },
+    list: { paddingLeft: hPad, paddingRight: hPadR, paddingBottom: insets.bottom + 100, paddingTop: 2 },
     row: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, marginBottom: 8 },
     datePill: { width: 56, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderTopLeftRadius: 14, borderBottomLeftRadius: 14 },
     dateStr: { fontSize: 10, textTransform: 'uppercase', fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },

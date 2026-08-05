@@ -449,7 +449,8 @@ function makeStyles(colors: any, insets: any) {
   return StyleSheet.create({
     content: {
       paddingTop: insets.top + (Platform.OS === 'web' ? 24 : Platform.OS === 'ios' ? 12 : 20),
-      paddingHorizontal: 16,
+      paddingLeft: 16 + (insets.left ?? 0),
+      paddingRight: 16 + (insets.right ?? 0),
       paddingBottom: insets.bottom + 100,
     },
     header: {

@@ -320,7 +320,8 @@ function makeStyles(colors: any, insets: any) {
   return StyleSheet.create({
     content: {
       paddingTop: insets.top + (Platform.OS === 'web' ? 67 : (Platform.OS === 'ios' ? 16 : 24)),
-      paddingHorizontal: 16,
+      paddingLeft: 16 + (insets.left ?? 0),
+      paddingRight: 16 + (insets.right ?? 0),
       paddingBottom: insets.bottom + 100,
     },
     avatarSection: { alignItems: 'center', paddingBottom: 28 },
