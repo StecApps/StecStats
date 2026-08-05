@@ -116,7 +116,7 @@ function ArcGauge({
   pct?: number | null; label: string; made?: number; attempted?: number;
 }) {
   const c = useColors();
-  const SIZE = 120, SW = 9;
+  const SIZE = 130, SW = 10;
   const r = (SIZE - SW) / 2;
   const circ = 2 * Math.PI * r;
   const filled = Math.max(0, Math.min(1, pct ?? 0)) * circ;
@@ -150,7 +150,7 @@ function ArcGauge({
 const gaugeS = StyleSheet.create({
   wrap:     { alignItems: 'center', flex: 1 },
   center:   { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  pctNum:   { ...tekoStyle(20) },
+  pctNum:   { ...tekoStyle(30) },
   madeFrac: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 1 },
   label:    { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, marginTop: 8 },
 });
@@ -202,7 +202,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 const statS = StyleSheet.create({
   card:  { flex: 1, borderRadius: 16, borderWidth: 1, padding: 16, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, textAlign: 'center' },
-  value: { ...tekoStyle(38) },
+  value: { ...tekoStyle(46) },
   sub:   { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
 });
 
@@ -222,7 +222,7 @@ function MiniStat({ label, value, total }: { label: string; value: string; total
 const miniS = StyleSheet.create({
   wrap:  { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, alignItems: 'center' },
   label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { ...tekoStyle(30) },
+  value: { ...tekoStyle(36) },
   total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
@@ -332,7 +332,7 @@ function PlayerDashboard({ player }: { player: any }) {
   return (
     <>
       {/* ── Hero card ──────────────────────────────────────────────────── */}
-      <View style={[heroS.card, { borderColor: primaryRgba(0.40), backgroundColor: c.card }]}>
+      <View style={[heroS.card, { borderColor: primaryRgba(0.60), backgroundColor: c.card }]}>
         {/* Orange glow radiates from the top edge of the hero card */}
         <OrangeGlow primary={c.primary} strength={1} />
         {/* Top orange accent bar */}
@@ -412,18 +412,7 @@ function PlayerDashboard({ player }: { player: any }) {
         <StatCard label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} total`} />
       </View>
 
-      {/* ── Playmaking & Defense ──────────────────────────────────────── */}
-      <SectionHeader title="Playmaking & Defense" />
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-        <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} />
-        <MiniStat label="Steals / GM"  value={summary.spg.toFixed(1)} total={String(summary.steals)}  />
-      </View>
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        <MiniStat label="Blocks / GM"   value={summary.bpg.toFixed(1)}  total={String(summary.blocks)}    />
-        <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} />
-      </View>
-
-      {/* ── Shooting Efficiency (biggest section, listed last) ────────── */}
+      {/* ── Shooting Efficiency ───────────────────────────────────────── */}
       <SectionHeader title="Shooting Efficiency" />
       <View style={[shootS.card, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
         <Gloss />
@@ -433,6 +422,17 @@ function PlayerDashboard({ player }: { player: any }) {
         <View style={[shootS.divider, { backgroundColor: c.border }]} />
         <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
       </View>
+
+      {/* ── Playmaking & Defense (last) ───────────────────────────────── */}
+      <SectionHeader title="Playmaking & Defense" />
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+        <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} />
+        <MiniStat label="Steals / GM"  value={summary.spg.toFixed(1)} total={String(summary.steals)}  />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <MiniStat label="Blocks / GM"   value={summary.bpg.toFixed(1)}  total={String(summary.blocks)}    />
+        <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} />
+      </View>
       <View style={{ height: 32 }} />
     </>
   );
@@ -441,16 +441,16 @@ function PlayerDashboard({ player }: { player: any }) {
 const heroS = StyleSheet.create({
   card: {
     borderRadius: 20,
-    borderWidth: 1,
+    borderWidth: 1.5,
     alignItems: 'center',
-    paddingVertical: 28,
+    paddingVertical: 32,
     paddingHorizontal: 16,
     marginBottom: 12,
     overflow: 'hidden',
   },
   // Horizontal orange→transparent bar along the very top edge
   topBar: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+    position: 'absolute', top: 0, left: 0, right: 0, height: 5,
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
   },
   liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 18 },
@@ -483,7 +483,7 @@ const heroS = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2,
   },
-  name: { ...tekoStyle(46), letterSpacing: 1.5, marginBottom: 8 },
+  name: { ...tekoStyle(54), letterSpacing: 1.5, marginBottom: 8 },
   scopePill: {
     borderRadius: 20, borderWidth: 1,
     paddingHorizontal: 14, paddingVertical: 4,
