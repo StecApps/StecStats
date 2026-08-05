@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   Share,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
@@ -119,6 +120,38 @@ function StatsWatermark({ color }: { color: string }) {
             <Rect key={i} x={10 + i * (barW + gap)} y={baseY - bH} width={barW} height={bH} rx={5} fill={color} />
           );
         })}
+      </Svg>
+    </View>
+  );
+}
+
+// Basketball hoop (backboard + rim + net) — floats on the left side of the hero card.
+function HoopWatermark({ color }: { color: string }) {
+  const W = 170, H = 165, SW = 7;
+  const bbX = 48, bbY = 10, bbW = 74, bbH = 50;
+  const rimY = bbY + bbH;
+  const rimL = 8, rimR = 152;
+  const netBot = 152;
+  // 7 vertical net lines fanning from the full rim width down to a narrower mouth
+  const netLines = Array.from({ length: 7 }, (_, i) => {
+    const t = i / 6;
+    const tx = rimL + t * (rimR - rimL);
+    const bx = 42 + t * 86;
+    return `M${tx},${rimY + 6} L${bx},${netBot}`;
+  });
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: -38, top: 14, width: W, height: H, opacity: 0.11 }}>
+      <Svg width={W} height={H}>
+        {/* Backboard */}
+        <Rect x={bbX} y={bbY} width={bbW} height={bbH} rx={4} fill="none" stroke={color} strokeWidth={SW} />
+        {/* Inner target square */}
+        <Rect x={bbX + 13} y={bbY + 12} width={bbW - 26} height={bbH - 24} rx={2} fill="none" stroke={color} strokeWidth={SW * 0.55} />
+        {/* Rim */}
+        <Path d={`M${rimL},${rimY} H${rimR}`} stroke={color} strokeWidth={SW} strokeLinecap="round" />
+        {/* Net lines */}
+        {netLines.map((d, i) => <Path key={i} d={d} stroke={color} strokeWidth={SW * 0.5} strokeLinecap="round" />)}
+        {/* Net bottom */}
+        <Path d={`M42,${netBot} H128`} stroke={color} strokeWidth={SW * 0.5} strokeLinecap="round" />
       </Svg>
     </View>
   );
@@ -449,24 +482,36 @@ function PlayerDashboard({ player }: { player: any }) {
 
   return (
     <>
-      {/* ── Hero card ──────────────────────────────────────────────────── */}
-      <View style={[heroS.card, { borderColor: primaryRgba(0.60), backgroundColor: c.card }]}>
+      {/* ── Hero card — outer wrapper carries the orange glow shadow ──── */}
+      <View style={[heroS.cardWrapper, { shadowColor: c.primary }]}>
+      <View style={[heroS.card, { borderColor: primaryRgba(0.65), backgroundColor: c.card }]}>
         {/* Orange glow radiates from the top edge of the hero card */}
-        <OrangeGlow primary={c.primary} strength={1.5} />
-        {/* Top orange accent bar */}
+        <OrangeGlow primary={c.primary} strength={2.2} />
+        {/* Deep ambient fill — bottom half of card glows darker orange */}
         <LinearGradient
-          colors={[c.primary, primaryRgba(0)]}
+          colors={[primaryRgba(0), primaryRgba(0.10)]}
+          start={{ x: 0.5, y: 0.3 }} end={{ x: 0.5, y: 1 }}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        />
+        {/* Top orange accent bar — wider fade */}
+        <LinearGradient
+          colors={[c.primary, primaryRgba(0.4), primaryRgba(0)]}
+          locations={[0, 0.5, 1]}
           start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
           style={heroS.topBar}
         />
         {/* Glass sheen */}
         <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
           <LinearGradient
-            colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.5 }}
+            colors={['rgba(255,255,255,0.07)', 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.45 }}
             style={{ flex: 1 }}
           />
         </View>
+
+        {/* Hoop watermark — left side, clipped by overflow:hidden */}
+        <HoopWatermark color={c.primary} />
 
         {/* Basketball watermark inside the hero card — clipped by overflow:hidden */}
         <View pointerEvents="none" style={{ position: 'absolute', right: -55, bottom: -38, width: 220, height: 220, opacity: 0.13 }}>
@@ -553,6 +598,7 @@ function PlayerDashboard({ player }: { player: any }) {
           </Text>
         </TouchableOpacity>
       </View>
+      </View>{/* end cardWrapper */}
 
       {/* ── 4 big stat cards ──────────────────────────────────────────── */}
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
@@ -591,18 +637,26 @@ function PlayerDashboard({ player }: { player: any }) {
 }
 
 const heroS = StyleSheet.create({
+  // Outer wrapper — shadow lives here so overflow:hidden on card doesn't clip it
+  cardWrapper: {
+    marginBottom: 12,
+    borderRadius: 20,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.55,
+    shadowRadius: 22,
+    elevation: 14,
+  },
   card: {
     borderRadius: 20,
     borderWidth: 1.5,
     alignItems: 'center',
     paddingVertical: 32,
     paddingHorizontal: 16,
-    marginBottom: 12,
     overflow: 'hidden',
   },
   // Horizontal orange→transparent bar along the very top edge
   topBar: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 5,
+    position: 'absolute', top: 0, left: 0, right: 0, height: 7,
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
   },
   liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 18 },
@@ -663,6 +717,8 @@ const shootS = StyleSheet.create({
 export default function DashboardScreen() {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  const { width: screenW } = useWindowDimensions();
+  const isTablet = screenW >= 768;
 
   const { data: players, isLoading, refetch } = useListPlayers();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -713,17 +769,29 @@ export default function DashboardScreen() {
         <View style={[
           styles.logoBannerContainer,
           {
-            height: insets.top + 68,
+            height: insets.top + (isTablet ? 80 : 68),
             marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)),
             marginLeft: -(16 + (insets.left ?? 0)),
             marginRight: -(16 + (insets.right ?? 0)),
           },
         ]}>
-          <Image
-            source={require('../../assets/images/logo-banner.png')}
-            style={styles.logoBannerImage}
-            contentFit="cover"
-          />
+          {isTablet ? (
+            // On iPad the logo-banner image is narrow relative to the wide canvas —
+            // cap it at 520px and center it so it doesn't stretch or letterbox oddly.
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
+              <Image
+                source={require('../../assets/images/logo-banner.png')}
+                style={{ width: 520, height: 70 }}
+                contentFit="contain"
+              />
+            </View>
+          ) : (
+            <Image
+              source={require('../../assets/images/logo-banner.png')}
+              style={styles.logoBannerImage}
+              contentFit="cover"
+            />
+          )}
         </View>
 
         {/* ── Player chips ── */}
