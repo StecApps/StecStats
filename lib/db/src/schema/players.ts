@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -20,6 +20,9 @@ export const playersTable = pgTable("players", {
   // client-supplied timestamps.
   photoObjectPath: text("photo_object_path"),
   photoUpdatedAt: timestamp("photo_updated_at"),
+  // Shareable profile token — generated on first share request, never exposed
+  // in authenticated player lists. Allows a public read-only stats card.
+  shareToken: uuid("share_token").unique(),
 });
 
 export const insertPlayerSchema = createInsertSchema(playersTable).omit({

@@ -28,6 +28,7 @@ import WatchStream from "@/pages/watch";
 import AdminFeedback from "@/pages/admin";
 import Layout from "@/components/layout";
 import FeedbackButton from "@/components/feedback-button";
+import PlayerProfile from "@/pages/player-profile";
 
 const queryClient = new QueryClient();
 
@@ -695,6 +696,7 @@ function ClerkProviderWithRoutes() {
         <TooltipProvider>
           <Switch>
             <Route path="/watch/:code" component={WatchStream} />
+            <Route path="/player/:shareToken" component={PlayerProfile} />
             <Route path="/privacy" component={PrivacyPolicy} />
             <Route path="/pricing" component={Pricing} />
             <Route path="/print-cards" component={PrintCards} />

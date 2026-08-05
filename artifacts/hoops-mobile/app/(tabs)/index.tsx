@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Platform,
   Alert,
+  Share,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
@@ -334,6 +335,7 @@ function PlayerDashboard({ player }: { player: any }) {
   const qc = useQueryClient();
   const { getToken, userId } = useAuth();
   const [uploading, setUploading] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const alertVisibleRef = useRef(false);
@@ -341,6 +343,42 @@ function PlayerDashboard({ player }: { player: any }) {
   useEffect(() => {
     getToken().then((t) => setAuthToken(t ?? null)).catch(() => {});
   }, []);
+
+  async function handleShareProfile() {
+    setSharing(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch(`${API_BASE}/api/players/${player.id}/share-token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 403) {
+        const body = await res.json().catch(() => ({}));
+        Alert.alert(
+          'Pro Feature',
+          body.error ?? 'Shareable player profiles are a Pro feature. Upgrade to share your players.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+      if (!res.ok) throw new Error('Failed to generate share link');
+      const { shareToken } = await res.json();
+      const domain = process.env.EXPO_PUBLIC_DOMAIN
+        ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+        : 'https://stecstats.com';
+      const url = `${domain}/player/${shareToken}`;
+      await Share.share({
+        message: `Check out ${player.name}'s stats: ${url}`,
+        url,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Please try again.';
+      Alert.alert('Share failed', msg, [{ text: 'OK' }]);
+    } finally {
+      setSharing(false);
+    }
+  }
 
   useEffect(() => { setPhotoLoadFailed(false); }, [player.photoObjectPath]);
 
@@ -499,6 +537,21 @@ function PlayerDashboard({ player }: { player: any }) {
             {summary.seasonScope === 'career' ? 'CAREER' : 'SEASON'} OVERVIEW
           </Text>
         </View>
+
+        {/* Share button */}
+        <TouchableOpacity
+          onPress={handleShareProfile}
+          disabled={sharing}
+          activeOpacity={0.75}
+          style={[heroS.shareBtn, { borderColor: primaryRgba(0.45), backgroundColor: primaryRgba(0.12) }]}
+        >
+          {sharing
+            ? <ActivityIndicator size="small" color={c.primary} />
+            : <Ionicons name="share-outline" size={14} color={c.primary} />}
+          <Text style={[heroS.shareBtnText, { color: c.primary }]}>
+            {sharing ? 'Generating link…' : 'Share Player Profile'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── 4 big stat cards ──────────────────────────────────────────── */}
@@ -588,6 +641,17 @@ const heroS = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 4,
   },
   scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 1 },
+  shareBtn: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  shareBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.3 },
 });
 
 const shootS = StyleSheet.create({
