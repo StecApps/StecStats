@@ -92,6 +92,13 @@ export function attachLiveSocketServer(upgradeEmitter: {
 
       switch (message.type) {
         case "join-broadcaster": {
+          // Cancel any pending grace-period timer: the broadcaster reconnected
+          // within the window so viewers never need to see the disruption.
+          if (session.broadcasterLeftTimer) {
+            clearTimeout(session.broadcasterLeftTimer);
+            session.broadcasterLeftTimer = null;
+            logger.info({ code: session.code }, "Broadcaster reconnected within grace period — broadcaster-left suppressed");
+          }
           session.broadcaster = ws;
           role = "broadcaster";
           sessionCode = session.code;
@@ -275,17 +282,36 @@ export function attachLiveSocketServer(upgradeEmitter: {
 
       if (role === "broadcaster" && session.broadcaster === ws) {
         session.broadcaster = null;
-        // Include the final scoreboard and recent stat events so the watch
-        // page can show a final-score summary on its "ended" screen.
+
+        // Immediately tell viewers the signal is momentarily lost so they
+        // can show a subtle "reconnecting" banner instead of a blank/frozen
+        // stream, without flipping to the full waiting-for-broadcaster screen.
         for (const viewerWs of session.viewers.values()) {
-          safeSend(viewerWs, {
-            type: "broadcaster-left",
-            teamScore: session.scoreboard.teamScore,
-            opponentScore: session.scoreboard.opponentScore,
-            events: session.recentEvents,
-          });
+          safeSend(viewerWs, { type: "broadcaster-reconnecting" });
         }
-        logger.info({ code: sessionCode }, "Broadcaster disconnected from live session");
+
+        // Grace period: the mobile broadcaster auto-reconnects after ~3 s.
+        // Wait 6 s before declaring the stream over to viewers — this absorbs
+        // normal signal drops silently without any visible interruption.
+        const BROADCASTER_LEFT_GRACE_MS = 6_000;
+        session.broadcasterLeftTimer = setTimeout(() => {
+          session.broadcasterLeftTimer = null;
+          // Re-check: broadcaster may have rejoined during the wait.
+          if (session.broadcaster) return;
+          // Include the final scoreboard and recent stat events so the watch
+          // page can show a final-score summary on its "ended" screen.
+          for (const viewerWs of session.viewers.values()) {
+            safeSend(viewerWs, {
+              type: "broadcaster-left",
+              teamScore: session.scoreboard.teamScore,
+              opponentScore: session.scoreboard.opponentScore,
+              events: session.recentEvents,
+            });
+          }
+          logger.info({ code: sessionCode }, "Broadcaster did not reconnect within grace period — viewers notified");
+        }, BROADCASTER_LEFT_GRACE_MS);
+
+        logger.info({ code: sessionCode }, "Broadcaster disconnected — grace period started");
       } else if (role === "viewer" && viewerId) {
         session.viewers.delete(viewerId);
         if (session.broadcaster) {

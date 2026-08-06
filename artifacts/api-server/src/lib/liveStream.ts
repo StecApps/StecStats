@@ -163,6 +163,14 @@ export type LiveSession = {
   viewers: Map<string, WebSocket>;
   scoreboard: Scoreboard;
   recentEvents: StatEvent[];
+  /**
+   * When the broadcaster's WebSocket drops, a grace-period timer is started
+   * before sending `broadcaster-left` to viewers. If the broadcaster
+   * reconnects within the window the timer is cancelled and viewers never
+   * see a disruption. If it fires without a reconnect, `broadcaster-left`
+   * is dispatched and viewers fall through to the waiting-for-broadcaster screen.
+   */
+  broadcasterLeftTimer: ReturnType<typeof setTimeout> | null;
 };
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -247,6 +255,7 @@ class LiveStreamRegistry {
       viewers: new Map(),
       scoreboard: { teamScore: 0, opponentScore: 0 },
       recentEvents: [],
+      broadcasterLeftTimer: null,
     };
     this.sessions.set(code, session);
     try {
@@ -312,6 +321,7 @@ class LiveStreamRegistry {
       // before the broadcaster reconnects see the real score, not 0-0.
       scoreboard: { teamScore: row.teamScore, opponentScore: row.opponentScore },
       recentEvents: [],
+      broadcasterLeftTimer: null,
     };
     this.sessions.set(upper, resumed);
     try {
@@ -330,6 +340,12 @@ class LiveStreamRegistry {
     const upper = code.toUpperCase();
     const session = this.sessions.get(upper);
     if (session) {
+      // Cancel any pending grace-period timer so it can't fire after the
+      // session has been torn down and send stale messages to closed sockets.
+      if (session.broadcasterLeftTimer) {
+        clearTimeout(session.broadcasterLeftTimer);
+        session.broadcasterLeftTimer = null;
+      }
       // Tell viewers the stream ended (with the final score and recent
       // stat events) BEFORE closing their sockets, so the watch page can
       // show a final-score summary instead of a bare "stream ended" note.

@@ -91,6 +91,11 @@ export default function WatchStream() {
   const [turnRelayDown, setTurnRelayDown] = useState(false);
   const [turnBannerDismissed, setTurnBannerDismissed] = useState(false);
 
+  // Shown when the broadcaster's WebSocket drops but the grace period hasn't
+  // expired yet. Cleared when the broadcaster rejoins (offer arrives) or when
+  // the grace period fires and we fall back to waiting-for-broadcaster.
+  const [broadcasterReconnecting, setBroadcasterReconnecting] = useState(false);
+
   // Pinch-to-zoom / pan / double-tap-reset — all via refs so gesture
   // handling never triggers a React re-render.
   const videoWrapRef = useRef<HTMLDivElement | null>(null);
@@ -613,7 +618,18 @@ export default function WatchStream() {
           return;
         }
 
+        if (message.type === "broadcaster-reconnecting") {
+          // The broadcaster's WS dropped but the server is in its grace
+          // period — show a subtle banner so viewers know what's happening
+          // without navigating away from the live screen.
+          setBroadcasterReconnecting(true);
+          return;
+        }
+
         if (message.type === "offer") {
+          // An offer arrived — the broadcaster reconnected (or is already
+          // present). Clear the reconnecting banner.
+          setBroadcasterReconnecting(false);
           // An offer arrived — the broadcaster is present. Cancel the
           // offer-response watchdog so we don't fall back to
           // "waiting-for-broadcaster" mid-negotiation.
@@ -703,14 +719,12 @@ export default function WatchStream() {
             await pcRef.current.addIceCandidate(new RTCIceCandidate(message.candidate));
           }
         } else if (message.type === "broadcaster-left") {
-          // Broadcaster's WebSocket dropped (network hiccup, server
-          // restart, etc.) — their recording app keeps running and will
-          // reconnect. Drop the dead RTCPeerConnection but stay on this
-          // page in "waiting-for-broadcaster" state so the stream resumes
-          // automatically when they come back, without the viewer having
-          // to reload or re-enter a code.
+          // Grace period expired without the broadcaster reconnecting.
+          // Drop the dead RTCPeerConnection and move to waiting-for-broadcaster
+          // so the stream resumes automatically when they come back.
           // The server will push a new offer when the broadcaster rejoins,
           // so the proactive offer watchdog is no longer needed.
+          setBroadcasterReconnecting(false);
           if (offerWatchdogRef.current) {
             clearTimeout(offerWatchdogRef.current);
             offerWatchdogRef.current = null;
@@ -758,6 +772,9 @@ export default function WatchStream() {
         if (cancelled) return;
         pcRef.current?.close();
         pcRef.current = null;
+        // Clear any lingering reconnecting banner — the viewer's own WS
+        // is now reconnecting, which supersedes the broadcaster-reconnecting state.
+        setBroadcasterReconnecting(false);
 
         if (explicitEndRef.current) {
           setState("ended");
@@ -828,6 +845,16 @@ export default function WatchStream() {
           className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${state === "live" ? "" : "invisible"}`}
         />
       </div>
+
+      {broadcasterReconnecting && (
+        <div
+          className="absolute inset-x-3 z-20 flex items-center gap-2 rounded-lg bg-black/75 px-3 py-2 text-white backdrop-blur-sm shadow-lg"
+          style={{ top: "calc(env(safe-area-inset-top) + 0.75rem)" }}
+        >
+          <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-white/70" />
+          <span className="text-xs font-semibold text-white/90">Coach signal reconnecting…</span>
+        </div>
+      )}
 
       {state === "live" && turnRelayDown && !turnBannerDismissed && (
         <div
