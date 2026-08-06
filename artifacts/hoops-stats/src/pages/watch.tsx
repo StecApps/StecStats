@@ -619,6 +619,9 @@ export default function WatchStream() {
         if (message.type === "session-mode") {
           if (message.hasVideo === false) {
             setScoreOnly(true);
+            // Also clears any "Stream interrupted" banner — the mobile broadcaster
+            // is present (score-only) so there's no need to show a reconnecting state.
+            setBroadcasterReconnecting(false);
             if (offerWatchdogRef.current) {
               clearTimeout(offerWatchdogRef.current);
               offerWatchdogRef.current = null;
@@ -648,6 +651,13 @@ export default function WatchStream() {
           // period — show a subtle banner so viewers know what's happening
           // without navigating away from the live screen.
           setBroadcasterReconnecting(true);
+          return;
+        }
+
+        if (message.type === "broadcaster-reconnected") {
+          // Score-only broadcaster rejoined within the grace period.
+          // Clear the "Stream interrupted" banner (no offer is coming to do it).
+          setBroadcasterReconnecting(false);
           return;
         }
 

@@ -140,13 +140,15 @@ const videoStyle = StyleSheet.create({
   emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular' },
 });
 
+// Module-level map so the processing start time survives tab-switches and
+// screen remounts. Keyed by gameId; cleared when the status leaves 'processing'.
+const processingStartTimes = new Map<number, number>();
+
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  // Polling while processing + synthetic progress display
-  const [processingStartedAt] = useState(() => Date.now());
   const [elapsedSec, setElapsedSec] = useState(0);
 
   const player = useVideoPlayer('', () => {});
@@ -158,14 +160,22 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => clearInterval(timer);
   }, [highlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drive the elapsed-seconds counter while processing
+  // Drive the elapsed-seconds counter while processing.
+  // Use the module-level map so navigating away and back doesn't reset the clock.
   useEffect(() => {
-    if (highlight?.status !== 'processing') { setElapsedSec(0); return; }
-    const start = processingStartedAt;
-    setElapsedSec(Math.floor((Date.now() - start) / 1000));
-    const t = setInterval(() => setElapsedSec(Math.floor((Date.now() - start) / 1000)), 1000);
+    if (highlight?.status !== 'processing') {
+      processingStartTimes.delete(gameId);
+      setElapsedSec(0);
+      return;
+    }
+    if (!processingStartTimes.has(gameId)) {
+      processingStartTimes.set(gameId, Date.now());
+    }
+    const getElapsed = () => Math.floor((Date.now() - (processingStartTimes.get(gameId) ?? Date.now())) / 1000);
+    setElapsedSec(getElapsed());
+    const t = setInterval(() => setElapsedSec(getElapsed()), 1000);
     return () => clearInterval(t);
-  }, [highlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [highlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const objectPath = highlight?.status === 'ready' ? highlight.highlightObjectPath ?? null : null;
 

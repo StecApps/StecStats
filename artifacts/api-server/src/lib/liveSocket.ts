@@ -94,6 +94,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
         case "join-broadcaster": {
           // Cancel any pending grace-period timer: the broadcaster reconnected
           // within the window so viewers never need to see the disruption.
+          const wasGracing = !!session.broadcasterLeftTimer;
           if (session.broadcasterLeftTimer) {
             clearTimeout(session.broadcasterLeftTimer);
             session.broadcasterLeftTimer = null;
@@ -111,6 +112,15 @@ export function attachLiveSocketServer(upgradeEmitter: {
             // Broadcaster changed to score-only (e.g. mobile reconnect) — tell viewers.
             for (const viewerWs of session.viewers.values()) {
               safeSend(viewerWs, { type: "session-mode", hasVideo: false });
+            }
+          }
+          // In score-only mode the viewer's "Stream interrupted" banner is
+          // normally cleared by an incoming WebRTC offer — but no offer will
+          // ever arrive from a mobile broadcaster. Explicitly tell viewers the
+          // broadcaster is back so they can drop the reconnecting banner.
+          if (!session.broadcasterHasVideo && wasGracing && session.viewers.size > 0) {
+            for (const viewerWs of session.viewers.values()) {
+              safeSend(viewerWs, { type: "broadcaster-reconnected" });
             }
           }
           // If the broadcaster sends its current scores on (re)connect, update
