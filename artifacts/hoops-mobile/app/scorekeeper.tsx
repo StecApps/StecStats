@@ -115,6 +115,10 @@ export default function ScorekeeperScreen() {
   // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
   const liveWsRef = useRef<WebSocket | null>(null);
   const liveWsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set to true before an intentional close (stopLiveBroadcast) so ws.onclose
+  // does not schedule a reconnect. Reset to false whenever a new connection is
+  // opened so unintentional drops still auto-reconnect normally.
+  const liveWsIntentionalCloseRef = useRef(false);
   // Mirrors the latest team/opponent scores so reconnect callbacks don't
   // depend on derived consts that are declared later in the function body.
   const latestScoresRef = useRef({ teamScore: 0, opponentScore: 0 });
@@ -201,6 +205,9 @@ export default function ScorekeeperScreen() {
   }
 
   async function stopLiveBroadcast(code: string) {
+    // Mark as intentional BEFORE closing so ws.onclose does not schedule a
+    // reconnect — even if the stop-API call below is slow or hangs.
+    liveWsIntentionalCloseRef.current = true;
     // Close broadcaster WS first so viewers get the broadcaster-left signal
     if (liveWsReconnectRef.current) {
       clearTimeout(liveWsReconnectRef.current);
@@ -243,6 +250,9 @@ export default function ScorekeeperScreen() {
       liveWsRef.current.close();
       liveWsRef.current = null;
     }
+    // Opening a new connection — this is intentional, so clear the intentional-close
+    // flag so that an unintentional drop later can trigger auto-reconnect.
+    liveWsIntentionalCloseRef.current = false;
     // Build wss:// URL from the same base the HTTP calls use
     const wsBase = API_BASE
       ? API_BASE.replace(/^https?:\/\//, (m) => (m.startsWith('https') ? 'wss://' : 'ws://'))
@@ -260,7 +270,8 @@ export default function ScorekeeperScreen() {
     };
 
     ws.onclose = () => {
-      if (liveWsRef.current !== ws) return; // already replaced
+      if (liveWsRef.current !== ws) return; // already replaced by a newer connection
+      if (liveWsIntentionalCloseRef.current) return; // stopLiveBroadcast — do not reconnect
       liveWsRef.current = null;
       // Auto-reconnect while we're still live (api-server may have restarted)
       liveWsReconnectRef.current = setTimeout(() => {
