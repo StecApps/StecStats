@@ -100,6 +100,10 @@ export default function ScorekeeperScreen() {
   const [stats, setStats] = useState<Record<number, StatLine>>({});
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [opponentScore, setOpponentScore] = useState(0);
+  // Camera section dimensions — used to compute the scale factor that makes
+  // the CameraView fill (cover) its container regardless of the camera's
+  // native preview aspect ratio.
+  const [cameraContainerSize, setCameraContainerSize] = useState({ w: 0, h: 0 });
   const [half, setHalf] = useState<1 | 2>(1);
   const [seconds, setSeconds] = useState(0);
   const [running, setRunning] = useState(false);
@@ -266,6 +270,11 @@ export default function ScorekeeperScreen() {
         code,
         teamScore: initTeamScore,
         opponentScore: initOppScore,
+        // The mobile scorekeeper sends score/stat events only; no WebRTC video.
+        // This tells the server (and viewers) to skip WebRTC negotiation and
+        // go straight to score-only mode rather than waiting for an offer that
+        // will never arrive.
+        hasVideo: false,
       }));
     };
 
@@ -1081,16 +1090,39 @@ export default function ScorekeeperScreen() {
 
       {/* ── CAMERA SECTION (top half portrait / left half landscape) ── */}
       {/* Keep this View mounted so CameraView never unmounts mid-recording */}
-      <View style={[
-        isLandscape ? styles.cameraSectionLand : styles.cameraSectionPort,
-        !previewVisible && styles.cameraSectionCollapsed,
-        !recordVideo && styles.cameraSectionHidden,
-      ]}>
+      <View
+        style={[
+          isLandscape ? styles.cameraSectionLand : styles.cameraSectionPort,
+          !previewVisible && styles.cameraSectionCollapsed,
+          !recordVideo && styles.cameraSectionHidden,
+        ]}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          if (width > 0 && height > 0) setCameraContainerSize({ w: width, h: height });
+        }}
+      >
         {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
         {cameraReady ? (
           <CameraView
             ref={cameraRef}
-            style={StyleSheet.absoluteFill}
+            style={[StyleSheet.absoluteFill, (() => {
+              // Scale the CameraView so the native preview always fills (covers) the
+              // container, removing black bars caused by aspect-ratio mismatches
+              // (especially visible on iPad where the section is wider than the
+              // camera's native 3:4 portrait preview).
+              const { w: cw, h: ch } = cameraContainerSize;
+              if (!cw || !ch) return {};
+              // Typical iOS camera preview: 4:3 landscape, 3:4 portrait.
+              const cameraAspect = isLandscape ? (4 / 3) : (3 / 4);
+              const containerAspect = cw / ch;
+              const scale = Math.max(
+                1,
+                containerAspect > cameraAspect
+                  ? containerAspect / cameraAspect   // container is wider → scale to fill width
+                  : cameraAspect / containerAspect,  // container is taller → scale to fill height
+              );
+              return scale > 1.01 ? { transform: [{ scale }] } : {};
+            })()]}
             facing={cameraFacing}
             mode="video"
             onCameraReady={onCameraReady}
@@ -1302,11 +1334,11 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     halfText: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: 'rgba(255,255,255,0.75)' },
     oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     oppBtn: {
-      width: 26, height: 26, borderRadius: 6,
+      width: 40, height: 40, borderRadius: 10,
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'rgba(255,255,255,0.15)',
     },
-    oppBtnText: { fontSize: 17, lineHeight: 19, fontFamily: 'Inter_600SemiBold', color: '#fff' },
+    oppBtnText: { fontSize: 22, lineHeight: 24, fontFamily: 'Inter_600SemiBold', color: '#fff' },
 
     // Opponent score strip in stat area (recording mode)
     oppScoreStrip: {

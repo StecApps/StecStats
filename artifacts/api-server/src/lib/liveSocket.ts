@@ -8,7 +8,7 @@ import { logger } from "./logger";
 const LIVE_WS_PATH = "/api/live/ws";
 
 type ClientMessage =
-  | { type: "join-broadcaster"; code: string; teamScore?: number; opponentScore?: number }
+  | { type: "join-broadcaster"; code: string; teamScore?: number; opponentScore?: number; hasVideo?: boolean }
   | { type: "join-viewer"; code: string }
   | { type: "offer"; code: string; targetId: string; sdp: unknown; renegotiate?: boolean }
   | { type: "answer"; code: string; targetId: string; sdp: unknown }
@@ -102,6 +102,17 @@ export function attachLiveSocketServer(upgradeEmitter: {
           session.broadcaster = ws;
           role = "broadcaster";
           sessionCode = session.code;
+          // Record whether this broadcaster will send WebRTC video.
+          // Mobile score-keepers set hasVideo: false — viewers should skip WebRTC
+          // negotiation and go straight to score-only mode.
+          const prevHasVideo = session.broadcasterHasVideo;
+          session.broadcasterHasVideo = message.hasVideo !== false;
+          if (!session.broadcasterHasVideo && prevHasVideo) {
+            // Broadcaster changed to score-only (e.g. mobile reconnect) — tell viewers.
+            for (const viewerWs of session.viewers.values()) {
+              safeSend(viewerWs, { type: "session-mode", hasVideo: false });
+            }
+          }
           // If the broadcaster sends its current scores on (re)connect, update
           // the in-memory scoreboard immediately.  This corrects the 0-0 reset
           // that happens when the server restarts and rebuilds the session from
@@ -135,7 +146,9 @@ export function attachLiveSocketServer(upgradeEmitter: {
           session.viewers.set(viewerId, ws);
           role = "viewer";
           sessionCode = session.code;
-          safeSend(ws, { type: "joined", viewerId });
+          // Include hasVideo so the viewer knows immediately whether to expect
+          // WebRTC video or to go straight to score-only mode.
+          safeSend(ws, { type: "joined", viewerId, hasVideo: session.broadcasterHasVideo });
           safeSend(ws, {
             type: "scoreboard",
             teamScore: session.scoreboard.teamScore,

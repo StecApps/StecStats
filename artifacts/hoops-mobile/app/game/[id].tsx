@@ -125,6 +125,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       <VideoView
         player={player}
         style={videoStyle.video}
+        contentFit="cover"
         allowsFullscreen
         allowsPictureInPicture
       />
@@ -144,8 +145,27 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  // Polling while processing + synthetic progress display
+  const [processingStartedAt] = useState(() => Date.now());
+  const [elapsedSec, setElapsedSec] = useState(0);
 
   const player = useVideoPlayer('', () => {});
+
+  // Poll every 3 s while the server is generating the reel
+  useEffect(() => {
+    if (highlight?.status !== 'processing') return;
+    const timer = setInterval(() => refetch(), 3000);
+    return () => clearInterval(timer);
+  }, [highlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Drive the elapsed-seconds counter while processing
+  useEffect(() => {
+    if (highlight?.status !== 'processing') { setElapsedSec(0); return; }
+    const start = processingStartedAt;
+    setElapsedSec(Math.floor((Date.now() - start) / 1000));
+    const t = setInterval(() => setElapsedSec(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [highlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const objectPath = highlight?.status === 'ready' ? highlight.highlightObjectPath ?? null : null;
 
@@ -175,6 +195,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         <VideoView
           player={player}
           style={videoStyle.video}
+          contentFit="cover"
           allowsFullscreen
           allowsPictureInPicture
         />
@@ -183,11 +204,33 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }
 
   if (highlight.status === 'processing') {
+    // Synthetic progress — exponential approach towards 92 %
+    // (same formula as the web app). Caps so it never reaches 100 %
+    // until the server says "ready".
+    const pct = Math.min(92, Math.round(100 * (1 - Math.exp(-elapsedSec / 900))));
+    const label =
+      elapsedSec < 30  ? 'Finding highlight moments…'
+      : elapsedSec < 360  ? 'Downloading game footage…'
+      : elapsedSec < 2700 ? 'Compressing clips…'
+      : elapsedSec < 3300 ? 'Encoding reel…'
+      : 'Finalizing…';
+    const mins = Math.floor(elapsedSec / 60);
+    const secs = elapsedSec % 60;
+    const elapsed = mins > 0
+      ? `${mins}m ${String(secs).padStart(2, '0')}s`
+      : `${secs}s`;
     return (
-      <View style={videoStyle.empty}>
+      <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
         <ActivityIndicator color={colors.primary} size="large" />
-        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
-          Generating highlight reel…
+        <Text style={[videoStyle.emptyText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+          {label}
+        </Text>
+        {/* Progress bar */}
+        <View style={{ width: '100%', height: 6, backgroundColor: colors.muted, borderRadius: 3, overflow: 'hidden' }}>
+          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.primary, borderRadius: 3 }} />
+        </View>
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
+          {pct}% · {elapsed} elapsed — typically 5–15 min for a full game
         </Text>
       </View>
     );

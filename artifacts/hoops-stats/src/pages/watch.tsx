@@ -96,6 +96,10 @@ export default function WatchStream() {
   // the grace period fires and we fall back to waiting-for-broadcaster.
   const [broadcasterReconnecting, setBroadcasterReconnecting] = useState(false);
 
+  // True when the broadcaster is a mobile score-keeper (no WebRTC video).
+  // Skip offer negotiation and show a big score-only board instead of video.
+  const [scoreOnly, setScoreOnly] = useState(false);
+
   // Pinch-to-zoom / pan / double-tap-reset — all via refs so gesture
   // handling never triggers a React re-render.
   const videoWrapRef = useRef<HTMLDivElement | null>(null);
@@ -600,6 +604,27 @@ export default function WatchStream() {
 
         if (message.type === "joined") {
           myViewerIdRef.current = message.viewerId;
+          if (message.hasVideo === false) {
+            // Mobile score-only broadcaster — skip WebRTC, go live immediately.
+            setScoreOnly(true);
+            if (offerWatchdogRef.current) {
+              clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = null;
+            }
+            setState("live");
+          }
+          return;
+        }
+
+        if (message.type === "session-mode") {
+          if (message.hasVideo === false) {
+            setScoreOnly(true);
+            if (offerWatchdogRef.current) {
+              clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = null;
+            }
+            setState("live");
+          }
           return;
         }
 
@@ -876,7 +901,7 @@ export default function WatchStream() {
         </div>
       )}
 
-      {state === "live" && showRotateTip && (
+      {state === "live" && showRotateTip && !scoreOnly && (
         <div
           className="absolute inset-x-3 z-10 flex items-center justify-between gap-3 rounded-lg bg-black/70 px-3 py-2 text-white backdrop-blur-sm"
           style={{ bottom: "calc(env(safe-area-inset-bottom) + 4rem)" }}
@@ -896,7 +921,7 @@ export default function WatchStream() {
         </div>
       )}
 
-      {state === "live" && scoreboard && (() => {
+      {state === "live" && scoreboard && !scoreOnly && (() => {
         // Decide which black bar to anchor the scoreboard in.
         // Priority: top bar (most legible) → left bar → minimal safe-area strip.
         // The container div is sized to exactly the available black space so
@@ -958,7 +983,7 @@ export default function WatchStream() {
         );
       })()}
 
-      {state === "live" && statEvents.length > 0 && (() => {
+      {state === "live" && statEvents.length > 0 && !scoreOnly && (() => {
         // Mirror the scoreboard logic: put stat pills in whichever black bar
         // is available so they never land on top of court action.
         const MIN_LEFT_BAR = 80;
@@ -1010,30 +1035,32 @@ export default function WatchStream() {
         >
           <button
             onClick={shareLink}
-            className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors"
+            className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors pointer-events-auto"
           >
             {shareStatus === "copied"
               ? <><Check className="w-4 h-4 text-green-400" /> Copied!</>
               : <><Share2 className="w-4 h-4" /> Share</>}
           </button>
-          <button
-            onClick={() => {
-              setFillMode(prev => {
-                if (!prev) resetZoom();
-                return !prev;
-              });
-            }}
-            className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors"
-            title={fillMode ? "Show full frame" : "Fill screen"}
-          >
-            {fillMode
-              ? <><Minimize2 className="w-4 h-4" /> Fit</>
-              : <><Maximize2 className="w-4 h-4" /> Fill</>}
-          </button>
+          {!scoreOnly && (
+            <button
+              onClick={() => {
+                setFillMode(prev => {
+                  if (!prev) resetZoom();
+                  return !prev;
+                });
+              }}
+              className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors pointer-events-auto"
+              title={fillMode ? "Show full frame" : "Fill screen"}
+            >
+              {fillMode
+                ? <><Minimize2 className="w-4 h-4" /> Fit</>
+                : <><Maximize2 className="w-4 h-4" /> Fill</>}
+            </button>
+          )}
         </div>
       )}
 
-      {state === "live" && muted && (
+      {state === "live" && muted && !scoreOnly && (
         <button
           onClick={unmute}
           className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40 backdrop-blur-sm z-10"
@@ -1045,6 +1072,47 @@ export default function WatchStream() {
             <span className="text-sm text-white/60">Browsers mute live video by default</span>
           </div>
         </button>
+      )}
+
+      {/* Score-only mode — mobile broadcaster with no video */}
+      {state === "live" && scoreOnly && scoreboard && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 pointer-events-none select-none">
+          <div className="flex items-center gap-1.5 rounded-full bg-red-600/90 px-3 py-1 text-xs font-bold text-white">
+            <Radio className="w-3 h-3" /> SCORE FEED
+          </div>
+          <div className="flex items-center gap-8">
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-white/60 text-sm font-semibold uppercase tracking-wider truncate max-w-[30vw]">
+                {status?.teamName ?? "Team"}
+              </span>
+              <span className="font-display font-bold text-8xl tabular-nums text-primary leading-none drop-shadow-[0_0_24px_hsl(var(--primary)/0.7)]">
+                {scoreboard.teamScore}
+              </span>
+            </div>
+            <span className="text-white/30 text-3xl font-bold">—</span>
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-white/60 text-sm font-semibold uppercase tracking-wider truncate max-w-[30vw]">
+                {status?.opponent ?? "Opponent"}
+              </span>
+              <span className="font-display font-bold text-8xl tabular-nums text-white leading-none">
+                {scoreboard.opponentScore}
+              </span>
+            </div>
+          </div>
+          {statEvents.length > 0 && (
+            <div className="flex flex-col items-center gap-1.5 mt-2">
+              {statEvents.slice(-4).map((ev) => (
+                <div
+                  key={ev.id}
+                  className="flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm px-4 py-1.5 text-white text-sm font-semibold"
+                >
+                  <span className="text-primary font-bold">{ev.label}</span>
+                  <span>{ev.playerName}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Branding watermark — always visible in corner */}
