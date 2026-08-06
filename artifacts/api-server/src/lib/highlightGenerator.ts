@@ -616,14 +616,28 @@ async function encodeChunksToGcs(
   firstMissing: number,
   deleteAfterUpload: boolean,
   signal?: AbortSignal,
+  /** Stop encoding after this many seconds from the start of the file.
+   * Only the chunks needed for the reel are built; the rest remain absent in
+   * GCS and will be built lazily (by a background proxy build or next request).
+   * Omit (or pass undefined) to encode the full video as before. */
+  maxDurationSec?: number,
 ): Promise<number> {
   const numChunks = existFlags.length;
   const gcsChunkPath = (i: number) =>
     `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
   const startSec = firstMissing * PROXY_CHUNK_DURATION_SEC;
 
+  // When maxDurationSec is set (targeted reel generation), cap the encode at
+  // that point in the file.  Add one extra chunk of headroom so that the last
+  // needed segment (which may span a chunk boundary) is always fully covered.
+  // For full-game proxy builds (maxDurationSec undefined) there is no cap.
+  const encodeLimitSec =
+    maxDurationSec != null && maxDurationSec > startSec
+      ? maxDurationSec - startSec + PROXY_CHUNK_DURATION_SEC
+      : null;
+
   logger.info(
-    { gameId, numChunks, firstMissing, startSec },
+    { gameId, numChunks, firstMissing, startSec, encodeLimitSec },
     "Proxy: single-pass segment encode with incremental GCS upload",
   );
 
@@ -642,6 +656,9 @@ async function encodeChunksToGcs(
     "-i", srcPath,
     // Slow (decode-and-discard) seek for URL sources — avoids range requests.
     ...((isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
+    // Stop encoding early when only a subset of chunks is needed (reel-targeted
+    // build).  Full-game builds (encodeLimitSec === null) have no -t flag.
+    ...(encodeLimitSec != null ? ["-t", String(Math.ceil(encodeLimitSec))] : []),
     "-c:v", "libx264",
     "-preset", "ultrafast",
     "-crf", "28",
@@ -896,7 +913,9 @@ async function proxyChunkExistsInGcs(objectPath: string): Promise<boolean> {
 // Single-flight guard: highlight + lowlight jobs for the same game start at
 // the same millisecond; without this, both would race the existence check
 // and kick off two full source downloads + encodes.
-const chunkEnsureInFlight = new Map<number, Promise<string[]>>();
+// Key = `${gameId}:${maxChunkNeeded ?? 'all'}` so a targeted (partial) build
+// and a full build can coexist in flight without sharing the wrong promise.
+const chunkEnsureInFlight = new Map<string, Promise<string[]>>();
 
 /**
  * Ensure every proxy chunk for a game exists in GCS and return their object
@@ -911,13 +930,18 @@ function ensureProxyChunksInGcs(
   ownerId: number,
   game: { videoObjectPath: string | null; videoDurationMs: number | null },
   signal?: AbortSignal,
+  /** Only build proxy chunks up to this index (inclusive). Callers that know
+   * the last chunk they need pass this so the encoder stops early rather than
+   * transcoding the entire game. Omit for full-game builds. */
+  maxChunkNeeded?: number,
 ): Promise<string[]> {
-  const inFlight = chunkEnsureInFlight.get(gameId);
+  const key = `${gameId}:${maxChunkNeeded ?? "all"}`;
+  const inFlight = chunkEnsureInFlight.get(key);
   if (inFlight) return inFlight;
-  const p = doEnsureProxyChunksInGcs(gameId, ownerId, game, signal).finally(() => {
-    chunkEnsureInFlight.delete(gameId);
+  const p = doEnsureProxyChunksInGcs(gameId, ownerId, game, signal, maxChunkNeeded).finally(() => {
+    chunkEnsureInFlight.delete(key);
   });
-  chunkEnsureInFlight.set(gameId, p);
+  chunkEnsureInFlight.set(key, p);
   return p;
 }
 
@@ -926,6 +950,7 @@ async function doEnsureProxyChunksInGcs(
   ownerId: number,
   game: { videoObjectPath: string | null; videoDurationMs: number | null },
   signal?: AbortSignal,
+  maxChunkNeeded?: number,
 ): Promise<string[]> {
   const durationMs = game.videoDurationMs ?? 0;
   if (durationMs <= 0) {
@@ -934,6 +959,13 @@ async function doEnsureProxyChunksInGcs(
   const gcsChunkPath = (i: number) =>
     `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
   const numChunksGuess = Math.max(1, Math.ceil(durationMs / 1000 / PROXY_CHUNK_DURATION_SEC));
+
+  // Always probe the full estimated range in parallel.  A targeted build
+  // (maxChunkNeeded set) only ENCODES a subset, but the returned path array
+  // must always cover the complete proxy so renderGameSegments can correctly
+  // identify the real last chunk and handle spansNextChunk detection.  Probing
+  // all numChunksGuess indices in Promise.all costs ~200 ms regardless of
+  // count — not a bottleneck.
   const existFlags = await Promise.all(
     Array.from({ length: numChunksGuess }, (_, i) =>
       proxyChunkExistsInGcs(gcsChunkPath(i)),
@@ -941,9 +973,9 @@ async function doEnsureProxyChunksInGcs(
   );
 
   if (existFlags.every(Boolean)) {
-    // The duration-based estimate can undercount (the encode is driven by
-    // the segments ffmpeg actually produced) — probe past it until the
-    // first miss to discover the TRUE chunk count.
+    // Probe past the estimate to discover the TRUE chunk count (the duration-
+    // based guess can undercount when the actual encode produced more segments
+    // than estimated).
     let count = numChunksGuess;
     while (
       count < numChunksGuess + 50 &&
@@ -951,7 +983,7 @@ async function doEnsureProxyChunksInGcs(
     ) {
       count++;
     }
-    logger.info({ gameId, count }, "Proxy chunks: all present in GCS");
+    logger.info({ gameId, count, maxChunkNeeded }, "Proxy chunks: all present in GCS");
     return Array.from({ length: count }, (_, i) => gcsChunkPath(i));
   }
 
@@ -970,9 +1002,17 @@ async function doEnsureProxyChunksInGcs(
   // runs for shorter games where it finishes well within the timeout, and any
   // game whose chunks are ALREADY fully in GCS (existFlags.every(Boolean)) is
   // served from cache regardless of duration (handled above).
-  const MAX_INLINE_PROXY_DURATION_SEC = 1200; // 20 minutes
+  //
+  // EXCEPTION: when maxChunkNeeded is set, only a subset of chunks are built.
+  // The effective encode duration is (maxChunkNeeded+1) * PROXY_CHUNK_DURATION_SEC
+  // which is often well under the timeout even for long games.
+  const MAX_INLINE_PROXY_DURATION_SEC = 1200; // 20 minutes (full-game limit)
   const durSec = durationMs / 1000;
-  if (durSec > MAX_INLINE_PROXY_DURATION_SEC) {
+  const effectiveDurSec =
+    maxChunkNeeded != null
+      ? Math.min(durSec, (maxChunkNeeded + 1) * PROXY_CHUNK_DURATION_SEC)
+      : durSec;
+  if (effectiveDurSec > MAX_INLINE_PROXY_DURATION_SEC) {
     throw new HighlightError(
       `Video is ${Math.round(durSec / 60)} min — too long for inline proxy build ` +
       `(limit ${MAX_INLINE_PROXY_DURATION_SEC / 60} min). Using direct source extraction.`,
@@ -980,8 +1020,15 @@ async function doEnsureProxyChunksInGcs(
   }
 
   const firstMissing = existFlags.findIndex((e) => !e);
+  // When the caller only needs a subset of chunks, tell the encoder to stop
+  // after the last needed chunk. This prevents encoding the entire game when
+  // all highlight moments are in the first few minutes.
+  const maxDurationSec =
+    maxChunkNeeded != null
+      ? (maxChunkNeeded + 1) * PROXY_CHUNK_DURATION_SEC
+      : undefined;
   logger.info(
-    { gameId, numChunksGuess, firstMissing },
+    { gameId, numChunksGuess, firstMissing, maxDurationSec },
     "Proxy chunks: encoding missing chunks from source",
   );
   // Prefix starts with "video-proxy-" so startup orphan cleanup covers it.
@@ -997,7 +1044,7 @@ async function doEnsureProxyChunksInGcs(
       // deleteAfterUpload: local chunk files are removed as soon as each one
       // is safely in GCS — extraction re-downloads only the chunks it needs.
       actualNumChunks = await encodeChunksToGcs(
-        gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal,
+        gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal, maxDurationSec,
       );
     } finally {
       release();
@@ -1827,6 +1874,58 @@ async function renderGameSegments(
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Parallel chunk pre-download (chunked mode only).
+  //
+  // Downloading proxy chunks one-at-a-time in the linear render walk is the
+  // dominant bottleneck for existing proxies: each 250 MB chunk takes 30-60 s
+  // from GCS, so 3 needed chunks = 90-180 s sequentially vs. ~30-60 s when
+  // all three download concurrently.  We pre-download all needed chunks in
+  // parallel here, before the render walk starts, so every ensureChunk() call
+  // inside the walk returns immediately from the shared-chunk cache.
+  //
+  // Memory bound: limit parallel preload to 4 chunks (≈ 1 GB peak tmpfs on
+  // the RAM-backed /tmp).  Games with > 4 needed chunks fall back to the
+  // sequential walk which keeps ≤ 2 chunks resident at a time.
+  //
+  // Ref-counting: each _acquireSharedChunk call increments the shared ref.
+  // We track these preload refs separately (preloadedRefs) so the finally
+  // block can release them alongside the per-render refs already in
+  // acquiredChunks.  A chunk acquired for both preload and render has refs=2
+  // and is deleted only after both are released — no early eviction.
+  // ---------------------------------------------------------------------------
+  const MAX_PARALLEL_PRELOAD = 4;
+  const preloadedRefs: number[] = []; // chunk indices with an extra preload ref
+  if (chunked && neededChunks.size > 0 && neededChunks.size <= MAX_PARALLEL_PRELOAD) {
+    const sorted = [...neededChunks].sort((a, b) => a - b);
+    logger.info(
+      { prefix, chunks: sorted },
+      "Chunk walk: pre-downloading needed chunks in parallel",
+    );
+    try {
+      await Promise.all(
+        sorted.map(async (ci) => {
+          if (chunkedSrc!.signal?.aborted) throw new HighlightError("Generation cancelled");
+          await _acquireSharedChunk(chunkObjectPaths[ci]);
+          preloadedRefs.push(ci);
+        }),
+      );
+      logger.info({ prefix }, "Chunk walk: parallel pre-download complete");
+    } catch (preloadErr) {
+      // One or more downloads failed or was cancelled.  Release every ref that
+      // WAS successfully acquired before the failure so no tmpfs files leak.
+      // preloadedRefs is populated atomically (push after await), so it contains
+      // exactly the chunks that completed before the first rejection.
+      // The chunked-walk finally block sees an empty preloadedRefs and skips
+      // the double-release pass — clearing the array prevents that.
+      for (const ci of preloadedRefs) {
+        await _releaseSharedChunk(chunkObjectPaths[ci]);
+      }
+      preloadedRefs.length = 0;
+      throw preloadErr;
+    }
+  }
+
   // Phase A (remote sources only): single-pass stream-copy extraction.
   // A cueless live-recorded WebM cannot be seeked over HTTP — every -ss
   // triggers a linear scan from byte 0, so per-clip remote seeking would be
@@ -2141,6 +2240,12 @@ async function renderGameSegments(
         );
       }
     } finally {
+      // Release preload refs first (extra refs from parallel pre-download above).
+      // A chunk that was both preloaded and rendered has refs = 2; releasing both
+      // sets refs = 0 so the tmpfs file is actually deleted.
+      for (const ci of preloadedRefs) {
+        await _releaseSharedChunk(chunkObjectPaths[ci]);
+      }
       for (const ci of [...acquiredChunks]) {
         await dropChunk(ci);
       }
@@ -2388,6 +2493,30 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     // chunk path fails (e.g. video duration unknown).
     logger.info({ gameId }, "Highlight: preparing proxy chunks");
     let rendered: { segPaths: string[]; hasAudio: boolean };
+
+    // Compute the last proxy chunk that actually contains a highlight moment.
+    // Passing this to ensureProxyChunksInGcs lets the encoder stop after that
+    // chunk instead of transcoding the entire game — a major win when all
+    // moments cluster in the first half (saves encoding the tail chunks).
+    const highlightMaxChunkNeeded = (() => {
+      const durSec = (game.videoDurationMs ?? 0) / 1000;
+      const totalChunks = Math.max(1, Math.ceil(durSec / PROXY_CHUNK_DURATION_SEC));
+      const adjustedEndTimes = eligible.map((e) => {
+        const ts = e.videoTimestampMs ?? 0;
+        const gapAdj =
+          game.videoHalf2StartMs != null &&
+          game.videoHalftimeGapMs != null &&
+          ts >= game.videoHalf2StartMs
+            ? game.videoHalftimeGapMs
+            : 0;
+        return (ts - (game.videoOffsetMs ?? 0) - gapAdj) / 1000;
+      }).filter((t) => t >= 0);
+      if (adjustedEndTimes.length === 0) return undefined;
+      const maxTimeSec = Math.max(...adjustedEndTimes) + POST_SECONDS;
+      return Math.min(Math.floor(maxTimeSec / PROXY_CHUNK_DURATION_SEC), totalChunks - 1);
+    })();
+    logger.info({ gameId, highlightMaxChunkNeeded }, "Highlight: computed max needed chunk index");
+
     // Track whether ensureProxyChunksInGcs confirmed chunks are in GCS.
     // If true, the raw-source fallback MUST NOT fire — downloading a 1+ GB raw
     // source while another job does the same would exceed the 2 GB RAM-backed
@@ -2396,7 +2525,9 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     // (not the source download) needs to succeed.
     let highlightChunksConfirmed = false;
     try {
-      const chunkObjectPaths = await ensureProxyChunksInGcs(gameId, game.ownerId, game, ac.signal);
+      const chunkObjectPaths = await ensureProxyChunksInGcs(
+        gameId, game.ownerId, game, ac.signal, highlightMaxChunkNeeded,
+      );
       highlightChunksConfirmed = true;
       rendered = await renderGameSegments(
         null, tmpDir, "g", eligible, nameById,
@@ -2536,9 +2667,33 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     // jobs share one chunk-ensure pass via the single-flight guard.
     logger.info({ gameId }, "Lowlight: preparing proxy chunks");
     let rendered: { segPaths: string[]; hasAudio: boolean };
+
+    // Same early-termination optimization as generateHighlight: compute the
+    // last proxy chunk that contains a lowlight moment and stop encoding there.
+    const lowlightMaxChunkNeeded = (() => {
+      const durSec = (game.videoDurationMs ?? 0) / 1000;
+      const totalChunks = Math.max(1, Math.ceil(durSec / PROXY_CHUNK_DURATION_SEC));
+      const adjustedEndTimes = eligible.map((e) => {
+        const ts = e.videoTimestampMs ?? 0;
+        const gapAdj =
+          game.videoHalf2StartMs != null &&
+          game.videoHalftimeGapMs != null &&
+          ts >= game.videoHalf2StartMs
+            ? game.videoHalftimeGapMs
+            : 0;
+        return (ts - (game.videoOffsetMs ?? 0) - gapAdj) / 1000;
+      }).filter((t) => t >= 0);
+      if (adjustedEndTimes.length === 0) return undefined;
+      const maxTimeSec = Math.max(...adjustedEndTimes) + POST_SECONDS;
+      return Math.min(Math.floor(maxTimeSec / PROXY_CHUNK_DURATION_SEC), totalChunks - 1);
+    })();
+    logger.info({ gameId, lowlightMaxChunkNeeded }, "Lowlight: computed max needed chunk index");
+
     let lowlightChunksConfirmed = false;
     try {
-      const chunkObjectPaths = await ensureProxyChunksInGcs(gameId, game.ownerId, game, ac.signal);
+      const chunkObjectPaths = await ensureProxyChunksInGcs(
+        gameId, game.ownerId, game, ac.signal, lowlightMaxChunkNeeded,
+      );
       lowlightChunksConfirmed = true;
       rendered = await renderGameSegments(
         null, tmpDir, "ll", eligible, nameById,
