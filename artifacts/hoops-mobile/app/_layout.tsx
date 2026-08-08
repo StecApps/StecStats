@@ -66,7 +66,7 @@ const queryClient = new QueryClient({
 
 /** Wires the Clerk session token into the shared API client fetch layer. */
 function ApiAuthSetup() {
-  const { getToken, isSignedIn, userId } = useAuth();
+  const { getToken, isSignedIn, isLoaded, userId } = useAuth();
 
   useEffect(() => {
     setAuthTokenGetter(async () => {
@@ -79,11 +79,21 @@ function ApiAuthSetup() {
   // RC webhooks can update the correct user row via app_user_id = clerkUserId.
   // On sign-out, also clear this coach's pending photo queue so a different
   // coach signing in on the same device never retries the wrong uploads.
+  //
+  // IMPORTANT: guard on `isLoaded` before calling logoutRevenueCat().
+  // On app reload / Metro bundler restart, Clerk starts with isSignedIn=false
+  // while it restores the session from SecureStore. Calling logOut() during
+  // that transient window would log RC out unnecessarily — and in Expo Go's
+  // "Browser Mode" the call throws "Unknown backend error", which could
+  // corrupt RC state before loginRevenueCat() fires a moment later.
   const prevUserIdRef = React.useRef<string | null | undefined>(undefined);
   useEffect(() => {
+    if (!isLoaded) return; // wait until Clerk has fully restored the session
+
     if (isSignedIn && userId) {
       loginRevenueCat(userId);
     } else if (!isSignedIn) {
+      // Only reach here for a deliberate sign-out, not a transient reload state.
       logoutRevenueCat();
       // Clear the queue for the coach who just signed out.
       const prev = prevUserIdRef.current;
@@ -92,7 +102,7 @@ function ApiAuthSetup() {
       }
     }
     prevUserIdRef.current = userId;
-  }, [isSignedIn, userId]);
+  }, [isLoaded, isSignedIn, userId]);
 
   return null;
 }
