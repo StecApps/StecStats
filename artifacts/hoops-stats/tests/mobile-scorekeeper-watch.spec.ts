@@ -7,7 +7,7 @@
  * clears automatically when the mobile broadcaster reconnects within the grace
  * period.
  *
- * Three scenarios:
+ * Five scenarios:
  *
  * A – Viewer joins while mobile broadcaster is already running
  *     The server's `joined` message includes `hasVideo: false` + `videoMode:
@@ -33,12 +33,22 @@
  *     not the watchdog fallback.  A follow-up scoreboard update verifies live
  *     score propagation continues to work.
  *
+ * E – Late-joining viewer also sees score-only board instantly
+ *     The broadcaster has already joined with videoMode: 'none' (camera denied)
+ *     before this second viewer connects.  The server should echo the session's
+ *     stored broadcasterHasVideo: false / broadcasterVideoMode: 'none' in the
+ *     `joined` response so the late joiner goes straight to score-only mode
+ *     without spinning.  SCORE FEED must appear within 800 ms — identical to
+ *     the first viewer's experience — confirming the watch page doesn't need an
+ *     offer to enter live mode regardless of when it connects.
+ *
  * What is mocked vs exercised
  * ---------------------------
  * Mocked  : HTTP health/status endpoints, WS signaling server
  * Exercised: watch.tsx `joined` hasVideo branch (→ immediate "live"),
  *            `broadcaster-reconnecting` banner, `broadcaster-reconnected` clear,
- *            offer-watchdog cancellation on score-only join
+ *            offer-watchdog cancellation on score-only join,
+ *            late-joiner path (server already has broadcasterHasVideo: false)
  */
 
 import { test, expect } from "@playwright/test";
@@ -362,6 +372,106 @@ test.describe("Watch page – camera permission denied → immediate score-only,
         JSON.stringify({ type: "scoreboard", teamScore: 23, opponentScore: 14 }),
       );
       await expect(page.getByText("23")).toBeVisible({ timeout: 3_000 });
+
+      // ── 6. Share button visible (live-state controls present) ─────────────
+      await expect(
+        page.getByRole("button", { name: /Share/i }),
+      ).toBeVisible({ timeout: 3_000 });
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Test E — late-joining viewer also sees score-only board instantly
+// ---------------------------------------------------------------------------
+
+test.describe("Watch page – late-joining viewer sees score-only instantly (broadcaster already no-video)", () => {
+  test(
+    "E – SCORE FEED visible within 800 ms for a viewer who joins after the broadcaster already set videoMode: none",
+    async ({ page }) => {
+      await setupHttpMocks(page);
+
+      // WS mock: the broadcaster has already joined with videoMode: 'none'
+      // (camera permission was denied at go-live).  The in-memory session on
+      // the server therefore has broadcasterHasVideo: false and
+      // broadcasterVideoMode: 'none'.  When this late-joining viewer sends
+      // join-viewer, liveSocket.ts reads those fields from the existing session
+      // and echoes them back in the `joined` response — which is what we
+      // simulate here.  No offer is ever sent (the broadcaster has no video).
+      let serverWs: import("@playwright/test").WebSocketRoute | null = null;
+
+      await page.routeWebSocket(
+        (url) => url.pathname === "/api/live/ws",
+        (ws) => {
+          serverWs = ws;
+
+          ws.onMessage((raw) => {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(
+                typeof raw === "string"
+                  ? raw
+                  : new TextDecoder().decode(raw as unknown as ArrayBuffer),
+              );
+            } catch {
+              return;
+            }
+
+            if (msg.type === "join-viewer") {
+              // Server already has broadcasterHasVideo: false from the
+              // broadcaster's earlier join-broadcaster with videoMode: 'none'.
+              // liveSocket.ts line 179:
+              //   safeSend(ws, { type: "joined", viewerId, hasVideo: session.broadcasterHasVideo, videoMode: session.broadcasterVideoMode });
+              ws.send(
+                JSON.stringify({
+                  type: "joined",
+                  viewerId: "late-viewer-001",
+                  hasVideo: false,
+                  videoMode: "none",
+                }),
+              );
+              // Include a current scoreboard — the session has been running,
+              // scores have accumulated.
+              ws.send(
+                JSON.stringify({
+                  type: "scoreboard",
+                  teamScore: 31,
+                  opponentScore: 18,
+                }),
+              );
+            }
+            // No WebRTC offer is ever sent — proves the page doesn't need one.
+          });
+        },
+      );
+
+      // Compress the offer watchdog to 1 s — if the page relied on it to enter
+      // score-only mode, SCORE FEED would not appear within 800 ms.
+      await page.goto(`/watch/${CODE}?__watchOfferS=1`);
+
+      // ── 1. SCORE FEED must appear before the 1-second watchdog fires ──────
+      // 800 ms deadline proves the watch page acted on `hasVideo: false` in the
+      // `joined` message directly, not on the offer-watchdog fallback path.
+      await expect(page.getByText("SCORE FEED")).toBeVisible({ timeout: 800 });
+
+      // ── 2. Accumulated scores must be visible immediately ─────────────────
+      await expect(page.getByText("31")).toBeVisible({ timeout: 2_000 });
+      await expect(page.getByText("18")).toBeVisible({ timeout: 2_000 });
+
+      // ── 3. "Joining the stream…" spinner must be gone ─────────────────────
+      await expect(page.getByText(/Joining the stream/i)).not.toBeVisible();
+
+      // ── 4. No "Tap for sound" overlay (score-only has no audio track) ──────
+      await expect(page.getByText(/Tap for sound/i)).not.toBeVisible();
+
+      // ── 5. Live score updates still propagate after late join ─────────────
+      // Push a new scoreboard from the server — proves the WS channel is
+      // fully functional for the late joiner, not just the initial render.
+      expect(serverWs).not.toBeNull();
+      serverWs!.send(
+        JSON.stringify({ type: "scoreboard", teamScore: 33, opponentScore: 18 }),
+      );
+      await expect(page.getByText("33")).toBeVisible({ timeout: 3_000 });
 
       // ── 6. Share button visible (live-state controls present) ─────────────
       await expect(
