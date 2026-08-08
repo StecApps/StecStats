@@ -2,16 +2,18 @@
  * mobile-scorekeeper-watch.spec.ts
  *
  * Confirms that a viewer watching a live game from a mobile score-keeper
- * (hasVideo: false) sees the score-only board — not a spinning "Connecting…"
- * state — and that the "Stream interrupted" banner clears automatically when
- * the mobile broadcaster reconnects within the grace period.
+ * (hasVideo: false / videoMode: 'none') sees the score-only board — not a
+ * spinning "Connecting…" state — and that the "Stream interrupted" banner
+ * clears automatically when the mobile broadcaster reconnects within the grace
+ * period.
  *
- * Two scenarios:
+ * Three scenarios:
  *
  * A – Viewer joins while mobile broadcaster is already running
- *     The server's `joined` message includes `hasVideo: false`.  The watch
- *     page must skip WebRTC negotiation and go straight to "live" score-only
- *     mode without waiting for an offer that will never arrive.
+ *     The server's `joined` message includes `hasVideo: false` + `videoMode:
+ *     'none'` (matching what scorekeeper.tsx sends when camera permission is
+ *     denied).  The watch page must skip WebRTC negotiation and go straight to
+ *     "live" score-only mode without waiting for an offer that will never arrive.
  *
  * B – Mobile broadcaster drops and reconnects within grace period
  *     While in score-only live state the server sends `broadcaster-reconnecting`
@@ -20,11 +22,23 @@
  *     must appear on the first signal and disappear on the second — without the
  *     viewer tapping any button.
  *
+ * C – Score-only mode arrives before the offer watchdog fires (camera denied)
+ *     This is the regression guard for the specific bug: when camera permission
+ *     is denied on the coach's phone the broadcaster sends videoMode: 'none'.
+ *     If the watch page relied solely on the offer-watchdog timeout to enter
+ *     score-only mode, the viewer would be stuck on "Connecting…" for up to
+ *     6 s (the default watchdog).  The test compresses the watchdog to 1 s
+ *     and asserts SCORE FEED appears within 800 ms — well before the watchdog
+ *     would fire — proving the page uses the `hasVideo: false` signal directly,
+ *     not the watchdog fallback.  A follow-up scoreboard update verifies live
+ *     score propagation continues to work.
+ *
  * What is mocked vs exercised
  * ---------------------------
  * Mocked  : HTTP health/status endpoints, WS signaling server
  * Exercised: watch.tsx `joined` hasVideo branch (→ immediate "live"),
- *            `broadcaster-reconnecting` banner, `broadcaster-reconnected` clear
+ *            `broadcaster-reconnecting` banner, `broadcaster-reconnected` clear,
+ *            offer-watchdog cancellation on score-only join
  */
 
 import { test, expect } from "@playwright/test";
@@ -108,13 +122,15 @@ test.describe("Watch page – mobile score-keeper (hasVideo: false)", () => {
             }
 
             if (msg.type === "join-viewer") {
-              // Immediately ack with hasVideo: false so the component skips
-              // WebRTC and goes straight to score-only "live" mode.
+              // Immediately ack with hasVideo: false + videoMode: 'none' —
+              // matching what the server sends when the mobile broadcaster's
+              // camera permission is denied.
               ws.send(
                 JSON.stringify({
                   type: "joined",
                   viewerId: "mob-viewer-001",
                   hasVideo: false,
+                  videoMode: "none",
                 }),
               );
               ws.send(
@@ -263,3 +279,95 @@ test.describe("Watch page – mobile broadcaster drop + reconnect within grace p
     },
   );
 });
+
+// ---------------------------------------------------------------------------
+// Test C — score-only arrives before the offer watchdog fires (camera denied)
+// ---------------------------------------------------------------------------
+
+test.describe("Watch page – camera permission denied → immediate score-only, no watchdog wait", () => {
+  test(
+    "C – SCORE FEED visible within 800 ms when videoMode: none is received, proving no watchdog wait",
+    async ({ page }) => {
+      await setupHttpMocks(page);
+
+      // Hold a ref to push server-side messages after the initial handshake.
+      let serverWs: import("@playwright/test").WebSocketRoute | null = null;
+
+      await page.routeWebSocket(
+        (url) => url.pathname === "/api/live/ws",
+        (ws) => {
+          serverWs = ws;
+
+          ws.onMessage((raw) => {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(
+                typeof raw === "string"
+                  ? raw
+                  : new TextDecoder().decode(raw as unknown as ArrayBuffer),
+              );
+            } catch {
+              return;
+            }
+
+            if (msg.type === "join-viewer") {
+              // Simulate the exact payload liveSocket.ts sends when the mobile
+              // broadcaster joined with hasVideo: false (camera permission denied).
+              // videoMode: 'none' matches what scorekeeper.tsx sends.
+              ws.send(
+                JSON.stringify({
+                  type: "joined",
+                  viewerId: "mob-viewer-cam-denied",
+                  hasVideo: false,
+                  videoMode: "none",
+                }),
+              );
+              ws.send(
+                JSON.stringify({
+                  type: "scoreboard",
+                  teamScore: 21,
+                  opponentScore: 14,
+                }),
+              );
+            }
+            // No offer is ever sent — the page must not wait for one.
+          });
+        },
+      );
+
+      // Compress the offer watchdog to 1 s.  If the component relied on the
+      // watchdog to enter score-only mode, SCORE FEED would never appear within
+      // 800 ms (the watchdog hasn't fired yet) — the assertion below would fail.
+      await page.goto(`/watch/${CODE}?__watchOfferS=1`);
+
+      // ── 1. SCORE FEED must appear before the 1-second watchdog fires ──────
+      // 800 ms deadline proves the page acted on `hasVideo: false` directly,
+      // not on the offer-watchdog fallback path.
+      await expect(page.getByText("SCORE FEED")).toBeVisible({ timeout: 800 });
+
+      // ── 2. Scores from the initial scoreboard message must be visible ──────
+      await expect(page.getByText("21")).toBeVisible({ timeout: 2_000 });
+      await expect(page.getByText("14")).toBeVisible({ timeout: 2_000 });
+
+      // ── 3. "Joining the stream…" spinner must be gone ─────────────────────
+      await expect(page.getByText(/Joining the stream/i)).not.toBeVisible();
+
+      // ── 4. No "Tap for sound" overlay (score-only has no audio track) ──────
+      await expect(page.getByText(/Tap for sound/i)).not.toBeVisible();
+
+      // ── 5. Live score updates propagate in real time ──────────────────────
+      // Push a new scoreboard message from the server and verify it renders.
+      expect(serverWs).not.toBeNull();
+      serverWs!.send(
+        JSON.stringify({ type: "scoreboard", teamScore: 23, opponentScore: 14 }),
+      );
+      await expect(page.getByText("23")).toBeVisible({ timeout: 3_000 });
+
+      // ── 6. Share button visible (live-state controls present) ─────────────
+      await expect(
+        page.getByRole("button", { name: /Share/i }),
+      ).toBeVisible({ timeout: 3_000 });
+    },
+  );
+});
+
