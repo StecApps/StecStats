@@ -285,6 +285,80 @@ describe("liveSocket signaling relay", () => {
     viewer.close();
   });
 
+  it("viewer receives joined{hasVideo:false} when broadcaster's getUserMedia failed before onopen", async () => {
+    // Simulates the pre-onopen race: getUserMedia rejects before ws.onopen fires,
+    // so webrtcCameraFailedRef is true when onopen runs and the initial
+    // join-broadcaster already has hasVideo:false / videoMode:'none'.
+    // Viewers who join after that must get joined{hasVideo:false} and go
+    // score-only immediately — no offer watchdog delay.
+    const broadcaster = new WebSocket(wsUrl);
+    await waitForOpen(broadcaster);
+    // Camera failed before onopen — send score-only from the very first message.
+    broadcaster.send(
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: false, videoMode: "none" }),
+    );
+    await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");
+
+    const { ws: viewer, viewerId: _ } = await connectViewer();
+    // connectViewer calls join-viewer and awaits "joined"; assert its payload.
+    // The joined message was already consumed by connectViewer; re-derive it by
+    // joining a fresh viewer and capturing the raw joined message ourselves.
+    viewer.close();
+
+    const viewer2 = new WebSocket(wsUrl);
+    await waitForOpen(viewer2);
+    viewer2.send(JSON.stringify({ type: "join-viewer", code: TEST_CODE }));
+    const joined = await waitForMessage(viewer2, (m) => m.type === "joined");
+
+    expect(joined.hasVideo).toBe(false);
+    expect(joined.videoMode).toBe("none");
+
+    broadcaster.close();
+    viewer2.close();
+  });
+
+  it("pushes session-mode(score-only) to all viewers when broadcaster downgrades from webrtc to none", async () => {
+    // Simulate the mobile scorekeeper flow:
+    //   1. Broadcaster joins announcing hasVideo: true (camera permission granted).
+    //   2. getUserMedia() rejects on device — broadcaster re-sends join-broadcaster
+    //      with hasVideo: false to signal the downgrade.
+    //   3. Every connected viewer must receive session-mode { hasVideo: false }.
+    //
+    // This test covers the regression where viewers were left waiting on the
+    // 6-second offer watchdog instead of immediately entering score-only mode.
+    const broadcaster = new WebSocket(wsUrl);
+    await waitForOpen(broadcaster);
+    broadcaster.send(
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: true, videoMode: "webrtc" }),
+    );
+    await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");
+
+    const { ws: viewer1 } = await connectViewer();
+    const { ws: viewer2 } = await connectViewer();
+
+    // Drain the new-viewer notices the broadcaster receives for each viewer.
+    await waitForMessage(broadcaster, (m) => m.type === "new-viewer");
+    await waitForMessage(broadcaster, (m) => m.type === "new-viewer");
+
+    // getUserMedia failed — broadcaster downgrades to score-only.
+    broadcaster.send(
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: false, videoMode: "none" }),
+    );
+
+    // Both viewers must receive session-mode immediately.
+    const [mode1, mode2] = await Promise.all([
+      waitForMessage(viewer1, (m) => m.type === "session-mode"),
+      waitForMessage(viewer2, (m) => m.type === "session-mode"),
+    ]);
+
+    expect(mode1).toMatchObject({ type: "session-mode", hasVideo: false, videoMode: "none" });
+    expect(mode2).toMatchObject({ type: "session-mode", hasVideo: false, videoMode: "none" });
+
+    broadcaster.close();
+    viewer1.close();
+    viewer2.close();
+  });
+
   it("drops request-offer silently when sent by the broadcaster role", async () => {
     const broadcaster = await connectBroadcaster();
     await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");

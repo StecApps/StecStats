@@ -50,6 +50,8 @@ import {
   mediaDevices,
 } from 'react-native-webrtc';
 import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
+import { fetchIceServers } from '@/lib/fetchIceServers';
+import { drainPendingViewers } from '@/lib/drainPendingViewers';
 
 const defaultLine = (): StatLine => ({
   ftMade: 0, ftAttempted: 0,
@@ -130,11 +132,20 @@ export default function ScorekeeperScreen() {
   const webrtcPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   // Live camera MediaStream used for WebRTC — opened via mediaDevices.getUserMedia
   const webrtcStreamRef = useRef<any>(null);
+  // Viewer IDs that sent new-viewer while getUserMedia was still in-flight
+  // (e.g. immediately after a camera flip). Drained once the stream is ready.
+  const pendingViewerIdsRef = useRef<string[]>([]);
   const liveWsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set to true before an intentional close (stopLiveBroadcast) so ws.onclose
   // does not schedule a reconnect. Reset to false whenever a new connection is
   // opened so unintentional drops still auto-reconnect normally.
   const liveWsIntentionalCloseRef = useRef(false);
+  // Tracks whether getUserMedia resolved to a failure before the signaling
+  // WebSocket opened. ws.onopen reads this ref so it always sends the
+  // authoritative videoMode — not the optimistic permission-based guess.
+  // Reset at the top of the WebRTC stream effect whenever isLive/liveCode
+  // change so a fresh broadcast starts in the 'pending' (optimistic) state.
+  const webrtcCameraFailedRef = useRef(false);
   // Mirrors the latest team/opponent scores so reconnect callbacks don't
   // depend on derived consts that are declared later in the function body.
   const latestScoresRef = useRef({ teamScore: 0, opponentScore: 0 });
@@ -249,17 +260,6 @@ export default function ScorekeeperScreen() {
   }
 
   // ─── WebRTC broadcaster helpers ─────────────────────────────────────────────
-  async function fetchIceServers(): Promise<any[]> {
-    try {
-      const res = await fetch(`${API_BASE}/api/live/ice-servers`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data.iceServers)) return data.iceServers;
-      }
-    } catch {}
-    return [{ urls: 'stun:stun.l.google.com:19302' }];
-  }
-
   function closeAllWebRtcPeers() {
     for (const pc of webrtcPeersRef.current.values()) {
       try { pc.close(); } catch {}
@@ -275,7 +275,7 @@ export default function ScorekeeperScreen() {
   }
 
   async function createPeerForViewer(viewerId: string, code: string) {
-    const iceServers = await fetchIceServers();
+    const iceServers = await fetchIceServers(API_BASE);
     const pc = new RTCPeerConnection({ iceServers });
     webrtcPeersRef.current.set(viewerId, pc);
 
@@ -298,14 +298,22 @@ export default function ScorekeeperScreen() {
       }
     };
 
-    // Attempt ICE restart if the connection degrades
+    // Attempt ICE restart when the connection definitively fails.
+    // Only fires on 'failed' (not 'disconnected' which is transient and often
+    // self-heals). A local flag prevents duplicate restart offers if the state
+    // machine fires multiple callbacks before the new offer is delivered.
+    let iceRestartPending = false;
     (pc as any).onconnectionstatechange = () => {
       const state = (pc as any).connectionState;
-      if (state === 'failed' || state === 'disconnected') {
-        pc.createOffer({ iceRestart: true } as any).then((offer: any) => {
-          pc.setLocalDescription(offer as any);
-          broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp });
-        }).catch(() => {});
+      if (state === 'failed' && !iceRestartPending) {
+        iceRestartPending = true;
+        pc.createOffer({ iceRestart: true } as any)
+          .then((offer: any) => {
+            pc.setLocalDescription(offer as any);
+            broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp, renegotiate: true });
+          })
+          .catch(() => {})
+          .finally(() => { iceRestartPending = false; });
       }
     };
 
@@ -375,15 +383,20 @@ export default function ScorekeeperScreen() {
     liveWsRef.current = ws;
 
     ws.onopen = () => {
+      // Use the authoritative camera mode: if getUserMedia already rejected
+      // before this socket opened (webrtcCameraFailedRef is true), announce
+      // score-only immediately so viewers never wait on the offer watchdog.
+      // Otherwise fall back to the permission-based optimistic value.
+      const cameraFailed = webrtcCameraFailedRef.current;
+      const hasVideo = cameraFailed ? false : !!(cameraPermission?.granted);
+      const videoMode = cameraFailed ? 'none' : (cameraPermission?.granted ? 'webrtc' : 'none');
       ws.send(JSON.stringify({
         type: 'join-broadcaster',
         code,
         teamScore: initTeamScore,
         opponentScore: initOppScore,
-        // Mobile broadcaster sends WebRTC video when camera permission is
-        // available, falls back to score-only otherwise.
-        hasVideo: !!(cameraPermission?.granted),
-        videoMode: cameraPermission?.granted ? 'webrtc' : 'none',
+        hasVideo,
+        videoMode,
       }));
     };
 
@@ -391,11 +404,14 @@ export default function ScorekeeperScreen() {
       try {
         const msg = JSON.parse(event.data as string);
         if (msg.type === 'new-viewer') {
-          // A viewer has connected — send them an offer if our stream is ready.
-          // The stream may still be opening (getUserMedia in flight); viewers
-          // have a 6-second offer watchdog before showing score-only.
           if (webrtcStreamRef.current) {
+            // Stream is ready — offer immediately.
             await createPeerForViewer(msg.viewerId, code);
+          } else {
+            // getUserMedia is still in-flight (e.g. after a camera flip).
+            // Queue this viewer; drainPendingViewers will offer them once
+            // the stream resolves, rather than leaving them on the watchdog.
+            pendingViewerIdsRef.current.push(msg.viewerId);
           }
         } else if (msg.type === 'answer') {
           // Viewer responded with an SDP answer
@@ -631,6 +647,10 @@ export default function ScorekeeperScreen() {
 
   // ─── WebRTC camera stream — opened when live, closed when done ──────────────
   useEffect(() => {
+    // Reset the camera-failed flag whenever broadcast state changes so that a
+    // fresh go-live starts optimistically ('pending'), not stuck on a prior failure.
+    webrtcCameraFailedRef.current = false;
+
     if (!isLive || !liveCode || !cameraPermission?.granted) {
       closeAllWebRtcPeers();
       stopWebRtcStream();
@@ -646,13 +666,35 @@ export default function ScorekeeperScreen() {
           video: { facingMode: cameraFacing === 'back' ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: true,
         });
-        if (!cancelled) webrtcStreamRef.current = stream;
+        if (!cancelled) {
+          webrtcStreamRef.current = stream;
+          // Offer any viewers who arrived while the stream was opening.
+          drainPendingViewers(
+            pendingViewerIdsRef.current,
+            stream,
+            (id) => createPeerForViewer(id, liveCode!),
+          );
+        }
       } catch (e) {
         console.warn('[WebRTC] getUserMedia failed — viewers will see score-only:', e);
+        if (!cancelled) {
+          // Mark the failure so ws.onopen sends the authoritative score-only
+          // mode when the socket hasn't opened yet (race: getUserMedia rejected
+          // before onopen fired). If the socket is already open, broadcastWsSend
+          // immediately notifies the server to push session-mode to viewers.
+          webrtcCameraFailedRef.current = true;
+          broadcastWsSend({
+            type: 'join-broadcaster',
+            code: liveCode,
+            hasVideo: false,
+            videoMode: 'none',
+          });
+        }
       }
     })();
     return () => {
       cancelled = true;
+      pendingViewerIdsRef.current = [];
       closeAllWebRtcPeers();
       stopWebRtcStream();
     };
