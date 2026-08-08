@@ -243,7 +243,6 @@ const processingStartTimes    = new Map<number, number>();
 const lowlightStartTimes      = new Map<number, number>();
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
-  const { width: screenW, height: screenH } = useWindowDimensions();
   const { getToken } = useAuth();
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
   const generateMutation = useGenerateGameLowlight();
@@ -300,14 +299,11 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 
   if (lowlight.status === 'ready') {
     if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
-    // Fill the available review area — full screen width, 65 % of screen height.
-    // 'contain' keeps the entire clip visible regardless of portrait/landscape orientation.
-    const videoH = Math.round(screenH * 0.65);
     return (
-      <View style={{ width: screenW, height: videoH, backgroundColor: '#000' }}>
+      <View style={{ flex: 1, backgroundColor: colors.card }}>
         <VideoView
           player={player}
-          style={{ width: '100%', height: '100%' }}
+          style={{ flex: 1 }}
           contentFit="contain"
           allowsFullscreen
           allowsPictureInPicture
@@ -380,7 +376,6 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 }
 
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
-  const { width: screenW, height: screenH } = useWindowDimensions();
   const { getToken } = useAuth();
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
@@ -436,14 +431,11 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 
   if (highlight.status === 'ready') {
     if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
-    // Fill the available review area — full screen width, 65 % of screen height.
-    // 'contain' keeps the entire clip visible regardless of portrait/landscape orientation.
-    const videoH = Math.round(screenH * 0.65);
     return (
-      <View style={{ width: screenW, height: videoH, backgroundColor: '#000' }}>
+      <View style={{ flex: 1, backgroundColor: colors.card }}>
         <VideoView
           player={player}
-          style={{ width: '100%', height: '100%' }}
+          style={{ flex: 1 }}
           contentFit="contain"
           allowsFullscreen
           allowsPictureInPicture
@@ -607,37 +599,43 @@ export default function GameDetailScreen() {
         ))}
       </View>
 
-      {/* Content */}
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 30 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {tab === 'stats' && (
-          <>
-            {(game.stats as any[]).length === 0 ? (
-              <View style={videoStyle.empty}>
-                <Ionicons name="stats-chart-outline" size={40} color={colors.mutedForeground} />
-                <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
-                  No player stats recorded
-                </Text>
-              </View>
-            ) : (
-              <>
-                {[...(game.stats as any[])]
-                  .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
-                  .map((stat: any, i: number) => (
-                    <PlayerStatCard key={stat.playerId} stat={stat} rank={i + 1} colors={colors} />
-                  ))}
-                <TeamTotalsRow stats={game.stats as any[]} colors={colors} />
-              </>
-            )}
-          </>
-        )}
-        {tab === 'video' && <VideoSection game={game} colors={colors} />}
-        {tab === 'highlights' && <HighlightSection gameId={gameId} colors={colors} />}
-        {tab === 'lowlights' && <LowlightSection gameId={gameId} colors={colors} />}
-      </ScrollView>
+      {/* Content — video/highlight/lowlight tabs get a flex container so the
+           player fills all remaining space; stats tab stays in a ScrollView */}
+      {(tab === 'highlights' || tab === 'lowlights') ? (
+        <View style={{ flex: 1 }}>
+          {tab === 'highlights' && <HighlightSection gameId={gameId} colors={colors} />}
+          {tab === 'lowlights' && <LowlightSection gameId={gameId} colors={colors} />}
+        </View>
+      ) : (
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 30 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {tab === 'stats' && (
+            <>
+              {(game.stats as any[]).length === 0 ? (
+                <View style={videoStyle.empty}>
+                  <Ionicons name="stats-chart-outline" size={40} color={colors.mutedForeground} />
+                  <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
+                    No player stats recorded
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  {[...(game.stats as any[])]
+                    .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
+                    .map((stat: any, i: number) => (
+                      <PlayerStatCard key={stat.playerId} stat={stat} rank={i + 1} colors={colors} />
+                    ))}
+                  <TeamTotalsRow stats={game.stats as any[]} colors={colors} />
+                </>
+              )}
+            </>
+          )}
+          {tab === 'video' && <VideoSection game={game} colors={colors} />}
+        </ScrollView>
+      )}
     </View>
   );
 }
