@@ -517,6 +517,17 @@ export default function WatchStream() {
         // retries, show a clear "reconnecting" state instead of leaving a
         // frozen, silent frame on screen.
         setState((prev) => (prev === "ended" ? prev : "reconnecting"));
+        // When the coach flips cameras, the broadcaster's WebRTC useEffect
+        // tears down every peer connection abruptly and opens a new
+        // getUserMedia stream with the new facingMode.  The viewer's PC
+        // transitions to "failed" but the signaling WS stays open — without
+        // this send the viewer would be stuck in "reconnecting" until the
+        // 15-second "Tap to retry" threshold appeared.  Sending request-offer
+        // immediately lets the broadcaster reply with a fresh offer from the
+        // new camera stream, recovering video within ~1 s.
+        if (s === "failed" && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "request-offer", code }));
+        }
       }
     };
     pc.onconnectionstatechange = handleConnectionStateChange;
