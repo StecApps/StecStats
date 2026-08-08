@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   FlatList,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
@@ -242,6 +243,7 @@ const processingStartTimes    = new Map<number, number>();
 const lowlightStartTimes      = new Map<number, number>();
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const { getToken } = useAuth();
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
   const generateMutation = useGenerateGameLowlight();
@@ -298,14 +300,18 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 
   if (lowlight.status === 'ready') {
     if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
+    // Fill the available review area — full screen width, 65 % of screen height.
+    // 'contain' keeps the entire clip visible regardless of portrait/landscape orientation.
+    const videoH = Math.round(screenH * 0.65);
     return (
-      <View style={videoStyle.wrap}>
+      <View style={{ width: screenW, height: videoH, backgroundColor: '#000' }}>
         <VideoView
           player={player}
-          style={videoStyle.video}
-          contentFit="cover"
+          style={{ width: '100%', height: '100%' }}
+          contentFit="contain"
           allowsFullscreen
           allowsPictureInPicture
+          nativeControls
         />
       </View>
     );
@@ -374,6 +380,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 }
 
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const { getToken } = useAuth();
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
@@ -429,14 +436,18 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 
   if (highlight.status === 'ready') {
     if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
+    // Fill the available review area — full screen width, 65 % of screen height.
+    // 'contain' keeps the entire clip visible regardless of portrait/landscape orientation.
+    const videoH = Math.round(screenH * 0.65);
     return (
-      <View style={videoStyle.wrap}>
+      <View style={{ width: screenW, height: videoH, backgroundColor: '#000' }}>
         <VideoView
           player={player}
-          style={videoStyle.video}
-          contentFit="cover"
+          style={{ width: '100%', height: '100%' }}
+          contentFit="contain"
           allowsFullscreen
           allowsPictureInPicture
+          nativeControls
         />
       </View>
     );

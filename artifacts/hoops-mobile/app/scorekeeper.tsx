@@ -969,13 +969,16 @@ export default function ScorekeeperScreen() {
               <Text style={styles.oppBtnText}>−</Text>
             </TouchableOpacity>
             <Text style={styles.scoreNum}>{opponentScore}</Text>
-            <TouchableOpacity
-              onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-              style={styles.oppBtn}
-              hitSlop={{ top: 14, bottom: 14, left: 8, right: 14 }}
-            >
-              <Text style={styles.oppBtnText}>+</Text>
-            </TouchableOpacity>
+            {([1, 2, 3] as const).map((pts) => (
+              <TouchableOpacity
+                key={pts}
+                onPress={() => { setOpponentScore((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                style={styles.oppOverlayQuickBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+              >
+                <Text style={styles.oppOverlayQuickBtnText}>+{pts}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       </View>
@@ -1569,6 +1572,21 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     halfText: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: 'rgba(255,255,255,0.75)' },
     oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    // Compact quick-buttons used inside the dark camera overlay (white-tinted)
+    oppOverlayQuickBtn: {
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      borderRadius: 6,
+      backgroundColor: 'rgba(255,255,255,0.18)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.35)',
+    },
+    oppOverlayQuickBtnText: {
+      fontSize: 11,
+      fontFamily: 'Inter_700Bold',
+      color: '#fff',
+      lineHeight: 14,
+    },
     oppQuickBtn: {
       paddingHorizontal: 7,
       paddingVertical: 4,

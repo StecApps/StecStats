@@ -554,6 +554,11 @@ export default function WatchStream() {
       const ws = new WebSocket(liveWsUrl());
       wsRef.current = ws;
 
+      // Hoisted so ws.onmessage can call it directly when videoMode:'webrtc'
+      // lets us skip the initial OFFER_WATCHDOG_MS delay.
+      // eslint-disable-next-line prefer-const
+      let fireOfferWatchdog: () => void = () => { /* placeholder; reassigned in onopen */ };
+
       ws.onopen = () => {
         ws.send(JSON.stringify({ type: "join-viewer", code }));
         mediaFailedRef.current = false;
@@ -563,7 +568,7 @@ export default function WatchStream() {
         // to "ended" instead of looping forever.
         if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
         offerWatchdogAttemptsRef.current = 0;
-        const fireOfferWatchdog = () => {
+        fireOfferWatchdog = () => {
           offerWatchdogRef.current = null;
           if (ws.readyState !== WebSocket.OPEN) return;
           offerWatchdogAttemptsRef.current += 1;
@@ -646,6 +651,20 @@ export default function WatchStream() {
               offerWatchdogRef.current = null;
             }
             setState("live");
+          } else {
+            // WebRTC broadcaster — send request-offer *immediately* instead of
+            // waiting OFFER_WATCHDOG_MS (default 30 s) for the proactive watchdog
+            // to fire. Reset the watchdog so it still retries if the offer is
+            // delayed (e.g. broadcaster's getUserMedia still in-flight).
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "request-offer", code }));
+            }
+            if (offerWatchdogRef.current) {
+              clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = null;
+            }
+            offerWatchdogAttemptsRef.current = 0;
+            offerWatchdogRef.current = setTimeout(fireOfferWatchdog, OFFER_WATCHDOG_MS);
           }
           return;
         }
