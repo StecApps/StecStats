@@ -43,12 +43,23 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
-import {
-  RTCPeerConnection,
-  RTCIceCandidate,
-  RTCSessionDescription,
-  mediaDevices,
-} from 'react-native-webrtc';
+// react-native-webrtc is a native module — not available in Expo Go.
+// Require it dynamically so the app degrades to score-only live stream
+// instead of crashing on the module-not-found error.
+let RTCPeerConnection: any = null;
+let RTCIceCandidate: any = null;
+let RTCSessionDescription: any = null;
+let mediaDevices: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const rn = require('react-native-webrtc');
+  RTCPeerConnection = rn.RTCPeerConnection;
+  RTCIceCandidate = rn.RTCIceCandidate;
+  RTCSessionDescription = rn.RTCSessionDescription;
+  mediaDevices = rn.mediaDevices;
+} catch {
+  // Expo Go — WebRTC unavailable; live video will fall back to score-only
+}
 import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
 import { fetchIceServers } from '@/lib/fetchIceServers';
 import { drainPendingViewers } from '@/lib/drainPendingViewers';
@@ -275,6 +286,7 @@ export default function ScorekeeperScreen() {
   }
 
   async function createPeerForViewer(viewerId: string, code: string) {
+    if (!RTCPeerConnection) return; // native module not available (Expo Go)
     const iceServers = await fetchIceServers(API_BASE);
     const pc = new RTCPeerConnection({ iceServers });
     webrtcPeersRef.current.set(viewerId, pc);
@@ -388,8 +400,10 @@ export default function ScorekeeperScreen() {
       // score-only immediately so viewers never wait on the offer watchdog.
       // Otherwise fall back to the permission-based optimistic value.
       const cameraFailed = webrtcCameraFailedRef.current;
-      const hasVideo = cameraFailed ? false : !!(cameraPermission?.granted);
-      const videoMode = cameraFailed ? 'none' : (cameraPermission?.granted ? 'webrtc' : 'none');
+      // RTCPeerConnection is null when running in Expo Go (native module unavailable)
+      const webrtcSupported = RTCPeerConnection !== null;
+      const hasVideo = webrtcSupported && !cameraFailed && !!(cameraPermission?.granted);
+      const videoMode = hasVideo ? 'webrtc' : 'none';
       ws.send(JSON.stringify({
         type: 'join-broadcaster',
         code,
@@ -659,6 +673,7 @@ export default function ScorekeeperScreen() {
     // Open the camera stream for WebRTC broadcast.
     // expo-camera (CameraView) and react-native-webrtc both access the camera —
     // iOS 16+ supports simultaneous sessions cleanly.
+    if (!mediaDevices) return; // native module not available (Expo Go)
     let cancelled = false;
     (async () => {
       try {
