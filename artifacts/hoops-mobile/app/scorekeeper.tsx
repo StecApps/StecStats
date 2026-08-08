@@ -986,41 +986,41 @@ export default function ScorekeeperScreen() {
   );
 
   // ── Shared: stat area ──
+  // When the camera preview is filling the top half of the screen, we switch to
+  // a compact layout so ALL stat tickers are visible without scrolling.
+  const cameraCompact = recordVideo && previewVisible;
+
   const statArea = (
     <>
-      {/* ── Opponent score strip — always visible so coaches can track both scores ── */}
-      {(
-        <View style={[styles.oppScoreStrip, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-          <View style={styles.oppScoreStripTeam}>
-            <Text style={[styles.oppScoreStripLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{teamName}</Text>
-            <Text style={[styles.oppScoreStripNum, { color: colors.foreground }]}>{teamScore}</Text>
+      {/* ── Opponent score bar — prominent OPP label so it's obvious ── */}
+      <View style={[styles.oppBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <View style={styles.oppBarLeft}>
+          <View style={[styles.oppBarTagPill, { backgroundColor: colors.primary + '1A' }]}>
+            <Text style={[styles.oppBarTagText, { color: colors.primary }]}>OPP</Text>
           </View>
-          <Text style={[styles.oppScoreStripVs, { color: colors.mutedForeground }]}>vs</Text>
-          <View style={styles.oppScoreStripTeam}>
-            <Text style={[styles.oppScoreStripLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{opponent}</Text>
-            <View style={styles.oppScoreRow}>
-              <TouchableOpacity
-                onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                style={[styles.oppBtn, { backgroundColor: colors.muted }]}
-                hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
-              >
-                <Text style={[styles.oppBtnText, { color: colors.mutedForeground }]}>−</Text>
-              </TouchableOpacity>
-              <Text style={[styles.oppScoreStripNum, { color: colors.foreground }]}>{opponentScore}</Text>
-              {([1, 2, 3] as const).map((pts) => (
-                <TouchableOpacity
-                  key={pts}
-                  onPress={() => { setOpponentScore((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                  style={[styles.oppQuickBtn, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '50' }]}
-                  hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
-                >
-                  <Text style={[styles.oppQuickBtnText, { color: colors.primary }]}>+{pts}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
+          <Text style={[styles.oppBarName, { color: colors.foreground }]} numberOfLines={1}>{opponent}</Text>
         </View>
-      )}
+        <View style={styles.oppBarRight}>
+          <TouchableOpacity
+            onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            style={[styles.oppBtn, { backgroundColor: colors.muted }]}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
+          >
+            <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
+          </TouchableOpacity>
+          <Text style={[styles.oppBarScore, { color: colors.foreground }]}>{opponentScore}</Text>
+          {([1, 2, 3] as const).map((pts) => (
+            <TouchableOpacity
+              key={pts}
+              onPress={() => { setOpponentScore((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              style={[styles.oppQuickBtn, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '50' }]}
+              hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+            >
+              <Text style={[styles.oppQuickBtnText, { color: colors.primary }]}>+{pts}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       {/* Camera hidden badge — subtle reminder that recording is still running */}
       {recordVideo && !previewVisible && (
@@ -1067,108 +1067,216 @@ export default function ScorekeeperScreen() {
         />
       </View>
 
-      {/* Stat scroll */}
-      <ScrollView style={styles.statScroll} contentContainerStyle={styles.statContent} showsVerticalScrollIndicator={false}>
-        {!selectedPlayerId ? (
-          <Text style={[styles.noPlayerText, { color: colors.mutedForeground }]}>Select a player above to track stats</Text>
-        ) : (
-          <>
-            {/* ── Shooting stats ── */}
-            <View style={styles.shootRow}>
-              {([
-                { label: '2PT', madeKey: 'twoMade', attKey: 'twoAttempted', statField: 'twoMade' },
-                { label: '3PT', madeKey: 'threeMade', attKey: 'threeAttempted', statField: 'threeMade' },
-                { label: 'FT',  madeKey: 'ftMade',   attKey: 'ftAttempted',   statField: 'ftMade' },
-              ] as const).map((s) => {
-                const line = selectedLine!;
-                const made = line[s.madeKey as keyof StatLine] as number;
-                const att  = line[s.attKey as keyof StatLine] as number;
-                const hasMiss = att > made;
-                return (
-                  <View key={s.label} style={[styles.shootCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <Text style={[styles.shootLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-                    <Text style={[styles.shootValue, { color: colors.foreground }]}>
-                      {made}/{att}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleShoot('make', s.madeKey as any, s.attKey as any, s.statField)}
-                      style={[styles.makeBtn, { backgroundColor: '#16a34a' }]}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="checkmark" size={13} color="#fff" />
-                      <Text style={styles.shootBtnText}>MAKE</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleShoot('miss', s.madeKey as any, s.attKey as any, s.statField)}
-                      style={[styles.missBtn, { backgroundColor: colors.destructive }]}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="close" size={13} color="#fff" />
-                      <Text style={styles.shootBtnText}>MISS</Text>
-                    </TouchableOpacity>
-                    <View style={styles.undoRow}>
-                      <TouchableOpacity
-                        onPress={() => handleShoot('undoMake', s.madeKey as any, s.attKey as any, s.statField)}
-                        disabled={made === 0}
-                        style={[styles.undoBtn, { borderColor: colors.border, opacity: made === 0 ? 0.3 : 1 }]}
-                      >
-                        <Text style={[styles.undoBtnText, { color: colors.mutedForeground }]}>−Make</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleShoot('undoMiss', s.madeKey as any, s.attKey as any, s.statField)}
-                        disabled={!hasMiss}
-                        style={[styles.undoBtn, { borderColor: colors.border, opacity: hasMiss ? 1 : 0.3 }]}
-                      >
-                        <Text style={[styles.undoBtnText, { color: colors.mutedForeground }]}>−Miss</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
+      {/* ── Stat area: compact flat layout when camera is live, scrollable cards otherwise ── */}
+      {cameraCompact ? (
+        /* ─── COMPACT MODE: all tickers fit on screen without scrolling ─── */
+        <View style={styles.compactStatArea}>
+          {!selectedPlayerId ? (
+            <Text style={[styles.noPlayerText, { color: colors.mutedForeground }]}>
+              Select a player above to track stats
+            </Text>
+          ) : (
+            <>
+              {/* Shared-row shooting grid: header / MAKE / MISS rows across all 3 stats */}
+              <View style={styles.compactShootGrid}>
+                {/* Header row — label + made/att count side by side */}
+                <View style={styles.compactBtnRow}>
+                  {([
+                    { label: '2PT', madeKey: 'twoMade',   attKey: 'twoAttempted',   statField: 'twoMade' },
+                    { label: '3PT', madeKey: 'threeMade', attKey: 'threeAttempted', statField: 'threeMade' },
+                    { label: 'FT',  madeKey: 'ftMade',    attKey: 'ftAttempted',    statField: 'ftMade' },
+                  ] as const).map((s) => {
+                    const made = (selectedLine![s.madeKey as keyof StatLine] as number);
+                    const att  = (selectedLine![s.attKey  as keyof StatLine] as number);
+                    return (
+                      <View key={s.label} style={styles.compactShootHeaderCell}>
+                        <Text style={[styles.compactShootLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+                        <Text style={[styles.compactShootCount, { color: colors.foreground }]}>{made}/{att}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
 
-            {/* ── Counting stats ── */}
-            <View style={styles.countGrid}>
-              {([
-                { label: 'REB', field: 'rebounds',  color: 'primary' },
-                { label: 'AST', field: 'assists',   color: 'primary' },
-                { label: 'STL', field: 'steals',    color: 'primary' },
-                { label: 'BLK', field: 'blocks',    color: 'primary' },
-                { label: 'TO',  field: 'turnovers', color: 'destructive' },
-              ] as const).map((s) => {
-                const val = (selectedLine![s.field as keyof StatLine] as number);
-                const accent = s.color === 'destructive' ? colors.destructive : colors.primary;
-                return (
-                  <View key={s.label} style={[styles.countCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <Text style={[styles.countLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-                    <Text style={[styles.countValue, { color: accent }]}>{val}</Text>
-                    <View style={styles.countBtns}>
-                      <TouchableOpacity
-                        onPress={() => handleCount(s.field as keyof StatLine, -1)}
-                        disabled={val === 0}
-                        activeOpacity={0.7}
-                        style={[styles.countBtn, { backgroundColor: colors.muted, opacity: val === 0 ? 0.3 : 1 }]}
-                      >
-                        <Text style={[styles.countBtnText, { color: colors.mutedForeground }]}>−</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => handleCount(s.field as keyof StatLine, 1)}
-                        activeOpacity={0.7}
-                        style={[styles.countBtn, { backgroundColor: accent + '20', borderColor: accent + '40', borderWidth: 1 }]}
-                      >
-                        <Text style={[styles.countBtnText, { color: accent }]}>+</Text>
-                      </TouchableOpacity>
+                {/* MAKE row */}
+                <View style={styles.compactBtnRow}>
+                  {([
+                    { label: '2PT', madeKey: 'twoMade',   attKey: 'twoAttempted',   statField: 'twoMade' },
+                    { label: '3PT', madeKey: 'threeMade', attKey: 'threeAttempted', statField: 'threeMade' },
+                    { label: 'FT',  madeKey: 'ftMade',    attKey: 'ftAttempted',    statField: 'ftMade' },
+                  ] as const).map((s) => (
+                    <TouchableOpacity
+                      key={s.label}
+                      onPress={() => handleShoot('make', s.madeKey as any, s.attKey as any, s.statField)}
+                      style={[styles.compactMakeBtn, { backgroundColor: '#16a34a' }]}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="checkmark" size={12} color="#fff" />
+                      <Text style={styles.compactActionBtnText}>MAKE</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* MISS row */}
+                <View style={styles.compactBtnRow}>
+                  {([
+                    { label: '2PT', madeKey: 'twoMade',   attKey: 'twoAttempted',   statField: 'twoMade' },
+                    { label: '3PT', madeKey: 'threeMade', attKey: 'threeAttempted', statField: 'threeMade' },
+                    { label: 'FT',  madeKey: 'ftMade',    attKey: 'ftAttempted',    statField: 'ftMade' },
+                  ] as const).map((s) => (
+                    <TouchableOpacity
+                      key={s.label}
+                      onPress={() => handleShoot('miss', s.madeKey as any, s.attKey as any, s.statField)}
+                      style={[styles.compactMissBtn, { backgroundColor: colors.destructive }]}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close" size={12} color="#fff" />
+                      <Text style={styles.compactActionBtnText}>MISS</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Counting stats: single horizontal strip (no wrapping) */}
+              <View style={styles.compactCountStrip}>
+                {([
+                  { label: 'REB', field: 'rebounds',  color: 'primary' },
+                  { label: 'AST', field: 'assists',   color: 'primary' },
+                  { label: 'STL', field: 'steals',    color: 'primary' },
+                  { label: 'BLK', field: 'blocks',    color: 'primary' },
+                  { label: 'TO',  field: 'turnovers', color: 'destructive' },
+                ] as const).map((s) => {
+                  const val = (selectedLine![s.field as keyof StatLine] as number);
+                  const accent = s.color === 'destructive' ? colors.destructive : colors.primary;
+                  return (
+                    <View key={s.label} style={[styles.compactCountCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={[styles.compactCountLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+                      <Text style={[styles.compactCountVal, { color: accent }]}>{val}</Text>
+                      <View style={styles.compactCountBtns}>
+                        <TouchableOpacity
+                          onPress={() => handleCount(s.field as keyof StatLine, -1)}
+                          disabled={val === 0}
+                          activeOpacity={0.7}
+                          style={[styles.compactCountBtn, { backgroundColor: colors.muted, opacity: val === 0 ? 0.3 : 1 }]}
+                        >
+                          <Text style={[styles.compactCountBtnTxt, { color: colors.mutedForeground }]}>−</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleCount(s.field as keyof StatLine, 1)}
+                          activeOpacity={0.7}
+                          style={[styles.compactCountBtn, { backgroundColor: accent + '20', borderColor: accent + '40', borderWidth: 1 }]}
+                        >
+                          <Text style={[styles.compactCountBtnTxt, { color: accent }]}>+</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
-                );
-              })}
-            </View>
-          </>
-        )}
-      </ScrollView>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </View>
+      ) : (
+        /* ─── FULL MODE: scrollable tall cards (no camera taking space) ─── */
+        <ScrollView style={styles.statScroll} contentContainerStyle={styles.statContent} showsVerticalScrollIndicator={false}>
+          {!selectedPlayerId ? (
+            <Text style={[styles.noPlayerText, { color: colors.mutedForeground }]}>Select a player above to track stats</Text>
+          ) : (
+            <>
+              {/* ── Shooting stats ── */}
+              <View style={styles.shootRow}>
+                {([
+                  { label: '2PT', madeKey: 'twoMade', attKey: 'twoAttempted', statField: 'twoMade' },
+                  { label: '3PT', madeKey: 'threeMade', attKey: 'threeAttempted', statField: 'threeMade' },
+                  { label: 'FT',  madeKey: 'ftMade',   attKey: 'ftAttempted',   statField: 'ftMade' },
+                ] as const).map((s) => {
+                  const line = selectedLine!;
+                  const made = line[s.madeKey as keyof StatLine] as number;
+                  const att  = line[s.attKey as keyof StatLine] as number;
+                  const hasMiss = att > made;
+                  return (
+                    <View key={s.label} style={[styles.shootCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={[styles.shootLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+                      <Text style={[styles.shootValue, { color: colors.foreground }]}>{made}/{att}</Text>
+                      <TouchableOpacity
+                        onPress={() => handleShoot('make', s.madeKey as any, s.attKey as any, s.statField)}
+                        style={[styles.makeBtn, { backgroundColor: '#16a34a' }]}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="checkmark" size={13} color="#fff" />
+                        <Text style={styles.shootBtnText}>MAKE</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => handleShoot('miss', s.madeKey as any, s.attKey as any, s.statField)}
+                        style={[styles.missBtn, { backgroundColor: colors.destructive }]}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="close" size={13} color="#fff" />
+                        <Text style={styles.shootBtnText}>MISS</Text>
+                      </TouchableOpacity>
+                      <View style={styles.undoRow}>
+                        <TouchableOpacity
+                          onPress={() => handleShoot('undoMake', s.madeKey as any, s.attKey as any, s.statField)}
+                          disabled={made === 0}
+                          style={[styles.undoBtn, { borderColor: colors.border, opacity: made === 0 ? 0.3 : 1 }]}
+                        >
+                          <Text style={[styles.undoBtnText, { color: colors.mutedForeground }]}>−Make</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleShoot('undoMiss', s.madeKey as any, s.attKey as any, s.statField)}
+                          disabled={!hasMiss}
+                          style={[styles.undoBtn, { borderColor: colors.border, opacity: hasMiss ? 1 : 0.3 }]}
+                        >
+                          <Text style={[styles.undoBtnText, { color: colors.mutedForeground }]}>−Miss</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* ── Counting stats ── */}
+              <View style={styles.countGrid}>
+                {([
+                  { label: 'REB', field: 'rebounds',  color: 'primary' },
+                  { label: 'AST', field: 'assists',   color: 'primary' },
+                  { label: 'STL', field: 'steals',    color: 'primary' },
+                  { label: 'BLK', field: 'blocks',    color: 'primary' },
+                  { label: 'TO',  field: 'turnovers', color: 'destructive' },
+                ] as const).map((s) => {
+                  const val = (selectedLine![s.field as keyof StatLine] as number);
+                  const accent = s.color === 'destructive' ? colors.destructive : colors.primary;
+                  return (
+                    <View key={s.label} style={[styles.countCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={[styles.countLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+                      <Text style={[styles.countValue, { color: accent }]}>{val}</Text>
+                      <View style={styles.countBtns}>
+                        <TouchableOpacity
+                          onPress={() => handleCount(s.field as keyof StatLine, -1)}
+                          disabled={val === 0}
+                          activeOpacity={0.7}
+                          style={[styles.countBtn, { backgroundColor: colors.muted, opacity: val === 0 ? 0.3 : 1 }]}
+                        >
+                          <Text style={[styles.countBtnText, { color: colors.mutedForeground }]}>−</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleCount(s.field as keyof StatLine, 1)}
+                          activeOpacity={0.7}
+                          style={[styles.countBtn, { backgroundColor: accent + '20', borderColor: accent + '40', borderWidth: 1 }]}
+                        >
+                          <Text style={[styles.countBtnText, { color: accent }]}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </ScrollView>
+      )}
 
       {/* Save button */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + (cameraCompact ? 6 : 16) }]}>
         {uploadProgress !== null ? (
           <View style={{ gap: 8 }}>
             <View style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'column', gap: 6 }]}>
@@ -1796,7 +1904,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     playerBar: {
       borderTopWidth: 1,
       borderBottomWidth: 1,
-      paddingVertical: 9,
+      paddingVertical: 6,
     },
     playerChip: {
       flexDirection: 'row',
@@ -1853,6 +1961,129 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       alignItems: 'center', justifyContent: 'center',
     },
     countBtnText: { fontSize: 14, lineHeight: 16, fontFamily: 'Inter_700Bold' },
+
+    // ── Opponent bar (replaces the old VS strip) ─────────────────────────────
+    oppBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderBottomWidth: 1,
+    },
+    oppBarLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      flex: 1,
+      minWidth: 0,
+    },
+    oppBarTagPill: {
+      paddingHorizontal: 5,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    oppBarTagText: {
+      fontSize: 9,
+      fontFamily: 'Inter_700Bold',
+      letterSpacing: 1,
+    },
+    oppBarName: {
+      fontSize: 14,
+      fontFamily: 'Inter_600SemiBold',
+      flexShrink: 1,
+    },
+    oppBarRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    oppBarScore: {
+      ...tekoStyle(24),
+      minWidth: 28,
+      textAlign: 'center' as const,
+    },
+
+    // ── Compact stat area (camera recording mode) ─────────────────────────────
+    compactStatArea: {
+      flex: 1,
+      paddingHorizontal: 8,
+      paddingTop: 5,
+      paddingBottom: 4,
+      gap: 5,
+    },
+    compactShootGrid: { gap: 4 },
+    compactBtnRow: { flexDirection: 'row', gap: 5 },
+    compactShootHeaderCell: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 5,
+      paddingVertical: 1,
+    },
+    compactShootLabel: {
+      fontSize: 10,
+      fontFamily: 'Inter_700Bold',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase' as const,
+    },
+    compactShootCount: {
+      fontSize: 12,
+      fontFamily: 'Inter_600SemiBold',
+    },
+    compactMakeBtn: {
+      flex: 1,
+      height: 28,
+      borderRadius: 7,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 3,
+    },
+    compactMissBtn: {
+      flex: 1,
+      height: 28,
+      borderRadius: 7,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 3,
+    },
+    compactActionBtnText: {
+      fontSize: 10,
+      fontFamily: 'Inter_700Bold',
+      color: '#fff',
+      letterSpacing: 0.3,
+    },
+    compactCountStrip: { flexDirection: 'row', gap: 4 },
+    compactCountCard: {
+      flex: 1,
+      borderRadius: 8,
+      borderWidth: 1,
+      padding: 4,
+      alignItems: 'center',
+      gap: 2,
+    },
+    compactCountLabel: {
+      fontSize: 9,
+      fontFamily: 'Inter_700Bold',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase' as const,
+    },
+    compactCountVal: { ...tekoStyle(16) },
+    compactCountBtns: { flexDirection: 'row', gap: 3, width: '100%' },
+    compactCountBtn: {
+      flex: 1,
+      height: 18,
+      borderRadius: 5,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    compactCountBtnTxt: {
+      fontSize: 12,
+      fontFamily: 'Inter_700Bold',
+    },
 
     // Footer
     footer: {
