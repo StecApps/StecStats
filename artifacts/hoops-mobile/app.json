@@ -19,14 +19,23 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Allow Hoops Stats to access your camera to record game footage.",
         "NSMicrophoneUsageDescription": "Allow Hoops Stats to access your microphone to record game audio.",
-        "LSApplicationQueriesSchemes": ["itms-apps"]
+        "LSApplicationQueriesSchemes": [
+          "itms-apps"
+        ]
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0C0A09"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.hoopsstats.coach"
     },
     "web": {
       "favicon": "./assets/images/icon.png"

@@ -8,7 +8,9 @@
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "jest --config jest.config.js"
+    "test": "jest --config jest.config.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -71,6 +73,10 @@
     "expo-camera": "^17.0.10",
     "expo-secure-store": "^15.0.8",
     "expo-video": "^3.0.16",
-    "react-native-purchases": "^10.6.0"
+    "react-native-purchases": "^10.6.0",
+    "react-native-webrtc": "^124.0.8",
+    "expo": "~54.0.36",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
   }
 }

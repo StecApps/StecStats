@@ -41,6 +41,12 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import {
+  RTCPeerConnection,
+  RTCIceCandidate,
+  RTCSessionDescription,
+  mediaDevices,
+} from 'react-native-webrtc';
 import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
 
 const defaultLine = (): StatLine => ({
@@ -118,9 +124,10 @@ export default function ScorekeeperScreen() {
   const startRef = useRef<number>(0);
   // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
   const liveWsRef = useRef<WebSocket | null>(null);
-  // MJPEG capture loop: lock prevents concurrent takePictureAsync calls
-  const frameCaptureLockRef = useRef(false);
-  const frameCaptureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // WebRTC broadcaster: one RTCPeerConnection per connected viewer (keyed by viewerId)
+  const webrtcPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  // Live camera MediaStream used for WebRTC — opened via mediaDevices.getUserMedia
+  const webrtcStreamRef = useRef<any>(null);
   const liveWsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set to true before an intentional close (stopLiveBroadcast) so ws.onclose
   // does not schedule a reconnect. Reset to false whenever a new connection is
@@ -211,10 +218,80 @@ export default function ScorekeeperScreen() {
     }
   }
 
+  // ─── WebRTC broadcaster helpers ─────────────────────────────────────────────
+  async function fetchIceServers(): Promise<any[]> {
+    try {
+      const res = await fetch(`${API_BASE}/api/live/ice-servers`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.iceServers)) return data.iceServers;
+      }
+    } catch {}
+    return [{ urls: 'stun:stun.l.google.com:19302' }];
+  }
+
+  function closeAllWebRtcPeers() {
+    for (const pc of webrtcPeersRef.current.values()) {
+      try { pc.close(); } catch {}
+    }
+    webrtcPeersRef.current.clear();
+  }
+
+  function stopWebRtcStream() {
+    if (webrtcStreamRef.current) {
+      webrtcStreamRef.current.getTracks?.().forEach((t: any) => t.stop());
+      webrtcStreamRef.current = null;
+    }
+  }
+
+  async function createPeerForViewer(viewerId: string, code: string) {
+    const iceServers = await fetchIceServers();
+    const pc = new RTCPeerConnection({ iceServers });
+    webrtcPeersRef.current.set(viewerId, pc);
+
+    // Add all camera tracks to this viewer's peer connection
+    if (webrtcStreamRef.current) {
+      for (const track of webrtcStreamRef.current.getTracks()) {
+        pc.addTrack(track, webrtcStreamRef.current);
+      }
+    }
+
+    // Relay locally gathered ICE candidates to this viewer
+    pc.onicecandidate = (event: any) => {
+      if (event.candidate) {
+        broadcastWsSend({
+          type: 'ice-candidate',
+          code,
+          targetId: viewerId,
+          candidate: event.candidate.toJSON?.() ?? event.candidate,
+        });
+      }
+    };
+
+    // Attempt ICE restart if the connection degrades
+    (pc as any).onconnectionstatechange = () => {
+      const state = (pc as any).connectionState;
+      if (state === 'failed' || state === 'disconnected') {
+        pc.createOffer({ iceRestart: true } as any).then((offer: any) => {
+          pc.setLocalDescription(offer as any);
+          broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp });
+        }).catch(() => {});
+      }
+    };
+
+    // Create the initial offer and send it to the viewer
+    const offer = await pc.createOffer({} as any);
+    await pc.setLocalDescription(offer as any);
+    broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp });
+  }
+
   async function stopLiveBroadcast(code: string) {
     // Mark as intentional BEFORE closing so ws.onclose does not schedule a
     // reconnect — even if the stop-API call below is slow or hangs.
     liveWsIntentionalCloseRef.current = true;
+    // Tear down WebRTC peers and camera stream before closing the WS
+    closeAllWebRtcPeers();
+    stopWebRtcStream();
     // Close broadcaster WS first so viewers get the broadcaster-left signal
     if (liveWsReconnectRef.current) {
       clearTimeout(liveWsReconnectRef.current);
@@ -273,11 +350,46 @@ export default function ScorekeeperScreen() {
         code,
         teamScore: initTeamScore,
         opponentScore: initOppScore,
-        // Mobile broadcaster: send MJPEG snapshots when camera permission is
-        // granted, score-only otherwise. Either way no WebRTC negotiation.
+        // Mobile broadcaster sends WebRTC video when camera permission is
+        // available, falls back to score-only otherwise.
         hasVideo: !!(cameraPermission?.granted),
-        videoMode: cameraPermission?.granted ? 'mjpeg' : 'none',
+        videoMode: cameraPermission?.granted ? 'webrtc' : 'none',
       }));
+    };
+
+    ws.onmessage = async (event: MessageEvent) => {
+      try {
+        const msg = JSON.parse(event.data as string);
+        if (msg.type === 'new-viewer') {
+          // A viewer has connected — send them an offer if our stream is ready.
+          // The stream may still be opening (getUserMedia in flight); viewers
+          // have a 6-second offer watchdog before showing score-only.
+          if (webrtcStreamRef.current) {
+            await createPeerForViewer(msg.viewerId, code);
+          }
+        } else if (msg.type === 'answer') {
+          // Viewer responded with an SDP answer
+          const pc = webrtcPeersRef.current.get(msg.viewerId);
+          if (pc) {
+            await pc.setRemoteDescription(
+              new RTCSessionDescription({ type: 'answer', sdp: msg.sdp })
+            );
+          }
+        } else if (msg.type === 'ice-candidate') {
+          // Viewer sent an ICE candidate
+          const pc = webrtcPeersRef.current.get(msg.viewerId);
+          if (pc && msg.candidate) {
+            await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+          }
+        } else if (msg.type === 'viewer-left') {
+          // Viewer disconnected — close their peer connection
+          const pc = webrtcPeersRef.current.get(msg.viewerId);
+          if (pc) {
+            pc.close();
+            webrtcPeersRef.current.delete(msg.viewerId);
+          }
+        }
+      } catch { /* signaling error */ }
     };
 
     ws.onclose = () => {
@@ -487,37 +599,34 @@ export default function ScorekeeperScreen() {
 
   const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0);
 
-  // ─── MJPEG frame capture — runs while live with camera permission ─────────
+  // ─── WebRTC camera stream — opened when live, closed when done ──────────────
   useEffect(() => {
     if (!isLive || !liveCode || !cameraPermission?.granted) {
-      if (frameCaptureIntervalRef.current) {
-        clearInterval(frameCaptureIntervalRef.current);
-        frameCaptureIntervalRef.current = null;
-      }
-      frameCaptureLockRef.current = false;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
       return;
     }
-    const currentCode = liveCode;
-    const captureFrame = async () => {
-      if (frameCaptureLockRef.current || !cameraRef.current || !cameraReadyRef.current) return;
-      frameCaptureLockRef.current = true;
+    // Open the camera stream for WebRTC broadcast.
+    // expo-camera (CameraView) and react-native-webrtc both access the camera —
+    // iOS 16+ supports simultaneous sessions cleanly.
+    let cancelled = false;
+    (async () => {
       try {
-        const photo = await cameraRef.current.takePictureAsync({ quality: 0.25, base64: true });
-        if (photo?.base64) {
-          broadcastWsSend({ type: 'video-frame', code: currentCode, frame: photo.base64 });
-        }
-      } catch { /* camera may not be ready */ }
-      finally { frameCaptureLockRef.current = false; }
-    };
-    frameCaptureIntervalRef.current = setInterval(captureFrame, 250); // 4 fps
-    return () => {
-      if (frameCaptureIntervalRef.current) {
-        clearInterval(frameCaptureIntervalRef.current);
-        frameCaptureIntervalRef.current = null;
+        const stream = await mediaDevices.getUserMedia({
+          video: { facingMode: cameraFacing === 'back' ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true,
+        });
+        if (!cancelled) webrtcStreamRef.current = stream;
+      } catch (e) {
+        console.warn('[WebRTC] getUserMedia failed — viewers will see score-only:', e);
       }
-      frameCaptureLockRef.current = false;
+    })();
+    return () => {
+      cancelled = true;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
     };
-  }, [isLive, liveCode, cameraPermission?.granted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLive, liveCode, cameraPermission?.granted, cameraFacing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Live scoreboard push — fires whenever score changes while broadcasting ──
   useEffect(() => {
