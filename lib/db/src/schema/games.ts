@@ -6,6 +6,7 @@ import {
   date,
   timestamp,
   pgEnum,
+  uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -73,6 +74,9 @@ export const gamesTable = pgTable("games", {
   // merge route logic.
   mergedIntoGameId: integer("merged_into_game_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Shareable box-score token — generated on first share request, never
+  // included in authenticated game lists. Allows a public read-only box score.
+  shareToken: uuid("share_token").unique(),
 });
 
 export const insertGameSchema = createInsertSchema(gamesTable).omit({

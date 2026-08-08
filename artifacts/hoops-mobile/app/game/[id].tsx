@@ -16,6 +16,8 @@ import {
   useGetGame,
   useGetGameHighlight,
   useGenerateGameHighlight,
+  useGetGameLowlight,
+  useGenerateGameLowlight,
 } from '@workspace/api-client-react';
 import { useLayoutEffect } from 'react';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -37,7 +39,7 @@ async function fetchSignedUrl(objectPath: string, token: string): Promise<string
   return url;
 }
 
-type Tab = 'stats' | 'video' | 'highlights';
+type Tab = 'stats' | 'video' | 'highlights' | 'lowlights';
 
 function StatPill({
   label,
@@ -140,9 +142,142 @@ const videoStyle = StyleSheet.create({
   emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular' },
 });
 
-// Module-level map so the processing start time survives tab-switches and
-// screen remounts. Keyed by gameId; cleared when the status leaves 'processing'.
-const processingStartTimes = new Map<number, number>();
+// Module-level maps so processing start times survive tab-switches/remounts.
+// Separate maps for highlight vs lowlight so they don't interfere.
+const processingStartTimes    = new Map<number, number>();
+const lowlightStartTimes      = new Map<number, number>();
+
+function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
+  const { getToken } = useAuth();
+  const { data: lowlight, refetch } = useGetGameLowlight(gameId);
+  const generateMutation = useGenerateGameLowlight();
+  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  const player = useVideoPlayer('', () => {});
+
+  // Poll every 3 s while generating
+  useEffect(() => {
+    if (lowlight?.status !== 'processing') return;
+    const timer = setInterval(() => refetch(), 3000);
+    return () => clearInterval(timer);
+  }, [lowlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Elapsed-seconds counter, survives tab switches via module-level map
+  useEffect(() => {
+    if (lowlight?.status !== 'processing') {
+      lowlightStartTimes.delete(gameId);
+      setElapsedSec(0);
+      return;
+    }
+    if (!lowlightStartTimes.has(gameId)) {
+      lowlightStartTimes.set(gameId, Date.now());
+    }
+    const getElapsed = () =>
+      Math.floor((Date.now() - (lowlightStartTimes.get(gameId) ?? Date.now())) / 1000);
+    setElapsedSec(getElapsed());
+    const t = setInterval(() => setElapsedSec(getElapsed()), 1000);
+    return () => clearInterval(t);
+  }, [lowlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const objectPath =
+    lowlight?.status === 'ready' ? lowlight.lowlightObjectPath ?? null : null;
+
+  useEffect(() => {
+    if (!objectPath) return;
+    let cancelled = false;
+    getToken()
+      .then((token) => {
+        if (!token || cancelled) return;
+        return fetchSignedUrl(objectPath, token);
+      })
+      .then((url) => {
+        if (!url || cancelled) return;
+        setSignedUrl(url);
+        player.replace({ uri: url });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [objectPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!lowlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
+
+  if (lowlight.status === 'ready') {
+    if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
+    return (
+      <View style={videoStyle.wrap}>
+        <VideoView
+          player={player}
+          style={videoStyle.video}
+          contentFit="cover"
+          allowsFullscreen
+          allowsPictureInPicture
+        />
+      </View>
+    );
+  }
+
+  if (lowlight.status === 'processing') {
+    const pct = Math.min(92, Math.round(100 * (1 - Math.exp(-elapsedSec / 900))));
+    const label =
+      elapsedSec < 30   ? 'Finding missed shots & turnovers…'
+      : elapsedSec < 360  ? 'Downloading game footage…'
+      : elapsedSec < 2700 ? 'Compressing clips…'
+      : elapsedSec < 3300 ? 'Encoding reel…'
+      : 'Finalizing…';
+    const mins = Math.floor(elapsedSec / 60);
+    const secs = elapsedSec % 60;
+    const elapsed = mins > 0
+      ? `${mins}m ${String(secs).padStart(2, '0')}s`
+      : `${secs}s`;
+    return (
+      <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
+        <ActivityIndicator color={colors.destructive ?? '#ef4444'} size="large" />
+        <Text style={[videoStyle.emptyText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+          {label}
+        </Text>
+        <View style={{ width: '100%', height: 6, backgroundColor: colors.muted, borderRadius: 3, overflow: 'hidden' }}>
+          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.destructive ?? '#ef4444', borderRadius: 3 }} />
+        </View>
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
+          {pct}% · {elapsed} elapsed — typically 5–15 min for a full game
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={videoStyle.empty}>
+      <Ionicons name="trending-down-outline" size={40} color={colors.mutedForeground} />
+      <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
+        {lowlight.eligibleMoments > 0
+          ? `${lowlight.eligibleMoments} missed shots & turnovers to review`
+          : 'No misses or turnovers recorded'}
+      </Text>
+      {lowlight.eligibleMoments > 0 && (
+        <TouchableOpacity
+          onPress={async () => {
+            await generateMutation.mutateAsync({ gameId });
+            refetch();
+          }}
+          style={{
+            backgroundColor: colors.destructive ?? '#ef4444',
+            borderRadius: 10,
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            marginTop: 8,
+          }}
+          activeOpacity={0.8}
+          disabled={generateMutation.isPending}
+        >
+          <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>
+            {generateMutation.isPending ? 'Starting…' : 'Generate Lowlights'}
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
 
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
@@ -348,7 +483,7 @@ export default function GameDetailScreen() {
 
       {/* Tabs */}
       <View style={[styles.tabBar, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {(['stats', 'video', 'highlights'] as Tab[]).map((t) => (
+        {(['stats', 'video', 'highlights', 'lowlights'] as Tab[]).map((t) => (
           <TouchableOpacity
             key={t}
             onPress={() => setTab(t)}
@@ -405,6 +540,7 @@ export default function GameDetailScreen() {
         )}
         {tab === 'video' && <VideoSection game={game} colors={colors} />}
         {tab === 'highlights' && <HighlightSection gameId={gameId} colors={colors} />}
+        {tab === 'lowlights' && <LowlightSection gameId={gameId} colors={colors} />}
       </ScrollView>
     </View>
   );

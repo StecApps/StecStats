@@ -33,7 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video, Check, GitMerge, Square, SquareCheck, Pencil, Minus } from "lucide-react";
+import { Loader2, Plus, Settings, Trash2, Edit, ChevronDown, Trophy, Activity, CalendarDays, ListTree, Zap, Lock, Sparkles, Share2, Download, Film, Camera, AlertTriangle, UserCircle2, ImagePlus, Video, Check, GitMerge, Square, SquareCheck, Pencil, Minus, Link2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -569,6 +569,35 @@ function PlayerChip({ playerId, name, active, onClick, onDelete }: { playerId: n
   const { data: summary } = useGetPlayerSummary(playerId, {
     query: { enabled: !!playerId, queryKey: getGetPlayerSummaryQueryKey(playerId) }
   });
+  const { toast } = useToast();
+  const [sharing, setSharing] = useState(false);
+
+  const handleShareProfile = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSharing(true);
+    try {
+      const res = await fetch(`/api/players/${playerId}/share-token`, { method: "POST" });
+      if (!res.ok) {
+        if (res.status === 403) {
+          toast({ title: "Pro feature", description: "Upgrade to Pro to share player profiles." });
+          return;
+        }
+        throw new Error("Failed");
+      }
+      const { shareToken } = await res.json() as { shareToken: string };
+      const url = `${window.location.origin}/player/${shareToken}`;
+      if (typeof navigator.share === "function") {
+        try { await navigator.share({ title: `${name} — Career Stats`, url }); return; }
+        catch (err) { if (err instanceof Error && err.name === "AbortError") return; }
+      }
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Link copied", description: `Share ${name}'s stats page with anyone.` });
+    } catch {
+      toast({ title: "Couldn't create share link", variant: "destructive" });
+    } finally {
+      setSharing(false);
+    }
+  };
 
   return (
     <div
@@ -588,6 +617,16 @@ function PlayerChip({ playerId, name, active, onClick, onDelete }: { playerId: n
             {summary.games}GP · {summary.ppg.toFixed(1)}PPG
           </span>
         )}
+      </button>
+      {/* Share profile link */}
+      <button
+        onClick={handleShareProfile}
+        disabled={sharing}
+        className={`pl-1 pr-1.5 py-2 opacity-40 hover:opacity-100 transition-opacity ${active ? "hover:text-primary-foreground" : "hover:text-primary"}`}
+        aria-label={`Share ${name}'s profile`}
+        title={`Share ${name}'s stats page`}
+      >
+        {sharing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Link2 className="w-3 h-3" />}
       </button>
       {onDelete && (
         <button
@@ -1327,6 +1366,37 @@ function TeamGamesAccordionItem({ team, playerId, isPro, selected, onToggleSelec
                       <TableCell className="text-right">{stat.blocks}</TableCell>
                       <TableCell className="text-right opacity-100 md:opacity-60 md:group-hover:opacity-100 transition-opacity">
                         <div className="flex items-center justify-end gap-1">
+                          {/* Share public box-score link */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            title="Share box score"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/games/${game.id}/share-token`, { method: "POST" });
+                                if (!res.ok) {
+                                  if (res.status === 403) {
+                                    toast({ title: "Pro feature", description: "Upgrade to Pro to share game stats." });
+                                    return;
+                                  }
+                                  throw new Error("Failed");
+                                }
+                                const { shareToken } = await res.json() as { shareToken: string };
+                                const url = `${window.location.origin}/game/${shareToken}`;
+                                if (typeof navigator.share === "function") {
+                                  try { await navigator.share({ title: `vs ${game.opponent} — Box Score`, url }); return; }
+                                  catch (err) { if (err instanceof Error && err.name === "AbortError") return; }
+                                }
+                                await navigator.clipboard.writeText(url);
+                                toast({ title: "Link copied", description: "Anyone with the link can view the box score." });
+                              } catch {
+                                toast({ title: "Couldn't create share link", variant: "destructive" });
+                              }
+                            }}
+                          >
+                            <Link2 className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"

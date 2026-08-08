@@ -128,6 +128,42 @@ export default function PlayerProfile() {
   const fgMade = (profile?.twoMade ?? 0) + (profile?.threeMade ?? 0);
   const fgAttempted = (profile?.twoAttempted ?? 0) + (profile?.threeAttempted ?? 0);
 
+  // Inject OG / social-preview meta tags whenever the profile loads
+  useEffect(() => {
+    if (status !== "ok" || !profile) return;
+
+    const title = `${profile.playerName} — Career Stats | StecStats`;
+    const description =
+      `${profile.ppg.toFixed(1)} PPG · ${profile.rpg.toFixed(1)} RPG · ` +
+      `${profile.apg.toFixed(1)} APG over ${profile.games} game${profile.games === 1 ? "" : "s"}`;
+    const url = window.location.href;
+
+    document.title = title;
+
+    const setMeta = (key: string, content: string, attr = "property") => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.content = content;
+    };
+
+    setMeta("og:title", title);
+    setMeta("og:description", description);
+    setMeta("og:url", url);
+    setMeta("og:type", "profile");
+    setMeta("og:site_name", "StecStats");
+    setMeta("twitter:card", "summary", "name");
+    setMeta("twitter:title", title, "name");
+    setMeta("twitter:description", description, "name");
+
+    return () => {
+      document.title = "StecStats";
+    };
+  }, [status, profile]);
+
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col">
       {/* Top bar */}

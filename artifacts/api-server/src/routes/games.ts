@@ -1,4 +1,5 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { randomUUID } from "crypto";
 import { and, asc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { execFile, spawn } from "child_process";
 import { promises as fs, createWriteStream, createReadStream } from "fs";
@@ -34,6 +35,35 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { PROXY_VERSION, ensureGameProxyInBackground, cancelHighlightGeneration, cancelProxyBuild } from "../lib/highlightGenerator";
+
+// ── Rate limiter for public game endpoint ─────────────────────────────────────
+const PUB_RATE_WINDOW_MS = 60_000;
+const PUB_RATE_LIMIT = 60;
+const pubRateBuckets = new Map<string, { count: number; resetAt: number }>();
+function publicGameRateLimit(req: Request, res: Response, next: NextFunction): void {
+  const ip =
+    (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ??
+    req.socket.remoteAddress ??
+    "unknown";
+  const now = Date.now();
+  const bucket = pubRateBuckets.get(ip);
+  if (!bucket || now > bucket.resetAt) {
+    pubRateBuckets.set(ip, { count: 1, resetAt: now + PUB_RATE_WINDOW_MS });
+    return next();
+  }
+  bucket.count += 1;
+  if (bucket.count > PUB_RATE_LIMIT) {
+    res.status(429).json({ error: "Too many requests — try again in a minute" });
+    return;
+  }
+  next();
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, b] of pubRateBuckets) {
+    if (now > b.resetAt) pubRateBuckets.delete(ip);
+  }
+}, 5 * 60_000).unref();
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -452,6 +482,59 @@ async function serializeGame(gameId: number, ownerId: number) {
     })),
   };
 }
+
+// ── Public game box score (no auth) ──────────────────────────────────────────
+// IMPORTANT: registered before /:gameId so Express never matches "public" as an id.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+router.get("/games/public/:shareToken", publicGameRateLimit, async (req, res) => {
+  const shareToken = String(req.params["shareToken"] ?? "");
+  if (!UUID_RE.test(shareToken)) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  const game = await db.query.gamesTable.findFirst({
+    where: eq(gamesTable.shareToken, shareToken),
+  });
+  if (!game) return res.status(404).json({ error: "Game not found" });
+
+  const team = await db.query.teamsTable.findFirst({
+    where: eq(teamsTable.id, game.teamId),
+  });
+
+  const statRows = await db
+    .select({ stat: playerGameStatsTable, playerName: playersTable.name })
+    .from(playerGameStatsTable)
+    .innerJoin(playersTable, eq(playerGameStatsTable.playerId, playersTable.id))
+    .where(eq(playerGameStatsTable.gameId, game.id));
+
+  return res.json({
+    teamName: team?.name ?? "",
+    opponent: game.opponent,
+    date: game.date,
+    result: game.result,
+    teamScore: game.teamScore,
+    opponentScore: game.opponentScore,
+    // Sorted highest scorer first
+    stats: statRows
+      .map(({ stat, playerName }) => ({
+        playerName,
+        points: computePoints(stat),
+        assists: stat.assists,
+        rebounds: stat.rebounds,
+        steals: stat.steals,
+        blocks: stat.blocks,
+        turnovers: stat.turnovers,
+        ftMade: stat.ftMade,
+        ftAttempted: stat.ftAttempted,
+        twoMade: stat.twoMade,
+        twoAttempted: stat.twoAttempted,
+        threeMade: stat.threeMade,
+        threeAttempted: stat.threeAttempted,
+      }))
+      .sort((a, b) => b.points - a.points),
+  });
+});
 
 router.post("/games", requireAuth, async (req, res) => {
   const body = CreateGameBody.parse(req.body);
@@ -1664,6 +1747,30 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
   })().catch((err) => {
     log.error({ gameId, err: String(err?.message ?? err) }, "repair-video: background job failed");
   });
+});
+
+// ── Generate / return game share token (auth required) ───────────────────────
+router.post("/games/:gameId/share-token", requireAuth, async (req, res) => {
+  const gameId = Number(req.params["gameId"]);
+  if (!Number.isFinite(gameId)) return res.status(400).json({ error: "Invalid game ID" });
+
+  const ownerId = req.appUser!.id;
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+  });
+  if (!game) return res.status(404).json({ error: "Game not found" });
+
+  // Return existing token idempotently
+  if (game.shareToken) return res.json({ shareToken: game.shareToken });
+
+  const shareToken = randomUUID();
+  const [updated] = await db
+    .update(gamesTable)
+    .set({ shareToken })
+    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)))
+    .returning({ shareToken: gamesTable.shareToken });
+
+  return res.json({ shareToken: updated.shareToken });
 });
 
 export default router;
