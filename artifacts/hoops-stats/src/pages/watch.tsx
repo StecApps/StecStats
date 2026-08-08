@@ -600,9 +600,21 @@ export default function WatchStream() {
             if (cancelled) return;
             if (s) {
               setStatus(s);
-              setState(s.active ? "connecting" : "waiting-for-broadcaster");
+              // Guard: never overwrite "live" — the `joined` handler may have
+              // already put us into live score-only mode before this status
+              // promise resolves.  Overwriting "live" → "connecting" here
+              // would hide SCORE FEED from the viewer on every WS reconnect.
+              setState((prev) =>
+                prev === "live" || prev === "ended"
+                  ? prev
+                  : s.active
+                  ? "connecting"
+                  : "waiting-for-broadcaster"
+              );
             } else {
-              setState("connecting");
+              setState((prev) =>
+                prev === "live" || prev === "ended" ? prev : "connecting"
+              );
             }
           });
         }
