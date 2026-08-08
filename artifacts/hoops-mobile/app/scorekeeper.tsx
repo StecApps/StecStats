@@ -1157,6 +1157,39 @@ export default function ScorekeeperScreen() {
                     </TouchableOpacity>
                   ))}
                 </View>
+
+                {/* Undo row — −Mk / −Ms per column */}
+                <View style={styles.compactBtnRow}>
+                  {([
+                    { label: '2PT', madeKey: 'twoMade',   attKey: 'twoAttempted',   statField: 'twoMade' },
+                    { label: '3PT', madeKey: 'threeMade', attKey: 'threeAttempted', statField: 'threeMade' },
+                    { label: 'FT',  madeKey: 'ftMade',    attKey: 'ftAttempted',    statField: 'ftMade' },
+                  ] as const).map((s) => {
+                    const made = (selectedLine![s.madeKey as keyof StatLine] as number);
+                    const att  = (selectedLine![s.attKey  as keyof StatLine] as number);
+                    const hasMiss = att > made;
+                    return (
+                      <View key={s.label} style={styles.compactUndoCell}>
+                        <TouchableOpacity
+                          onPress={() => handleShoot('undoMake', s.madeKey as any, s.attKey as any, s.statField)}
+                          disabled={made === 0}
+                          activeOpacity={0.7}
+                          style={[styles.compactUndoBtn, { borderColor: colors.border, opacity: made === 0 ? 0.3 : 1 }]}
+                        >
+                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>−Mk</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleShoot('undoMiss', s.madeKey as any, s.attKey as any, s.statField)}
+                          disabled={!hasMiss}
+                          activeOpacity={0.7}
+                          style={[styles.compactUndoBtn, { borderColor: colors.border, opacity: hasMiss ? 1 : 0.3 }]}
+                        >
+                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>−Ms</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
 
               {/* Counting stats: single horizontal strip (no wrapping) */}
@@ -2078,6 +2111,23 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       fontFamily: 'Inter_700Bold',
       color: '#fff',
       letterSpacing: 0.3,
+    },
+    compactUndoCell: {
+      flex: 1,
+      flexDirection: 'row' as const,
+      gap: 3,
+    },
+    compactUndoBtn: {
+      flex: 1,
+      height: 20,
+      borderRadius: 5,
+      borderWidth: 1,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    compactUndoBtnText: {
+      fontSize: 9,
+      fontFamily: 'Inter_500Medium',
     },
     compactCountStrip: { flexDirection: 'row', gap: 4 },
     compactCountCard: {
