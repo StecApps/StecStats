@@ -1368,10 +1368,12 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       letterSpacing: 1,
     },
 
-    // Collapsed camera section (preview hidden)
+    // Collapsed camera section (preview hidden).
+    // Must be tall enough to clear the safe-area / Dynamic Island so the
+    // "Tap to show camera" button is actually reachable.
     cameraSectionCollapsed: {
-      height: 56,
-      minHeight: 56,
+      height: insets.top + 56,
+      minHeight: insets.top + 56,
     },
     // Hidden camera section (not recording — collapses to nothing)
     cameraSectionHidden: {
@@ -1410,6 +1412,8 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       borderTopColor: 'rgba(255,255,255,0.18)',
       flexDirection: 'row',
       alignItems: 'stretch',
+      // Push content below the notch / Dynamic Island so buttons are tappable
+      paddingTop: insets.top,
     },
     expandPreviewBtn: {
       flex: 1,
