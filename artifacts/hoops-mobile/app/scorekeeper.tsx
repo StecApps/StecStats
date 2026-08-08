@@ -121,6 +121,9 @@ export default function ScorekeeperScreen() {
   const [stats, setStats] = useState<Record<number, StatLine>>({});
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [opponentScore, setOpponentScore] = useState(0);
+  // Manual quick-score adjustment for our team (on top of auto-calculated player stats).
+  // Coaches can tap +1/+2/+3 in the camera overlay to credit untracked points quickly.
+  const [teamScoreAdj, setTeamScoreAdj] = useState(0);
   // Camera section dimensions — used to compute the scale factor that makes
   // the CameraView fill (cover) its container regardless of the camera's
   // native preview aspect ratio.
@@ -657,7 +660,7 @@ export default function ScorekeeperScreen() {
     }
   }
 
-  const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0);
+  const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0) + teamScoreAdj;
 
   // ─── WebRTC camera stream — opened when live, closed when done ──────────────
   useEffect(() => {
@@ -934,10 +937,30 @@ export default function ScorekeeperScreen() {
         <Ionicons name="chevron-down" size={22} color="rgba(255,255,255,0.85)" />
       </TouchableOpacity>
       <View style={styles.scoreboard}>
-        {/* Our score */}
+        {/* Our score — tap +1/+2/+3 to credit quick points not tracked to a player */}
         <View style={styles.scoreCol}>
           <Text style={styles.teamLabel} numberOfLines={1}>{teamName}</Text>
-          <Text style={styles.scoreNum}>{teamScore}</Text>
+          <View style={styles.oppScoreRow}>
+            <TouchableOpacity
+              onPress={() => { setTeamScoreAdj((s) => (teamScore > 0 ? s - 1 : s)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              disabled={teamScore === 0}
+              style={[styles.oppBtn, { opacity: teamScore === 0 ? 0.35 : 1 }]}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
+            >
+              <Text style={styles.oppBtnText}>−</Text>
+            </TouchableOpacity>
+            <Text style={styles.scoreNum}>{teamScore}</Text>
+            {([1, 2, 3] as const).map((pts) => (
+              <TouchableOpacity
+                key={pts}
+                onPress={() => { setTeamScoreAdj((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                style={styles.oppOverlayQuickBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+              >
+                <Text style={styles.oppOverlayQuickBtnText}>+{pts}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Center: timer + half */}
@@ -2034,21 +2057,21 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactMakeBtn: {
       flex: 1,
-      height: 28,
-      borderRadius: 7,
+      height: 36,
+      borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 3,
+      gap: 4,
     },
     compactMissBtn: {
       flex: 1,
-      height: 28,
-      borderRadius: 7,
+      height: 36,
+      borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 3,
+      gap: 4,
     },
     compactActionBtnText: {
       fontSize: 10,
@@ -2075,8 +2098,8 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     compactCountBtns: { flexDirection: 'row', gap: 3, width: '100%' },
     compactCountBtn: {
       flex: 1,
-      height: 18,
-      borderRadius: 5,
+      height: 24,
+      borderRadius: 6,
       alignItems: 'center',
       justifyContent: 'center',
     },
