@@ -7,9 +7,14 @@ import { logger } from "./logger";
 
 const LIVE_WS_PATH = "/api/live/ws";
 
+// Per-session timestamp of last video-frame relay — caps relay rate to ~12 fps
+// regardless of how fast the mobile broadcaster sends snapshots.
+const lastFrameRelayAt = new Map<string, number>();
+
 type ClientMessage =
-  | { type: "join-broadcaster"; code: string; teamScore?: number; opponentScore?: number; hasVideo?: boolean }
+  | { type: "join-broadcaster"; code: string; teamScore?: number; opponentScore?: number; hasVideo?: boolean; videoMode?: "webrtc" | "mjpeg" | "none" }
   | { type: "join-viewer"; code: string }
+  | { type: "video-frame"; code: string; frame: string }
   | { type: "offer"; code: string; targetId: string; sdp: unknown; renegotiate?: boolean }
   | { type: "answer"; code: string; targetId: string; sdp: unknown }
   | { type: "ice-candidate"; code: string; targetId: string; candidate: unknown }
@@ -108,10 +113,23 @@ export function attachLiveSocketServer(upgradeEmitter: {
           // negotiation and go straight to score-only mode.
           const prevHasVideo = session.broadcasterHasVideo;
           session.broadcasterHasVideo = message.hasVideo !== false;
+          // Derive video delivery mode from the explicit videoMode field; fall back to
+          // legacy hasVideo inference for backwards-compatible web broadcasters.
+          session.broadcasterVideoMode =
+            message.videoMode === "mjpeg" ? "mjpeg"
+            : message.videoMode === "none" ? "none"
+            : session.broadcasterHasVideo ? "webrtc"
+            : "none";
           if (!session.broadcasterHasVideo && prevHasVideo) {
             // Broadcaster changed to score-only (e.g. mobile reconnect) — tell viewers.
             for (const viewerWs of session.viewers.values()) {
-              safeSend(viewerWs, { type: "session-mode", hasVideo: false });
+              safeSend(viewerWs, { type: "session-mode", hasVideo: false, videoMode: "none" });
+            }
+          }
+          if (session.broadcasterVideoMode === "mjpeg" && !prevHasVideo) {
+            // Mobile broadcaster upgraded from none → mjpeg — tell viewers.
+            for (const viewerWs of session.viewers.values()) {
+              safeSend(viewerWs, { type: "session-mode", hasVideo: true, videoMode: "mjpeg" });
             }
           }
           // In score-only mode the viewer's "Stream interrupted" banner is
@@ -156,9 +174,9 @@ export function attachLiveSocketServer(upgradeEmitter: {
           session.viewers.set(viewerId, ws);
           role = "viewer";
           sessionCode = session.code;
-          // Include hasVideo so the viewer knows immediately whether to expect
-          // WebRTC video or to go straight to score-only mode.
-          safeSend(ws, { type: "joined", viewerId, hasVideo: session.broadcasterHasVideo });
+          // Include hasVideo + videoMode so the viewer knows whether to expect
+          // WebRTC, MJPEG snapshots, or score-only mode.
+          safeSend(ws, { type: "joined", viewerId, hasVideo: session.broadcasterHasVideo, videoMode: session.broadcasterVideoMode });
           safeSend(ws, {
             type: "scoreboard",
             teamScore: session.scoreboard.teamScore,
@@ -281,6 +299,21 @@ export function attachLiveSocketServer(upgradeEmitter: {
           // entry in the viewer map.
           if (role !== "viewer" || !viewerId || !session.broadcaster) break;
           safeSend(session.broadcaster, { type: "new-viewer", viewerId });
+          break;
+        }
+        case "video-frame": {
+          // Mobile broadcaster sends JPEG snapshots; relay to all current viewers.
+          // Server-side rate cap (~12 fps) prevents flooding slow connections even
+          // if the phone sends faster.
+          if (role !== "broadcaster") break;
+          if (typeof message.frame !== "string" || !message.frame) break;
+          const now = Date.now();
+          const last = lastFrameRelayAt.get(session.code) ?? 0;
+          if (now - last < 83) break; // ~12 fps cap
+          lastFrameRelayAt.set(session.code, now);
+          for (const viewerWs of session.viewers.values()) {
+            safeSend(viewerWs, { type: "video-frame", frame: message.frame });
+          }
           break;
         }
         case "turn-status": {

@@ -118,6 +118,9 @@ export default function ScorekeeperScreen() {
   const startRef = useRef<number>(0);
   // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
   const liveWsRef = useRef<WebSocket | null>(null);
+  // MJPEG capture loop: lock prevents concurrent takePictureAsync calls
+  const frameCaptureLockRef = useRef(false);
+  const frameCaptureIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const liveWsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set to true before an intentional close (stopLiveBroadcast) so ws.onclose
   // does not schedule a reconnect. Reset to false whenever a new connection is
@@ -270,11 +273,10 @@ export default function ScorekeeperScreen() {
         code,
         teamScore: initTeamScore,
         opponentScore: initOppScore,
-        // The mobile scorekeeper sends score/stat events only; no WebRTC video.
-        // This tells the server (and viewers) to skip WebRTC negotiation and
-        // go straight to score-only mode rather than waiting for an offer that
-        // will never arrive.
-        hasVideo: false,
+        // Mobile broadcaster: send MJPEG snapshots when camera permission is
+        // granted, score-only otherwise. Either way no WebRTC negotiation.
+        hasVideo: !!(cameraPermission?.granted),
+        videoMode: cameraPermission?.granted ? 'mjpeg' : 'none',
       }));
     };
 
@@ -484,6 +486,38 @@ export default function ScorekeeperScreen() {
   }
 
   const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0);
+
+  // ─── MJPEG frame capture — runs while live with camera permission ─────────
+  useEffect(() => {
+    if (!isLive || !liveCode || !cameraPermission?.granted) {
+      if (frameCaptureIntervalRef.current) {
+        clearInterval(frameCaptureIntervalRef.current);
+        frameCaptureIntervalRef.current = null;
+      }
+      frameCaptureLockRef.current = false;
+      return;
+    }
+    const currentCode = liveCode;
+    const captureFrame = async () => {
+      if (frameCaptureLockRef.current || !cameraRef.current || !cameraReadyRef.current) return;
+      frameCaptureLockRef.current = true;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({ quality: 0.25, base64: true });
+        if (photo?.base64) {
+          broadcastWsSend({ type: 'video-frame', code: currentCode, frame: photo.base64 });
+        }
+      } catch { /* camera may not be ready */ }
+      finally { frameCaptureLockRef.current = false; }
+    };
+    frameCaptureIntervalRef.current = setInterval(captureFrame, 250); // 4 fps
+    return () => {
+      if (frameCaptureIntervalRef.current) {
+        clearInterval(frameCaptureIntervalRef.current);
+        frameCaptureIntervalRef.current = null;
+      }
+      frameCaptureLockRef.current = false;
+    };
+  }, [isLive, liveCode, cameraPermission?.granted]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Live scoreboard push — fires whenever score changes while broadcasting ──
   useEffect(() => {
@@ -771,16 +805,19 @@ export default function ScorekeeperScreen() {
                 style={[styles.oppBtn, { backgroundColor: colors.muted }]}
                 hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
               >
-                <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
+                <Text style={[styles.oppBtnText, { color: colors.mutedForeground }]}>−</Text>
               </TouchableOpacity>
               <Text style={[styles.oppScoreStripNum, { color: colors.foreground }]}>{opponentScore}</Text>
-              <TouchableOpacity
-                onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                style={[styles.oppBtn, { backgroundColor: colors.muted }]}
-                hitSlop={{ top: 14, bottom: 14, left: 8, right: 14 }}
-              >
-                <Text style={[styles.oppBtnText, { color: colors.foreground }]}>+</Text>
-              </TouchableOpacity>
+              {([1, 2, 3] as const).map((pts) => (
+                <TouchableOpacity
+                  key={pts}
+                  onPress={() => { setOpponentScore((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  style={[styles.oppQuickBtn, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '50' }]}
+                  hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+                >
+                  <Text style={[styles.oppQuickBtnText, { color: colors.primary }]}>+{pts}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </View>
@@ -1075,13 +1112,16 @@ export default function ScorekeeperScreen() {
                   <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
                 </TouchableOpacity>
                 <Text style={[styles.scoreNum, { color: colors.foreground }]}>{opponentScore}</Text>
-                <TouchableOpacity
-                  onPress={() => { setOpponentScore((s) => s + 1); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                  style={[styles.oppBtn, { backgroundColor: colors.muted }]}
-                  hitSlop={{ top: 14, bottom: 14, left: 8, right: 14 }}
-                >
-                  <Text style={[styles.oppBtnText, { color: colors.foreground }]}>+</Text>
-                </TouchableOpacity>
+                {([1, 2, 3] as const).map((pts) => (
+                  <TouchableOpacity
+                    key={pts}
+                    onPress={() => { setOpponentScore((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    style={[styles.oppQuickBtn, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '50' }]}
+                    hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+                  >
+                    <Text style={[styles.oppQuickBtnText, { color: colors.primary }]}>+{pts}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
           </View>
@@ -1333,6 +1373,15 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     halfText: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: 'rgba(255,255,255,0.75)' },
     oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    oppQuickBtn: {
+      paddingHorizontal: 7,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    oppQuickBtnText: { fontSize: 12, fontFamily: 'Inter_700Bold', lineHeight: 14 },
     oppBtn: {
       width: 40, height: 40, borderRadius: 10,
       alignItems: 'center', justifyContent: 'center',

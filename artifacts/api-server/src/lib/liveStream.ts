@@ -172,11 +172,18 @@ export type LiveSession = {
    */
   broadcasterLeftTimer: ReturnType<typeof setTimeout> | null;
   /**
-   * False when the broadcaster is a mobile score-keeper (no WebRTC video stream).
+   * False when the broadcaster is a mobile score-keeper (no video stream).
    * Viewers receive a `session-mode` message and skip straight to score-only mode
    * instead of waiting for a WebRTC offer that will never arrive.
    */
   broadcasterHasVideo: boolean;
+  /**
+   * How the broadcaster's video is delivered:
+   *   'webrtc' — full WebRTC peer connection (browser broadcaster)
+   *   'mjpeg'  — JPEG snapshots over WebSocket (mobile broadcaster with camera)
+   *   'none'   — no video (mobile score-only)
+   */
+  broadcasterVideoMode: 'webrtc' | 'mjpeg' | 'none';
 };
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -262,7 +269,8 @@ class LiveStreamRegistry {
       scoreboard: { teamScore: 0, opponentScore: 0 },
       recentEvents: [],
       broadcasterLeftTimer: null,
-      broadcasterHasVideo: true, // updated to false when a mobile broadcaster joins
+      broadcasterHasVideo: true, // updated when a mobile broadcaster joins
+      broadcasterVideoMode: 'webrtc' as const,
     };
     this.sessions.set(code, session);
     try {
@@ -329,7 +337,8 @@ class LiveStreamRegistry {
       scoreboard: { teamScore: row.teamScore, opponentScore: row.opponentScore },
       recentEvents: [],
       broadcasterLeftTimer: null,
-      broadcasterHasVideo: true, // updated to false when a mobile broadcaster rejoins
+      broadcasterHasVideo: true, // updated when a mobile broadcaster rejoins
+      broadcasterVideoMode: 'webrtc' as const,
     };
     this.sessions.set(upper, resumed);
     try {

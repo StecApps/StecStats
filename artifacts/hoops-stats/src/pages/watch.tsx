@@ -99,6 +99,9 @@ export default function WatchStream() {
   // True when the broadcaster is a mobile score-keeper (no WebRTC video).
   // Skip offer negotiation and show a big score-only board instead of video.
   const [scoreOnly, setScoreOnly] = useState(false);
+  // True when the broadcaster is sending MJPEG snapshots over WebSocket.
+  const [isMjpeg, setIsMjpeg] = useState(false);
+  const mjpegImgRef = useRef<HTMLImageElement | null>(null);
 
   // Pinch-to-zoom / pan / double-tap-reset — all via refs so gesture
   // handling never triggers a React re-render.
@@ -612,6 +615,21 @@ export default function WatchStream() {
               offerWatchdogRef.current = null;
             }
             setState("live");
+          } else if (message.videoMode === "mjpeg") {
+            // Mobile broadcaster sending MJPEG snapshots — skip WebRTC, show img feed.
+            setIsMjpeg(true);
+            if (offerWatchdogRef.current) {
+              clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = null;
+            }
+            setState("live");
+          }
+          return;
+        }
+
+        if (message.type === "video-frame") {
+          if (mjpegImgRef.current && typeof message.frame === "string") {
+            mjpegImgRef.current.src = `data:image/jpeg;base64,${message.frame}`;
           }
           return;
         }
@@ -619,8 +637,17 @@ export default function WatchStream() {
         if (message.type === "session-mode") {
           if (message.hasVideo === false) {
             setScoreOnly(true);
+            setIsMjpeg(false);
             // Also clears any "Stream interrupted" banner — the mobile broadcaster
             // is present (score-only) so there's no need to show a reconnecting state.
+            setBroadcasterReconnecting(false);
+            if (offerWatchdogRef.current) {
+              clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = null;
+            }
+            setState("live");
+          } else if (message.videoMode === "mjpeg") {
+            setIsMjpeg(true);
             setBroadcasterReconnecting(false);
             if (offerWatchdogRef.current) {
               clearTimeout(offerWatchdogRef.current);
@@ -871,13 +898,20 @@ export default function WatchStream() {
         className="w-full h-full flex items-center justify-center will-change-transform"
         style={{ transformOrigin: "center center" }}
       >
+        {/* MJPEG snapshot feed — shown for mobile broadcasters with camera */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          ref={mjpegImgRef}
+          alt="Live stream"
+          className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${isMjpeg && state === "live" ? "" : "hidden"}`}
+        />
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted={muted}
           onLoadedMetadata={handleLoadedMetadata}
-          className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${state === "live" ? "" : "invisible"}`}
+          className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${!isMjpeg && state === "live" ? "" : "invisible"}`}
         />
       </div>
 
@@ -931,7 +965,7 @@ export default function WatchStream() {
         </div>
       )}
 
-      {state === "live" && scoreboard && !scoreOnly && (() => {
+      {state === "live" && scoreboard && (!scoreOnly || isMjpeg) && (() => {
         // Decide which black bar to anchor the scoreboard in.
         // Priority: top bar (most legible) → left bar → minimal safe-area strip.
         // The container div is sized to exactly the available black space so
@@ -993,7 +1027,7 @@ export default function WatchStream() {
         );
       })()}
 
-      {state === "live" && statEvents.length > 0 && !scoreOnly && (() => {
+      {state === "live" && statEvents.length > 0 && (!scoreOnly || isMjpeg) && (() => {
         // Mirror the scoreboard logic: put stat pills in whichever black bar
         // is available so they never land on top of court action.
         const MIN_LEFT_BAR = 80;
