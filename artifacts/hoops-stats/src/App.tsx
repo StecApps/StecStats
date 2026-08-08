@@ -30,6 +30,7 @@ import AdminFeedback from "@/pages/admin";
 import Layout from "@/components/layout";
 import FeedbackButton from "@/components/feedback-button";
 import PlayerProfile from "@/pages/player-profile";
+import HighlightPublic from "@/pages/highlight-public";
 
 const queryClient = new QueryClient();
 
@@ -699,6 +700,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/watch/:code" component={WatchStream} />
             <Route path="/player/:shareToken" component={PlayerProfile} />
             <Route path="/game/:shareToken" component={GamePublic} />
+            <Route path="/highlight/:shareToken" component={HighlightPublic} />
             <Route path="/privacy" component={PrivacyPolicy} />
             <Route path="/pricing" component={Pricing} />
             <Route path="/print-cards" component={PrintCards} />

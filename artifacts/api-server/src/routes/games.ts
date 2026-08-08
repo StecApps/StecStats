@@ -536,6 +536,47 @@ router.get("/games/public/:shareToken", publicGameRateLimit, async (req, res) =>
   });
 });
 
+// ── Public highlight reel (no auth) ──────────────────────────────────────────
+// Registered before /:gameId so Express never confuses "public" with a numeric id.
+// Returns metadata + a time-limited signed video URL so the public page can
+// play the reel without exposing the authenticated storage path.
+router.get("/games/public/:shareToken/highlight", publicGameRateLimit, async (req, res) => {
+  const shareToken = String(req.params["shareToken"] ?? "");
+  if (!UUID_RE.test(shareToken)) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  const game = await db.query.gamesTable.findFirst({
+    where: eq(gamesTable.shareToken, shareToken),
+  });
+  if (!game) return res.status(404).json({ error: "Game not found" });
+
+  if (!game.highlightObjectPath || game.highlightStatus !== "ready") {
+    return res.status(404).json({ error: "Highlight reel not available" });
+  }
+
+  const team = await db.query.teamsTable.findFirst({
+    where: eq(teamsTable.id, game.teamId),
+  });
+
+  // Generate a 1-hour signed URL so browsers can play the MP4 without auth.
+  // Do NOT append extra params after signing (see GCS signed URL memory note).
+  const videoUrl = await objectStorageService.getObjectEntitySignedURL(
+    game.highlightObjectPath,
+    3600,
+  );
+
+  return res.json({
+    teamName: team?.name ?? "",
+    opponent: game.opponent,
+    date: game.date,
+    result: game.result,
+    teamScore: game.teamScore,
+    opponentScore: game.opponentScore,
+    videoUrl,
+  });
+});
+
 router.post("/games", requireAuth, async (req, res) => {
   const body = CreateGameBody.parse(req.body);
   const ownerId = req.appUser!.id;

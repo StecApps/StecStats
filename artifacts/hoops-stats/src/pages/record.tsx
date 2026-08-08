@@ -438,32 +438,33 @@ export default function RecordGame() {
   };
 
   const handleShareHighlight = async () => {
-    if (!highlight?.highlightObjectPath) return;
-    const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
+    if (!highlight?.highlightObjectPath || !gameId) return;
+    setIsPreparingShare(true);
     try {
-      let blob = highlightBlobCacheRef.current?.path === highlight.highlightObjectPath
-        ? highlightBlobCacheRef.current.blob
-        : null;
-      if (!blob) {
-        // Not yet prefetched (e.g. reel just finished) — fall back to
-        // fetching now. This can lose iOS's share-gesture window on a slow
-        // connection, so we still try, but fall through to Download below.
-        setIsPreparingShare(true);
-        const res = await fetch(videoObjectSrc(highlight.highlightObjectPath));
-        blob = await res.blob();
-        setIsPreparingShare(false);
+      // Generate (or return the existing) share token for this game so we can
+      // produce a public /highlight/:shareToken URL — no blob download needed.
+      const tokenRes = await fetch(`/api/games/${gameId}/share-token`, { method: "POST" });
+      if (!tokenRes.ok) throw new Error("Failed to create share token");
+      const { shareToken } = await tokenRes.json() as { shareToken: string };
+      const url = `${window.location.origin}/highlight/${shareToken}`;
+      const title = `Game Highlights${opponent ? ` — vs ${opponent}` : ""}`;
+      if (typeof navigator.share === "function") {
+        try {
+          await navigator.share({ title, url });
+          return;
+        } catch (err) {
+          // AbortError = user dismissed the share sheet — don't fall through
+          if (err instanceof Error && err.name === "AbortError") return;
+          // Other share errors: fall through to clipboard
+        }
       }
-      const file = new File([blob], highlightFileName(), { type: "video/mp4" });
-      if (nav.canShare && nav.canShare({ files: [file] })) {
-        await nav.share({ files: [file], title: "Game Highlights" });
-      } else {
-        handleDownloadHighlight();
-      }
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Link copied", description: "Anyone with the link can watch the highlight reel." });
     } catch (err) {
-      setIsPreparingShare(false);
-      // AbortError just means the user dismissed the native share sheet.
       if (err instanceof Error && err.name === "AbortError") return;
-      handleDownloadHighlight();
+      toast({ title: "Couldn't create share link", variant: "destructive" });
+    } finally {
+      setIsPreparingShare(false);
     }
   };
 
