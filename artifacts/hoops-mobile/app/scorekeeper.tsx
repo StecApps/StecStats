@@ -638,6 +638,10 @@ export default function ScorekeeperScreen() {
         const playerName = (players as any[])?.find((p: any) => p.id === selectedPlayerId)?.name ?? 'Player';
         broadcastWsSend({ type: 'stat-event', code: liveCode, playerName, label: STAT_LABELS[statField] ?? statField });
       }
+    } else if (action === 'miss') {
+      // Log the *attempted* field so the lowlight generator can identify missed shots.
+      // It pairs each attempted event with nearby make events; unmatched ones = true misses.
+      setEvents((prev) => [...prev, { playerId: selectedPlayerId, statField: attKey as string, delta: 1, videoTimestampMs: ts }]);
     }
   }
 

@@ -127,7 +127,9 @@ const MAX_SEGMENT_SEC = 300;
 // v8 = PRE_SECONDS 18→10, POST_SECONDS 0→2 (reverted — 10 s was too short).
 // v9 = PRE_SECONDS back to 18, POST_SECONDS 2: 18 s lead-in absorbs reaction
 //      lag; 2 s tail captures the play completing after the button press.
-export const GENERATOR_VERSION = 9;
+// v10 = orientation-aware reel clips: portrait proxy chunks now produce portrait
+//       output instead of being forced into a landscape 1280×720 box.
+export const GENERATOR_VERSION = 10;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
@@ -141,7 +143,9 @@ export const GENERATOR_VERSION = 9;
 // v4 = use frame-count flags (-g 60 -keyint_min 60 -sc_threshold 0) instead.
 // Same ≤ 2 s drift guarantee at 30 fps (≤ 1 s at 60 fps) with no per-frame
 // overhead — encoding speed stays at the ultrafast-preset baseline (~5× rt).
-export const PROXY_VERSION = 4;
+// v5 = orientation-aware scale: portrait sources use 720×1280 instead of being
+//      squashed into 1280×720 with embedded black bars that make the clip tiny.
+export const PROXY_VERSION = 5;
 // How long each caption stays on screen, centered on its moment.
 const CAPTION_HALF_SECONDS = 2.5;
 
@@ -676,9 +680,15 @@ async function encodeChunksToGcs(
     "-g", "60",
     "-keyint_min", "60",
     "-sc_threshold", "0",
+    // Orientation-aware scale: portrait sources (iw < ih, after ffmpeg's default
+    // autorotate applies the iOS rotation tag) target 720×1280 so the content
+    // fills the frame; landscape sources keep the original 1280×720 target.
+    // force_original_aspect_ratio=decrease fits the source within the target box
+    // and pad fills any remaining space with black so the output is always the
+    // exact target dimensions (required for consistent segment muxing).
     "-vf",
-      `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,` +
-      `pad=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+      `scale='if(gte(iw,ih),${OUTPUT_WIDTH},${OUTPUT_HEIGHT})':'if(gte(iw,ih),${OUTPUT_HEIGHT},${OUTPUT_WIDTH})':force_original_aspect_ratio=decrease,` +
+      `pad='if(gte(iw,ih),${OUTPUT_WIDTH},${OUTPUT_HEIGHT})':'if(gte(iw,ih),${OUTPUT_HEIGHT},${OUTPUT_WIDTH})':(ow-iw)/2:(oh-ih)/2`,
     // Always transcode audio to AAC. Live-recorded WebM sources carry Opus,
     // and Opus-in-MP4 does not play on iOS Safari — the proxy doubles as
     // the film-room playback file, so it must be universally playable.
@@ -2017,8 +2027,10 @@ async function renderGameSegments(
 
     const filterParts: string[] = [];
     if (transposeFilter) filterParts.push(transposeFilter);
+    // Same orientation-aware logic as the proxy encoder: portrait proxy chunks
+    // (iw < ih) target 720×1280, landscape chunks target 1280×720.
     filterParts.push(
-      `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease:flags=fast_bilinear,` +
+      `scale='if(gte(iw,ih),${OUTPUT_WIDTH},${OUTPUT_HEIGHT})':'if(gte(iw,ih),${OUTPUT_HEIGHT},${OUTPUT_WIDTH})':force_original_aspect_ratio=decrease:flags=fast_bilinear,` +
         `scale=trunc(iw/2)*2:trunc(ih/2)*2`,
     );
     for (const d of drawFilters) {
