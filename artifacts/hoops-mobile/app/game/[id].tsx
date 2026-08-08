@@ -41,35 +41,129 @@ async function fetchSignedUrl(objectPath: string, token: string): Promise<string
 
 type Tab = 'stats' | 'video' | 'highlights' | 'lowlights';
 
-function StatPill({
-  label,
-  value,
-  colors,
-}: {
-  label: string;
-  value: number;
-  colors: any;
-}) {
+function PlayerStatCard({ stat, rank, colors }: { stat: any; rank: number; colors: any }) {
+  const secondaryStats: [string, number][] = [
+    ['REB', stat.rebounds ?? 0],
+    ['AST', stat.assists ?? 0],
+    ['STL', stat.steals ?? 0],
+    ['BLK', stat.blocks ?? 0],
+    ['TO',  stat.turnovers ?? 0],
+  ];
   return (
-    <View style={[pillStyle.wrap, { backgroundColor: colors.muted }]}>
-      <Text style={[pillStyle.value, { color: colors.foreground }]}>
-        {value}
-      </Text>
-      <Text style={[pillStyle.label, { color: colors.mutedForeground }]}>{label}</Text>
+    <View style={[cardStyle.wrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {/* Name row + PTS hero */}
+      <View style={cardStyle.top}>
+        <View style={[cardStyle.rank, { backgroundColor: colors.muted }]}>
+          <Text style={[cardStyle.rankText, { color: colors.mutedForeground }]}>{rank}</Text>
+        </View>
+        <Text style={[cardStyle.name, { color: colors.foreground }]} numberOfLines={1}>{stat.playerName}</Text>
+        <View style={cardStyle.ptsBlock}>
+          <Text style={[cardStyle.ptsNum, { color: colors.primary }]}>{stat.points ?? 0}</Text>
+          <Text style={[cardStyle.ptsLabel, { color: colors.primary }]}>PTS</Text>
+        </View>
+      </View>
+      {/* Secondary stats row */}
+      <View style={[cardStyle.statsRow, { borderTopColor: colors.border }]}>
+        {secondaryStats.map(([label, value], i) => (
+          <View key={label} style={[cardStyle.statCell, i > 0 && { borderLeftColor: colors.border, borderLeftWidth: 1 }]}>
+            <Text style={[cardStyle.statVal, { color: value > 0 ? colors.foreground : colors.mutedForeground }]}>
+              {value}
+            </Text>
+            <Text style={[cardStyle.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
 
-const pillStyle = StyleSheet.create({
+function TeamTotalsRow({ stats, colors }: { stats: any[]; colors: any }) {
+  const totals = stats.reduce(
+    (acc, s) => ({
+      points:    acc.points    + (s.points    ?? 0),
+      rebounds:  acc.rebounds  + (s.rebounds  ?? 0),
+      assists:   acc.assists   + (s.assists   ?? 0),
+      steals:    acc.steals    + (s.steals    ?? 0),
+      blocks:    acc.blocks    + (s.blocks    ?? 0),
+      turnovers: acc.turnovers + (s.turnovers ?? 0),
+    }),
+    { points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, turnovers: 0 }
+  );
+  const cells: [string, number][] = [
+    ['PTS', totals.points], ['REB', totals.rebounds], ['AST', totals.assists],
+    ['STL', totals.steals], ['BLK', totals.blocks],   ['TO',  totals.turnovers],
+  ];
+  return (
+    <View style={[cardStyle.totalsWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[cardStyle.totalsLabel, { color: colors.mutedForeground }]}>TEAM TOTALS</Text>
+      <View style={cardStyle.totalsRow}>
+        {cells.map(([label, value], i) => (
+          <View key={label} style={[cardStyle.statCell, i > 0 && { borderLeftColor: colors.border, borderLeftWidth: 1 }]}>
+            <Text style={[cardStyle.statVal, { color: colors.foreground }]}>{value}</Text>
+            <Text style={[cardStyle.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const cardStyle = StyleSheet.create({
   wrap: {
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-    minWidth: 46,
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
-  value: { ...tekoStyle(20, 'semiBold') },
-  label: { fontSize: 9, textTransform: 'uppercase', fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  rank: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankText: { fontSize: 11, fontFamily: 'Inter_700Bold' },
+  name: { flex: 1, fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  ptsBlock: { alignItems: 'center' },
+  ptsNum: { ...tekoStyle(28, 'semiBold'), lineHeight: 30 },
+  ptsLabel: { fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 0.8, marginTop: -2 },
+  statsRow: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  statVal: { ...tekoStyle(18, 'semiBold'), lineHeight: 20 },
+  statLabel: { fontSize: 9, fontFamily: 'Inter_500Medium', letterSpacing: 0.5, textTransform: 'uppercase' },
+  totalsWrap: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  totalsLabel: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  totalsRow: { flexDirection: 'row' },
 });
 
 function VideoSection({ game, colors }: { game: any; colors: any }) {
@@ -518,23 +612,14 @@ export default function GameDetailScreen() {
                 </Text>
               </View>
             ) : (
-              (game.stats as any[]).map((stat: any) => (
-                <View
-                  key={stat.playerId}
-                  style={[styles.statRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-                >
-                  <Text style={[styles.playerName, { color: colors.foreground }]} numberOfLines={1}>
-                    {stat.playerName}
-                  </Text>
-                  <View style={styles.pills}>
-                    <StatPill label="PTS" value={stat.points} colors={colors} />
-                    <StatPill label="REB" value={stat.rebounds} colors={colors} />
-                    <StatPill label="AST" value={stat.assists} colors={colors} />
-                    <StatPill label="STL" value={stat.steals} colors={colors} />
-                    <StatPill label="BLK" value={stat.blocks} colors={colors} />
-                  </View>
-                </View>
-              ))
+              <>
+                {[...(game.stats as any[])]
+                  .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
+                  .map((stat: any, i: number) => (
+                    <PlayerStatCard key={stat.playerId} stat={stat} rank={i + 1} colors={colors} />
+                  ))}
+                <TeamTotalsRow stats={game.stats as any[]} colors={colors} />
+              </>
             )}
           </>
         )}
@@ -581,15 +666,5 @@ function makeStyles(colors: any, insets: any) {
       paddingVertical: 12,
     },
     tabText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-    statRow: {
-      marginHorizontal: 16,
-      marginTop: 10,
-      borderRadius: 12,
-      borderWidth: 1,
-      padding: 14,
-      gap: 10,
-    },
-    playerName: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
-    pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   });
 }

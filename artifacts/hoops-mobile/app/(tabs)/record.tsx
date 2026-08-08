@@ -113,27 +113,33 @@ export default function RecordScreen() {
             </View>
           )}
 
-          {(teams ?? []).map((t: any, i: number) => (
-            <TouchableOpacity
-              key={t.id}
-              onPress={() => { setTeamIdx(i); setShowNewTeam(false); }}
-              activeOpacity={0.7}
-              style={[
-                styles.teamOption,
-                {
-                  backgroundColor: teamIdx === i && !showNewTeam ? colors.primary + '15' : colors.card,
-                  borderColor: teamIdx === i && !showNewTeam ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Ionicons
-                name={teamIdx === i && !showNewTeam ? 'radio-button-on' : 'radio-button-off'}
-                size={18}
-                color={teamIdx === i && !showNewTeam ? colors.primary : colors.mutedForeground}
-              />
-              <Text style={[styles.teamOptionText, { color: colors.foreground }]}>{t.name}</Text>
-            </TouchableOpacity>
-          ))}
+          {(teams ?? []).length > 0 && (
+            <View style={[styles.teamList, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              {(teams ?? []).map((t: any, i: number) => {
+                const selected = teamIdx === i && !showNewTeam;
+                return (
+                  <React.Fragment key={t.id}>
+                    {i > 0 && <View style={[styles.teamDivider, { backgroundColor: colors.border }]} />}
+                    <TouchableOpacity
+                      onPress={() => { setTeamIdx(i); setShowNewTeam(false); }}
+                      activeOpacity={0.6}
+                      style={[styles.teamRow, selected && { backgroundColor: colors.primary + '12' }]}
+                    >
+                      <Text
+                        style={[styles.teamRowText, { color: selected ? colors.primary : colors.foreground }]}
+                        numberOfLines={1}
+                      >
+                        {t.name}
+                      </Text>
+                      {selected && (
+                        <Ionicons name="checkmark" size={18} color={colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  </React.Fragment>
+                );
+              })}
+            </View>
+          )}
 
           {/* Add new team */}
           {showNewTeam ? (
@@ -276,16 +282,21 @@ function makeStyles(colors: any, insets: any) {
       marginBottom: 10,
     },
     emptyTeamText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
-    teamOption: {
+    teamList: {
+      borderRadius: 12,
+      borderWidth: 1,
+      marginBottom: 8,
+      overflow: 'hidden',
+    },
+    teamRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
-      borderRadius: 10,
-      borderWidth: 1,
-      padding: 14,
-      marginBottom: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+      minHeight: 44,
     },
-    teamOptionText: { fontSize: 15, fontFamily: 'Inter_500Medium', flex: 1 },
+    teamRowText: { flex: 1, fontSize: 15, fontFamily: 'Inter_500Medium' },
+    teamDivider: { height: StyleSheet.hairlineWidth },
     newTeamWrap: {
       borderRadius: 10,
       borderWidth: 1,
