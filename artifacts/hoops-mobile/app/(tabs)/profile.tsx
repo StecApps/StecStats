@@ -18,6 +18,7 @@ import { useGetBillingStatus, useListTeams, useListPlayers } from '@workspace/ap
 import { useSubscription } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 
 function ProfileRow({
   icon,
@@ -146,8 +147,11 @@ export default function ProfileScreen() {
   const styles = makeStyles(colors, insets);
 
   return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <ScreenGlow primary={colors.primary} />
+      <BasketballWatermark color={colors.primary} />
     <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
+      style={{ flex: 1 }}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
@@ -328,6 +332,7 @@ export default function ProfileScreen() {
         colors={colors}
       />
     </ScrollView>
+    </View>
   );
 }
 
@@ -383,3 +388,5 @@ function makeStyles(colors: any, insets: any) {
     upgradeSub: { fontSize: 12, color: 'rgba(255,255,255,0.8)', fontFamily: 'Inter_400Regular' },
   });
 }
+
+

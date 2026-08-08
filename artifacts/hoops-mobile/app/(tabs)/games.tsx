@@ -28,6 +28,7 @@ import { tekoStyle } from '@/lib/tekoStyle';
 import { uploadVideoFile } from '@/lib/uploadVideoFile';
 import { saveGame } from '@/lib/saveGame';
 import { PENDING_UPLOAD_KEY, type PendingUpload } from '@/app/scorekeeper';
+import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 
 // ─── Pending upload recovery banner ────────────────────────────────────────
 function PendingUploadBanner({ onDismiss }: { onDismiss: () => void }) {
@@ -347,6 +348,8 @@ export default function GamesScreen() {
 
   return (
     <View style={styles.root}>
+      <ScreenGlow primary={colors.primary} />
+      <BasketballWatermark color={colors.primary} />
 
       {/* ── Pending upload recovery ───────────────────────────────────── */}
       <PendingUploadBanner key={bannerKey} onDismiss={() => setBannerKey((k) => k + 1)} />
@@ -387,9 +390,16 @@ export default function GamesScreen() {
             style={styles.seasonRow}
           >
             <View style={[styles.seasonDot, { backgroundColor: colors.primary }]} />
-            <Text style={[styles.seasonName, { color: colors.foreground }]} numberOfLines={1}>
-              {team?.name ?? 'All Games'}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.seasonName, { color: colors.foreground }]} numberOfLines={1}>
+                {team?.name ?? 'All Games'}
+              </Text>
+              {team?.sport && (
+                <Text style={[styles.leagueLabel, { color: colors.primary }]}>
+                  {team.sport === 'soccer' ? '⚽ Soccer League' : '🏀 Basketball League'}
+                </Text>
+              )}
+            </View>
             {canSwitchTeam && (
               <>
                 <Text style={[styles.seasonCount, { color: colors.mutedForeground }]}>
@@ -597,7 +607,8 @@ function makeStyles(colors: any, insets: any, isLandscape = false) {
       paddingVertical: isLandscape ? 7 : 13,
     },
     seasonDot: { width: 8, height: 8, borderRadius: 4 },
-    seasonName: { flex: 1, fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+    seasonName: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+    leagueLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', marginTop: 1 },
     seasonCount: { fontSize: 12, fontFamily: 'Inter_400Regular' },
 
     filterDivider: { height: 1, marginHorizontal: 0 },

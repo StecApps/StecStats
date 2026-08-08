@@ -10,6 +10,7 @@ import {
   Platform,
   Switch,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -17,6 +18,8 @@ import { useListTeams, useCreateTeam } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, Feather } from '@expo/vector-icons';
+import { tekoStyle } from '@/lib/tekoStyle';
+import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 
 export default function RecordScreen() {
   const colors = useColors();
@@ -29,12 +32,13 @@ export default function RecordScreen() {
 
   const [opponent, setOpponent] = useState('');
   const [teamIdx, setTeamIdx] = useState(0);
+  const [teamDropOpen, setTeamDropOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [recordVideo, setRecordVideo] = useState(false);
 
-  const selectedTeam = teams?.[teamIdx] ?? null;
+  const selectedTeam = (teams as any[])?.[teamIdx] ?? null;
   const canStart = !!opponent.trim() && !!selectedTeam;
 
   async function handleCreateTeam() {
@@ -45,7 +49,8 @@ export default function RecordScreen() {
       await qc.invalidateQueries({ queryKey: ['listTeams'] });
       setNewTeamName('');
       setShowNewTeam(false);
-      setTeamIdx((teams?.length ?? 0)); // select the newly created team
+      setTeamDropOpen(false);
+      setTeamIdx((teams?.length ?? 0));
     } finally {
       setCreatingTeam(false);
     }
@@ -69,205 +74,240 @@ export default function RecordScreen() {
   const styles = makeStyles(colors, insets);
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={[styles.iconBadge, { backgroundColor: colors.primary + '20' }]}>
-          <Ionicons name="videocam" size={28} color={colors.primary} />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* ── Background decorations ─────────────────────────────────────────── */}
+      <ScreenGlow primary={colors.primary} />
+      <BasketballWatermark color={colors.primary} />
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Slim header ───────────────────────────────────────────────────── */}
+        <View style={styles.header}>
+          <Text style={[tekoStyle(36), { color: colors.foreground, letterSpacing: 1 }]}>
+            NEW GAME
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            Set up and start tracking live stats
+          </Text>
         </View>
-        <Text style={styles.title}>New Game</Text>
-        <Text style={styles.subtitle}>Set up today's game and start tracking live stats</Text>
-      </View>
 
-      {/* Opponent */}
-      <Text style={styles.label}>Opponent</Text>
-      <View style={[styles.inputWrap, { backgroundColor: colors.input, borderColor: colors.border }]}>
-        <Feather name="users" size={16} color={colors.mutedForeground} style={styles.inputIcon} />
-        <TextInput
-          style={[styles.input, { color: colors.foreground }]}
-          placeholder="e.g. Roosevelt Eagles"
-          placeholderTextColor={colors.mutedForeground}
-          value={opponent}
-          onChangeText={setOpponent}
-          returnKeyType="next"
-          autoCapitalize="words"
-        />
-      </View>
+        {/* ── Opponent ──────────────────────────────────────────────────────── */}
+        <Text style={[styles.label, { color: colors.mutedForeground }]}>Opponent</Text>
+        <View style={[styles.inputWrap, { backgroundColor: colors.input, borderColor: colors.border }]}>
+          <Feather name="users" size={16} color={colors.mutedForeground} style={styles.inputIcon} />
+          <TextInput
+            style={[styles.input, { color: colors.foreground }]}
+            placeholder="e.g. Roosevelt Eagles"
+            placeholderTextColor={colors.mutedForeground}
+            value={opponent}
+            onChangeText={setOpponent}
+            returnKeyType="next"
+            autoCapitalize="words"
+          />
+        </View>
 
-      {/* Team selector */}
-      <Text style={styles.label}>Your Team / Season</Text>
-      {teamsLoading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginBottom: 16 }} />
-      ) : (
-        <>
-          {(teams?.length ?? 0) === 0 && !showNewTeam && (
-            <View style={[styles.emptyTeam, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Ionicons name="basketball-outline" size={28} color={colors.mutedForeground} />
-              <Text style={[styles.emptyTeamText, { color: colors.mutedForeground }]}>
-                No teams yet. Create one below.
-              </Text>
-            </View>
-          )}
-
-          {(teams ?? []).length > 0 && (
-            <View style={[styles.teamList, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              {(teams ?? []).map((t: any, i: number) => {
-                const selected = teamIdx === i && !showNewTeam;
-                return (
-                  <React.Fragment key={t.id}>
-                    {i > 0 && <View style={[styles.teamDivider, { backgroundColor: colors.border }]} />}
-                    <TouchableOpacity
-                      onPress={() => { setTeamIdx(i); setShowNewTeam(false); }}
-                      activeOpacity={0.6}
-                      style={[styles.teamRow, selected && { backgroundColor: colors.primary + '12' }]}
-                    >
-                      <Text
-                        style={[styles.teamRowText, { color: selected ? colors.primary : colors.foreground }]}
-                        numberOfLines={1}
-                      >
-                        {t.name}
-                      </Text>
-                      {selected && (
-                        <Ionicons name="checkmark" size={18} color={colors.primary} />
-                      )}
-                    </TouchableOpacity>
-                  </React.Fragment>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Add new team */}
-          {showNewTeam ? (
-            <View style={[styles.newTeamWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <TextInput
-                style={[styles.newTeamInput, { color: colors.foreground, borderColor: colors.border }]}
-                placeholder="Team / season name"
-                placeholderTextColor={colors.mutedForeground}
-                value={newTeamName}
-                onChangeText={setNewTeamName}
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={handleCreateTeam}
-              />
-              <View style={styles.newTeamBtns}>
-                <TouchableOpacity onPress={() => setShowNewTeam(false)} style={styles.cancelBtn}>
-                  <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleCreateTeam}
-                  style={[styles.saveTeamBtn, { backgroundColor: colors.primary }]}
-                  disabled={!newTeamName.trim() || creatingTeam}
+        {/* ── Your Team / Season dropdown ───────────────────────────────────── */}
+        <Text style={[styles.label, { color: colors.mutedForeground }]}>Your Team / Season</Text>
+        {teamsLoading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginBottom: 16 }} />
+        ) : (
+          <>
+            {/* Collapsed trigger row */}
+            {(teams?.length ?? 0) === 0 && !showNewTeam ? (
+              <View style={[styles.emptyTeam, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Ionicons name="basketball-outline" size={22} color={colors.mutedForeground} />
+                <Text style={[styles.emptyTeamText, { color: colors.mutedForeground }]}>
+                  No teams yet — add one below.
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => { setTeamDropOpen((v) => !v); setShowNewTeam(false); }}
+                activeOpacity={0.75}
+                style={[
+                  styles.dropdownTrigger,
+                  { backgroundColor: colors.card, borderColor: teamDropOpen ? colors.primary : colors.border },
+                ]}
+              >
+                <View style={[styles.teamDot, { backgroundColor: colors.primary }]} />
+                <Text
+                  style={[styles.dropdownLabel, { color: selectedTeam ? colors.foreground : colors.mutedForeground }]}
+                  numberOfLines={1}
                 >
-                  {creatingTeam ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.saveTeamText}>Save</Text>
-                  )}
+                  {selectedTeam?.name ?? 'Select a team'}
+                </Text>
+                {selectedTeam?.sport && (
+                  <Text style={[styles.sportBadge, { color: colors.primary, backgroundColor: colors.primary + '18' }]}>
+                    {selectedTeam.sport === 'soccer' ? '⚽' : '🏀'}
+                  </Text>
+                )}
+                <Ionicons
+                  name={teamDropOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.mutedForeground}
+                />
+              </TouchableOpacity>
+            )}
+
+            {/* Expanded team list */}
+            {teamDropOpen && (
+              <View style={[styles.dropdownList, { backgroundColor: colors.card, borderColor: colors.primary + '40' }]}>
+                {(teams as any[] ?? []).map((t: any, i: number) => {
+                  const sel = teamIdx === i;
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      onPress={() => {
+                        setTeamIdx(i);
+                        setTeamDropOpen(false);
+                        setShowNewTeam(false);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      activeOpacity={0.7}
+                      style={[styles.dropdownItem, sel && { backgroundColor: colors.primary + '14' }]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.dropdownItemText, { color: sel ? colors.primary : colors.foreground }]} numberOfLines={1}>
+                          {t.name}
+                        </Text>
+                        {t.sport && (
+                          <Text style={{ fontSize: 11, color: colors.mutedForeground, fontFamily: 'Inter_400Regular', marginTop: 1 }}>
+                            {t.sport === 'soccer' ? '⚽ Soccer League' : '🏀 Basketball League'}
+                          </Text>
+                        )}
+                      </View>
+                      {sel && <Ionicons name="checkmark" size={16} color={colors.primary} />}
+                    </TouchableOpacity>
+                  );
+                })}
+                {/* Add new team / season row */}
+                <TouchableOpacity
+                  onPress={() => { setShowNewTeam(true); setTeamDropOpen(false); }}
+                  style={[styles.dropdownItem, { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="plus" size={14} color={colors.primary} />
+                  <Text style={[styles.dropdownItemText, { color: colors.primary }]}>New team / season</Text>
                 </TouchableOpacity>
               </View>
+            )}
+
+            {/* Inline new-team form */}
+            {showNewTeam && (
+              <View style={[styles.newTeamWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <TextInput
+                  style={[styles.newTeamInput, { color: colors.foreground, borderColor: colors.border }]}
+                  placeholder="Team / season name"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={newTeamName}
+                  onChangeText={setNewTeamName}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleCreateTeam}
+                />
+                <View style={styles.newTeamBtns}>
+                  <TouchableOpacity onPress={() => setShowNewTeam(false)} style={styles.cancelBtn}>
+                    <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleCreateTeam}
+                    style={[styles.saveTeamBtn, { backgroundColor: colors.primary }]}
+                    disabled={!newTeamName.trim() || creatingTeam}
+                  >
+                    {creatingTeam ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.saveTeamText}>Save</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </>
+        )}
+
+        {/* ── Record Video toggle ───────────────────────────────────────────── */}
+        <View style={[styles.toggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.toggleLeft}>
+            <View style={[styles.toggleIcon, { backgroundColor: recordVideo ? colors.primary + '20' : colors.muted }]}>
+              <Ionicons
+                name="videocam"
+                size={18}
+                color={recordVideo ? colors.primary : colors.mutedForeground}
+              />
             </View>
-          ) : (
-            <TouchableOpacity
-              onPress={() => setShowNewTeam(true)}
-              style={[styles.addTeamBtn, { borderColor: colors.border }]}
-              activeOpacity={0.7}
-            >
-              <Feather name="plus" size={16} color={colors.primary} />
-              <Text style={[styles.addTeamText, { color: colors.primary }]}>New team / season</Text>
-            </TouchableOpacity>
-          )}
-        </>
-      )}
-
-      {/* Record Video toggle */}
-      <View style={[styles.toggleRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={styles.toggleLeft}>
-          <View style={[styles.toggleIcon, { backgroundColor: recordVideo ? colors.primary + '20' : colors.muted }]}>
-            <Ionicons
-              name="videocam"
-              size={18}
-              color={recordVideo ? colors.primary : colors.mutedForeground}
-            />
+            <View style={styles.toggleText}>
+              <Text style={[styles.toggleTitle, { color: colors.foreground }]}>Record Video</Text>
+              <Text style={[styles.toggleSub, { color: colors.mutedForeground }]}>
+                Film the game from your phone
+              </Text>
+            </View>
           </View>
-          <View style={styles.toggleText}>
-            <Text style={[styles.toggleTitle, { color: colors.foreground }]}>Record Video</Text>
-            <Text style={[styles.toggleSub, { color: colors.mutedForeground }]}>
-              Film the game from your phone
-            </Text>
-          </View>
+          <Switch
+            value={recordVideo}
+            onValueChange={(v) => { setRecordVideo(v); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            trackColor={{ false: colors.muted, true: colors.primary + '80' }}
+            thumbColor={recordVideo ? colors.primary : colors.mutedForeground}
+          />
         </View>
-        <Switch
-          value={recordVideo}
-          onValueChange={(v) => {
-            setRecordVideo(v);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }}
-          trackColor={{ false: colors.muted, true: colors.primary + '80' }}
-          thumbColor={recordVideo ? colors.primary : colors.mutedForeground}
-        />
-      </View>
 
-      {/* Start button */}
-      <TouchableOpacity
-        onPress={handleStart}
-        disabled={!canStart}
-        activeOpacity={0.8}
-        style={[styles.startBtn, { backgroundColor: colors.primary, opacity: canStart ? 1 : 0.35 }]}
-      >
-        <Ionicons name={recordVideo ? 'videocam' : 'play-circle'} size={22} color="#fff" />
-        <Text style={styles.startText}>{recordVideo ? 'Start & Record' : 'Start Game'}</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {/* ── Start button ──────────────────────────────────────────────────── */}
+        <TouchableOpacity
+          onPress={handleStart}
+          disabled={!canStart}
+          activeOpacity={0.8}
+          style={[styles.startBtn, { backgroundColor: colors.primary, opacity: canStart ? 1 : 0.35, overflow: 'hidden' }]}
+        >
+          <LinearGradient
+            colors={['rgba(255,255,255,0.18)', 'rgba(255,255,255,0)'] as any}
+            start={{ x: 0.1, y: 0 }}
+            end={{ x: 0.9, y: 1 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <Ionicons name={recordVideo ? 'videocam' : 'play-circle'} size={22} color="#fff" />
+          <Text style={styles.startText}>{recordVideo ? 'Start & Record' : 'Start Game'}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
   );
 }
 
 function makeStyles(colors: any, insets: any) {
   return StyleSheet.create({
     content: {
-      paddingTop: insets.top + (Platform.OS === 'web' ? 67 : (Platform.OS === 'ios' ? 16 : 24)),
+      paddingTop: insets.top + (Platform.OS === 'web' ? 67 : 20),
       paddingHorizontal: 20,
       paddingBottom: insets.bottom + 120,
     },
-    header: { alignItems: 'center', paddingBottom: 32 },
-    iconBadge: {
-      width: 64,
-      height: 64,
-      borderRadius: 18,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 14,
-    },
-    title: { fontSize: 26, fontFamily: 'Inter_700Bold', color: colors.foreground, marginBottom: 6 },
+    header: { alignItems: 'center', paddingBottom: 22 },
     subtitle: {
       fontSize: 14,
-      color: colors.mutedForeground,
-      textAlign: 'center',
       fontFamily: 'Inter_400Regular',
+      textAlign: 'center',
+      marginTop: 3,
     },
     label: {
-      fontSize: 12,
+      fontSize: 11,
       fontFamily: 'Inter_600SemiBold',
-      color: colors.mutedForeground,
-      letterSpacing: 0.8,
+      letterSpacing: 0.9,
       textTransform: 'uppercase',
       marginBottom: 8,
     },
     inputWrap: {
       flexDirection: 'row',
       alignItems: 'center',
-      borderRadius: 10,
+      borderRadius: 12,
       borderWidth: 1,
       marginBottom: 20,
     },
     inputIcon: { paddingLeft: 14 },
     input: {
       flex: 1,
-      height: 48,
+      height: 50,
       paddingHorizontal: 12,
       fontSize: 16,
       fontFamily: 'Inter_400Regular',
@@ -276,29 +316,46 @@ function makeStyles(colors: any, insets: any) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
-      borderRadius: 10,
+      borderRadius: 12,
       borderWidth: 1,
       padding: 14,
-      marginBottom: 10,
+      marginBottom: 16,
     },
     emptyTeamText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
-    teamList: {
+    dropdownTrigger: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderRadius: 12,
+      borderWidth: 1,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      marginBottom: 6,
+    },
+    teamDot: { width: 8, height: 8, borderRadius: 4 },
+    dropdownLabel: { flex: 1, fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+    sportBadge: {
+      fontSize: 14,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 8,
+    },
+    dropdownList: {
       borderRadius: 12,
       borderWidth: 1,
       marginBottom: 8,
       overflow: 'hidden',
     },
-    teamRow: {
+    dropdownItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 11,
-      minHeight: 44,
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
-    teamRowText: { flex: 1, fontSize: 15, fontFamily: 'Inter_500Medium' },
-    teamDivider: { height: StyleSheet.hairlineWidth },
+    dropdownItemText: { fontSize: 15, fontFamily: 'Inter_500Medium' },
     newTeamWrap: {
-      borderRadius: 10,
+      borderRadius: 12,
       borderWidth: 1,
       padding: 14,
       marginBottom: 8,
@@ -311,7 +368,6 @@ function makeStyles(colors: any, insets: any) {
       paddingHorizontal: 12,
       fontSize: 15,
       fontFamily: 'Inter_400Regular',
-      color: colors.foreground,
     },
     newTeamBtns: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
     cancelBtn: { paddingHorizontal: 14, paddingVertical: 8 },
@@ -324,18 +380,6 @@ function makeStyles(colors: any, insets: any) {
       alignItems: 'center',
     },
     saveTeamText: { fontSize: 14, fontFamily: 'Inter_600SemiBold', color: '#fff' },
-    addTeamBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderStyle: 'dashed',
-      padding: 14,
-      marginBottom: 24,
-      justifyContent: 'center',
-    },
-    addTeamText: { fontSize: 14, fontFamily: 'Inter_500Medium' },
     toggleRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -343,7 +387,8 @@ function makeStyles(colors: any, insets: any) {
       borderRadius: 12,
       borderWidth: 1,
       padding: 14,
-      marginBottom: 20,
+      marginTop: 14,
+      marginBottom: 14,
     },
     toggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
     toggleIcon: {
@@ -361,10 +406,9 @@ function makeStyles(colors: any, insets: any) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: 10,
-      height: 56,
-      borderRadius: 14,
-      marginTop: 8,
+      height: 58,
+      borderRadius: 16,
     },
-    startText: { fontSize: 17, fontFamily: 'Inter_700Bold', color: '#fff' },
+    startText: { fontSize: 18, fontFamily: 'Inter_700Bold', color: '#fff' },
   });
 }
