@@ -28,6 +28,8 @@ import {
   Modal,
   Animated,
   Share,
+  PermissionsAndroid,
+  ToastAndroid,
 } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
@@ -186,6 +188,34 @@ export default function ScorekeeperScreen() {
 
   async function startLiveBroadcast() {
     if (liveLoading || isLive) return;
+
+    // Android 12+ (API 31+) requires BLUETOOTH_CONNECT at runtime for WebRTC
+    // to route audio through a connected Bluetooth headset. Request it before
+    // opening the broadcast. On denial the broadcast still starts but audio
+    // falls back to the device speaker.
+    if (Platform.OS === 'android' && (Platform.Version as number) >= 31) {
+      try {
+        const btResult = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          {
+            title: 'Bluetooth Headset',
+            message:
+              'Allow Hoops Stats to use your Bluetooth headset for broadcast audio.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Deny',
+          },
+        );
+        if (btResult !== PermissionsAndroid.RESULTS.GRANTED) {
+          ToastAndroid.show(
+            'Bluetooth permission denied — broadcast audio will use the speaker.',
+            ToastAndroid.LONG,
+          );
+        }
+      } catch {
+        // Permission API unavailable on this device — proceed without headset routing
+      }
+    }
+
     setLiveLoading(true);
     try {
       const token = await getToken();
