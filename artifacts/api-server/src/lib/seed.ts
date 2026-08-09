@@ -102,10 +102,8 @@ export async function applySchemaAdditions(): Promise<void> {
   // Added for YouTube highlight upload persistence. The column stores the
   // YouTube video URL after a successful upload so the mobile app can
   // re-surface the "View on YouTube" link across remounts.
-  await db.execute(
-    sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_youtube_url text`,
-    sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name text`,
-    sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name text`,
-  );
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_youtube_url text`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name text`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name text`);
   logger.info("Schema additions applied (highlight_youtube_url, users name columns)");
 }
