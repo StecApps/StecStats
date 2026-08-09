@@ -140,8 +140,26 @@ async function initStripe() {
 
   const stripeSync = await getStripeSync();
 
-  const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
-  await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
+  // Only register the managed webhook when STRIPE_WEBHOOK_BASE_URL is
+  // explicitly set (production only). In dev, REPLIT_DOMAINS resolves to the
+  // temporary .riker.replit.dev workspace URL; calling findOrCreateManagedWebhook
+  // there creates a live-mode Stripe webhook endpoint at the dev URL, overwrites
+  // the DB secret, and breaks production signature verification for every real
+  // Stripe event. The fix: require an explicit STRIPE_WEBHOOK_BASE_URL (set to
+  // https://stecstats.com in production Secrets) and skip the call when it's absent.
+  const webhookBaseUrl = process.env.STRIPE_WEBHOOK_BASE_URL;
+  if (webhookBaseUrl) {
+    logger.info(
+      { webhookBaseUrl },
+      "Registering managed Stripe webhook endpoint",
+    );
+    await stripeSync.findOrCreateManagedWebhook(`${webhookBaseUrl}/api/stripe/webhook`);
+  } else {
+    logger.info(
+      "STRIPE_WEBHOOK_BASE_URL is not set — skipping managed webhook registration. " +
+        "Set STRIPE_WEBHOOK_BASE_URL=https://stecstats.com in production Secrets to enable it.",
+    );
+  }
 
   // NOTE: syncBackfill() with no params hits the library's default switch
   // branch and syncs NOTHING — { object: "all" } is required for a real
