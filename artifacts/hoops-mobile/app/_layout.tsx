@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -65,8 +65,9 @@ const queryClient = new QueryClient({
 });
 
 /** Wires the Clerk session token into the shared API client fetch layer. */
-function ApiAuthSetup() {
+export function ApiAuthSetup() {
   const { getToken, isSignedIn, isLoaded, userId } = useAuth();
+  const qc = useQueryClient();
 
   // Register the token getter once — don't close over isSignedIn because
   // the stale closure value can make the getter return null even after the
@@ -76,23 +77,22 @@ function ApiAuthSetup() {
     setAuthTokenGetter(() => getToken());
   }, [getToken]);
 
-  // When auth becomes ready, clear the entire query cache so pre-auth 401
-  // errors don't survive sign-in. `invalidateQueries()` only marks successful
-  // cache entries as stale — it does NOT remove error entries, which React
-  // Query treats differently (errors are not subject to staleTime). On a fresh
-  // install a query can fire before Clerk settles, get retried once (retry:1),
-  // and then the 401 error is cached. That error survives invalidation and
-  // blocks the re-fetch even after a valid token is available.
+  // When auth becomes ready, reset all queries so pre-auth 401 error entries
+  // are removed and active (mounted) query observers immediately re-fetch with
+  // the fresh Clerk token — no pull-to-refresh required.
   //
-  // `queryClient.clear()` removes every cache entry — both data and errors —
-  // so any component that is still mounted will immediately re-fetch with the
-  // fresh Clerk token. This is safe on sign-in because there is no useful
-  // pre-auth cached data to preserve.
+  // resetQueries() is preferred over clear() because it notifies active
+  // observers so they re-fetch inline, whereas clear() destroys observers and
+  // leaves mounted screens empty until their next render cycle.
+  //
+  // It is preferred over invalidateQueries() because invalidation does not
+  // remove error entries from the cache — a cached 401 error persists and
+  // blocks the re-fetch even after a valid token is available.
   useEffect(() => {
     if (isSignedIn) {
-      queryClient.clear();
+      qc.resetQueries();
     }
-  }, [isSignedIn]);
+  }, [isSignedIn, qc]);
 
   // Sync RevenueCat subscriber identity with Clerk — guarded on isLoaded so
   // the transient reload state (isLoaded=false, isSignedIn=false) is never
