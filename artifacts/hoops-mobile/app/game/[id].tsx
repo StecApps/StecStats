@@ -31,14 +31,13 @@ const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : '';
 
-async function fetchSignedUrl(objectPath: string, token: string): Promise<string> {
-  const clean = objectPath.replace(/^\/objects\//, '');
-  const res = await fetch(`${API_BASE}/api/storage/objects-signed-url/${clean}`, {
+async function fetchStreamUrl(gameId: number, type: 'video' | 'highlight' | 'lowlight', token: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/games/${gameId}/stream-token/${type}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error('Could not get signed URL');
-  const { url } = await res.json();
-  return url;
+  if (!res.ok) throw new Error('Could not get stream token');
+  const { token: streamToken } = await res.json();
+  return `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`;
 }
 
 type Tab = 'stats' | 'video' | 'highlights' | 'lowlights';
@@ -170,7 +169,7 @@ const cardStyle = StyleSheet.create({
 
 function VideoSection({ game, colors }: { game: any; colors: any }) {
   const { getToken } = useAuth();
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const player = useVideoPlayer('', () => {});
@@ -181,11 +180,11 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
     getToken()
       .then((token) => {
         if (!token || cancelled) return;
-        return fetchSignedUrl(game.videoObjectPath, token);
+        return fetchStreamUrl(game.id, 'video', token);
       })
       .then((url) => {
         if (!url || cancelled) return;
-        setSignedUrl(url);
+        setStreamUrl(url);
         player.replace({ uri: url });
       })
       .catch(() => { if (!cancelled) setLoadError(true); });
@@ -214,7 +213,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
     );
   }
 
-  if (!signedUrl) {
+  if (!streamUrl) {
     return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
   }
 
@@ -276,16 +275,15 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => clearInterval(t);
   }, [lowlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const objectPath =
-    lowlight?.status === 'ready' ? lowlight.lowlightObjectPath ?? null : null;
+  const lowlightReady = lowlight?.status === 'ready';
 
   useEffect(() => {
-    if (!objectPath) return;
+    if (!lowlightReady) return;
     let cancelled = false;
     getToken()
       .then((token) => {
         if (!token || cancelled) return;
-        return fetchSignedUrl(objectPath, token);
+        return fetchStreamUrl(gameId, 'lowlight', token);
       })
       .then((url) => {
         if (!url || cancelled) return;
@@ -294,7 +292,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [objectPath]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lowlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!lowlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
@@ -409,15 +407,15 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => clearInterval(t);
   }, [highlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const objectPath = highlight?.status === 'ready' ? highlight.highlightObjectPath ?? null : null;
+  const highlightReady = highlight?.status === 'ready';
 
   useEffect(() => {
-    if (!objectPath) return;
+    if (!highlightReady) return;
     let cancelled = false;
     getToken()
       .then((token) => {
         if (!token || cancelled) return;
-        return fetchSignedUrl(objectPath, token);
+        return fetchStreamUrl(gameId, 'highlight', token);
       })
       .then((url) => {
         if (!url || cancelled) return;
@@ -426,7 +424,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [objectPath]);
+  }, [highlightReady, gameId]);
 
   if (!highlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 

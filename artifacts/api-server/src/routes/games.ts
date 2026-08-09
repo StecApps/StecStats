@@ -29,7 +29,7 @@ import {
 } from "@workspace/api-zod";
 import { type File as GCSFile } from "@google-cloud/storage";
 import { computePoints } from "../lib/stats";
-import { ObjectStorageService } from "../lib/objectStorage";
+import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib/objectAcl";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
@@ -1788,6 +1788,142 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
   })().catch((err) => {
     log.error({ gameId, err: String(err?.message ?? err) }, "repair-video: background job failed");
   });
+});
+
+// ── Seekable video streaming (token-authenticated Range endpoint) ─────────────
+//
+// GCS signed URL Range requests return garbage bytes in production because
+// Replit's proxy intercepts and truncates them.  These endpoints work around
+// the issue by using the GCS SDK's authenticated createReadStream — which
+// performs Range reads server-side and pipes clean bytes to the client.
+//
+// Flow:
+//   1. Mobile calls GET /games/:gameId/stream-token/:type  (Bearer auth)
+//      → server checks ownership, mints a short-lived UUID token, returns it
+//   2. Mobile calls GET /games/:gameId/stream/:type?t=<token>
+//      (no auth header — expo-video cannot set custom headers)
+//      → server validates token, serves Range requests via createReadStream
+
+const streamTokens = new Map<string, { objectPath: string; expiresAt: number }>();
+
+// Token TTL: 4 hours.  expo-video issues new HTTP Range requests whenever the
+// coach seeks — the same URL must remain valid for the entire playback session.
+// A full game recording can exceed 2 hours, so 5 minutes is far too short.
+// 4 hours covers any realistic single-session viewing without the complexity of
+// proactive client-side token refresh (which would require pausing and resuming
+// the player at the current position).
+const STREAM_TOKEN_TTL_MS = 4 * 60 * 60_000; // 4 h
+
+// Prune expired tokens every 30 minutes so the map doesn't grow unbounded.
+setInterval(() => {
+  const now = Date.now();
+  for (const [tok, entry] of streamTokens) {
+    if (now > entry.expiresAt) streamTokens.delete(tok);
+  }
+}, 30 * 60_000).unref();
+
+/**
+ * GET /games/:gameId/stream-token/:type
+ * Requires Bearer auth.  Validates ownership, resolves the object path
+ * (preferring the proxy MP4 for "video"), mints a 5-minute streaming token
+ * and returns it.  The companion /stream/:type endpoint accepts the token as
+ * ?t=<token> and serves seekable Range responses.
+ */
+router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) => {
+  const gameId = Number(req.params.gameId);
+  if (isNaN(gameId)) return void res.status(400).json({ error: "Invalid gameId" });
+
+  const type = req.params.type as string;
+  if (!["video", "highlight", "lowlight"].includes(type)) {
+    return void res.status(400).json({ error: "type must be video, highlight, or lowlight" });
+  }
+
+  const ownerId = req.appUser!.id;
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
+  });
+  if (!game) return void res.status(404).json({ error: "Game not found" });
+
+  let objectPath: string | null = null;
+  if (type === "video") {
+    if (!game.videoObjectPath) return void res.status(404).json({ error: "No video available" });
+    const hasValidProxy = !!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION;
+    if (!hasValidProxy) ensureGameProxyInBackground(gameId, ownerId);
+    objectPath = hasValidProxy ? game.videoProxyObjectPath! : game.videoObjectPath;
+  } else if (type === "highlight") {
+    if (game.highlightStatus !== "ready" || !game.highlightObjectPath) {
+      return void res.status(404).json({ error: "No highlight available" });
+    }
+    objectPath = game.highlightObjectPath;
+  } else if (type === "lowlight") {
+    if (game.lowlightStatus !== "ready" || !game.lowlightObjectPath) {
+      return void res.status(404).json({ error: "No lowlight available" });
+    }
+    objectPath = game.lowlightObjectPath;
+  }
+
+  if (!objectPath) return void res.status(404).json({ error: "No video available" });
+
+  const token = randomUUID();
+  streamTokens.set(token, { objectPath, expiresAt: Date.now() + STREAM_TOKEN_TTL_MS });
+
+  res.json({ token });
+});
+
+/**
+ * GET /games/:gameId/stream/:type?t=<token>
+ * No Bearer auth — expo-video cannot send custom headers.  Auth is delegated
+ * to the short-lived token issued by /stream-token/:type above.
+ * Serves Range requests via GCS SDK authenticated reads (createReadStream)
+ * so seeking works reliably in production.
+ */
+router.get("/games/:gameId/stream/:type", async (req, res) => {
+  const token = String(req.query.t ?? "");
+  const entry = streamTokens.get(token);
+  if (!entry || Date.now() > entry.expiresAt) {
+    return void res.status(401).json({ error: "Invalid or expired stream token" });
+  }
+
+  try {
+    const objectFile = await objectStorageService.getObjectEntityFile(entry.objectPath);
+    const [metadata] = await objectFile.getMetadata();
+    const contentType: string = (metadata.contentType as string) || "video/mp4";
+    const fileSize = Number(metadata.size ?? 0);
+
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "private, max-age=300");
+
+    const rangeHeader = req.headers["range"];
+    if (rangeHeader && fileSize > 0) {
+      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+      if (!match) {
+        res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();
+        return;
+      }
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : fileSize - 1;
+      if (start > end || end >= fileSize) {
+        res.status(416).setHeader("Content-Range", `bytes */${fileSize}`).end();
+        return;
+      }
+      const chunkSize = end - start + 1;
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader("Content-Length", chunkSize);
+      objectFile.createReadStream({ start, end }).pipe(res);
+    } else {
+      if (fileSize > 0) res.setHeader("Content-Length", fileSize);
+      res.status(200);
+      objectFile.createReadStream().pipe(res);
+    }
+  } catch (error) {
+    if (error instanceof ObjectNotFoundError) {
+      return void res.status(404).json({ error: "Object not found" });
+    }
+    req.log.error({ err: error }, "stream: error serving video");
+    res.status(500).json({ error: "Failed to stream video" });
+  }
 });
 
 // ── Generate / return game share token (auth required) ───────────────────────
