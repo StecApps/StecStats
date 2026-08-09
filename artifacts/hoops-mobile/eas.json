@@ -32,7 +32,8 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "APP_ENV": "production"
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "stecstats.com"
       }
     }
   },
