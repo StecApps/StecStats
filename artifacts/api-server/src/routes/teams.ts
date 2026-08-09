@@ -274,25 +274,19 @@ router.get("/games", requireAuth, async (req, res) => {
   const teamIds = teams.map((t) => t.id);
   const teamById = new Map(teams.map((t) => [t.id, t]));
 
-  const isFree = (await getEntitlementsForUser(req.appUser!)).plan === "free";
-  const seasonStart = getCurrentSeasonStartDate();
-
+  // No season filter here — this endpoint powers the mobile coach film room.
+  // Coaches must be able to access every game they ever recorded regardless of
+  // subscription plan. The "current season only" restriction applies only to
+  // the web analytics dashboard (GET /api/teams/:teamId/games).
   const games = await db
     .select()
     .from(gamesTable)
     .where(
-      isFree
-        ? and(
-            inArray(gamesTable.teamId, teamIds),
-            eq(gamesTable.ownerId, ownerId),
-            gte(gamesTable.date, seasonStart),
-            isNull(gamesTable.mergedIntoGameId),
-          )
-        : and(
-            inArray(gamesTable.teamId, teamIds),
-            eq(gamesTable.ownerId, ownerId),
-            isNull(gamesTable.mergedIntoGameId),
-          ),
+      and(
+        inArray(gamesTable.teamId, teamIds),
+        eq(gamesTable.ownerId, ownerId),
+        isNull(gamesTable.mergedIntoGameId),
+      ),
     )
     .orderBy(desc(gamesTable.date));
 
