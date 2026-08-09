@@ -68,12 +68,23 @@ const queryClient = new QueryClient({
 function ApiAuthSetup() {
   const { getToken, isSignedIn, isLoaded, userId } = useAuth();
 
+  // Register the token getter once — don't close over isSignedIn because
+  // the stale closure value can make the getter return null even after the
+  // user is signed in. getToken() returns null naturally when there is no
+  // active session, so the isSignedIn guard is redundant and harmful.
   useEffect(() => {
-    setAuthTokenGetter(async () => {
-      if (!isSignedIn) return null;
-      return (await getToken()) ?? null;
-    });
-  }, [isSignedIn, getToken]);
+    setAuthTokenGetter(() => getToken());
+  }, [getToken]);
+
+  // When auth becomes ready, invalidate all cached queries so they refetch
+  // with the real token. Without this, queries that fired before Clerk
+  // finished loading get cached as 401 errors and never automatically retry
+  // (React Query's staleTime prevents a re-fetch within the stale window).
+  useEffect(() => {
+    if (isSignedIn) {
+      queryClient.invalidateQueries();
+    }
+  }, [isSignedIn]);
 
   // Sync RevenueCat subscriber identity with Clerk — guarded on isLoaded so
   // the transient reload state (isLoaded=false, isSignedIn=false) is never
