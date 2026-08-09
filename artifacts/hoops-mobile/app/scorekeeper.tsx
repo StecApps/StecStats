@@ -159,6 +159,12 @@ export default function ScorekeeperScreen() {
   const liveWsRef = useRef<WebSocket | null>(null);
   // WebRTC broadcaster: one RTCPeerConnection per connected viewer (keyed by viewerId)
   const webrtcPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  // Per-viewer ICE restart attempt counters — reset when a viewer's connection recovers
+  const iceRestartCountRef = useRef<Map<string, number>>(new Map());
+  // Per-viewer disconnect-state watchdog timers (preemptive ICE restart after 10 s)
+  const disconnectWatchdogRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Per-viewer adaptive-bitrate poll intervals — cleared when a peer is torn down
+  const bitrateIntervalRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   // Live camera MediaStream used for WebRTC — opened via mediaDevices.getUserMedia
   const webrtcStreamRef = useRef<any>(null);
   // Viewer IDs that sent new-viewer while getUserMedia was still in-flight
@@ -289,7 +295,28 @@ export default function ScorekeeperScreen() {
   }
 
   // ─── WebRTC broadcaster helpers ─────────────────────────────────────────────
+  // Tear down a single viewer's peer and all associated timers/counters.
+  // Safe to call even if the viewer was never fully set up.
+  function teardownPeerForViewer(viewerId: string) {
+    const interval = bitrateIntervalRef.current.get(viewerId);
+    if (interval) { clearInterval(interval); bitrateIntervalRef.current.delete(viewerId); }
+    const watchdog = disconnectWatchdogRef.current.get(viewerId);
+    if (watchdog) { clearTimeout(watchdog); disconnectWatchdogRef.current.delete(viewerId); }
+    iceRestartCountRef.current.delete(viewerId);
+    const pc = webrtcPeersRef.current.get(viewerId);
+    if (pc) { try { pc.close(); } catch {} webrtcPeersRef.current.delete(viewerId); }
+  }
+
   function closeAllWebRtcPeers() {
+    for (const timer of disconnectWatchdogRef.current.values()) {
+      clearTimeout(timer);
+    }
+    disconnectWatchdogRef.current.clear();
+    for (const interval of bitrateIntervalRef.current.values()) {
+      clearInterval(interval);
+    }
+    bitrateIntervalRef.current.clear();
+    iceRestartCountRef.current.clear();
     for (const pc of webrtcPeersRef.current.values()) {
       try { pc.close(); } catch {}
     }
@@ -305,6 +332,10 @@ export default function ScorekeeperScreen() {
 
   async function createPeerForViewer(viewerId: string, code: string) {
     if (!RTCPeerConnection) return; // native module not available (Expo Go)
+    // Close and fully clean up any prior peer for this viewer before replacing it.
+    // Without this, the old peer's callbacks keep firing and can send conflicting
+    // ICE-restart offers or peer-connection-failed after the viewer has reconnected.
+    teardownPeerForViewer(viewerId);
     const iceServers = await fetchIceServers(API_BASE);
     const pc = new RTCPeerConnection({ iceServers });
     webrtcPeersRef.current.set(viewerId, pc);
@@ -328,24 +359,128 @@ export default function ScorekeeperScreen() {
       }
     };
 
-    // Attempt ICE restart when the connection definitively fails.
-    // Only fires on 'failed' (not 'disconnected' which is transient and often
-    // self-heals). A local flag prevents duplicate restart offers if the state
-    // machine fires multiple callbacks before the new offer is delivered.
+    // Helper: attempt an ICE restart for this viewer, capped at 3 tries.
+    // Prevents duplicate in-flight restarts via an async flag.
     let iceRestartPending = false;
+    async function attemptIceRestart() {
+      if (iceRestartPending) return;
+      const attempts = (iceRestartCountRef.current.get(viewerId) ?? 0) + 1;
+      if (attempts > 3) {
+        console.warn(`[WebRTC] ICE restart cap reached for viewer ${viewerId} — sending peer-connection-failed`);
+        broadcastWsSend({ type: 'peer-connection-failed', code, targetId: viewerId });
+        webrtcPeersRef.current.delete(viewerId);
+        // Clean up the adaptive-bitrate interval and disconnect watchdog for
+        // this viewer so they don't keep firing after the peer is gone.
+        const interval = bitrateIntervalRef.current.get(viewerId);
+        if (interval) { clearInterval(interval); bitrateIntervalRef.current.delete(viewerId); }
+        const watchdog = disconnectWatchdogRef.current.get(viewerId);
+        if (watchdog) { clearTimeout(watchdog); disconnectWatchdogRef.current.delete(viewerId); }
+        iceRestartCountRef.current.delete(viewerId);
+        try { pc.close(); } catch {}
+        return;
+      }
+      iceRestartCountRef.current.set(viewerId, attempts);
+      iceRestartPending = true;
+      try {
+        const offer = await pc.createOffer({ iceRestart: true } as any);
+        await pc.setLocalDescription(offer as any);
+        broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp, renegotiate: true });
+        console.log(`[WebRTC] ICE restart offer sent (attempt ${attempts}) for viewer ${viewerId}`);
+      } catch (err) {
+        console.warn(`[WebRTC] ICE restart failed for viewer ${viewerId}:`, err);
+      } finally {
+        iceRestartPending = false;
+      }
+    }
+
     (pc as any).onconnectionstatechange = () => {
+      // Guard: ignore callbacks from a stale peer that has already been replaced
+      // or torn down (e.g. after a viewer reconnect issued a fresh offer).
+      if (webrtcPeersRef.current.get(viewerId) !== pc) return;
       const state = (pc as any).connectionState;
-      if (state === 'failed' && !iceRestartPending) {
-        iceRestartPending = true;
-        pc.createOffer({ iceRestart: true } as any)
-          .then((offer: any) => {
-            pc.setLocalDescription(offer as any);
-            broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp, renegotiate: true });
-          })
-          .catch(() => {})
-          .finally(() => { iceRestartPending = false; });
+      if (state === 'failed') {
+        // Cancel any pending disconnect watchdog — connection already hard-failed.
+        const existing = disconnectWatchdogRef.current.get(viewerId);
+        if (existing) { clearTimeout(existing); disconnectWatchdogRef.current.delete(viewerId); }
+        attemptIceRestart();
+      } else if (state === 'disconnected') {
+        // Arm a 10 s watchdog: if the connection doesn't self-heal, fire a
+        // preemptive ICE restart before it reaches 'failed'.
+        if (!disconnectWatchdogRef.current.has(viewerId)) {
+          const timer = setTimeout(() => {
+            disconnectWatchdogRef.current.delete(viewerId);
+            if ((pc as any).connectionState === 'disconnected') {
+              console.log(`[WebRTC] Disconnect watchdog fired for viewer ${viewerId} — preemptive ICE restart`);
+              attemptIceRestart();
+            }
+          }, 10_000);
+          disconnectWatchdogRef.current.set(viewerId, timer);
+        }
+      } else if (state === 'connected') {
+        // Connection recovered — cancel watchdog and reset the restart counter.
+        const existing = disconnectWatchdogRef.current.get(viewerId);
+        if (existing) { clearTimeout(existing); disconnectWatchdogRef.current.delete(viewerId); }
+        iceRestartCountRef.current.delete(viewerId);
       }
     };
+
+    // ── Adaptive bitrate ──────────────────────────────────────────────────────
+    // Poll getStats() every 5 s and step maxBitrate through a 3-rung quality
+    // ladder based on remote RTT and packet-loss fraction.
+    // Hysteresis: 2 consecutive bad polls → step down; 4 clean polls → step up.
+    const BITRATE_LADDER = [2_500_000, 1_200_000, 600_000];
+    let bitrateRung = 0;
+    let badPollStreak = 0;
+    let goodPollStreak = 0;
+
+    const bitrateInterval = setInterval(async () => {
+      if ((pc as any).connectionState !== 'connected') return;
+      try {
+        const stats: RTCStatsReport = await pc.getStats();
+        let rtt = 0;
+        let fractionLost = 0;
+        stats.forEach((report: any) => {
+          if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
+            if (typeof report.roundTripTime === 'number') rtt = report.roundTripTime;
+            if (typeof report.fractionLost === 'number') fractionLost = report.fractionLost;
+          }
+        });
+
+        const isBad = rtt > 0.4 || fractionLost > 0.05;
+        if (isBad) {
+          goodPollStreak = 0;
+          badPollStreak += 1;
+        } else {
+          badPollStreak = 0;
+          goodPollStreak += 1;
+        }
+
+        let newRung = bitrateRung;
+        if (badPollStreak >= 2 && bitrateRung < BITRATE_LADDER.length - 1) {
+          newRung = bitrateRung + 1;
+          badPollStreak = 0;
+        } else if (goodPollStreak >= 4 && bitrateRung > 0) {
+          newRung = bitrateRung - 1;
+          goodPollStreak = 0;
+        }
+
+        if (newRung !== bitrateRung) {
+          bitrateRung = newRung;
+          const sender = pc.getSenders().find((s: any) => s.track?.kind === 'video');
+          if (sender) {
+            const params = sender.getParameters();
+            if (params.encodings && params.encodings.length > 0) {
+              params.encodings[0].maxBitrate = BITRATE_LADDER[bitrateRung];
+              await sender.setParameters(params);
+              console.log(`[WebRTC] Bitrate → rung ${bitrateRung} (${BITRATE_LADDER[bitrateRung]} bps) for viewer ${viewerId}`);
+            }
+          }
+        }
+      } catch {
+        // getStats() or setParameters() can throw if the connection is being torn down — ignore
+      }
+    }, 5_000);
+    bitrateIntervalRef.current.set(viewerId, bitrateInterval);
 
     // Create the initial offer and send it to the viewer
     const offer = await pc.createOffer({} as any);
@@ -473,12 +608,8 @@ export default function ScorekeeperScreen() {
             await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
           }
         } else if (msg.type === 'viewer-left') {
-          // Viewer disconnected — close their peer connection
-          const pc = webrtcPeersRef.current.get(msg.viewerId);
-          if (pc) {
-            pc.close();
-            webrtcPeersRef.current.delete(msg.viewerId);
-          }
+          // Viewer disconnected — tear down their peer and all associated timers.
+          teardownPeerForViewer(msg.viewerId);
         }
       } catch { /* signaling error */ }
     };

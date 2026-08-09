@@ -804,19 +804,21 @@ export default function WatchStream() {
             startConnectingTimer(false /* preserve cumulative */);
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "request-offer", code }));
-              // Start a 30-s window expecting an offer back. If none arrives the
-              // broadcaster is likely offline — fall back to waiting-for-broadcaster
-              // rather than looping retries indefinitely.
-              if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
-              offerWatchdogRef.current = setTimeout(() => {
-                offerWatchdogRef.current = null;
-                setState((prev) =>
-                  prev === "connecting" || prev === "reconnecting"
-                    ? "waiting-for-broadcaster"
-                    : prev
-                );
-              }, OFFER_WATCHDOG_MS);
             }
+            // Start a 30-s window expecting an offer back. If none arrives the
+            // broadcaster is likely offline — fall back to waiting-for-broadcaster
+            // rather than looping retries indefinitely. This timer is armed
+            // unconditionally so the viewer escapes "Joining…" even when the
+            // WebSocket is also closed at the moment ICE times out.
+            if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+            offerWatchdogRef.current = setTimeout(() => {
+              offerWatchdogRef.current = null;
+              setState((prev) =>
+                prev === "connecting" || prev === "reconnecting"
+                  ? "waiting-for-broadcaster"
+                  : prev
+              );
+            }, OFFER_WATCHDOG_MS);
           }, ICE_WATCHDOG_MS);
         } else if (message.type === "ice-candidate") {
           if (pcRef.current && message.candidate) {
@@ -1231,6 +1233,15 @@ export default function WatchStream() {
                   Retrying… (attempt {iceRetryCount + 1})
                 </p>
               )}
+              {broadcasterReconnecting ? (
+                <p className="text-sm text-amber-300/80 text-center max-w-xs">
+                  Coach's signal dropped — waiting for them to reconnect
+                </p>
+              ) : iceRetryCount > 0 ? (
+                <p className="text-sm text-white/60 text-center max-w-xs">
+                  Improving your connection…
+                </p>
+              ) : null}
               {connectingElapsed >= ELAPSED_THRESHOLD_S && (
                 <p className="text-sm text-white/50 tabular-nums">
                   Still connecting… {formatElapsed(connectingElapsed)}
