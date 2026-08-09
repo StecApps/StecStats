@@ -754,6 +754,50 @@ export default function ScorekeeperScreen() {
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
     : '';
 
+  // ─── Guarded back navigation ──────────────────────────────────────────────
+  // Intercepts the close/back button when a save is in progress so the coach
+  // can't accidentally lose all stats by navigating away mid-upload.
+  // The stats + video URIs are written to AsyncStorage BEFORE any upload bytes
+  // are sent, so "Leave anyway" is safe — the Games tab will offer recovery.
+  function handleClose() {
+    if (!saving) {
+      router.back();
+      return;
+    }
+    const isUploading = uploadProgress !== null;
+    Alert.alert(
+      isUploading ? 'Upload still running' : 'Save in progress',
+      isUploading
+        ? 'Your stats are saved on this device. Leaving will cancel the video — you can save stats-only now, or retry the upload from the Games screen.'
+        : 'Finishing up — hang on a moment. If you must leave, your stats are saved on this device and can be recovered from the Games screen.',
+      [
+        { text: 'Stay', style: 'cancel' },
+        ...(isUploading ? [{
+          text: 'Save stats only',
+          style: 'default' as const,
+          onPress: () => {
+            if (uploadAttemptRef.current) uploadAttemptRef.current.cancelled = true;
+            uploadXhrRef.current?.abort();
+            uploadXhrRef.current = null;
+            setUploadProgress(null);
+            setSaving(false);
+            doSaveGame(null);
+          },
+        }] : []),
+        {
+          text: 'Leave anyway',
+          style: 'destructive',
+          onPress: () => {
+            if (uploadAttemptRef.current) uploadAttemptRef.current.cancelled = true;
+            uploadXhrRef.current?.abort();
+            uploadXhrRef.current = null;
+            router.back();
+          },
+        },
+      ],
+    );
+  }
+
   async function handleSave() {
     if (saving) return;
     if (!players || (players as any[]).length === 0) {
@@ -950,7 +994,7 @@ export default function ScorekeeperScreen() {
   // ── Shared: scoreboard rendered inside the camera section overlay ──
   const scoreboardOverlay = (
     <View style={styles.scoreOverlay}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+      <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
         <Ionicons name="chevron-down" size={22} color="rgba(255,255,255,0.85)" />
       </TouchableOpacity>
       <View style={styles.scoreboard}>
@@ -1458,7 +1502,7 @@ export default function ScorekeeperScreen() {
       {/* ── Compact scoreboard header — shown when not recording (camera hidden) ── */}
       {!recordVideo && (
         <View style={[styles.scoreHeader, { paddingTop: insets.top + (Platform.OS === 'ios' ? 8 : 24), backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+          <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
             <Ionicons name="chevron-down" size={22} color={colors.mutedForeground} />
           </TouchableOpacity>
           <View style={styles.scoreboard}>
@@ -1656,7 +1700,7 @@ export default function ScorekeeperScreen() {
           /* Preview hidden — full-width banner with prominent restore CTA */
           <View style={styles.previewHiddenOverlay}>
             {/* Back button — always reachable even when preview is collapsed */}
-            <TouchableOpacity onPress={() => router.back()} activeOpacity={0.75} style={styles.collapsedCloseBtn}>
+            <TouchableOpacity onPress={handleClose} activeOpacity={0.75} style={styles.collapsedCloseBtn}>
               <Ionicons name="chevron-down" size={20} color="rgba(255,255,255,0.55)" />
             </TouchableOpacity>
 

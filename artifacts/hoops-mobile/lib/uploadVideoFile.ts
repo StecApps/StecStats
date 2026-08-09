@@ -42,6 +42,9 @@ export async function uploadVideoFile(
     }
     xhr.open('PUT', uploadURL);
     xhr.setRequestHeader('Content-Type', contentType);
+    // 10-minute hard cap — without this, xhr.ontimeout never fires and the
+    // upload can stall at the simulated 89 % progress ticker forever.
+    xhr.timeout = 600_000;
 
     // iOS WebKit can suppress or fire onprogress only once. Run a simulated
     // progress ticker so the bar always advances visibly. Real XHR events win
