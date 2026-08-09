@@ -355,13 +355,26 @@ export default function ScorekeeperScreen() {
       liveWsRef.current = null;
     }
     try {
-      const token = await getToken();
-      await fetch(`${API_BASE}/api/live/${encodeURIComponent(code)}/stop`, {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      // 5-second hard cap — getToken() or fetch can hang if the network is flaky.
+      // This is best-effort; the WS is already closed so viewers are notified
+      // regardless of whether the HTTP call succeeds.
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 5000);
+      try {
+        const token = await Promise.race([
+          getToken(),
+          new Promise<null>((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 4000)),
+        ]);
+        await fetch(`${API_BASE}/api/live/${encodeURIComponent(code)}/stop`, {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
     } catch {
-      // best-effort — game save should not be blocked by this
+      // best-effort — game save must not be blocked by a slow or failed stop call
     }
     setIsLive(false);
     setLiveCode(null);
@@ -1654,7 +1667,19 @@ export default function ScorekeeperScreen() {
               <Ionicons name="chevron-up" size={15} color="rgba(255,255,255,0.7)" style={{ marginLeft: 2 }} />
             </TouchableOpacity>
 
-            {recordVideo && isRecording && (
+            {/* LIVE badge — always reachable even when the camera preview is collapsed */}
+            {isLive && (
+              <TouchableOpacity
+                onPress={() => setShowGoLiveSheet(true)}
+                activeOpacity={0.8}
+                style={styles.collapsedLiveBadge}
+              >
+                <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
+                <Text style={styles.liveText}>LIVE</Text>
+              </TouchableOpacity>
+            )}
+
+            {recordVideo && isRecording && !isLive && (
               <View style={styles.recDotSmallRight}>
                 <View style={styles.recDotSmall} />
                 <Text style={styles.recDotSmallLabel}>REC</Text>
@@ -1873,6 +1898,19 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       alignItems: 'center',
       justifyContent: 'center',
       gap: 2,
+      borderLeftWidth: 1,
+      borderLeftColor: 'rgba(255,255,255,0.1)',
+    },
+    collapsedLiveBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: 'rgba(239,68,68,0.75)',
+      borderRadius: 6,
+      paddingHorizontal: 7,
+      paddingVertical: 4,
+      width: 56,
+      justifyContent: 'center',
       borderLeftWidth: 1,
       borderLeftColor: 'rgba(255,255,255,0.1)',
     },
