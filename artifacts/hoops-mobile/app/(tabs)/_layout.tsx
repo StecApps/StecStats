@@ -12,17 +12,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 function NativeTabLayout() {
   return (
     <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: 'house', selected: 'house.fill' }} />
-        <Label>Dashboard</Label>
+      <NativeTabs.Trigger name="record">
+        <Icon sf={{ default: 'basketball', selected: 'basketball.fill' }} />
+        <Label>Score</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="games">
-        <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
+        <Icon sf={{ default: 'list.bullet.rectangle', selected: 'list.bullet.rectangle.fill' }} />
         <Label>Games</Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="record">
-        <Icon sf={{ default: 'video.badge.plus', selected: 'video.badge.plus.fill' }} />
-        <Label>Record</Label>
+      <NativeTabs.Trigger name="index">
+        <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
+        <Label>Stats</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: 'person', selected: 'person.fill' }} />
@@ -67,15 +67,16 @@ function ClassicTabLayout() {
           ) : null,
       }}
     >
+      {/* Score is first — it's the primary action coaches reach for at game time */}
       <Tabs.Screen
-        name="index"
+        name="record"
         options={{
-          title: 'Dashboard',
+          title: 'Score',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="house.fill" tintColor={color} size={22} />
+              <SymbolView name="basketball.fill" tintColor={color} size={22} />
             ) : (
-              <Feather name="home" size={22} color={color} />
+              <Feather name="play-circle" size={22} color={color} />
             ),
         }}
       />
@@ -85,21 +86,22 @@ function ClassicTabLayout() {
           title: 'Games',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="chart.bar.fill" tintColor={color} size={22} />
+              <SymbolView name="list.bullet.rectangle.fill" tintColor={color} size={22} />
             ) : (
-              <Feather name="bar-chart-2" size={22} color={color} />
+              <Feather name="list" size={22} color={color} />
             ),
         }}
       />
+      {/* Dashboard renamed to Stats — it shows player stats and shooting charts */}
       <Tabs.Screen
-        name="record"
+        name="index"
         options={{
-          title: 'Record',
+          title: 'Stats',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="video.badge.plus" tintColor={color} size={22} />
+              <SymbolView name="chart.bar.fill" tintColor={color} size={22} />
             ) : (
-              <Feather name="video" size={22} color={color} />
+              <Feather name="bar-chart-2" size={22} color={color} />
             ),
         }}
       />
