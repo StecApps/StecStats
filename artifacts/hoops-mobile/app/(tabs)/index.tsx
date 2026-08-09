@@ -913,8 +913,9 @@ const greetS = StyleSheet.create({
 export default function DashboardScreen() {
   const c = useColors();
   const insets = useSafeAreaInsets();
-  const { width: screenW } = useWindowDimensions();
+  const { width: screenW, height: screenH } = useWindowDimensions();
   const isTablet = screenW >= 768;
+  const isLandscape = screenW > screenH;
 
   const { data: players, isLoading, refetch } = useListPlayers();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -940,12 +941,35 @@ export default function DashboardScreen() {
     );
   }
 
+  // Chip bar — reused in both portrait (inside ScrollView) and landscape (pinned above)
+  const chipBar = (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      {(players as any[]).map((p) => (
+        <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} />
+      ))}
+    </ScrollView>
+  );
+
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
       {/* ── Screen-level visual layers (behind everything) ── */}
       <ScreenGlow primary={c.primary} />
       <BasketballWatermark color={c.primary} />
       <StatsWatermark color={c.primary} />
+
+      {/* ── Pinned chip bar (landscape only) — sits above the ScrollView ── */}
+      {isLandscape && (
+        <View style={[
+          styles.pinnedChipBar,
+          {
+            paddingLeft: 16 + (insets.left ?? 0),
+            paddingRight: 16 + (insets.right ?? 0),
+            borderBottomColor: c.border,
+          },
+        ]}>
+          {chipBar}
+        </View>
+      )}
 
       <ScrollView
         style={{ flex: 1 }}
@@ -993,12 +1017,8 @@ export default function DashboardScreen() {
         {/* ── Coach greeting ── */}
         <CoachGreeting />
 
-        {/* ── Player chips ── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {(players as any[]).map((p) => (
-            <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} />
-          ))}
-        </ScrollView>
+        {/* ── Player chips — portrait only; landscape chips are pinned above ── */}
+        {!isLandscape && chipBar}
 
         {activePlayer
           ? <PlayerDashboard player={activePlayer} />
@@ -1015,6 +1035,13 @@ const styles = StyleSheet.create({
   centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: {},
   chips:   { paddingBottom: 14 },
+  // Pinned chip bar rendered above the ScrollView in landscape so chips
+  // stay visible while the coach scrolls through stats.
+  pinnedChipBar: {
+    paddingTop: 8,
+    paddingBottom: 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
   logoBannerContainer: {
     alignSelf: 'stretch',
     marginHorizontal: -16,
