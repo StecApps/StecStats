@@ -31,6 +31,39 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const auth = getAuth(req);
   const clerkUserId = auth?.userId;
   if (!clerkUserId) {
+    // Decode JWT payload + call verifyToken directly to get the actual Clerk error.
+    // Neither is sensitive: JWT payloads are signed, not encrypted.
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (token) {
+      // 1. Decode payload to see which Clerk instance issued it
+      try {
+        const parts = token.split('.');
+        if (parts.length === 3) {
+          const p = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+          req.log?.warn({
+            jwtIss: p.iss,
+            jwtAzp: p.azp,
+            jwtSub: typeof p.sub === 'string' ? p.sub.slice(0, 14) + '…' : null,
+            jwtExp: p.exp,
+            jwtExpired: p.exp < Date.now() / 1000,
+            secondsToExpiry: Math.round(p.exp - Date.now() / 1000),
+          }, 'requireAuth: 401 — JWT payload');
+        }
+      } catch { /* ignore */ }
+      // 2. Call verifyToken directly to capture the exact Clerk error reason
+      try {
+        await clerkClient.verifyToken(token);
+      } catch (verifyErr: any) {
+        req.log?.warn({
+          clerkError: String(verifyErr?.message ?? verifyErr),
+          clerkReason: verifyErr?.reason,
+          clerkAction: verifyErr?.action,
+        }, 'requireAuth: 401 — Clerk verifyToken error');
+      }
+    } else {
+      req.log?.warn({ hasAuthHeader: !!authHeader }, 'requireAuth: 401 — no Bearer token');
+    }
     res.status(401).json({ error: "Unauthorized" });
     return;
   }

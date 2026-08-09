@@ -110,9 +110,17 @@ export async function getStripeSync(): Promise<StripeSync> {
   }
 
   const { secretKey, webhookSecret } = await getStripeCredentials();
+  // STRIPE_WEBHOOK_SECRET env var takes precedence over the connector-supplied
+  // webhook_secret. The connector's managed webhook is registered at the dev
+  // workspace URL (REPLIT_DOMAINS), not the production custom domain, so its
+  // secret won't match live events arriving at stecstats.com. Setting
+  // STRIPE_WEBHOOK_SECRET explicitly pins the production webhook secret and
+  // bypasses the wrong DB entry.
+  const effectiveWebhookSecret =
+    process.env.STRIPE_WEBHOOK_SECRET || webhookSecret || "";
   return new StripeSync({
     poolConfig: { connectionString: databaseUrl },
     stripeSecretKey: secretKey,
-    stripeWebhookSecret: webhookSecret ?? "",
+    stripeWebhookSecret: effectiveWebhookSecret,
   });
 }
