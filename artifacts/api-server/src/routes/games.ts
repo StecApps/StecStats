@@ -2001,9 +2001,14 @@ router.get("/games/:gameId/stream/:type", async (req, res) => {
       res.setHeader("Content-Length", chunkSize);
       objectFile.createReadStream({ start, end }).pipe(res);
     } else {
-      if (fileSize > 0) res.setHeader("Content-Length", fileSize);
-      res.status(200);
-      objectFile.createReadStream().pipe(res);
+      // No Range header — full-file request.  Replit's reverse proxy kills
+      // large streaming responses after ~1-2 s, which makes iOS AVPlayer
+      // receive a truncated body and show a black screen.  Redirect to a
+      // short-lived GCS signed URL so the client streams directly from GCS,
+      // bypassing the proxy entirely.  The 60 s TTL is long enough for AVPlayer
+      // to open the connection but short enough to be practically unreplayable.
+      const signedUrl = await objectStorageService.getObjectEntitySignedURL(entry.objectPath, 60);
+      res.redirect(302, signedUrl);
     }
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {

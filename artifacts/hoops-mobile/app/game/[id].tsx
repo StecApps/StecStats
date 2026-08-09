@@ -192,7 +192,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       .then((url) => {
         if (!url || cancelled) return;
         setStreamUrl(url);
-        player.replace({ uri: url });
+        player.replaceAsync({ uri: url });
       })
       .catch(() => { if (!cancelled) setLoadError(true); });
     return () => { cancelled = true; };
@@ -295,7 +295,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       .then((url) => {
         if (!url || cancelled) return;
         setSignedUrl(url);
-        player.replace({ uri: url });
+        player.replaceAsync({ uri: url });
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -447,7 +447,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       .then((url) => {
         if (!url || cancelled) return;
         setSignedUrl(url);
-        player.replace({ uri: url });
+        player.replaceAsync({ uri: url });
       })
       .catch(() => {});
     return () => { cancelled = true; };

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { db, usersTable, gamesTable, playerGameStatsTable, playersTable } from "@workspace/db";
 import { GetGameParams } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/requireAuth";
@@ -21,18 +21,40 @@ import { encryptToken, decryptToken } from "../lib/tokenEncryption";
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
 
-// In-memory state map: nonce → { userId, returnTo, expiresAt }
-// Nonces expire after 10 min; a server restart invalidates in-flight OAuth
-// flows (user just needs to click Connect again — acceptable trade-off vs.
-// the complexity of DB-backed nonces for a low-frequency action).
-const oauthStateMap = new Map<string, { userId: number; returnTo: string; expiresAt: number }>();
+// Stateless OAuth state using HMAC-signed tokens.
+// This replaces the old in-memory nonce map so OAuth flows survive server
+// restarts without any DB schema changes.
+const OAUTH_STATE_SECRET = process.env.SESSION_SECRET ?? "dev-oauth-secret";
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of oauthStateMap.entries()) {
-    if (v.expiresAt < now) oauthStateMap.delete(k);
+function signOAuthState(payload: { userId: number; returnTo: string }): string {
+  const data = JSON.stringify({
+    userId: payload.userId,
+    returnTo: payload.returnTo,
+    jti: randomUUID(), // ensures each token is unique even for the same user
+    exp: Date.now() + OAUTH_STATE_TTL_MS,
+  });
+  const sig = createHmac("sha256", OAUTH_STATE_SECRET).update(data).digest("hex");
+  return Buffer.from(JSON.stringify({ data, sig })).toString("base64url");
+}
+
+function verifyOAuthState(state: string): { userId: number; returnTo: string } | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
+    if (typeof parsed.data !== "string" || typeof parsed.sig !== "string") return null;
+    const expected = createHmac("sha256", OAUTH_STATE_SECRET).update(parsed.data).digest("hex");
+    // Constant-time comparison prevents timing attacks on the signature.
+    const sigBuf = Buffer.from(parsed.sig, "hex");
+    const expBuf = Buffer.from(expected, "hex");
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return null;
+    const payload = JSON.parse(parsed.data);
+    if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
+    if (typeof payload.userId !== "number" || typeof payload.returnTo !== "string") return null;
+    return { userId: payload.userId, returnTo: payload.returnTo };
+  } catch {
+    return null;
   }
-}, 60_000);
+}
 
 // Returns a validated returnTo value, allowing root-relative web paths and
 // the mobile deep-link scheme so we don't accept open redirects.
@@ -53,14 +75,8 @@ router.get("/auth/youtube/connect", requireAuth, (req, res) => {
   const raw = typeof req.query.returnTo === "string" ? req.query.returnTo : "/";
   const returnTo = validateReturnTo(raw);
 
-  const nonce = randomUUID();
-  oauthStateMap.set(nonce, {
-    userId: req.appUser!.id,
-    returnTo,
-    expiresAt: Date.now() + 10 * 60 * 1000,
-  });
-
-  res.redirect(getAuthUrl(nonce));
+  const state = signOAuthState({ userId: req.appUser!.id, returnTo });
+  res.redirect(getAuthUrl(state));
 });
 
 // POST /api/auth/youtube/connect-url
@@ -77,14 +93,8 @@ router.post("/auth/youtube/connect-url", requireAuth, (req, res) => {
   const raw = typeof req.body?.returnTo === "string" ? req.body.returnTo : "/";
   const returnTo = validateReturnTo(raw);
 
-  const nonce = randomUUID();
-  oauthStateMap.set(nonce, {
-    userId: req.appUser!.id,
-    returnTo,
-    expiresAt: Date.now() + 10 * 60 * 1000,
-  });
-
-  res.json({ url: getAuthUrl(nonce) });
+  const state = signOAuthState({ userId: req.appUser!.id, returnTo });
+  res.json({ url: getAuthUrl(state) });
 });
 
 // GET /api/auth/youtube/callback
@@ -98,14 +108,11 @@ router.get("/auth/youtube/callback", async (req, res) => {
     return;
   }
 
-  const stateData = oauthStateMap.get(state);
-  if (!stateData || stateData.expiresAt < Date.now()) {
-    oauthStateMap.delete(state);
+  const stateData = verifyOAuthState(state);
+  if (!stateData) {
     res.status(400).send("OAuth state expired or invalid — please try connecting again.");
     return;
   }
-
-  oauthStateMap.delete(state);
 
   try {
     const { refreshToken } = await exchangeCode(code);
