@@ -94,12 +94,16 @@ app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Use CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY directly from env.
-// The previous publishableKeyFromHost approach could return undefined for
-// non-Clerk hostnames (e.g. stecstats.com), leaving mobile JWT verification
-// without a key and causing all Bearer-token requests to 401 even when the
-// token itself is valid.
-app.use(clerkMiddleware());
+// Configure Clerk middleware with the proxy URL when running behind a Clerk
+// proxy (production). Without proxyUrl, the middleware expects JWT `iss` to be
+// the direct Clerk FAPI host. But once the proxy sends Clerk-Proxy-Url, Clerk
+// permanently issues all JWTs (including mobile Bearer tokens) with
+// `iss: <proxyUrl>`. Without proxyUrl here, every mobile API call 401s.
+app.use(
+  clerkMiddleware(
+    process.env.CLERK_PROXY_URL ? { proxyUrl: process.env.CLERK_PROXY_URL } : {},
+  ),
+);
 
 app.use("/api", router);
 

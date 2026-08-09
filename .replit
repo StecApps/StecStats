@@ -44,6 +44,7 @@ REVENUECAT_TEST_STORE_APP_ID = "appce03651cb3"
 
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "stecstats.com"
+CLERK_PROXY_URL = "https://stecstats.com/api/__clerk"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-f1eb7a0b-6a3e-447a-8144-8ac17c074ecd"
