@@ -122,6 +122,7 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
         or(
           eq(gamesTable.videoObjectPath, objectPath),
           eq(gamesTable.highlightObjectPath, objectPath),
+          eq(gamesTable.lowlightObjectPath, objectPath),
         ),
       ),
     });
@@ -267,6 +268,7 @@ router.get("/storage/objects-signed-url/*path", requireAuth, async (req: Request
         or(
           eq(gamesTable.videoObjectPath, objectPath),
           eq(gamesTable.highlightObjectPath, objectPath),
+          eq(gamesTable.lowlightObjectPath, objectPath),
         ),
       ),
     });

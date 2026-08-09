@@ -24,17 +24,35 @@ import type { AddressInfo } from "net";
 // assignments, so all fixtures must live inside it if they are referenced by
 // a mock factory.
 // ---------------------------------------------------------------------------
-const { COACH_A, COACH_B, OWNED_OBJECT_PATH, OWNED_OBJECT_URL_SEGMENT, currentUser } =
-  vi.hoisted(() => {
+const {
+  COACH_A,
+  COACH_B,
+  OWNED_OBJECT_PATH,
+  OWNED_OBJECT_URL_SEGMENT,
+  OWNED_LOWLIGHT_PATH,
+  OWNED_LOWLIGHT_URL_SEGMENT,
+  currentUser,
+} = vi.hoisted(() => {
     const COACH_A = { id: 1, clerkUserId: "clerk_coach_a", email: "coach-a@example.com" };
     const COACH_B = { id: 2, clerkUserId: "clerk_coach_b", email: "coach-b@example.com" };
     // The private object path that Coach A owns.
     const OWNED_OBJECT_PATH = "/objects/private/coach-a-game.mp4";
     // Wildcard portion used in the URL (strips leading /objects/)
     const OWNED_OBJECT_URL_SEGMENT = "private/coach-a-game.mp4";
+    // Lowlight object that Coach A owns.
+    const OWNED_LOWLIGHT_PATH = "/objects/private/coach-a-lowlight.mp4";
+    const OWNED_LOWLIGHT_URL_SEGMENT = "private/coach-a-lowlight.mp4";
     // Mutable ref: set to the current requesting user before each fetch.
     const currentUser = { value: COACH_A as typeof COACH_A };
-    return { COACH_A, COACH_B, OWNED_OBJECT_PATH, OWNED_OBJECT_URL_SEGMENT, currentUser };
+    return {
+      COACH_A,
+      COACH_B,
+      OWNED_OBJECT_PATH,
+      OWNED_OBJECT_URL_SEGMENT,
+      OWNED_LOWLIGHT_PATH,
+      OWNED_LOWLIGHT_URL_SEGMENT,
+      currentUser,
+    };
   });
 
 // ---------------------------------------------------------------------------
@@ -46,11 +64,13 @@ vi.mock("@workspace/db", () => ({
     query: {
       gamesTable: {
         /**
-         * Return a game row only when the requesting user is Coach A.
+         * Return a game row only when the requesting user is Coach A AND the
+         * requested path matches one of the game's video/highlight/lowlight paths.
          * The storage route calls:
          *   db.query.gamesTable.findFirst({ where: and(eq(ownerId, user.id), or(...paths)) })
          * We cannot inspect the drizzle `where` tree, so we key off the
-         * shared currentUser ref that requireAuth sets before each request.
+         * shared currentUser ref that requireAuth sets before each request,
+         * and expose both owned paths so each test scenario resolves correctly.
          */
         findFirst: vi.fn().mockImplementation(async () => {
           if (currentUser.value.id === COACH_A.id) {
@@ -59,6 +79,7 @@ vi.mock("@workspace/db", () => ({
               ownerId: COACH_A.id,
               videoObjectPath: OWNED_OBJECT_PATH,
               highlightObjectPath: null,
+              lowlightObjectPath: OWNED_LOWLIGHT_PATH,
             };
           }
           return undefined;
@@ -74,6 +95,7 @@ vi.mock("@workspace/db", () => ({
     ownerId: "owner_id",
     videoObjectPath: "video_object_path",
     highlightObjectPath: "highlight_object_path",
+    lowlightObjectPath: "lowlight_object_path",
   },
   playersTable: {
     ownerId: "owner_id",
@@ -241,6 +263,55 @@ describe("Storage ACL — raw proxy endpoint (GET /api/storage/objects/*)", () =
     currentUser.value = COACH_B;
 
     const res = await fetch(rawObjectEndpoint(OWNED_OBJECT_URL_SEGMENT));
+    expect(res.status).toBe(404);
+
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lowlight ownership checks
+// ---------------------------------------------------------------------------
+
+describe("Storage ACL — lowlight files on raw proxy endpoint (GET /api/storage/objects/*)", () => {
+  it("allows the owner (Coach A) to access their own lowlight file", async () => {
+    currentUser.value = COACH_A;
+
+    const res = await fetch(rawObjectEndpoint(OWNED_LOWLIGHT_URL_SEGMENT), {
+      redirect: "manual",
+    });
+    // video/mp4 triggers a 302 redirect to the GCS signed URL for authorised users.
+    expect(res.status).toBe(302);
+  });
+
+  it("returns 404 when a different coach (Coach B) requests the lowlight file", async () => {
+    currentUser.value = COACH_B;
+
+    const res = await fetch(rawObjectEndpoint(OWNED_LOWLIGHT_URL_SEGMENT));
+    expect(res.status).toBe(404);
+
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBeTruthy();
+  });
+});
+
+describe("Storage ACL — lowlight files on signed-URL endpoint (GET /api/storage/objects-signed-url/*)", () => {
+  it("returns a signed URL for the owner (Coach A) for a lowlight file", async () => {
+    currentUser.value = COACH_A;
+
+    const res = await fetch(signedUrlEndpoint(OWNED_LOWLIGHT_URL_SEGMENT));
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as { url: string };
+    expect(typeof body.url).toBe("string");
+    expect(body.url.length).toBeGreaterThan(0);
+  });
+
+  it("returns 404 when a different coach (Coach B) requests a signed URL for a lowlight file", async () => {
+    currentUser.value = COACH_B;
+
+    const res = await fetch(signedUrlEndpoint(OWNED_LOWLIGHT_URL_SEGMENT));
     expect(res.status).toBe(404);
 
     const body = (await res.json()) as { error: string };
