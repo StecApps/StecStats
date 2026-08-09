@@ -1,0 +1,47 @@
+stevenstec@Mac hoops-mobile % rm -rf node_modules
+npm install --legacy-peer-deps
+CI=1 ./node_modules/.bin/expo config --json 2>&1
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: '@testing-library/react-native@14.0.1',
+npm warn EBADENGINE   required: { node: '^22.13.0 || >=24' },
+npm warn EBADENGINE   current: { node: 'v20.20.2', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'commander@15.0.0',
+npm warn EBADENGINE   required: { node: '>=22.12.0' },
+npm warn EBADENGINE   current: { node: 'v20.20.2', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated whatwg-encoding@2.0.0: Use @exodus/bytes instead for a more spec-conformant and faster implementation
+npm warn deprecated abab@2.0.6: Use your platform's native atob() and btoa() methods instead
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated domexception@4.0.0: Use your platform's native DOMException instead
+npm warn deprecated uuid@3.4.0: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated uuid@7.0.3: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated crypto-js@4.2.0: Active development of CryptoJS has been discontinued. This library is no longer maintained.
+
+added 1163 packages, and audited 1166 packages in 40s
+
+117 packages are looking for funding
+  run `npm fund` for details
+
+23 vulnerabilities (11 moderate, 12 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+{"name":"StecStats","slug":"hoops-mobile","version":"1.0.0","orientation":"default","icon":"./assets/images/icon.png","scheme":"hoopsstats","userInterfaceStyle":"dark","newArchEnabled":true,"splash":{"image":"./assets/images/icon.png","resizeMode":"contain","backgroundColor":"#0C0A09"},"ios":{"bundleIdentifier":"com.hoopsstats.coach","supportsTablet":false,"infoPlist":{"NSCameraUsageDescription":"Allow Hoops Stats to access your camera to record game footage.","NSMicrophoneUsageDescription":"Allow Hoops Stats to access your microphone to record game audio.","LSApplicationQueriesSchemes":["itms-apps"]},"buildNumber":"20260809"},"android":{"adaptiveIcon":{"foregroundImage":"./assets/images/icon.png","backgroundColor":"#0C0A09"},"permissions":["android.permission.CAMERA","android.permission.RECORD_AUDIO","android.permission.ACCESS_NETWORK_STATE","android.permission.MODIFY_AUDIO_SETTINGS","android.permission.BLUETOOTH","android.permission.BLUETOOTH_CONNECT"],"package":"com.hoopsstats.coach"},"web":{"favicon":"./assets/images/icon.png"},"plugins":[["expo-router",{"origin":"https://replit.com/"}],"expo-font","expo-web-browser",["expo-camera",{"cameraPermission":"Allow StecStats to access your camera to record game footage.","microphonePermission":"Allow StecStats to access your microphone to record game audio.","recordAudioAndroid":true}],["expo-image-picker",{"photosPermission":"Allow StecStats to access your photos to set a player profile picture."}],["expo-video",{"supportsBackgroundPlayback":false,"supportsPictureInPicture":true}],"expo-apple-authentication"],"experiments":{"typedRoutes":true,"reactCompiler":true},"_internal":{"isDebug":false,"projectRoot":"/Users/stevenstec/Downloads/hoops-mobile","dynamicConfigPath":{},"staticConfigPath":"/Users/stevenstec/Downloads/hoops-mobile/app.json","packageJsonPath":"/Users/stevenstec/Downloads/hoops-mobile/package.json","pluginHistory":{"expo-font":{"name":"expo-font","version":"14.0.12"},"expo-web-browser":{"name":"expo-web-browser","version":"15.0.11"},"expo-camera":{"name":"expo-camera","version":"17.0.10"},"expo-image-picker":{"name":"expo-image-picker","version":"17.0.11"},"expo-apple-authentication":{"name":"expo-apple-authentication","version":"57.0.1"}}},"sdkVersion":"54.0.0","platforms":["ios","android","web"],"extra":{"router":{"origin":"https://replit.com/"}}}%  
