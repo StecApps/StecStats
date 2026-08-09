@@ -1,3 +1,4 @@
+- [Clerk mobile JWT 401 — publishableKeyFromHost](clerk-mobile-jwt-401.md) — dynamic key resolution returns undefined for plain hostnames; use clerkMiddleware() with no args instead.
 - [TS segment absolute timestamps](ts-segment-timestamps.md) — fast-seek keeps source PTS; add `-reset_timestamps 1` to every mpegts encode or iOS Safari won't play the concat MP4.
 - [Orval params naming collision](orval-params-collision.md) — mixing a path param + query param in one operation can cause a TS2308 name collision between generators.
 - [Frontend API routing convention](api-routing-convention.md) — hoops-stats/monorepo apps call `/api/...` as root-relative paths directly, not prefixed by artifact BASE_URL.
