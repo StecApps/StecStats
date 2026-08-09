@@ -63,8 +63,7 @@
     "react-test-renderer": "19.1.0",
     "typescript": "~5.9.2",
     "zod": "^3.25.76",
-    "zod-validation-error": "^3.4.0",
-    "expo-dev-client": "~5.2.4"
+    "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.31",
