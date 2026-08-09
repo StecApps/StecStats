@@ -140,6 +140,11 @@ export default function ScorekeeperScreen() {
   const uploadAttemptRef = useRef<{ cancelled: boolean } | null>(null);
   // Guards against stacking multiple stall alerts if progress stays frozen.
   const stallAlertActiveRef = useRef(false);
+  // Latches to true after the coach taps 'Keep waiting' once.  Prevents a
+  // second identical alert from firing if the upload stays frozen — the coach
+  // has already been warned and has chosen to wait, so re-alerting every 45 s
+  // only increases anxiety without giving them new information.
+  const stallFiredOnceRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
   // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
@@ -857,13 +862,19 @@ export default function ScorekeeperScreen() {
 
           setUploadProgress(0);
           stallAlertActiveRef.current = false;
+          stallFiredOnceRef.current = false;
 
           // Stall callback: called by uploadVideoFile when real XHR progress
           // hasn't advanced for ~45 s. Shows a non-blocking alert so the coach
           // can decide to keep waiting, save without video, or cancel the upload.
-          // Guards against duplicate alerts if progress stays frozen.
+          // Guards against duplicate alerts if progress stays frozen:
+          //   • stallAlertActiveRef prevents re-entry while the alert is visible.
+          //   • stallFiredOnceRef prevents a second alert after 'Keep waiting' —
+          //     the coach has already been warned; re-alerting every 45 s only
+          //     increases anxiety without providing new information.
           const onUploadStall = () => {
             if (stallAlertActiveRef.current) return;
+            if (stallFiredOnceRef.current) return;
             if (attemptToken.cancelled) return;
             stallAlertActiveRef.current = true;
             Alert.alert(
@@ -873,7 +884,12 @@ export default function ScorekeeperScreen() {
                 {
                   text: 'Keep waiting',
                   style: 'cancel',
-                  onPress: () => { stallAlertActiveRef.current = false; },
+                  onPress: () => {
+                    // Latch stallFiredOnceRef so no further stall alerts appear
+                    // for this upload attempt — the coach has already been warned.
+                    stallFiredOnceRef.current = true;
+                    stallAlertActiveRef.current = false;
+                  },
                 },
                 {
                   text: 'Save without video',
