@@ -13,6 +13,7 @@ import {
   TextInput,
   Alert,
   Linking,
+  Share,
   KeyboardAvoidingView,
   Pressable,
 } from 'react-native';
@@ -522,14 +523,29 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         {/* YouTube upload row */}
         <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
           {youtubeUrl ? (
-            <TouchableOpacity
-              onPress={() => Linking.openURL(youtubeUrl)}
-              style={[ytStyle.btn, { backgroundColor: '#FF0000' }]}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="logo-youtube" size={16} color="#fff" />
-              <Text style={ytStyle.btnText}>View on YouTube</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                onPress={() => Linking.openURL(youtubeUrl)}
+                style={[ytStyle.btn, { backgroundColor: '#FF0000', flex: 1 }]}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="logo-youtube" size={16} color="#fff" />
+                <Text style={ytStyle.btnText}>View on YouTube</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() =>
+                  Share.share({
+                    message: `Watch our game highlights: ${youtubeUrl}`,
+                    url: youtubeUrl,
+                  })
+                }
+                style={[ytStyle.btn, { backgroundColor: colors.muted }]}
+                activeOpacity={0.8}
+              >
+                <Feather name="share-2" size={16} color={colors.foreground} />
+                <Text style={[ytStyle.btnText, { color: colors.foreground }]}>Share</Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <TouchableOpacity
               onPress={() => {
@@ -704,10 +720,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 
 const ytStyle = StyleSheet.create({
   bar: {
+    flexDirection: 'row',
+    gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   btn: {
     flexDirection: 'row',
