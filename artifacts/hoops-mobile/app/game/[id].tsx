@@ -25,6 +25,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { useAuth } from '@clerk/clerk-expo';
+import { ZoomableVideo } from '@/components/ZoomableVideo';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -218,7 +219,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   }
 
   return (
-    <View style={videoStyle.wrap}>
+    <ZoomableVideo style={videoStyle.wrap}>
       <VideoView
         player={player}
         style={videoStyle.video}
@@ -226,7 +227,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
         allowsFullscreen
         allowsPictureInPicture
       />
-    </View>
+    </ZoomableVideo>
   );
 }
 
@@ -300,7 +301,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   if (lowlight.status === 'ready') {
     if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
     return (
-      <View style={{ flex: 1, backgroundColor: colors.card }}>
+      <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
         <VideoView
           player={player}
           style={{ flex: 1 }}
@@ -309,7 +310,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           allowsPictureInPicture
           nativeControls
         />
-      </View>
+      </ZoomableVideo>
     );
   }
 
@@ -432,7 +433,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   if (highlight.status === 'ready') {
     if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
     return (
-      <View style={{ flex: 1, backgroundColor: colors.card }}>
+      <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
         <VideoView
           player={player}
           style={{ flex: 1 }}
@@ -441,7 +442,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           allowsPictureInPicture
           nativeControls
         />
-      </View>
+      </ZoomableVideo>
     );
   }
 
