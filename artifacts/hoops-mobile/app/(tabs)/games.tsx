@@ -16,7 +16,7 @@ import {
   Alert,
   Animated,
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
@@ -361,6 +361,8 @@ function GameRow({ item, onDelete, colors, router }: { item: any; onDelete: (id:
     >
       <TouchableOpacity
         onPress={() => router.push(`/game/${item.id}`)}
+        onLongPress={handleDelete}
+        delayLongPress={500}
         activeOpacity={0.7}
         style={[gameRowStyles.row, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.20)', overflow: 'hidden' }]}
       >
@@ -416,7 +418,6 @@ export default function GamesScreen() {
     { query: { enabled: !!team } as any },
   );
 
-  const qc = useQueryClient();
   const deleteGame = useDeleteGame();
 
   const handleDeleteGame = useCallback((gameId: number, opponent: string) => {
@@ -430,14 +431,14 @@ export default function GamesScreen() {
           style: 'destructive',
           onPress: () => {
             deleteGame.mutate({ gameId }, {
-              onSuccess: () => qc.invalidateQueries({ queryKey: ['listTeamGames'] }),
+              onSuccess: () => refetch(),
               onError: () => Alert.alert('Error', 'Failed to delete game. Please try again.'),
             });
           },
         },
       ],
     );
-  }, [deleteGame, qc]);
+  }, [deleteGame, refetch]);
 
   const filtered = useMemo(() => {
     if (!games) return [];
@@ -469,6 +470,7 @@ export default function GamesScreen() {
   const [bannerKey, setBannerKey] = useState(0);
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={styles.root}>
       <ScreenGlow primary={colors.primary} />
       <BasketballWatermark color={colors.primary} />
@@ -608,6 +610,12 @@ export default function GamesScreen() {
       </View>
 
       {/* ── Game list ────────────────────────────────────────────────── */}
+      {!isLoading && filtered.length > 0 && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: 20, paddingBottom: 6, gap: 4 }}>
+          <Feather name="arrow-left" size={11} color={colors.mutedForeground} />
+          <Text style={{ fontSize: 11, fontFamily: 'Inter_400Regular', color: colors.mutedForeground }}>Swipe left to delete</Text>
+        </View>
+      )}
       {isLoading ? (
         <View style={styles.centered}><ActivityIndicator color={colors.primary} /></View>
       ) : (
@@ -644,6 +652,7 @@ export default function GamesScreen() {
         insets={insets}
       />
     </View>
+    </GestureHandlerRootView>
   );
 }
 
