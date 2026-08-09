@@ -22,7 +22,8 @@
         "LSApplicationQueriesSchemes": [
           "itms-apps"
         ]
-      }
+      },
+      "buildNumber": "20260809"
     },
     "android": {
       "adaptiveIcon": {
