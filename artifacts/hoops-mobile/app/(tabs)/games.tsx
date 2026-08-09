@@ -14,13 +14,15 @@ import {
   ScrollView,
   useWindowDimensions,
   Alert,
+  Animated,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useListTeams, useListTeamGames, useListPlayers, useCreateGame, useRequestUploadUrl } from '@workspace/api-client-react';
+import { useListTeams, useListTeamGames, useListPlayers, useCreateGame, useRequestUploadUrl, useDeleteGame } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -297,6 +299,103 @@ const modalS = StyleSheet.create({
   sport: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
+// ─── Static styles shared by GameRow (can't use makeStyles outside screen) ──
+const gameRowStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, borderWidth: 1, marginBottom: 8 },
+  datePill: { width: 56, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderTopLeftRadius: 14, borderBottomLeftRadius: 14 },
+  dateStr: { fontSize: 10, textTransform: 'uppercase', fontFamily: 'Inter_500Medium', letterSpacing: 0.5 },
+  dateDay: { ...tekoStyle(30) },
+  rowMid: { flex: 1, paddingHorizontal: 12, paddingVertical: 12 },
+  opponent: { fontSize: 15, fontFamily: 'Inter_700Bold', marginBottom: 3 },
+  score: { ...tekoStyle(15), letterSpacing: 0.3 },
+  resultBadge: { width: 38, height: 38, borderRadius: 10, marginRight: 6, alignItems: 'center', justifyContent: 'center' },
+  resultText: { ...tekoStyle(20), letterSpacing: 0.5 },
+});
+
+// ─── Game row delete action ──────────────────────────────────────────────────
+function GameDeleteAction({ progress, onDelete, colors }: { progress: Animated.AnimatedInterpolation<number>; onDelete: () => void; colors: any }) {
+  const trans = progress.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
+  return (
+    <Animated.View style={{ width: 80, justifyContent: 'center', alignItems: 'flex-end', transform: [{ translateX: trans }] }}>
+      <TouchableOpacity
+        onPress={onDelete}
+        activeOpacity={0.8}
+        style={{
+          flex: 1,
+          width: 80,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 4,
+          backgroundColor: colors.destructive,
+          borderRadius: 10,
+          marginBottom: 8,
+          marginLeft: 4,
+        }}
+      >
+        <Ionicons name="trash-outline" size={20} color="#fff" />
+        <Text style={{ fontSize: 11, color: '#fff', fontFamily: 'Inter_600SemiBold' }}>Delete</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// ─── Individual game row with swipe-to-delete ────────────────────────────────
+function GameRow({ item, onDelete, colors, router }: { item: any; onDelete: (id: number, opponent: string) => void; colors: any; router: any }) {
+  const swipeRef = useRef<Swipeable>(null);
+  const isWin = item.result === 'W';
+  const date = new Date(item.date);
+
+  function handleDelete() {
+    swipeRef.current?.close();
+    onDelete(item.id, item.opponent);
+  }
+
+  return (
+    <Swipeable
+      ref={swipeRef}
+      friction={2}
+      overshootRight={false}
+      renderRightActions={(progress) => (
+        <GameDeleteAction progress={progress} onDelete={handleDelete} colors={colors} />
+      )}
+    >
+      <TouchableOpacity
+        onPress={() => router.push(`/game/${item.id}`)}
+        activeOpacity={0.7}
+        style={[gameRowStyles.row, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.20)', overflow: 'hidden' }]}
+      >
+        <OrangeGlareOverlay strength={0.4} />
+        <View style={[gameRowStyles.datePill, { backgroundColor: colors.muted }]}>
+          <Text style={[gameRowStyles.dateStr, { color: colors.mutedForeground }]}>
+            {date.toLocaleString('en', { month: 'short' })}
+          </Text>
+          <Text style={[gameRowStyles.dateDay, { color: colors.foreground }]}>
+            {date.getDate()}
+          </Text>
+        </View>
+        <View style={gameRowStyles.rowMid}>
+          <Text style={[gameRowStyles.opponent, { color: colors.foreground }]} numberOfLines={1}>
+            vs {item.opponent}
+          </Text>
+          <Text style={[gameRowStyles.score, { color: colors.mutedForeground }]}>
+            {item.teamScore} – {item.opponentScore}
+          </Text>
+        </View>
+        <View style={[
+          gameRowStyles.resultBadge,
+          { backgroundColor: isWin ? 'rgba(255,83,26,0.22)' : colors.muted, overflow: 'hidden' },
+        ]}>
+          {isWin && <GlareOverlay intensity={0.18} />}
+          <Text style={[gameRowStyles.resultText, { color: isWin ? colors.primary : colors.mutedForeground }]}>
+            {isWin ? 'W' : 'L'}
+          </Text>
+        </View>
+        <Feather name="chevron-right" size={15} color={colors.mutedForeground} style={{ marginRight: 12 }} />
+      </TouchableOpacity>
+    </Swipeable>
+  );
+}
+
 // ─── Main Screen ────────────────────────────────────────────────────────────
 export default function GamesScreen() {
   const colors = useColors();
@@ -316,6 +415,29 @@ export default function GamesScreen() {
     team?.id ?? 0,
     { query: { enabled: !!team } as any },
   );
+
+  const qc = useQueryClient();
+  const deleteGame = useDeleteGame();
+
+  const handleDeleteGame = useCallback((gameId: number, opponent: string) => {
+    Alert.alert(
+      'Delete Game',
+      `Delete game vs ${opponent}? This will permanently remove the recording, stats, and highlights.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteGame.mutate({ gameId }, {
+              onSuccess: () => qc.invalidateQueries({ queryKey: ['listTeamGames'] }),
+              onError: () => Alert.alert('Error', 'Failed to delete game. Please try again.'),
+            });
+          },
+        },
+      ],
+    );
+  }, [deleteGame, qc]);
 
   const filtered = useMemo(() => {
     if (!games) return [];
@@ -495,48 +617,9 @@ export default function GamesScreen() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.primary} />}
-          renderItem={({ item }) => {
-            const isWin = item.result === 'W';
-            const date = new Date(item.date);
-            return (
-              <TouchableOpacity
-                onPress={() => router.push(`/game/${item.id}`)}
-                activeOpacity={0.7}
-                style={[styles.row, { backgroundColor: colors.card, borderColor: 'rgba(255,83,26,0.20)', overflow: 'hidden' }]}
-              >
-                <OrangeGlareOverlay strength={0.4} />
-                {/* Date column */}
-                <View style={[styles.datePill, { backgroundColor: colors.muted }]}>
-                  <Text style={[styles.dateStr, { color: colors.mutedForeground }]}>
-                    {date.toLocaleString('en', { month: 'short' })}
-                  </Text>
-                  <Text style={[styles.dateDay, { color: colors.foreground }]}>
-                    {date.getDate()}
-                  </Text>
-                </View>
-                {/* Middle */}
-                <View style={styles.rowMid}>
-                  <Text style={[styles.opponent, { color: colors.foreground }]} numberOfLines={1}>
-                    vs {item.opponent}
-                  </Text>
-                  <Text style={[styles.score, { color: colors.mutedForeground }]}>
-                    {item.teamScore} – {item.opponentScore}
-                  </Text>
-                </View>
-                {/* Win/Loss badge */}
-                <View style={[
-                  styles.resultBadge,
-                  { backgroundColor: isWin ? 'rgba(255,83,26,0.22)' : colors.muted, overflow: 'hidden' },
-                ]}>
-                  {isWin && <GlareOverlay intensity={0.18} />}
-                  <Text style={[styles.resultText, { color: isWin ? colors.primary : colors.mutedForeground }]}>
-                    {isWin ? 'W' : 'L'}
-                  </Text>
-                </View>
-                <Feather name="chevron-right" size={15} color={colors.mutedForeground} style={{ marginRight: 12 }} />
-              </TouchableOpacity>
-            );
-          }}
+          renderItem={({ item }) => (
+            <GameRow item={item} onDelete={handleDeleteGame} colors={colors} router={router} />
+          )}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="basketball-outline" size={44} color={colors.mutedForeground} />
