@@ -78,9 +78,17 @@ const queryClient = new QueryClient({
   },
 });
 
-/** Wires the Clerk session token into the shared API client fetch layer. */
+/**
+ * Wires the Clerk session token into the shared API client fetch layer.
+ *
+ * Exported so integration tests can render this component directly inside a
+ * QueryClientProvider and spy on the QueryClient it receives from context.
+ */
 export function ApiAuthSetup() {
   const { getToken, isSignedIn, isLoaded, userId } = useAuth();
+  // Read the QueryClient from context so tests can inject a spy instance via
+  // QueryClientProvider — without this the component closes over the
+  // module-level queryClient which is unreachable from outside the module.
   const qc = useQueryClient();
 
   // Register the token getter once — don't close over isSignedIn because
