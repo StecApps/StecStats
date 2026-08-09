@@ -65,6 +65,11 @@ import { makeUploadStallHandler } from '@/lib/uploadStallAlert';
 import { concatSegmentsWithTimeout } from '@/lib/concatSegmentsWithTimeout';
 import { fetchIceServers } from '@/lib/fetchIceServers';
 import { drainPendingViewers } from '@/lib/drainPendingViewers';
+import {
+  BITRATE_LADDER,
+  initialBitrateState,
+  nextBitrateState,
+} from '@/lib/adaptiveBitrate';
 
 const defaultLine = (): StatLine => ({
   ftMade: 0, ftAttempted: 0,
@@ -428,10 +433,8 @@ export default function ScorekeeperScreen() {
     // Poll getStats() every 5 s and step maxBitrate through a 3-rung quality
     // ladder based on remote RTT and packet-loss fraction.
     // Hysteresis: 2 consecutive bad polls → step down; 4 clean polls → step up.
-    const BITRATE_LADDER = [2_500_000, 1_200_000, 600_000];
-    let bitrateRung = 0;
-    let badPollStreak = 0;
-    let goodPollStreak = 0;
+    // State machine logic lives in lib/adaptiveBitrate.ts (unit-tested there).
+    let abrState = initialBitrateState();
 
     const bitrateInterval = setInterval(async () => {
       if ((pc as any).connectionState !== 'connected') return;
@@ -446,33 +449,17 @@ export default function ScorekeeperScreen() {
           }
         });
 
-        const isBad = rtt > 0.4 || fractionLost > 0.05;
-        if (isBad) {
-          goodPollStreak = 0;
-          badPollStreak += 1;
-        } else {
-          badPollStreak = 0;
-          goodPollStreak += 1;
-        }
+        const { state: nextState, rungChanged } = nextBitrateState(abrState, { rtt, fractionLost });
+        abrState = nextState;
 
-        let newRung = bitrateRung;
-        if (badPollStreak >= 2 && bitrateRung < BITRATE_LADDER.length - 1) {
-          newRung = bitrateRung + 1;
-          badPollStreak = 0;
-        } else if (goodPollStreak >= 4 && bitrateRung > 0) {
-          newRung = bitrateRung - 1;
-          goodPollStreak = 0;
-        }
-
-        if (newRung !== bitrateRung) {
-          bitrateRung = newRung;
+        if (rungChanged) {
           const sender = pc.getSenders().find((s: any) => s.track?.kind === 'video');
           if (sender) {
             const params = sender.getParameters();
             if (params.encodings && params.encodings.length > 0) {
-              params.encodings[0].maxBitrate = BITRATE_LADDER[bitrateRung];
+              params.encodings[0].maxBitrate = BITRATE_LADDER[abrState.rung];
               await sender.setParameters(params);
-              console.log(`[WebRTC] Bitrate → rung ${bitrateRung} (${BITRATE_LADDER[bitrateRung]} bps) for viewer ${viewerId}`);
+              console.log(`[WebRTC] Bitrate → rung ${abrState.rung} (${BITRATE_LADDER[abrState.rung]} bps) for viewer ${viewerId}`);
             }
           }
         }
