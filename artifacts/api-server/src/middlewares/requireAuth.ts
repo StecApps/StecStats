@@ -31,6 +31,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const auth = getAuth(req);
   const clerkUserId = auth?.userId;
   if (!clerkUserId) {
+    // Temporary diagnostic logging — tells us whether the Authorization header
+    // is reaching the server and what Clerk's auth state looks like.
+    const authHeader = req.headers.authorization;
+    req.log?.warn({
+      hasAuthHeader: !!authHeader,
+      authType: authHeader?.split(' ')[0] ?? 'none',
+      tokenLength: authHeader?.split(' ')[1]?.length ?? 0,
+      clerkStatus: (auth as any)?.status ?? 'unknown',
+      clerkReason: (auth as any)?.reason ?? 'unknown',
+    }, 'requireAuth: 401 — auth header diagnostic');
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
