@@ -31,7 +31,7 @@ import { PENDING_UPLOAD_KEY, type PendingUpload } from '@/app/scorekeeper';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 
 // ─── Pending upload recovery banner ────────────────────────────────────────
-function PendingUploadBanner({ onDismiss }: { onDismiss: () => void }) {
+export function PendingUploadBanner({ onDismiss }: { onDismiss: () => void }) {
   const colors = useColors();
   const { getToken } = useAuth();
   const createGame = useCreateGame();
