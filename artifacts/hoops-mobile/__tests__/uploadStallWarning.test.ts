@@ -326,3 +326,75 @@ test('watchdog fires ~45 s after the last real progress event, not the upload st
   currentXhr.complete();
   await uploadPromise;
 });
+
+// ─── Two-clip sequential upload (camera-flip scenario) ───────────────────────
+//
+// scorekeeper.tsx uploads two clips in a for-loop sharing the same onUploadStall
+// callback.  This test confirms that when clip 1 succeeds normally the watchdog
+// arms again for clip 2, fires exactly once when clip 2 stalls, and that
+// tapping "Keep waiting" correctly clears the re-entry guard.
+
+test('stall alert fires on clip 2 when clip 1 uploaded successfully within 45 s', async () => {
+  // Supply two separate FakeXHR instances — one per sequential uploadVideoFile call.
+  const xhr1 = new FakeXHR();
+  const xhr2 = new FakeXHR();
+  const xhrs = [xhr1, xhr2];
+  let xhrCallCount = 0;
+  (global as any).XMLHttpRequest = jest.fn(() => xhrs[xhrCallCount++]);
+
+  const deps = makeDeps();
+  const onUploadStall = makeUploadStallHandler(deps);
+
+  // ── Clip 1: completes quickly, no stall alert ─────────────────────────────
+  const clip1Promise = uploadVideoFile(
+    'file:///clip1.mp4',
+    fakeRequestUploadUrl,
+    undefined,
+    undefined,
+    undefined,
+    onUploadStall,
+  );
+  await flushPromises();
+
+  // 20 s — well under the 45-s threshold.
+  jest.advanceTimersByTime(20_000);
+  xhr1.complete();
+  await clip1Promise;
+
+  expect(alertSpy).not.toHaveBeenCalled();
+  // Both guards must still be clear so clip 2 can raise the alert.
+  expect(deps.stallAlertActiveRef.current).toBe(false);
+  expect(deps.stallFiredOnceRef.current).toBe(false);
+
+  // ── Clip 2: stalls past UPLOAD_STALL_MS ──────────────────────────────────
+  const clip2Promise = uploadVideoFile(
+    'file:///clip2.mp4',
+    fakeRequestUploadUrl,
+    undefined,
+    undefined,
+    undefined,
+    onUploadStall,
+  );
+  await flushPromises();
+
+  // Just under the threshold — no alert yet.
+  jest.advanceTimersByTime(UPLOAD_STALL_MS - 1);
+  expect(alertSpy).not.toHaveBeenCalled();
+
+  // Cross the threshold — alert fires exactly once.
+  jest.advanceTimersByTime(2);
+  expect(alertSpy).toHaveBeenCalledTimes(1);
+  expect(alertSpy.mock.calls[0][0]).toBe('Upload seems stuck');
+
+  // "Keep waiting" must clear the re-entry guard so a future stall (if any)
+  // won't erroneously be suppressed within this clip.
+  const buttons: Array<{ text: string; onPress?: () => void }> = alertSpy.mock.calls[0][2];
+  buttons.find((b) => b.text === 'Keep waiting')?.onPress?.();
+  expect(deps.stallAlertActiveRef.current).toBe(false);
+  // Fired-once latch is now set — a duplicate watchdog call is silently swallowed.
+  expect(deps.stallFiredOnceRef.current).toBe(true);
+
+  // Let clip 2 finish normally after the coach chose to keep waiting.
+  xhr2.complete();
+  await clip2Promise;
+});
