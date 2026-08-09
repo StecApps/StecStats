@@ -310,6 +310,69 @@ export const ListTeamGamesResponse = zod.array(ListTeamGamesResponseItem)
 
 
 /**
+ * @summary List all games across all teams for the authenticated user
+ */
+export const listAllGamesResponseStatsItemGoalsDefault = 0;
+export const listAllGamesResponseStatsItemShotsDefault = 0;
+export const listAllGamesResponseStatsItemShotsOffTargetDefault = 0;
+export const listAllGamesResponseStatsItemSavesDefault = 0;
+export const listAllGamesResponseStatsItemYellowCardsDefault = 0;
+export const listAllGamesResponseStatsItemRedCardsDefault = 0;
+export const listAllGamesResponseEventsItemVideoTimestampMsMin = 0;
+
+
+
+export const ListAllGamesResponseItem = zod.object({
+  "id": zod.number(),
+  "teamId": zod.number(),
+  "teamName": zod.string(),
+  "opponent": zod.string(),
+  "date": zod.coerce.date(),
+  "result": zod.enum(['W', 'L']),
+  "teamScore": zod.number(),
+  "opponentScore": zod.number(),
+  "videoObjectPath": zod.string().nullish(),
+  "videoOffsetMs": zod.number().nullish(),
+  "videoDurationMs": zod.number().nullish().describe('True end of the recorded footage in video-timeline ms, probed from the stored file. Events after this point happened after the recording stopped and are not on film.'),
+  "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
+  "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
+  "highlightObjectPath": zod.string().nullish(),
+  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightError": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "stats": zod.array(zod.object({
+  "playerId": zod.number(),
+  "playerName": zod.string(),
+  "ftMade": zod.number(),
+  "ftAttempted": zod.number(),
+  "twoMade": zod.number(),
+  "twoAttempted": zod.number(),
+  "threeMade": zod.number(),
+  "threeAttempted": zod.number(),
+  "points": zod.number(),
+  "assists": zod.number(),
+  "rebounds": zod.number(),
+  "steals": zod.number(),
+  "turnovers": zod.number(),
+  "blocks": zod.number(),
+  "goals": zod.number().default(listAllGamesResponseStatsItemGoalsDefault),
+  "shots": zod.number().default(listAllGamesResponseStatsItemShotsDefault),
+  "shotsOffTarget": zod.number().default(listAllGamesResponseStatsItemShotsOffTargetDefault),
+  "saves": zod.number().default(listAllGamesResponseStatsItemSavesDefault),
+  "yellowCards": zod.number().default(listAllGamesResponseStatsItemYellowCardsDefault),
+  "redCards": zod.number().default(listAllGamesResponseStatsItemRedCardsDefault)
+})),
+  "events": zod.array(zod.object({
+  "playerId": zod.number(),
+  "statField": zod.string(),
+  "delta": zod.number(),
+  "videoTimestampMs": zod.number().min(listAllGamesResponseEventsItemVideoTimestampMsMin)
+}))
+})
+export const ListAllGamesResponse = zod.array(ListAllGamesResponseItem)
+
+
+/**
  * @summary Create a game with per-player stat lines
  */
 

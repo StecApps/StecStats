@@ -1112,6 +1112,83 @@ export function useListTeamGames<TData = Awaited<ReturnType<typeof listTeamGames
 
 
 
+export const getListAllGamesUrl = () => {
+
+
+
+
+  return `/api/games`
+}
+
+/**
+ * @summary List all games across all teams for the authenticated user
+ */
+export const listAllGames = async ( options?: RequestInit): Promise<Game[]> => {
+
+  return customFetch<Game[]>(getListAllGamesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAllGamesQueryKey = () => {
+    return [
+    `/api/games`
+    ] as const;
+    }
+
+
+export const getListAllGamesQueryOptions = <TData = Awaited<ReturnType<typeof listAllGames>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAllGames>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAllGamesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAllGames>>> = ({ signal }) => listAllGames({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAllGames>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAllGamesQueryResult = NonNullable<Awaited<ReturnType<typeof listAllGames>>>
+export type ListAllGamesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all games across all teams for the authenticated user
+ */
+
+export function useListAllGames<TData = Awaited<ReturnType<typeof listAllGames>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAllGames>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAllGamesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getCreateGameUrl = () => {
 
 

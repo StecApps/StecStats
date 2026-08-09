@@ -22,7 +22,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useListTeams, useListTeamGames, useListPlayers, useCreateGame, useRequestUploadUrl, useDeleteGame } from '@workspace/api-client-react';
+import { useListTeams, useListTeamGames, useListAllGames, useListPlayers, useCreateGame, useRequestUploadUrl, useDeleteGame } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -261,6 +261,28 @@ function SeasonPickerModal({
         <View style={[modalS.handle, { backgroundColor: colors.border }]} />
         <Text style={[modalS.title, { color: colors.foreground }]}>Choose Season</Text>
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* "All Teams" option — shows every game across every team/season */}
+          {(() => {
+            const isSelected = selectedIdx === -1;
+            return (
+              <TouchableOpacity
+                key="all"
+                onPress={() => { onSelect(-1); onClose(); }}
+                activeOpacity={0.7}
+                style={[
+                  modalS.row,
+                  { borderColor: isSelected ? colors.primary : colors.border, backgroundColor: isSelected ? colors.primary + '18' : 'transparent', overflow: 'hidden' },
+                ]}
+              >
+                {isSelected && <GlareOverlay intensity={0.10} />}
+                <View style={modalS.rowLeft}>
+                  <Text style={[modalS.teamName, { color: colors.foreground }]} numberOfLines={1}>All Teams</Text>
+                  <Text style={[modalS.sport, { color: colors.mutedForeground }]}>Every game across all seasons</Text>
+                </View>
+                {isSelected && <Ionicons name="checkmark-circle" size={22} color={colors.primary} />}
+              </TouchableOpacity>
+            );
+          })()}
           {teams.map((t, i) => {
             const isSelected = i === selectedIdx;
             return (
@@ -408,15 +430,25 @@ export default function GamesScreen() {
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
 
   const { data: teams, isLoading: teamsLoading } = useListTeams();
-  const [selectedTeamIdx, setSelectedTeamIdx] = useState(0);
-  const team = (teams as any[])?.[selectedTeamIdx] ?? null;
+  // -1 = "All Teams" view (uses listAllGames); 0+ = index into the teams array
+  const [selectedTeamIdx, setSelectedTeamIdx] = useState(-1);
+  const team = selectedTeamIdx >= 0 ? ((teams as any[])?.[selectedTeamIdx] ?? null) : null;
 
   const { data: players } = useListPlayers();
 
-  const { data: games, isLoading: gamesLoading, refetch } = useListTeamGames(
+  const { data: teamGames, isLoading: teamGamesLoading, refetch: refetchTeamGames } = useListTeamGames(
     team?.id ?? 0,
     { query: { enabled: !!team } as any },
   );
+  const { data: allGames, isLoading: allGamesLoading, refetch: refetchAllGames } = useListAllGames(
+    { query: { enabled: selectedTeamIdx === -1 } as any },
+  );
+
+  const games = selectedTeamIdx === -1 ? allGames : teamGames;
+  const gamesLoading = selectedTeamIdx === -1 ? allGamesLoading : teamGamesLoading;
+  function refetch() {
+    if (selectedTeamIdx === -1) refetchAllGames(); else refetchTeamGames();
+  }
 
   const deleteGame = useDeleteGame();
 
@@ -465,7 +497,8 @@ export default function GamesScreen() {
   const isLoading = teamsLoading || gamesLoading;
   const hasPlayers = (players as any[])?.length > 0;
   const hasTeams = (teams?.length ?? 0) > 0;
-  const canSwitchTeam = (teams?.length ?? 0) > 1;
+  // Always allow switching — "All Teams" is always available, even with a single team
+  const canSwitchTeam = (teams?.length ?? 0) >= 1;
 
   const [bannerKey, setBannerKey] = useState(0);
 
@@ -527,7 +560,7 @@ export default function GamesScreen() {
             {canSwitchTeam && (
               <>
                 <Text style={[styles.seasonCount, { color: colors.mutedForeground }]}>
-                  {selectedTeamIdx + 1} of {teams?.length}
+                  {selectedTeamIdx === -1 ? `${teams?.length ?? 0} teams` : `${selectedTeamIdx + 1} of ${teams?.length}`}
                 </Text>
                 <Ionicons name="chevron-down" size={15} color={colors.primary} />
               </>

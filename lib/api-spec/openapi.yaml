@@ -249,6 +249,19 @@ paths:
                   $ref: "#/components/schemas/Game"
 
   /games:
+    get:
+      operationId: listAllGames
+      tags: [games]
+      summary: List all games across all teams for the authenticated user
+      responses:
+        "200":
+          description: List of games with player stat lines (all teams combined)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Game"
     post:
       operationId: createGame
       tags: [games]

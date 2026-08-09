@@ -257,6 +257,132 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
   res.json(ListTeamGamesResponse.parse(response));
 });
 
+// ── GET /api/games — all games across all teams for the current user ─────────
+router.get("/games", requireAuth, async (req, res) => {
+  const ownerId = req.appUser!.id;
+
+  const teams = await db
+    .select()
+    .from(teamsTable)
+    .where(eq(teamsTable.ownerId, ownerId));
+
+  if (teams.length === 0) {
+    res.json([]);
+    return;
+  }
+
+  const teamIds = teams.map((t) => t.id);
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+
+  const isFree = (await getEntitlementsForUser(req.appUser!)).plan === "free";
+  const seasonStart = getCurrentSeasonStartDate();
+
+  const games = await db
+    .select()
+    .from(gamesTable)
+    .where(
+      isFree
+        ? and(
+            inArray(gamesTable.teamId, teamIds),
+            eq(gamesTable.ownerId, ownerId),
+            gte(gamesTable.date, seasonStart),
+            isNull(gamesTable.mergedIntoGameId),
+          )
+        : and(
+            inArray(gamesTable.teamId, teamIds),
+            eq(gamesTable.ownerId, ownerId),
+            isNull(gamesTable.mergedIntoGameId),
+          ),
+    )
+    .orderBy(desc(gamesTable.date));
+
+  const gameIds = games.map((g) => g.id);
+
+  const statRows = gameIds.length
+    ? await db
+        .select({ stat: playerGameStatsTable, playerName: playersTable.name })
+        .from(playerGameStatsTable)
+        .innerJoin(
+          playersTable,
+          and(
+            eq(playerGameStatsTable.playerId, playersTable.id),
+            eq(playersTable.ownerId, ownerId),
+          ),
+        )
+        .where(inArray(playerGameStatsTable.gameId, gameIds))
+    : [];
+
+  const statsByGame = new Map<number, typeof statRows>();
+  for (const row of statRows) {
+    const list = statsByGame.get(row.stat.gameId) ?? [];
+    list.push(row);
+    statsByGame.set(row.stat.gameId, list);
+  }
+
+  const eventRows = gameIds.length
+    ? await db.query.gameEventsTable.findMany({
+        where: inArray(gameEventsTable.gameId, gameIds),
+        orderBy: (events, { asc }) => [asc(events.videoTimestampMs)],
+      })
+    : [];
+
+  const eventsByGame = new Map<number, typeof eventRows>();
+  for (const event of eventRows) {
+    const list = eventsByGame.get(event.gameId) ?? [];
+    list.push(event);
+    eventsByGame.set(event.gameId, list);
+  }
+
+  const response = games.map((game) => {
+    const team = teamById.get(game.teamId);
+    return {
+      id: game.id,
+      teamId: game.teamId,
+      teamName: team?.name ?? "Unknown",
+      opponent: game.opponent,
+      date: game.date,
+      result: game.result,
+      teamScore: game.teamScore,
+      opponentScore: game.opponentScore,
+      videoObjectPath: game.videoObjectPath,
+      highlightObjectPath: game.highlightObjectPath ?? null,
+      highlightStatus: game.highlightStatus ?? null,
+      highlightError: game.highlightError ?? null,
+      createdAt: game.createdAt,
+      stats: (statsByGame.get(game.id) ?? []).map(({ stat, playerName }) => ({
+        playerId: stat.playerId,
+        playerName,
+        ftMade: stat.ftMade,
+        ftAttempted: stat.ftAttempted,
+        twoMade: stat.twoMade,
+        twoAttempted: stat.twoAttempted,
+        threeMade: stat.threeMade,
+        threeAttempted: stat.threeAttempted,
+        points: computePoints(stat),
+        assists: stat.assists,
+        rebounds: stat.rebounds,
+        steals: stat.steals,
+        turnovers: stat.turnovers,
+        blocks: stat.blocks,
+        goals: stat.goals,
+        shots: stat.shots,
+        shotsOffTarget: stat.shotsOffTarget,
+        saves: stat.saves,
+        yellowCards: stat.yellowCards,
+        redCards: stat.redCards,
+      })),
+      events: (eventsByGame.get(game.id) ?? []).map((event) => ({
+        playerId: event.playerId,
+        statField: event.statField,
+        delta: event.delta,
+        videoTimestampMs: event.videoTimestampMs,
+      })),
+    };
+  });
+
+  res.json(ListTeamGamesResponse.parse(response));
+});
+
 router.get("/teams/:teamId/highlight", requireAuth, async (req, res) => {
   const { teamId } = GetTeamHighlightParams.parse(req.params);
   const team = await db.query.teamsTable.findFirst({
