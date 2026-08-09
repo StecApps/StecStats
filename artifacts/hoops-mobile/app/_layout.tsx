@@ -28,8 +28,8 @@ import * as SystemUI from 'expo-system-ui';
 import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import { setBaseUrl, setAuthTokenGetter } from '@workspace/api-client-react';
-import { SubscriptionProvider, initializeRevenueCat, loginRevenueCat, logoutRevenueCat } from '@/lib/revenuecat';
-import { clearPendingPhotos } from '@/lib/pendingPhotoQueue';
+import { SubscriptionProvider, initializeRevenueCat } from '@/lib/revenuecat';
+import { useRevenueCatAuthSync } from '@/lib/useRevenueCatAuthSync';
 import { PendingPhotoRetry } from '@/components/PendingPhotoRetry';
 
 SplashScreen.preventAutoHideAsync();
@@ -75,34 +75,10 @@ function ApiAuthSetup() {
     });
   }, [isSignedIn, getToken]);
 
-  // Link the RevenueCat subscriber to the Clerk user so that server-side
-  // RC webhooks can update the correct user row via app_user_id = clerkUserId.
-  // On sign-out, also clear this coach's pending photo queue so a different
-  // coach signing in on the same device never retries the wrong uploads.
-  //
-  // IMPORTANT: guard on `isLoaded` before calling logoutRevenueCat().
-  // On app reload / Metro bundler restart, Clerk starts with isSignedIn=false
-  // while it restores the session from SecureStore. Calling logOut() during
-  // that transient window would log RC out unnecessarily — and in Expo Go's
-  // "Browser Mode" the call throws "Unknown backend error", which could
-  // corrupt RC state before loginRevenueCat() fires a moment later.
-  const prevUserIdRef = React.useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    if (!isLoaded) return; // wait until Clerk has fully restored the session
-
-    if (isSignedIn && userId) {
-      loginRevenueCat(userId);
-    } else if (!isSignedIn) {
-      // Only reach here for a deliberate sign-out, not a transient reload state.
-      logoutRevenueCat();
-      // Clear the queue for the coach who just signed out.
-      const prev = prevUserIdRef.current;
-      if (prev) {
-        clearPendingPhotos(prev).catch(() => {});
-      }
-    }
-    prevUserIdRef.current = userId;
-  }, [isLoaded, isSignedIn, userId]);
+  // Sync RevenueCat subscriber identity with Clerk — guarded on isLoaded so
+  // the transient reload state (isLoaded=false, isSignedIn=false) is never
+  // mistaken for a deliberate sign-out. See lib/useRevenueCatAuthSync.ts.
+  useRevenueCatAuthSync({ isLoaded, isSignedIn, userId });
 
   return null;
 }
