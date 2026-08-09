@@ -9,6 +9,29 @@ import * as zod from 'zod';
 
 
 /**
+ * @summary Get the current user's stored profile (name, etc.)
+ */
+export const GetMeResponse = zod.object({
+  "firstName": zod.string().nullable(),
+  "lastName": zod.string().nullable()
+})
+
+
+/**
+ * @summary Update the current user's stored profile
+ */
+export const UpdateMeBody = zod.object({
+  "firstName": zod.string().optional(),
+  "lastName": zod.string().optional()
+})
+
+export const UpdateMeResponse = zod.object({
+  "firstName": zod.string().nullable(),
+  "lastName": zod.string().nullable()
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

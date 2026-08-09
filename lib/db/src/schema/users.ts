@@ -27,6 +27,10 @@ export const usersTable = pgTable("users", {
   // Expiry events remove only the named entitlement — other parts are preserved.
   // Used as a fallback in getEntitlements() when there is no Stripe subscription.
   revenueCatEntitlement: text("revenue_cat_entitlement"),
+  // Display name chosen by the coach — stored here because the Replit-managed
+  // Clerk instance does not accept firstName/lastName writes from the client SDK.
+  firstName: text("first_name"),
+  lastName: text("last_name"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

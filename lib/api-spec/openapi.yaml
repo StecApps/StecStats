@@ -8,6 +8,8 @@ servers:
   - url: /api
     description: Base API path
 tags:
+  - name: users
+    description: User profile operations
   - name: health
     description: Health operations
   - name: players
@@ -23,6 +25,36 @@ tags:
   - name: billing
     description: Subscription plan status and Stripe checkout/portal.
 paths:
+  /users/me:
+    get:
+      operationId: getMe
+      tags: [users]
+      summary: Get the current user's stored profile (name, etc.)
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+    patch:
+      operationId: updateMe
+      tags: [users]
+      summary: Update the current user's stored profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserProfileUpdate"
+      responses:
+        "200":
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
   /healthz:
     get:
       operationId: healthCheck
@@ -699,6 +731,19 @@ paths:
 
 components:
   schemas:
+    UserProfile:
+      type: object
+      required: [firstName, lastName]
+      properties:
+        firstName: { type: ["string", "null"] }
+        lastName: { type: ["string", "null"] }
+
+    UserProfileUpdate:
+      type: object
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+
     HealthStatus:
       type: object
       properties:

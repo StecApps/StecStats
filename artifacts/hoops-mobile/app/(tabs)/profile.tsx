@@ -18,7 +18,7 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
-import { useGetBillingStatus, useListTeams, useListPlayers } from '@workspace/api-client-react';
+import { useGetBillingStatus, useListTeams, useListPlayers, useGetMe, useUpdateMe } from '@workspace/api-client-react';
 import { useSubscription } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
@@ -135,15 +135,28 @@ export default function ProfileScreen() {
   const { data: players } = useListPlayers();
   const { isPremium, isPro } = useSubscription();
 
+  // Stored display name — overrides Clerk's unwritable firstName/lastName
+  const { data: meData, refetch: refetchMe } = useGetMe();
+  const updateMe = useUpdateMe();
+
   // Edit name state
   const [editNameVisible, setEditNameVisible] = useState(false);
   const [editFirstName, setEditFirstName] = useState('');
   const [editLastName, setEditLastName] = useState('');
   const [savingName, setSavingName] = useState(false);
 
+  // Displayed name: prefer DB-stored name, fall back to Clerk identity
+  const storedFirst = meData?.firstName ?? null;
+  const storedLast = meData?.lastName ?? null;
+  const displayFirst = storedFirst ?? user?.firstName ?? '';
+  const displayLast = storedLast ?? user?.lastName ?? '';
+  const displayName = [displayFirst, displayLast].filter(Boolean).join(' ')
+    || user?.primaryEmailAddress?.emailAddress
+    || 'Coach';
+
   function openEditName() {
-    setEditFirstName(user?.firstName ?? '');
-    setEditLastName(user?.lastName ?? '');
+    setEditFirstName(displayFirst);
+    setEditLastName(displayLast);
     setEditNameVisible(true);
   }
 
@@ -155,22 +168,19 @@ export default function ProfileScreen() {
       return;
     }
     setSavingName(true);
-    try {
-      // Reload the user first so we're not working with a stale session.
-      await user?.reload();
-      // Clerk v2: pass null (not undefined) to explicitly clear lastName.
-      await user?.update({ firstName: first, lastName: last || null });
-      setEditNameVisible(false);
-    } catch (err: any) {
-      const msg =
-        err?.errors?.[0]?.longMessage ??
-        err?.errors?.[0]?.message ??
-        err?.message ??
-        'Could not update name. Please try again.';
-      Alert.alert('Error', msg);
-    } finally {
-      setSavingName(false);
-    }
+    updateMe.mutate(
+      { data: { firstName: first, lastName: last } },
+      {
+        onSuccess: () => {
+          refetchMe();
+          setEditNameVisible(false);
+        },
+        onError: (err: any) => {
+          Alert.alert('Error', err?.message ?? 'Could not update name. Please try again.');
+        },
+        onSettled: () => setSavingName(false),
+      },
+    );
   }
 
   // YouTube connection state
@@ -266,9 +276,9 @@ export default function ProfileScreen() {
   const rcPlan = isPremium ? 'premium' : isPro ? 'pro' : null;
   const plan = rcPlan ?? billing?.plan ?? 'free';
   const team = teams?.[0];
-  const initials = (user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? '?')
+  const initials = displayName
     .split(' ')
-    .map((w) => w[0])
+    .map((w: string) => w[0])
     .join('')
     .slice(0, 2)
     .toUpperCase();
@@ -297,9 +307,7 @@ export default function ProfileScreen() {
           </View>
         </TouchableOpacity>
         <TouchableOpacity onPress={openEditName} activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={styles.name}>
-            {user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? 'Coach'}
-          </Text>
+          <Text style={styles.name}>{displayName}</Text>
           <Feather name="edit-2" size={13} color={colors.mutedForeground} />
         </TouchableOpacity>
         {user?.primaryEmailAddress && (

@@ -13,6 +13,7 @@ import musicRouter from "./music";
 import youtubeRouter from "./youtube";
 import feedbackRouter from "./feedback";
 import purchaseEventsRouter from "./purchase-events";
+import usersRouter from "./users";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(musicRouter);
 router.use(youtubeRouter);
 router.use(feedbackRouter);
 router.use(purchaseEventsRouter);
+router.use(usersRouter);
 
 export default router;
