@@ -334,6 +334,199 @@ test('watchdog fires ~45 s after the last real progress event, not the upload st
 // arms again for clip 2, fires exactly once when clip 2 stalls, and that
 // tapping "Keep waiting" correctly clears the re-entry guard.
 
+// ─── concatSegmentsWithTimeout tests ─────────────────────────────────────────
+
+import { concatSegmentsWithTimeout, CONCAT_TIMEOUT_MS } from '@/lib/concatSegmentsWithTimeout';
+
+function makeConcatDeps(overrides: Partial<Parameters<typeof concatSegmentsWithTimeout>[0]> = {}) {
+  return {
+    apiBase: 'https://api.example.com',
+    token: 'test-token',
+    segmentPaths: ['recordings/clip1.mp4', 'recordings/clip2.mp4'],
+    onRetry: jest.fn(),
+    onSaveWithoutVideo: jest.fn(),
+    ...overrides,
+  };
+}
+
+/** Hung-server fetch that actually rejects with AbortError when the signal fires. */
+function makeHungFetch() {
+  return jest.fn((_url: string, opts: RequestInit = {}) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = opts.signal as AbortSignal | undefined;
+      if (signal?.aborted) {
+        const e = new Error('The operation was aborted.'); e.name = 'AbortError'; reject(e); return;
+      }
+      signal?.addEventListener('abort', () => {
+        const e = new Error('The operation was aborted.'); e.name = 'AbortError'; reject(e);
+      });
+    }),
+  );
+}
+
+test('concatSegmentsWithTimeout: alert fires when fetch exceeds the timeout', async () => {
+  // fetch never resolves until aborted — simulates a hung server
+  (global as any).fetch = makeHungFetch();
+
+  const deps = makeConcatDeps();
+  const concatPromise = concatSegmentsWithTimeout(deps);
+
+  await flushPromises();
+
+  // Just under the 60-second threshold — no alert yet
+  jest.advanceTimersByTime(CONCAT_TIMEOUT_MS - 1);
+  expect(alertSpy).not.toHaveBeenCalled();
+
+  // Cross the threshold — alert fires (flush microtasks to propagate abort rejection)
+  jest.advanceTimersByTime(2);
+  await flushPromises();
+  expect(alertSpy).toHaveBeenCalledTimes(1);
+  const [title, message, buttons] = alertSpy.mock.calls[0];
+  expect(title).toBe('Merge timed out');
+  expect(message).toMatch(/too long to combine/i);
+  expect(buttons).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ text: 'Retry merge' }),
+      expect.objectContaining({ text: 'Save without video' }),
+    ]),
+  );
+
+  // Tap "Retry merge" to resolve the alert Promise so the test can finish
+  const retryBtn = (buttons as Array<{ text: string; onPress?: () => void }>).find(
+    (b) => b.text === 'Retry merge',
+  );
+  retryBtn?.onPress?.();
+
+  const result = await concatPromise;
+  expect(result).toEqual({ timedOut: true });
+  expect(deps.onRetry).toHaveBeenCalledTimes(1);
+});
+
+test('concatSegmentsWithTimeout: "Save without video" button calls onSaveWithoutVideo', async () => {
+  (global as any).fetch = makeHungFetch();
+
+  const deps = makeConcatDeps();
+  const concatPromise = concatSegmentsWithTimeout(deps);
+
+  await flushPromises();
+  jest.advanceTimersByTime(CONCAT_TIMEOUT_MS + 1);
+  await flushPromises();
+
+  const buttons: Array<{ text: string; onPress?: () => void }> = alertSpy.mock.calls[0][2];
+  buttons.find((b) => b.text === 'Save without video')?.onPress?.();
+
+  const result = await concatPromise;
+  expect(result).toEqual({ timedOut: true });
+  expect(deps.onSaveWithoutVideo).toHaveBeenCalledTimes(1);
+  expect(deps.onRetry).not.toHaveBeenCalled();
+});
+
+test('concatSegmentsWithTimeout: returns videoObjectPath on success before the timeout', async () => {
+  (global as any).fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    json: () => Promise.resolve({ videoObjectPath: 'recordings/merged.mp4' }),
+  });
+
+  const deps = makeConcatDeps();
+  const result = await concatSegmentsWithTimeout(deps);
+
+  expect(result).toEqual({ timedOut: false, videoObjectPath: 'recordings/merged.mp4' });
+  expect(alertSpy).not.toHaveBeenCalled();
+});
+
+test('concatSegmentsWithTimeout: throws when the server returns a non-OK response', async () => {
+  (global as any).fetch = jest.fn().mockResolvedValue({
+    ok: false,
+    status: 500,
+    json: () => Promise.resolve({ error: 'ffmpeg crashed' }),
+  });
+
+  const deps = makeConcatDeps();
+  await expect(concatSegmentsWithTimeout(deps)).rejects.toThrow('ffmpeg crashed');
+  expect(alertSpy).not.toHaveBeenCalled();
+});
+
+test('concatSegmentsWithTimeout: onRetry fires and a fresh call succeeds on the second attempt', async () => {
+  // First fetch hangs (simulates a timeout), second fetch succeeds immediately.
+  let fetchCallCount = 0;
+  (global as any).fetch = jest.fn((_url: string, opts: RequestInit = {}) => {
+    fetchCallCount++;
+    if (fetchCallCount === 1) {
+      return new Promise<Response>((_resolve, reject) => {
+        const signal = opts.signal as AbortSignal | undefined;
+        if (signal?.aborted) {
+          const e = new Error('The operation was aborted.'); e.name = 'AbortError'; reject(e); return;
+        }
+        signal?.addEventListener('abort', () => {
+          const e = new Error('The operation was aborted.'); e.name = 'AbortError'; reject(e);
+        });
+      });
+    }
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ videoObjectPath: 'recordings/merged.mp4' }),
+    } as unknown as Response);
+  });
+
+  const retryFn = jest.fn();
+  const deps = makeConcatDeps({ onRetry: retryFn });
+
+  // ── First attempt: times out ──────────────────────────────────────────────
+  const firstPromise = concatSegmentsWithTimeout(deps);
+  await flushPromises();
+  jest.advanceTimersByTime(CONCAT_TIMEOUT_MS + 1);
+  await flushPromises();
+
+  expect(alertSpy).toHaveBeenCalledTimes(1);
+  expect(alertSpy.mock.calls[0][0]).toBe('Merge timed out');
+
+  // Tap "Retry merge" — onRetry is called and firstPromise resolves timedOut
+  const buttons: Array<{ text: string; onPress?: () => void }> = alertSpy.mock.calls[0][2];
+  buttons.find((b) => b.text === 'Retry merge')?.onPress?.();
+  const firstResult = await firstPromise;
+
+  expect(firstResult).toEqual({ timedOut: true });
+  expect(retryFn).toHaveBeenCalledTimes(1);
+  expect(fetchCallCount).toBe(1);
+
+  // ── Second attempt (simulating doMergeAndSave via useEffect): succeeds ────
+  const secondResult = await concatSegmentsWithTimeout(deps);
+  expect(secondResult).toEqual({ timedOut: false, videoObjectPath: 'recordings/merged.mp4' });
+  expect(fetchCallCount).toBe(2);
+  // No additional alert should have appeared
+  expect(alertSpy).toHaveBeenCalledTimes(1);
+});
+
+test('concatSegmentsWithTimeout: no alert when fetch completes just before the timeout', async () => {
+  let resolveFetch!: (v: Response) => void;
+  (global as any).fetch = jest.fn(
+    () => new Promise<Response>((r) => { resolveFetch = r; }),
+  );
+
+  const deps = makeConcatDeps();
+  const concatPromise = concatSegmentsWithTimeout(deps);
+
+  await flushPromises();
+
+  // Advance to just under the timeout then resolve the fetch
+  jest.advanceTimersByTime(CONCAT_TIMEOUT_MS - 1);
+  resolveFetch({
+    ok: true,
+    json: () => Promise.resolve({ videoObjectPath: 'recordings/merged.mp4' }),
+  } as unknown as Response);
+
+  const result = await concatPromise;
+  expect(result).toEqual({ timedOut: false, videoObjectPath: 'recordings/merged.mp4' });
+  expect(alertSpy).not.toHaveBeenCalled();
+});
+
+// ─── Two-clip sequential upload (camera-flip scenario) ───────────────────────
+//
+// scorekeeper.tsx uploads two clips in a for-loop sharing the same onUploadStall
+// callback.  This test confirms that when clip 1 succeeds normally the watchdog
+// arms again for clip 2, fires exactly once when clip 2 stalls, and that
+// tapping "Keep waiting" correctly clears the re-entry guard.
+
 test('stall alert fires on clip 2 when clip 1 uploaded successfully within 45 s', async () => {
   // Supply two separate FakeXHR instances — one per sequential uploadVideoFile call.
   const xhr1 = new FakeXHR();

@@ -62,6 +62,7 @@ try {
 }
 import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
 import { makeUploadStallHandler } from '@/lib/uploadStallAlert';
+import { concatSegmentsWithTimeout } from '@/lib/concatSegmentsWithTimeout';
 import { fetchIceServers } from '@/lib/fetchIceServers';
 import { drainPendingViewers } from '@/lib/drainPendingViewers';
 
@@ -139,6 +140,12 @@ export default function ScorekeeperScreen() {
   // close over their own token so a subsequent attempt's reset can't un-cancel an
   // in-flight attempt.
   const uploadAttemptRef = useRef<{ cancelled: boolean } | null>(null);
+  // When the concat-merge times out and the coach taps "Retry merge", we can't
+  // call handleSave() directly because its closure still sees saving===true.
+  // Instead, onRetry stores the already-uploaded paths here and calls
+  // setSaving(false); a useEffect below detects the transition and re-runs
+  // just the concat + doSaveGame step — skipping the upload entirely.
+  const pendingMergeRetryRef = useRef<string[] | null>(null);
   // Guards against stacking multiple stall alerts if progress stays frozen.
   const stallAlertActiveRef = useRef(false);
   // Latches to true after the coach taps 'Keep waiting' once.  Prevents a
@@ -758,6 +765,20 @@ export default function ScorekeeperScreen() {
     };
   }, []);
 
+  // ─── Deferred merge retry ─────────────────────────────────────────────────
+  // When the concat-merge times out the coach taps "Retry merge". We can't
+  // call handleSave() from inside the alert callback because the closure still
+  // sees saving===true and the guard returns immediately.  Instead, onRetry
+  // stores paths in pendingMergeRetryRef and calls setSaving(false).  This
+  // effect fires once React has flushed the state update and re-runs only
+  // the concat + doSaveGame step (the clips are already uploaded).
+  useEffect(() => {
+    if (saving || !pendingMergeRetryRef.current) return;
+    const paths = pendingMergeRetryRef.current;
+    pendingMergeRetryRef.current = null;
+    doMergeAndSave(paths);
+  }, [saving]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
     : '';
@@ -804,6 +825,47 @@ export default function ScorekeeperScreen() {
         },
       ],
     );
+  }
+
+  // Retry only the concat + save step when the coach taps "Retry merge" after a
+  // timeout. Called by the useEffect above once saving===false has been flushed.
+  // The clips are already uploaded so we skip straight to concat-segments.
+  async function doMergeAndSave(segmentPaths: string[]) {
+    const freshToken = { cancelled: false };
+    uploadAttemptRef.current = freshToken;
+    setSaving(true);
+    setUploadProgress(92);
+    try {
+      const authToken = await getToken();
+      const result = await concatSegmentsWithTimeout({
+        apiBase: API_BASE,
+        token: authToken,
+        segmentPaths,
+        onRetry: () => {
+          freshToken.cancelled = true;
+          pendingMergeRetryRef.current = segmentPaths;
+          setSaving(false);
+        },
+        onSaveWithoutVideo: () => {
+          freshToken.cancelled = true;
+          doSaveGame(null);
+        },
+      });
+      if (result.timedOut) {
+        setUploadProgress(null);
+        return;
+      }
+      if (freshToken.cancelled) return;
+      setUploadProgress(100);
+      setUploadProgress(null);
+      await doSaveGame(result.videoObjectPath);
+    } catch (err: any) {
+      setUploadProgress(null);
+      Alert.alert('Video merge failed', err?.message ?? 'Could not merge clips. Save without video?', [
+        { text: 'Cancel', style: 'cancel', onPress: () => setSaving(false) },
+        { text: 'Save without video', onPress: () => doSaveGame(null) },
+      ]);
+    }
   }
 
   async function handleSave() {
@@ -906,23 +968,34 @@ export default function ScorekeeperScreen() {
             videoObjectPath = uploadedPaths[0];
             setUploadProgress(100);
           } else {
-            // Multiple clips from camera flips — concat server-side
+            // Multiple clips from camera flips — concat server-side.
+            // concatSegmentsWithTimeout applies a 60-second AbortController and
+            // surfaces "Retry merge" / "Save without video" if the server hangs.
             setUploadProgress(92);
             const token = await getToken();
-            const concatRes = await fetch(`${API_BASE}/api/storage/concat-segments`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            const concatResult = await concatSegmentsWithTimeout({
+              apiBase: API_BASE,
+              token,
+              segmentPaths: uploadedPaths,
+              onRetry: () => {
+                // Can't call handleSave() here — the closure sees saving===true
+                // and returns immediately.  Store the paths so the useEffect
+                // above can re-run just the concat + doSaveGame once React
+                // flushes the saving===false state update.
+                attemptToken.cancelled = true;
+                pendingMergeRetryRef.current = uploadedPaths;
+                setSaving(false);
               },
-              body: JSON.stringify({ segmentPaths: uploadedPaths }),
+              onSaveWithoutVideo: () => {
+                attemptToken.cancelled = true;
+                doSaveGame(null);
+              },
             });
-            if (!concatRes.ok) {
-              const errBody = await concatRes.json().catch(() => ({}));
-              throw new Error((errBody as any)?.error ?? `Concat failed (${concatRes.status})`);
+            if (concatResult.timedOut) {
+              setUploadProgress(null);
+              return;
             }
-            const { videoObjectPath: merged } = await concatRes.json();
-            videoObjectPath = merged;
+            videoObjectPath = concatResult.videoObjectPath;
             setUploadProgress(100);
           }
 
