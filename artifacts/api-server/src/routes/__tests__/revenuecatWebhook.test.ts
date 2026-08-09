@@ -29,6 +29,8 @@ const { testUserState } = vi.hoisted(() => {
     stripeCustomerId: null as string | null,
     youtubeRefreshToken: null as string | null,
     revenueCatEntitlement: null as string | null,
+    firstName: null as string | null,
+    lastName: null as string | null,
     createdAt: new Date(),
   };
   return { testUserState };
