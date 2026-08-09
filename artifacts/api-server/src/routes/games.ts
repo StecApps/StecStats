@@ -14,6 +14,7 @@ import {
   playersTable,
   teamsTable,
   gameEventsTable,
+  usersTable,
 } from "@workspace/db";
 import {
   CreateGameBody,
@@ -1804,7 +1805,39 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
 //      (no auth header — expo-video cannot set custom headers)
 //      → server validates token, serves Range requests via createReadStream
 
-const streamTokens = new Map<string, { objectPath: string; expiresAt: number }>();
+/**
+ * Token entry for the in-memory stream-token map.
+ *
+ * Subscription-lapse window: because expo-video issues a fresh HTTP Range
+ * request for every seek operation the streaming URL must stay valid for the
+ * entire playback session (up to the 4-hour token TTL).  A coach whose
+ * subscription lapses mid-session therefore retains a working stream URL until
+ * either the token expires or the next entitlement re-check fires.
+ *
+ * To bound that window without hitting the DB on every Range request we store:
+ *   • ownerId            — the user whose entitlements must still hold
+ *   • entitlementOkUntil — epoch-ms after which the stream endpoint must
+ *                          re-validate entitlements before serving bytes
+ *
+ * The re-check window (STREAM_ENTITLEMENT_RECHECK_MS) is set to 5 minutes so
+ * a subscription lapse is detected within 5 minutes at most.
+ */
+interface StreamTokenEntry {
+  objectPath: string;
+  expiresAt: number;
+  ownerId: number;
+  /** Epoch-ms after which the stream endpoint must re-validate entitlements. */
+  entitlementOkUntil: number;
+  /**
+   * The gameId and streamType the token was minted for.  The stream endpoint
+   * rejects requests where the route params don't match, preventing a valid
+   * token from being replayed against a different game or media type.
+   */
+  gameId: number;
+  streamType: string;
+}
+
+const streamTokens = new Map<string, StreamTokenEntry>();
 
 // Token TTL: 4 hours.  expo-video issues new HTTP Range requests whenever the
 // coach seeks — the same URL must remain valid for the entire playback session.
@@ -1813,6 +1846,12 @@ const streamTokens = new Map<string, { objectPath: string; expiresAt: number }>(
 // proactive client-side token refresh (which would require pausing and resuming
 // the player at the current position).
 const STREAM_TOKEN_TTL_MS = 4 * 60 * 60_000; // 4 h
+
+// Entitlement re-check interval: after this window elapses the stream endpoint
+// calls getEntitlements() once and refreshes entitlementOkUntil (or rejects
+// the request if the subscription has lapsed).  5 minutes is short enough to
+// detect a lapse quickly while avoiding a DB round-trip on every Range request.
+const STREAM_ENTITLEMENT_RECHECK_MS = 5 * 60_000; // 5 min
 
 // Prune expired tokens every 30 minutes so the map doesn't grow unbounded.
 setInterval(() => {
@@ -1865,7 +1904,18 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
   if (!objectPath) return void res.status(404).json({ error: "No video available" });
 
   const token = randomUUID();
-  streamTokens.set(token, { objectPath, expiresAt: Date.now() + STREAM_TOKEN_TTL_MS });
+  streamTokens.set(token, {
+    objectPath,
+    expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
+    ownerId,
+    // Pre-validated at mint time; the stream endpoint will re-check after
+    // STREAM_ENTITLEMENT_RECHECK_MS so a subscription lapse is caught quickly.
+    entitlementOkUntil: Date.now() + STREAM_ENTITLEMENT_RECHECK_MS,
+    // Bind the token to the exact game and media type it was minted for so
+    // a leaked token cannot be replayed against a different game or type.
+    gameId,
+    streamType: type,
+  });
 
   res.json({ token });
 });
@@ -1882,6 +1932,44 @@ router.get("/games/:gameId/stream/:type", async (req, res) => {
   const entry = streamTokens.get(token);
   if (!entry || Date.now() > entry.expiresAt) {
     return void res.status(401).json({ error: "Invalid or expired stream token" });
+  }
+
+  // Verify the token was minted for this exact game and media type so a leaked
+  // token cannot be replayed against a different game or stream type.
+  const routeGameId = Number(req.params.gameId);
+  const routeType = req.params.type as string;
+  if (entry.gameId !== routeGameId || entry.streamType !== routeType) {
+    return void res.status(401).json({ error: "Invalid or expired stream token" });
+  }
+
+  // Re-validate entitlements once per STREAM_ENTITLEMENT_RECHECK_MS window so
+  // a coach whose subscription lapses mid-session is denied within 5 minutes.
+  // We update the cached window on success so subsequent Range requests (seeks)
+  // don't hit the DB again until the next window boundary.
+  // On any lookup failure we refuse to serve bytes rather than silently granting
+  // access — the client will retry, and the next request may succeed.
+  if (Date.now() > entry.entitlementOkUntil) {
+    try {
+      const owner = await db.query.usersTable.findFirst({
+        where: eq(usersTable.id, entry.ownerId),
+        columns: { stripeCustomerId: true, email: true, revenueCatEntitlement: true },
+      });
+      const ents = await getEntitlements(
+        owner?.stripeCustomerId ?? null,
+        owner?.email,
+        owner?.revenueCatEntitlement,
+      );
+      if (!isPro(ents)) {
+        streamTokens.delete(token);
+        return void res.status(403).json({ error: "Subscription required" });
+      }
+      entry.entitlementOkUntil = Date.now() + STREAM_ENTITLEMENT_RECHECK_MS;
+    } catch (err) {
+      // Entitlement lookup failed (DB or Stripe outage).  Fail closed: refuse
+      // to serve media rather than granting access on an unknown entitlement.
+      console.error("stream: entitlement re-check failed, denying request", err);
+      return void res.status(503).json({ error: "Unable to verify subscription — please retry" });
+    }
   }
 
   try {
