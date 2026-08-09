@@ -12,6 +12,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 function NativeTabLayout() {
   return (
     <NativeTabs>
+      <NativeTabs.Trigger name="index">
+        <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
+        <Label>Stats</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="record">
         <Icon sf={{ default: 'basketball', selected: 'basketball.fill' }} />
         <Label>Score</Label>
@@ -19,10 +23,6 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="games">
         <Icon sf={{ default: 'list.bullet.rectangle', selected: 'list.bullet.rectangle.fill' }} />
         <Label>Games</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
-        <Label>Stats</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="profile">
         <Icon sf={{ default: 'person', selected: 'person.fill' }} />
@@ -67,7 +67,19 @@ function ClassicTabLayout() {
           ) : null,
       }}
     >
-      {/* Score is first — it's the primary action coaches reach for at game time */}
+      {/* Stats is first — personal home base with player profiles and shooting charts */}
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Stats',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="chart.bar.fill" tintColor={color} size={22} />
+            ) : (
+              <Feather name="bar-chart-2" size={22} color={color} />
+            ),
+        }}
+      />
       <Tabs.Screen
         name="record"
         options={{
@@ -89,19 +101,6 @@ function ClassicTabLayout() {
               <SymbolView name="list.bullet.rectangle.fill" tintColor={color} size={22} />
             ) : (
               <Feather name="list" size={22} color={color} />
-            ),
-        }}
-      />
-      {/* Dashboard renamed to Stats — it shows player stats and shooting charts */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Stats',
-          tabBarIcon: ({ color }) =>
-            isIOS ? (
-              <SymbolView name="chart.bar.fill" tintColor={color} size={22} />
-            ) : (
-              <Feather name="bar-chart-2" size={22} color={color} />
             ),
         }}
       />

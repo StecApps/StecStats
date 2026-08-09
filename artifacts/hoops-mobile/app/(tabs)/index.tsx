@@ -21,7 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth, useUser } from '@clerk/clerk-expo';
 import {
   useListPlayers,
   useGetPlayerSummary,
@@ -838,6 +838,77 @@ const shootS = StyleSheet.create({
   divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 4 },
 });
 
+// ─── Coach greeting header ────────────────────────────────────────────────────
+function CoachGreeting() {
+  const c = useColors();
+  const { user } = useUser();
+
+  const hour = new Date().getHours();
+  const salutation = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+  const firstName = user?.firstName ?? user?.fullName?.split(' ')[0] ?? 'Coach';
+
+  const initials = firstName.slice(0, 1).toUpperCase();
+
+  return (
+    <View style={greetS.row}>
+      {/* Avatar */}
+      {user?.imageUrl ? (
+        <Image
+          source={{ uri: user.imageUrl }}
+          style={greetS.avatar}
+          contentFit="cover"
+        />
+      ) : (
+        <View style={[greetS.avatar, greetS.avatarFallback, { backgroundColor: c.primary + '30', borderColor: c.primary + '50' }]}>
+          <Text style={[greetS.initials, { color: c.primary }]}>{initials}</Text>
+        </View>
+      )}
+      {/* Greeting text */}
+      <View style={greetS.textCol}>
+        <Text style={[greetS.salutation, { color: c.mutedForeground }]}>{salutation.toUpperCase()}</Text>
+        <Text style={[greetS.name, { color: c.foreground }]} numberOfLines={1}>{firstName}</Text>
+      </View>
+    </View>
+  );
+}
+
+const greetS = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 18,
+    marginTop: 4,
+  },
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 2,
+  },
+  avatarFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initials: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+  },
+  textCol: {
+    gap: 1,
+  },
+  salutation: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 1.5,
+  },
+  name: {
+    fontSize: 26,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.2,
+  },
+});
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function DashboardScreen() {
   const c = useColors();
@@ -918,6 +989,9 @@ export default function DashboardScreen() {
             />
           )}
         </View>
+
+        {/* ── Coach greeting ── */}
+        <CoachGreeting />
 
         {/* ── Player chips ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
