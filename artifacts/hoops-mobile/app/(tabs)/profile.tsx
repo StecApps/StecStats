@@ -156,10 +156,18 @@ export default function ProfileScreen() {
     }
     setSavingName(true);
     try {
-      await user?.update({ firstName: first, lastName: last || undefined });
+      // Reload the user first so we're not working with a stale session.
+      await user?.reload();
+      // Clerk v2: pass null (not undefined) to explicitly clear lastName.
+      await user?.update({ firstName: first, lastName: last || null });
       setEditNameVisible(false);
-    } catch {
-      Alert.alert('Error', 'Could not update name. Please try again.');
+    } catch (err: any) {
+      const msg =
+        err?.errors?.[0]?.longMessage ??
+        err?.errors?.[0]?.message ??
+        err?.message ??
+        'Could not update name. Please try again.';
+      Alert.alert('Error', msg);
     } finally {
       setSavingName(false);
     }

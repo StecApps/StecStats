@@ -43,6 +43,8 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSharedValue, runOnJS } from 'react-native-reanimated';
 // react-native-webrtc is a native module — not available in Expo Go.
 // Require it dynamically so the app degrades to score-only live stream
 // instead of crashing on the module-not-found error.
@@ -211,6 +213,36 @@ export default function ScorekeeperScreen() {
   const [micMuted, setMicMuted] = useState(false);
   // null = follow device rotation; true/false = locked to landscape/portrait
   const [layoutLandscape, setLayoutLandscape] = useState<boolean | null>(null);
+
+  // ── Camera zoom (pinch-to-zoom) ───────────────────────────────────────────
+  // cameraZoom is 0-1 passed to CameraView's zoom prop.
+  // pinchBaseZoom is the committed zoom at the START of each pinch gesture.
+  const [cameraZoom, setCameraZoom] = useState(0);
+  const [zoomBadgeVisible, setZoomBadgeVisible] = useState(false);
+  const zoomBadgeOpacity = useRef(new Animated.Value(0)).current;
+  const zoomHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pinchBaseZoom = useSharedValue(0);
+
+  function showZoomBadge(zoom: number) {
+    setCameraZoom(Math.min(1, Math.max(0, zoom)));
+    setZoomBadgeVisible(true);
+    zoomBadgeOpacity.stopAnimation();
+    Animated.timing(zoomBadgeOpacity, { toValue: 1, duration: 120, useNativeDriver: true }).start();
+    if (zoomHideTimer.current) clearTimeout(zoomHideTimer.current);
+    zoomHideTimer.current = setTimeout(() => {
+      Animated.timing(zoomBadgeOpacity, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => setZoomBadgeVisible(false));
+    }, 1400);
+  }
+
+  const pinchGesture = Gesture.Pinch()
+    .onStart(() => {
+      pinchBaseZoom.value = cameraZoom;
+    })
+    .onUpdate((e) => {
+      // Map pinch scale to a zoom delta: scale 1.0 = no change, 2.0 = +0.4, 0.5 = -0.2
+      const newZoom = Math.min(1, Math.max(0, pinchBaseZoom.value + (e.scale - 1) * 0.45));
+      runOnJS(showZoomBadge)(newZoom);
+    });
 
   // Live broadcast state
   const [liveCode, setLiveCode] = useState<string | null>(null);
@@ -1718,6 +1750,7 @@ export default function ScorekeeperScreen() {
   ) : null;
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.root, isLandscape && styles.rootLandscape]}>
       {goLiveSheet}
 
@@ -1776,6 +1809,7 @@ export default function ScorekeeperScreen() {
 
       {/* ── CAMERA SECTION (top half portrait / left half landscape) ── */}
       {/* Keep this View mounted so CameraView never unmounts mid-recording */}
+      <GestureDetector gesture={pinchGesture}>
       <View
         style={[
           isLandscape ? styles.cameraSectionLand : styles.cameraSectionPort,
@@ -1811,6 +1845,7 @@ export default function ScorekeeperScreen() {
             })()]}
             facing={cameraFacing}
             mode="video"
+            zoom={cameraZoom}
             onCameraReady={onCameraReady}
           />
         ) : (
@@ -1953,13 +1988,36 @@ export default function ScorekeeperScreen() {
             )}
           </View>
         )}
+
+        {/* ── Zoom level badge — fades in on pinch, fades out after 1.4 s ── */}
+        {zoomBadgeVisible && (
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 12,
+              alignSelf: 'center',
+              opacity: zoomBadgeOpacity,
+              backgroundColor: 'rgba(0,0,0,0.52)',
+              borderRadius: 20,
+              paddingHorizontal: 14,
+              paddingVertical: 5,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 13, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5 }}>
+              {(1 + cameraZoom * 4).toFixed(1)}×
+            </Text>
+          </Animated.View>
+        )}
       </View>
+      </GestureDetector>
 
       {/* ── STATS SECTION (bottom half portrait / right half landscape) ── */}
       <View style={[styles.statsSection, isLandscape && styles.statsSectionLand]}>
         {statArea}
       </View>
     </View>
+    </GestureHandlerRootView>
   );
 }
 
