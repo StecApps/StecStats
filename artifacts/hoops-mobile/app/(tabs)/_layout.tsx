@@ -18,7 +18,7 @@ function NativeTabLayout() {
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="record">
         <Icon sf={{ default: 'basketball', selected: 'basketball.fill' }} />
-        <Label>Score</Label>
+        <Label>Score/Rec</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="games">
         <Icon sf={{ default: 'list.bullet.rectangle', selected: 'list.bullet.rectangle.fill' }} />
@@ -83,7 +83,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="record"
         options={{
-          title: 'Score',
+          title: 'Score/Rec',
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="basketball.fill" tintColor={color} size={22} />

@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { Trophy, FileUp, Activity, LogOut, Crown, CreditCard, Sparkles, Zap } from "lucide-react";
 import { useUser, useClerk } from "@clerk/react";
-import { useGetBillingStatus } from "@workspace/api-client-react";
+import { useGetBillingStatus, useGetMe } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -29,10 +29,14 @@ function PlanBadge() {
 function UserMenu() {
   const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
+  const { data: meData } = useGetMe();
 
   if (!isLoaded || !user) return null;
 
-  const label = user.primaryEmailAddress?.emailAddress ?? user.username ?? "Account";
+  // Prefer name saved in our DB (set via mobile Profile screen); fall back to
+  // Clerk full name, then email address so something always shows.
+  const dbName = [meData?.firstName, meData?.lastName].filter(Boolean).join(" ");
+  const label = dbName || user.fullName || user.primaryEmailAddress?.emailAddress ?? user.username ?? "Account";
 
   return (
     <div className="flex items-center gap-2 md:gap-3">
