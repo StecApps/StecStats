@@ -130,6 +130,107 @@ describe('Deliberate sign-out (isLoaded=true, isSignedIn=false)', () => {
   });
 });
 
+// ── Case 4a: clearPendingPhotos — first mount, no prior user ──────────────────
+//
+// On first mount there is no previous user, so clearPendingPhotos must not fire
+// even when the initial state is signed-out (isLoaded=true, isSignedIn=false).
+
+describe('clearPendingPhotos — first mount with no prior user', () => {
+  test('clearPendingPhotos is NOT called on the very first mount', async () => {
+    await act(async () => {
+      renderer.create(<Fixture isLoaded={true} isSignedIn={false} userId={null} />);
+    });
+
+    expect(mockClearPendingPhotos).not.toHaveBeenCalled();
+  });
+
+  test('clearPendingPhotos is NOT called when first mount is a fresh sign-in', async () => {
+    await act(async () => {
+      renderer.create(<Fixture isLoaded={true} isSignedIn={true} userId="user_coach1" />);
+    });
+
+    expect(mockClearPendingPhotos).not.toHaveBeenCalled();
+  });
+});
+
+// ── Case 4b: clearPendingPhotos — sign-in then sign-out ───────────────────────
+//
+// After a coach signs in and then signs out, clearPendingPhotos must be called
+// with the first coach's userId — not null and not any subsequent user's ID.
+
+describe('clearPendingPhotos — sign-in then sign-out', () => {
+  test('clearPendingPhotos is called with the signed-out coach userId', async () => {
+    let instance!: renderer.ReactTestRenderer;
+
+    // t=0: coach signs in
+    await act(async () => {
+      instance = renderer.create(
+        <Fixture isLoaded={true} isSignedIn={true} userId="user_coach1" />,
+      );
+    });
+
+    expect(mockClearPendingPhotos).not.toHaveBeenCalled();
+
+    // t=1: coach signs out
+    await act(async () => {
+      instance.update(<Fixture isLoaded={true} isSignedIn={false} userId={null} />);
+    });
+
+    expect(mockClearPendingPhotos).toHaveBeenCalledTimes(1);
+    expect(mockClearPendingPhotos).toHaveBeenCalledWith('user_coach1');
+  });
+
+  test('clearPendingPhotos is NOT called with null or a new user ID', async () => {
+    let instance!: renderer.ReactTestRenderer;
+
+    // t=0: first coach signs in
+    await act(async () => {
+      instance = renderer.create(
+        <Fixture isLoaded={true} isSignedIn={true} userId="user_coach1" />,
+      );
+    });
+
+    // t=1: first coach signs out
+    await act(async () => {
+      instance.update(<Fixture isLoaded={true} isSignedIn={false} userId={null} />);
+    });
+
+    // Confirm it was called once with the right ID, not null or a second userId
+    const calls = mockClearPendingPhotos.mock.calls;
+    expect(calls.length).toBe(1);
+    expect(calls[0][0]).toBe('user_coach1');
+    expect(calls[0][0]).not.toBeNull();
+  });
+
+  test('clearPendingPhotos is called with the first coach ID — not the second — on handoff', async () => {
+    let instance!: renderer.ReactTestRenderer;
+
+    // t=0: first coach signs in
+    await act(async () => {
+      instance = renderer.create(
+        <Fixture isLoaded={true} isSignedIn={true} userId="user_coach1" />,
+      );
+    });
+
+    // t=1: first coach signs out
+    await act(async () => {
+      instance.update(<Fixture isLoaded={true} isSignedIn={false} userId={null} />);
+    });
+
+    const callsAfterSignOut = mockClearPendingPhotos.mock.calls.length;
+    expect(callsAfterSignOut).toBe(1);
+    expect(mockClearPendingPhotos).toHaveBeenCalledWith('user_coach1');
+
+    // t=2: second coach signs in — clearPendingPhotos must NOT fire again
+    await act(async () => {
+      instance.update(<Fixture isLoaded={true} isSignedIn={true} userId="user_coach2" />);
+    });
+
+    expect(mockClearPendingPhotos).toHaveBeenCalledTimes(1); // still only the one call
+    expect(mockClearPendingPhotos).not.toHaveBeenCalledWith('user_coach2');
+  });
+});
+
 // ── Case 4: Full Metro reload sequence ────────────────────────────────────────
 //
 // Simulates the real sequence:
