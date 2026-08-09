@@ -138,6 +138,8 @@ export default function ScorekeeperScreen() {
   // close over their own token so a subsequent attempt's reset can't un-cancel an
   // in-flight attempt.
   const uploadAttemptRef = useRef<{ cancelled: boolean } | null>(null);
+  // Guards against stacking multiple stall alerts if progress stays frozen.
+  const stallAlertActiveRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
   // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
@@ -854,6 +856,50 @@ export default function ScorekeeperScreen() {
           } satisfies PendingUpload)).catch(() => {/* non-fatal */});
 
           setUploadProgress(0);
+          stallAlertActiveRef.current = false;
+
+          // Stall callback: called by uploadVideoFile when real XHR progress
+          // hasn't advanced for ~45 s. Shows a non-blocking alert so the coach
+          // can decide to keep waiting, save without video, or cancel the upload.
+          // Guards against duplicate alerts if progress stays frozen.
+          const onUploadStall = () => {
+            if (stallAlertActiveRef.current) return;
+            if (attemptToken.cancelled) return;
+            stallAlertActiveRef.current = true;
+            Alert.alert(
+              'Upload seems stuck',
+              'Your connection may be slow or interrupted. You can keep waiting, save without video, or cancel.',
+              [
+                {
+                  text: 'Keep waiting',
+                  style: 'cancel',
+                  onPress: () => { stallAlertActiveRef.current = false; },
+                },
+                {
+                  text: 'Save without video',
+                  style: 'default',
+                  onPress: () => {
+                    stallAlertActiveRef.current = false;
+                    attemptToken.cancelled = true;
+                    uploadXhrRef.current?.abort();
+                    uploadXhrRef.current = null;
+                    setUploadProgress(null);
+                    setSaving(false);
+                    doSaveGame(null);
+                  },
+                },
+                {
+                  text: 'Cancel upload',
+                  style: 'destructive',
+                  onPress: () => {
+                    stallAlertActiveRef.current = false;
+                    handleCancelUpload();
+                  },
+                },
+              ],
+            );
+          };
+
           for (let i = 0; i < uris.length; i++) {
             // Scale overall progress: each clip gets an equal slice of 0–90 %
             const segStart = Math.round((i / uris.length) * 90);
@@ -864,6 +910,7 @@ export default function ScorekeeperScreen() {
               (pct) => setUploadProgress(segStart + Math.round((pct / 100) * (segEnd - segStart))),
               uploadXhrRef,
               attemptToken,
+              onUploadStall,
             );
             if (attemptToken.cancelled) return;
             uploadedPaths.push(p);

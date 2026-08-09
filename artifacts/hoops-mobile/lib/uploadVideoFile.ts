@@ -11,12 +11,16 @@
 
 export const UPLOAD_CANCELLED_MSG = 'Upload cancelled';
 
+/** Milliseconds of no real XHR progress before onStall fires. */
+export const UPLOAD_STALL_MS = 45_000;
+
 export async function uploadVideoFile(
   uri: string,
   requestUploadUrlFn: (body: { name: string; size: number; contentType: string }) => Promise<{ uploadURL: string; objectPath: string }>,
   onProgress?: (pct: number) => void,
   xhrRef?: { current: XMLHttpRequest | null },
   cancelToken?: { cancelled: boolean },
+  onStall?: () => void,
 ): Promise<string> {
   const fileResponse = await fetch(uri);
   const blob = await fileResponse.blob();
@@ -62,12 +66,40 @@ export async function uploadVideoFile(
         }, TICK_MS)
       : null;
 
+    // Stall watchdog: if no real XHR progress fires within UPLOAD_STALL_MS,
+    // call onStall so the UI can prompt the coach. The timer resets on every
+    // progress event that reports new bytes, and is cancelled on completion.
+    // On iOS, onprogress can be suppressed entirely — the watchdog still fires
+    // after UPLOAD_STALL_MS of silence, giving the coach an early warning.
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+    const armStallTimer = () => {
+      if (stallTimer !== null) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        stallTimer = null;
+        onStall?.();
+      }, UPLOAD_STALL_MS);
+    };
+    if (onStall) armStallTimer();
+
     const finish = () => {
       if (simulatedTimer !== null) clearInterval(simulatedTimer);
+      if (stallTimer !== null) { clearTimeout(stallTimer); stallTimer = null; }
       if (xhrRef) xhrRef.current = null;
     };
 
+    // Tracks the last real byte count reported by the XHR.  Updated
+    // independently of reportedPct so the stall watchdog resets on any genuine
+    // byte progress — even when the simulated ticker has already pushed
+    // reportedPct above the real percentage.
+    let lastLoadedBytes = -1;
+
     xhr.upload.onprogress = (e) => {
+      // Reset the stall watchdog whenever real bytes advance, regardless of
+      // what the simulated ticker has already reported.
+      if (e.lengthComputable && e.loaded > lastLoadedBytes) {
+        lastLoadedBytes = e.loaded;
+        if (onStall) armStallTimer();
+      }
       if (e.lengthComputable && onProgress) {
         const real = Math.round((e.loaded / e.total) * 100);
         if (real > reportedPct) {

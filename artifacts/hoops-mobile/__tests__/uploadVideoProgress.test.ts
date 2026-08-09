@@ -14,7 +14,7 @@
  *      callbacks after 100 %).
  */
 
-import { uploadVideoFile } from '@/lib/uploadVideoFile';
+import { uploadVideoFile, UPLOAD_STALL_MS } from '@/lib/uploadVideoFile';
 
 // ─── XHR fake ────────────────────────────────────────────────────────────────
 
@@ -356,6 +356,106 @@ test('combined progress for two sequential clips is monotonically non-decreasing
   // No value should be strictly less than 0 or greater than 90 % (the outer
   // loop caps at 90 %; 100 % is set after the loop completes / after concat).
   expect(reported.every((p) => p >= 0 && p <= 90)).toBe(true);
+});
+
+// ─── Stall watchdog tests ─────────────────────────────────────────────────────
+
+test('stall watchdog fires onStall after UPLOAD_STALL_MS with no XHR byte progress', async () => {
+  const onStall = jest.fn();
+
+  const uploadPromise = uploadVideoFile(
+    'file:///game.mp4',
+    fakeRequestUploadUrl,
+    undefined,
+    undefined,
+    undefined,
+    onStall,
+  );
+
+  // Let fetch + presign settle.
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  // Advance just under the stall threshold — onStall must not have fired yet.
+  jest.advanceTimersByTime(UPLOAD_STALL_MS - 1);
+  expect(onStall).not.toHaveBeenCalled();
+
+  // Cross the threshold — onStall must fire exactly once.
+  jest.advanceTimersByTime(2);
+  expect(onStall).toHaveBeenCalledTimes(1);
+
+  // Complete the upload cleanly.
+  currentXhr.complete();
+  await uploadPromise;
+});
+
+test('stall watchdog does NOT fire when real XHR bytes keep advancing below the simulated percentage', async () => {
+  // This is the regression scenario: simulated ticker advances reportedPct
+  // quickly toward 90 %, while real XHR bytes come in slowly but steadily.
+  // The old code only reset the watchdog when real > reportedPct, so ongoing
+  // real progress below the simulated value would spuriously trigger onStall.
+  const onStall = jest.fn();
+
+  const uploadPromise = uploadVideoFile(
+    'file:///game.mp4',
+    fakeRequestUploadUrl,
+    () => {},      // onProgress (simulated ticker runs)
+    undefined,
+    undefined,
+    onStall,
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  // Simulate real byte progress well below the simulated percentage.
+  // Fire a progress event every ~10 s (well within the 45-s window) but with
+  // loaded values that map to only 5–20 % — far below the simulated ~60 %.
+  const TOTAL = 500_000_000;
+  const progressIntervalMs = 10_000;
+  const iterations = Math.floor(UPLOAD_STALL_MS / progressIntervalMs) + 1; // enough to exceed 45 s total
+
+  for (let i = 1; i <= iterations; i++) {
+    // Advance time by just under progressIntervalMs, then fire a real event
+    // with slightly more bytes.  This keeps the watchdog continuously reset.
+    jest.advanceTimersByTime(progressIntervalMs - 1);
+    currentXhr.fireProgress(i * 5_000_000, TOTAL); // ~1 % per event, well below simulated
+  }
+
+  // onStall must never have fired — bytes were advancing on every interval.
+  expect(onStall).not.toHaveBeenCalled();
+
+  // Clean up.
+  currentXhr.complete();
+  await uploadPromise;
+});
+
+test('stall watchdog is cleared on successful completion — onStall does not fire after upload finishes', async () => {
+  const onStall = jest.fn();
+
+  const uploadPromise = uploadVideoFile(
+    'file:///game.mp4',
+    fakeRequestUploadUrl,
+    () => {},
+    undefined,
+    undefined,
+    onStall,
+  );
+
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  // Advance partway through the stall window, then complete.
+  jest.advanceTimersByTime(UPLOAD_STALL_MS / 2);
+  currentXhr.complete();
+  await uploadPromise;
+
+  // Advance past the full stall window after completion — onStall must not fire.
+  jest.advanceTimersByTime(UPLOAD_STALL_MS);
+  expect(onStall).not.toHaveBeenCalled();
 });
 
 test('first progress value of clip 2 is not less than last progress value of clip 1', async () => {
