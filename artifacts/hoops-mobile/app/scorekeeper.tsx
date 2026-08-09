@@ -61,6 +61,7 @@ try {
   // Expo Go — WebRTC unavailable; live video will fall back to score-only
 }
 import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
+import { makeUploadStallHandler } from '@/lib/uploadStallAlert';
 import { fetchIceServers } from '@/lib/fetchIceServers';
 import { drainPendingViewers } from '@/lib/drainPendingViewers';
 
@@ -872,49 +873,16 @@ export default function ScorekeeperScreen() {
           //   • stallFiredOnceRef prevents a second alert after 'Keep waiting' —
           //     the coach has already been warned; re-alerting every 45 s only
           //     increases anxiety without providing new information.
-          const onUploadStall = () => {
-            if (stallAlertActiveRef.current) return;
-            if (stallFiredOnceRef.current) return;
-            if (attemptToken.cancelled) return;
-            stallAlertActiveRef.current = true;
-            Alert.alert(
-              'Upload seems stuck',
-              'Your connection may be slow or interrupted. You can keep waiting, save without video, or cancel.',
-              [
-                {
-                  text: 'Keep waiting',
-                  style: 'cancel',
-                  onPress: () => {
-                    // Latch stallFiredOnceRef so no further stall alerts appear
-                    // for this upload attempt — the coach has already been warned.
-                    stallFiredOnceRef.current = true;
-                    stallAlertActiveRef.current = false;
-                  },
-                },
-                {
-                  text: 'Save without video',
-                  style: 'default',
-                  onPress: () => {
-                    stallAlertActiveRef.current = false;
-                    attemptToken.cancelled = true;
-                    uploadXhrRef.current?.abort();
-                    uploadXhrRef.current = null;
-                    setUploadProgress(null);
-                    setSaving(false);
-                    doSaveGame(null);
-                  },
-                },
-                {
-                  text: 'Cancel upload',
-                  style: 'destructive',
-                  onPress: () => {
-                    stallAlertActiveRef.current = false;
-                    handleCancelUpload();
-                  },
-                },
-              ],
-            );
-          };
+          const onUploadStall = makeUploadStallHandler({
+            stallAlertActiveRef,
+            stallFiredOnceRef,
+            attemptToken,
+            uploadXhrRef,
+            setUploadProgress,
+            setSaving,
+            doSaveGame,
+            handleCancelUpload,
+          });
 
           for (let i = 0; i < uris.length; i++) {
             // Scale overall progress: each clip gets an equal slice of 0–90 %
