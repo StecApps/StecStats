@@ -6,20 +6,24 @@
  * expo-web-browser openAuthSessionAsync can detect the result and close the
  * in-app browser.
  *
+ * The OAuth state is a stateless HMAC-signed token (signed with SESSION_SECRET)
+ * so it survives server restarts. The token carries userId, returnTo, a jti
+ * (unique per request), and a 10-minute expiry.
+ *
  * Scenarios:
- *   1. Happy path: valid nonce + Google returns a refresh token
+ *   1. Happy path: valid state token + Google returns a refresh token
  *      → 302 to hoopsstats://?youtube=connected
  *   2. No refresh token from Google (already granted access)
  *      → 302 to hoopsstats://?youtube=error
  *   3. Missing code or state query param → 400
- *   4. Unknown state nonce               → 400
- *   5. Expired state nonce               → 400
+ *   4. Tampered / unknown state token    → 400
+ *   5. Expired state token (past 10-min TTL) → 400
  *   6. exchangeCode throws               → 302 to hoopsstats://?youtube=error
  *   7. returnTo is validated — an open-redirect URL falls back to "/"
  *
- * The server also issues the nonce via POST /api/auth/youtube/connect-url
- * (exercised in test 8) so we confirm the returned URL carries the nonce that
- * the callback route will later recognise.
+ * The server also issues the state token via POST /api/auth/youtube/connect-url
+ * (exercised in test 8) so we confirm the returned URL carries a valid token
+ * that the callback route will later recognise.
  */
 
 // Set env vars before any imports so modules that read process.env at load
@@ -314,29 +318,29 @@ describe("GET /api/auth/youtube/callback — hoopsstats:// deep-link redirect", 
   });
 
   // -------------------------------------------------------------------------
-  // 7. Expired nonce → 400 (state map TTL is 10 min — simulated by injecting
-  //    an already-expired entry through a fresh connect-url + manual time warp)
-  //    We cannot trivially advance Date.now() for the in-memory map from
-  //    outside the module, so instead we verify a freshly issued nonce is
-  //    consumed (one-time use) by calling the callback twice.
+  // 7. Expired state token → 400
+  //    The HMAC token embeds an `exp` timestamp (Date.now() + 10 min).
+  //    We advance fake timers past the TTL so verifyOAuthState rejects it.
   // -------------------------------------------------------------------------
-  it("returns 400 on the second use of the same nonce (one-time use)", async () => {
+  it("returns 400 when the state token has passed its 10-minute TTL", async () => {
+    // Obtain a real token while time is "normal".
     const { nonce } = await getConnectUrl("hoopsstats://");
     mocks.exchangeCode.mockResolvedValue({ refreshToken: "token" });
 
-    // First call — should succeed (302)
-    const first = await fetch(
-      `${baseUrl}/auth/youtube/callback?code=auth_code&state=${nonce}`,
-      { redirect: "manual" },
-    );
-    expect(first.status).toBe(302);
+    // Advance time by 11 minutes so the embedded exp is in the past.
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(11 * 60 * 1000);
 
-    // Second call with same nonce — nonce was deleted after first use → 400
-    const second = await fetch(
-      `${baseUrl}/auth/youtube/callback?code=auth_code&state=${nonce}`,
-      { redirect: "manual" },
-    );
-    expect(second.status).toBe(400);
+    try {
+      const res = await fetch(
+        `${baseUrl}/auth/youtube/callback?code=auth_code&state=${nonce}`,
+        { redirect: "manual" },
+      );
+      expect(res.status).toBe(400);
+      expect(mocks.exchangeCode).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // -------------------------------------------------------------------------
