@@ -61,7 +61,21 @@ const tokenCache = {
 };
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
+  defaultOptions: {
+    queries: {
+      // Short-circuit retries for auth errors so that 401/403 responses fired
+      // during the Clerk loading window don't get retried and cached as errors.
+      // Once Clerk settles and the user signs in, `queryClient.clear()` (above)
+      // removes those error entries and components re-fetch with a valid token.
+      // Non-auth errors (network flakes, 5xx) still get one retry as before.
+      retry: (failureCount, error: any) => {
+        const status = error?.status ?? error?.response?.status;
+        if (status === 401 || status === 403) return false;
+        return failureCount < 1;
+      },
+      staleTime: 30_000,
+    },
+  },
 });
 
 /** Wires the Clerk session token into the shared API client fetch layer. */
