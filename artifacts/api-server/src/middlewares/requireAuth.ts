@@ -51,16 +51,6 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           }, 'requireAuth: 401 — JWT payload');
         }
       } catch { /* ignore */ }
-      // 2. Call verifyToken directly to capture the exact Clerk error reason
-      try {
-        await clerkClient.verifyToken(token);
-      } catch (verifyErr: any) {
-        req.log?.warn({
-          clerkError: String(verifyErr?.message ?? verifyErr),
-          clerkReason: verifyErr?.reason,
-          clerkAction: verifyErr?.action,
-        }, 'requireAuth: 401 — Clerk verifyToken error');
-      }
     } else {
       req.log?.warn({ hasAuthHeader: !!authHeader }, 'requireAuth: 401 — no Bearer token');
     }
