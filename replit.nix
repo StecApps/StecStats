@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.eas-cli
     pkgs.libxkbcommon
     pkgs.chromium
     pkgs.libGL
