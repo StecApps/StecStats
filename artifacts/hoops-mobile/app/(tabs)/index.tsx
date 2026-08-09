@@ -358,9 +358,54 @@ const secS = StyleSheet.create({
   title: { ...tekoStyle(20), letterSpacing: 2 },
 });
 
+// ─── Compact shooting strip (landscape-only) ─────────────────────────────────
+function CompactShootingStrip({
+  fgMade, fgAtt, threeMade, threeAtt, ftMade, ftAtt,
+}: {
+  fgMade: number; fgAtt: number;
+  threeMade: number; threeAtt: number;
+  ftMade: number; ftAtt: number;
+}) {
+  const c = useColors();
+  const fmt = (made: number, att: number) =>
+    att > 0 ? `${(made / att * 100).toFixed(1)}%` : '—';
+  const cells = [
+    { label: 'FG%',  val: fmt(fgMade, fgAtt),       frac: `${fgMade}/${fgAtt}` },
+    { label: '3P%',  val: fmt(threeMade, threeAtt),  frac: `${threeMade}/${threeAtt}` },
+    { label: 'FT%',  val: fmt(ftMade, ftAtt),        frac: `${ftMade}/${ftAtt}` },
+  ];
+  return (
+    <View style={[cShootS.row, { borderColor: c.border, backgroundColor: c.card, overflow: 'hidden' }]}>
+      <Gloss />
+      {cells.map((cell, i) => (
+        <React.Fragment key={cell.label}>
+          <View style={cShootS.cell}>
+            <Text style={[cShootS.label, { color: c.mutedForeground }]}>{cell.label}</Text>
+            <Text style={[cShootS.value, { color: c.primary }]}>{cell.val}</Text>
+            <Text style={[cShootS.frac, { color: c.mutedForeground }]}>{cell.frac}</Text>
+          </View>
+          {i < cells.length - 1 && (
+            <View style={[cShootS.divider, { backgroundColor: c.border }]} />
+          )}
+        </React.Fragment>
+      ))}
+    </View>
+  );
+}
+const cShootS = StyleSheet.create({
+  row:     { flexDirection: 'row', borderRadius: 14, borderWidth: 1, padding: 12, alignItems: 'center' },
+  cell:    { flex: 1, alignItems: 'center', gap: 2 },
+  label:   { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase' },
+  value:   { ...tekoStyle(28) },
+  frac:    { fontSize: 9, fontFamily: 'Inter_400Regular' },
+  divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 6 },
+});
+
 // ─── Player Dashboard ─────────────────────────────────────────────────────────
 function PlayerDashboard({ player }: { player: any }) {
   const c = useColors();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
   // Local rgba helper keyed to the current palette's primary color
   const primaryRgba = (alpha: number) => hexToRgba(c.primary, alpha);
 
@@ -489,11 +534,10 @@ function PlayerDashboard({ player }: { player: any }) {
   const winRate = summary.games > 0 ? Math.round((summary.wins / summary.games) * 100) : 0;
   const hasPhoto = !!player.photoObjectPath;
 
-  return (
-    <>
-      {/* ── Hero card — outer wrapper carries the orange glow shadow ──── */}
-      <View style={[heroS.cardWrapper, { shadowColor: c.primary }]}>
-      <View style={[heroS.card, { borderColor: primaryRgba(0.65), backgroundColor: c.card }]}>
+  // ── Shared hero card content ──────────────────────────────────────────────
+  const heroCard = (
+    <View style={[heroS.cardWrapper, { shadowColor: c.primary }, isLandscape && heroS.cardWrapperLandscape]}>
+      <View style={[heroS.card, { borderColor: primaryRgba(0.65), backgroundColor: c.card }, isLandscape && heroS.cardLandscape]}>
         {/* Orange glow radiates from the top edge of the hero card */}
         <OrangeGlow primary={c.primary} strength={2.2} />
         {/* Deep ambient fill — bottom half of card glows darker orange */}
@@ -552,7 +596,11 @@ function PlayerDashboard({ player }: { player: any }) {
         <TouchableOpacity onPress={handlePhotoTap} activeOpacity={0.85} style={heroS.avatarOuter}>
           {/* Orange glow ring behind avatar */}
           <View style={[heroS.avatarGlow, { backgroundColor: primaryRgba(0.18), shadowColor: c.primary }]} />
-          <View style={[heroS.avatarRing, { borderColor: c.primary, backgroundColor: primaryRgba(0.12) }]}>
+          <View style={[
+            heroS.avatarRing,
+            { borderColor: c.primary, backgroundColor: primaryRgba(0.12) },
+            isLandscape && heroS.avatarRingLandscape,
+          ]}>
             {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
               <Image
                 source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
@@ -562,7 +610,7 @@ function PlayerDashboard({ player }: { player: any }) {
               />
             ) : (
               <View style={heroS.avatarFallback}>
-                <Text style={[heroS.avatarInitials, { color: c.primary }]}>
+                <Text style={[heroS.avatarInitials, { color: c.primary }, isLandscape && heroS.avatarInitialsLandscape]}>
                   {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
                 </Text>
               </View>
@@ -583,7 +631,7 @@ function PlayerDashboard({ player }: { player: any }) {
         </TouchableOpacity>
 
         {/* Name — lives on the card background, use cardForeground */}
-        <Text style={[heroS.name, { color: c.cardForeground }]}>{player.name.toUpperCase()}</Text>
+        <Text style={[heroS.name, { color: c.cardForeground }, isLandscape && heroS.nameLandscape]}>{player.name.toUpperCase()}</Text>
 
         {/* Season scope pill */}
         <View style={[heroS.scopePill, { borderColor: c.border, backgroundColor: c.muted }]}>
@@ -607,8 +655,12 @@ function PlayerDashboard({ player }: { player: any }) {
           </Text>
         </TouchableOpacity>
       </View>
-      </View>{/* end cardWrapper */}
+    </View>
+  );
 
+  // ── Shared stats column content ────────────────────────────────────────────
+  const statsColumn = (
+    <>
       {/* ── 4 big stat cards ──────────────────────────────────────────── */}
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
         <StatCard label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} total`} />
@@ -621,14 +673,22 @@ function PlayerDashboard({ player }: { player: any }) {
 
       {/* ── Shooting Efficiency ───────────────────────────────────────── */}
       <SectionHeader title="Shooting Efficiency" />
-      <View style={[shootS.card, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
-        <Gloss />
-        <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
-        <View style={[shootS.divider, { backgroundColor: c.border }]} />
-        <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
-        <View style={[shootS.divider, { backgroundColor: c.border }]} />
-        <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
-      </View>
+      {isLandscape ? (
+        <CompactShootingStrip
+          fgMade={fgMade} fgAtt={fgAtt}
+          threeMade={summary.threeMade} threeAtt={summary.threeAttempted}
+          ftMade={summary.ftMade} ftAtt={summary.ftAttempted}
+        />
+      ) : (
+        <View style={[shootS.card, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
+          <Gloss />
+          <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
+          <View style={[shootS.divider, { backgroundColor: c.border }]} />
+          <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
+          <View style={[shootS.divider, { backgroundColor: c.border }]} />
+          <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
+        </View>
+      )}
 
       {/* ── Playmaking & Defense (last) ───────────────────────────────── */}
       <SectionHeader title="Playmaking & Defense" />
@@ -643,6 +703,28 @@ function PlayerDashboard({ player }: { player: any }) {
       <View style={{ height: 32 }} />
     </>
   );
+
+  if (isLandscape) {
+    return (
+      <View style={lsS.row}>
+        {/* Left column: hero card, fixed ~44% of screen width */}
+        <View style={[lsS.heroCol, { width: Math.round(width * 0.44) - 20 }]}>
+          {heroCard}
+        </View>
+        {/* Right column: all stats */}
+        <View style={lsS.statsCol}>
+          {statsColumn}
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      {heroCard}
+      {statsColumn}
+    </>
+  );
 }
 
 const heroS = StyleSheet.create({
@@ -655,6 +737,10 @@ const heroS = StyleSheet.create({
     shadowRadius: 22,
     elevation: 14,
   },
+  // In landscape the wrapper fills the left column — no bottom margin needed
+  cardWrapperLandscape: {
+    marginBottom: 0,
+  },
   card: {
     borderRadius: 20,
     borderWidth: 1.5,
@@ -662,6 +748,11 @@ const heroS = StyleSheet.create({
     paddingVertical: 32,
     paddingHorizontal: 16,
     overflow: 'hidden',
+  },
+  // Tighter vertical padding in landscape so card fits the short screen
+  cardLandscape: {
+    paddingVertical: 18,
+    paddingHorizontal: 14,
   },
   // Horizontal orange→transparent bar along the very top edge
   topBar: {
@@ -689,9 +780,14 @@ const heroS = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center', justifyContent: 'center',
   },
+  // Smaller avatar in landscape to fit the short screen height
+  avatarRingLandscape: {
+    width: 80, height: 80, borderRadius: 40,
+  },
   avatarImg:      { width: '100%', height: '100%' },
   avatarFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { ...tekoStyle(44) },
+  avatarInitialsLandscape: { ...tekoStyle(30) },
   cameraBadge: {
     position: 'absolute', bottom: 0, right: 0,
     width: 28, height: 28, borderRadius: 14,
@@ -699,6 +795,7 @@ const heroS = StyleSheet.create({
     borderWidth: 2,
   },
   name: { ...tekoStyle(54), letterSpacing: 1.5, marginBottom: 8 },
+  nameLandscape: { ...tekoStyle(36), marginBottom: 6 },
   scopePill: {
     borderRadius: 20, borderWidth: 1,
     paddingHorizontal: 14, paddingVertical: 4,
@@ -715,6 +812,25 @@ const heroS = StyleSheet.create({
     paddingVertical: 8,
   },
   shareBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.3 },
+});
+
+// ── Landscape two-column layout ───────────────────────────────────────────────
+const lsS = StyleSheet.create({
+  // Outer row that places hero card and stats side by side
+  row: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  // Left column: fixed width (set inline from screen width), full height of card
+  heroCol: {
+    // width is set inline; keep a flex-shrink:0 so it never collapses
+    flexShrink: 0,
+  },
+  // Right column: grows to fill remaining space
+  statsCol: {
+    flex: 1,
+  },
 });
 
 const shootS = StyleSheet.create({
