@@ -9,6 +9,10 @@ import {
   Alert,
   Linking,
   Platform,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Pressable,
 } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -131,6 +135,36 @@ export default function ProfileScreen() {
   const { data: players } = useListPlayers();
   const { isPremium, isPro } = useSubscription();
 
+  // Edit name state
+  const [editNameVisible, setEditNameVisible] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
+  function openEditName() {
+    setEditFirstName(user?.firstName ?? '');
+    setEditLastName(user?.lastName ?? '');
+    setEditNameVisible(true);
+  }
+
+  async function handleSaveName() {
+    const first = editFirstName.trim();
+    const last = editLastName.trim();
+    if (!first) {
+      Alert.alert('Name required', 'Please enter at least a first name.');
+      return;
+    }
+    setSavingName(true);
+    try {
+      await user?.update({ firstName: first, lastName: last || undefined });
+      setEditNameVisible(false);
+    } catch {
+      Alert.alert('Error', 'Could not update name. Please try again.');
+    } finally {
+      setSavingName(false);
+    }
+  }
+
   // YouTube connection state
   const [ytConnected, setYtConnected] = useState<boolean | null>(null);
   const [ytActionLoading, setYtActionLoading] = useState(false);
@@ -249,12 +283,17 @@ export default function ProfileScreen() {
     >
       {/* Avatar */}
       <View style={styles.avatarSection}>
-        <View style={[styles.avatar, { backgroundColor: colors.primary + '25' }]}>
-          <Text style={[styles.avatarText, { color: colors.primary }]}>{initials}</Text>
-        </View>
-        <Text style={styles.name}>
-          {user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? 'Coach'}
-        </Text>
+        <TouchableOpacity onPress={openEditName} activeOpacity={0.75}>
+          <View style={[styles.avatar, { backgroundColor: colors.primary + '25' }]}>
+            <Text style={[styles.avatarText, { color: colors.primary }]}>{initials}</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={openEditName} activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={styles.name}>
+            {user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? 'Coach'}
+          </Text>
+          <Feather name="edit-2" size={13} color={colors.mutedForeground} />
+        </TouchableOpacity>
         {user?.primaryEmailAddress && (
           <Text style={[styles.email, { color: colors.mutedForeground }]}>
             {user.primaryEmailAddress.emailAddress}
@@ -426,13 +465,13 @@ export default function ProfileScreen() {
       <ProfileRow
         icon="mail-outline"
         label="Contact Support"
-        onPress={() => Linking.openURL('mailto:support@stecstats.com')}
+        onPress={() => Linking.openURL('mailto:sstec@stecstats.com')}
         colors={colors}
       />
       <ProfileRow
         icon="shield-checkmark-outline"
         label="Privacy Policy"
-        onPress={() => Linking.openURL('https://stecstats.com/privacy')}
+        onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/privacy`)}
         colors={colors}
       />
 
@@ -446,9 +485,98 @@ export default function ProfileScreen() {
         colors={colors}
       />
     </ScrollView>
+
+    {/* ── Edit Name Modal ──────────────────────────────────────────────── */}
+    <Modal
+      visible={editNameVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setEditNameVisible(false)}
+    >
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }} onPress={() => setEditNameVisible(false)} />
+        <View style={[editNameStyle.sheet, { backgroundColor: colors.card }]}>
+          <View style={[editNameStyle.handle, { backgroundColor: colors.border }]} />
+          <Text style={[editNameStyle.title, { color: colors.foreground }]}>Edit Name</Text>
+
+          <Text style={[editNameStyle.label, { color: colors.mutedForeground }]}>First name</Text>
+          <TextInput
+            style={[editNameStyle.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+            value={editFirstName}
+            onChangeText={setEditFirstName}
+            placeholder="First name"
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="words"
+            autoFocus
+            returnKeyType="next"
+          />
+
+          <Text style={[editNameStyle.label, { color: colors.mutedForeground }]}>Last name</Text>
+          <TextInput
+            style={[editNameStyle.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+            value={editLastName}
+            onChangeText={setEditLastName}
+            placeholder="Last name (optional)"
+            placeholderTextColor={colors.mutedForeground}
+            autoCapitalize="words"
+            returnKeyType="done"
+            onSubmitEditing={handleSaveName}
+          />
+
+          <TouchableOpacity
+            onPress={handleSaveName}
+            disabled={savingName}
+            activeOpacity={0.8}
+            style={[editNameStyle.saveBtn, { backgroundColor: colors.primary, opacity: savingName ? 0.6 : 1 }]}
+          >
+            {savingName
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={editNameStyle.saveBtnText}>Save</Text>
+            }
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => setEditNameVisible(false)} style={{ alignItems: 'center', paddingVertical: 12 }}>
+            <Text style={{ color: colors.mutedForeground, fontSize: 14, fontFamily: 'Inter_400Regular' }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
     </View>
   );
 }
+
+const editNameStyle = StyleSheet.create({
+  sheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 36,
+  },
+  handle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  title: { fontSize: 18, fontFamily: 'Inter_700Bold', marginBottom: 20, textAlign: 'center' },
+  label: { fontSize: 12, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 16,
+  },
+  saveBtn: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  saveBtnText: { fontSize: 16, fontFamily: 'Inter_700Bold', color: '#fff' },
+});
 
 function makeStyles(colors: any, insets: any) {
   return StyleSheet.create({
