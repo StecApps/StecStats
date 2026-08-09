@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   Share,
   KeyboardAvoidingView,
   Pressable,
+  AppState,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
@@ -301,6 +302,39 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => { cancelled = true; };
   }, [lowlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When the app returns from background after the 60-second GCS signed URL
+  // TTL has elapsed, the player shows a black screen because the URL it holds
+  // has expired.  Detect a long background and fetch a completely fresh stream
+  // token + URL (getToken → fetchStreamUrl) so the new GCS redirect is valid.
+  const lowlightBgAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!lowlightReady) return;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        lowlightBgAtRef.current = Date.now();
+      } else if (nextState === 'active') {
+        const bg = lowlightBgAtRef.current;
+        lowlightBgAtRef.current = null;
+        // Only refresh if we've been backgrounded long enough for the signed
+        // URL to have expired (> 50 s, giving a 10 s safety margin).
+        if (bg !== null && Date.now() - bg > 50_000) {
+          getToken()
+            .then((token) => {
+              if (!token) return;
+              return fetchStreamUrl(gameId, 'lowlight', token);
+            })
+            .then((url) => {
+              if (!url) return;
+              setSignedUrl(url);
+              player.replaceAsync({ uri: url });
+            })
+            .catch(() => {});
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [lowlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!lowlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (lowlight.status === 'ready') {
@@ -451,6 +485,39 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       })
       .catch(() => {});
     return () => { cancelled = true; };
+  }, [highlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When the app returns from background after the 60-second GCS signed URL
+  // TTL has elapsed, the player shows a black screen because the URL it holds
+  // has expired.  Detect a long background and fetch a completely fresh stream
+  // token + URL (getToken → fetchStreamUrl) so the new GCS redirect is valid.
+  const highlightBgAtRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!highlightReady) return;
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        highlightBgAtRef.current = Date.now();
+      } else if (nextState === 'active') {
+        const bg = highlightBgAtRef.current;
+        highlightBgAtRef.current = null;
+        // Only refresh if we've been backgrounded long enough for the signed
+        // URL to have expired (> 50 s, giving a 10 s safety margin).
+        if (bg !== null && Date.now() - bg > 50_000) {
+          getToken()
+            .then((token) => {
+              if (!token) return;
+              return fetchStreamUrl(gameId, 'highlight', token);
+            })
+            .then((url) => {
+              if (!url) return;
+              setSignedUrl(url);
+              player.replaceAsync({ uri: url });
+            })
+            .catch(() => {});
+        }
+      }
+    });
+    return () => sub.remove();
   }, [highlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleYoutubeUpload() {
