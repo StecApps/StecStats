@@ -36,7 +36,7 @@ function UserMenu() {
   // Prefer name saved in our DB (set via mobile Profile screen); fall back to
   // Clerk full name, then email address so something always shows.
   const dbName = [meData?.firstName, meData?.lastName].filter(Boolean).join(" ");
-  const label = dbName || user.fullName || user.primaryEmailAddress?.emailAddress ?? user.username ?? "Account";
+  const label = dbName || user.fullName || (user.primaryEmailAddress?.emailAddress ?? user.username ?? "Account");
 
   return (
     <div className="flex items-center gap-2 md:gap-3">
