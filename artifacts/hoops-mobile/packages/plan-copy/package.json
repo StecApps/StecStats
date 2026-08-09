@@ -2,6 +2,7 @@
   "name": "@workspace/plan-copy",
   "version": "0.0.0",
   "private": true,
+  "main": "index.js",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
