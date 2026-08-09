@@ -76,13 +76,21 @@ function ApiAuthSetup() {
     setAuthTokenGetter(() => getToken());
   }, [getToken]);
 
-  // When auth becomes ready, invalidate all cached queries so they refetch
-  // with the real token. Without this, queries that fired before Clerk
-  // finished loading get cached as 401 errors and never automatically retry
-  // (React Query's staleTime prevents a re-fetch within the stale window).
+  // When auth becomes ready, clear the entire query cache so pre-auth 401
+  // errors don't survive sign-in. `invalidateQueries()` only marks successful
+  // cache entries as stale — it does NOT remove error entries, which React
+  // Query treats differently (errors are not subject to staleTime). On a fresh
+  // install a query can fire before Clerk settles, get retried once (retry:1),
+  // and then the 401 error is cached. That error survives invalidation and
+  // blocks the re-fetch even after a valid token is available.
+  //
+  // `queryClient.clear()` removes every cache entry — both data and errors —
+  // so any component that is still mounted will immediately re-fetch with the
+  // fresh Clerk token. This is safe on sign-in because there is no useful
+  // pre-auth cached data to preserve.
   useEffect(() => {
     if (isSignedIn) {
-      queryClient.invalidateQueries();
+      queryClient.clear();
     }
   }, [isSignedIn]);
 
