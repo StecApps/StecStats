@@ -1,5 +1,6 @@
 import { db, playersTable, gamesTable } from "@workspace/db";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 
 const SEED_PLAYERS = ["Amyra Stec", "Javiana Stec"];
@@ -87,4 +88,22 @@ export async function applyVideoOffsetFixes(): Promise<void> {
       );
     }
   }
+}
+
+/**
+ * Idempotent boot-time schema additions.
+ *
+ * Columns that cannot be created through drizzle-kit push (e.g. due to a
+ * pre-existing type-cast conflict on an unrelated column) are applied here via
+ * raw SQL with `IF NOT EXISTS` guards. Safe to run on every boot — no-ops when
+ * the column already exists.
+ */
+export async function applySchemaAdditions(): Promise<void> {
+  // Added for YouTube highlight upload persistence. The column stores the
+  // YouTube video URL after a successful upload so the mobile app can
+  // re-surface the "View on YouTube" link across remounts.
+  await db.execute(
+    sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_youtube_url text`,
+  );
+  logger.info("Schema additions applied (highlight_youtube_url)");
 }

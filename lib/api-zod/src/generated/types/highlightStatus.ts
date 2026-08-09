@@ -19,4 +19,6 @@ export interface HighlightStatus {
   onFilmMoments?: number | null;
   /** Music track ID used during the most recent reel generation (e.g. "energetic"). Null means no music was used. */
   musicTrack?: string | null;
+  /** YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet. */
+  youtubeUrl?: string | null;
 }

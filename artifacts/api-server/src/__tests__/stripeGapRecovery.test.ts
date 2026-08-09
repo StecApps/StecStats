@@ -90,6 +90,7 @@ vi.mock("../routes/lowlights", () => ({ resumeLowlightJob: vi.fn() }));
 vi.mock("../lib/seed", () => ({
   seedDatabase: vi.fn().mockResolvedValue(undefined),
   applyVideoOffsetFixes: vi.fn().mockResolvedValue(undefined),
+  applySchemaAdditions: vi.fn().mockResolvedValue(undefined),
 }));
 
 // @workspace/db — execute() dequeues from dbResponses so each test controls

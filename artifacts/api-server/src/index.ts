@@ -11,7 +11,7 @@ import { getStripeSync, getStripeCredentials, probeStripeKey } from "./lib/strip
 import { db } from "@workspace/db";
 import { resumeHighlightJob } from "./routes/highlights";
 import { resumeLowlightJob } from "./routes/lowlights";
-import { seedDatabase, applyVideoOffsetFixes } from "./lib/seed";
+import { seedDatabase, applyVideoOffsetFixes, applySchemaAdditions } from "./lib/seed";
 
 const rawPort = process.env["PORT"];
 
@@ -458,6 +458,10 @@ async function boot() {
       : "not configured";
     logger.info(`RevenueCat webhook credentials: ${rcSource}`);
   }
+
+  await applySchemaAdditions().catch((err) => {
+    logger.error({ err }, "Error applying schema additions — column may be missing");
+  });
 
   await Promise.all([
     seedDatabase().catch((err) => {

@@ -77,6 +77,9 @@ export const gamesTable = pgTable("games", {
   // Shareable box-score token — generated on first share request, never
   // included in authenticated game lists. Allows a public read-only box score.
   shareToken: uuid("share_token").unique(),
+  // YouTube video URL after a successful highlight upload. Persisted so the
+  // mobile app can re-surface the "View on YouTube" link after remounting.
+  highlightYoutubeUrl: text("highlight_youtube_url"),
 });
 
 export const insertGameSchema = createInsertSchema(gamesTable).omit({

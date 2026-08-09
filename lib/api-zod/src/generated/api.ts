@@ -697,7 +697,9 @@ export const GetTeamHighlightResponse = zod.object({
   "error": zod.string().nullish(),
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
-  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.')
+  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
+  "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
+  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.')
 })
 
 
@@ -717,7 +719,9 @@ export const GenerateTeamHighlightResponse = zod.object({
   "error": zod.string().nullish(),
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
-  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.')
+  "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
+  "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
+  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.')
 })
 
 
@@ -735,7 +739,8 @@ export const GetGameHighlightResponse = zod.object({
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
-  "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.')
+  "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
+  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.')
 })
 
 
@@ -756,7 +761,8 @@ export const GenerateGameHighlightResponse = zod.object({
   "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
-  "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.')
+  "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
+  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.')
 })
 
 

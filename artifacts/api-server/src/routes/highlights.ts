@@ -99,6 +99,7 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       eligibleMoments,
       onFilmMoments,
       musicTrack: game.highlightMusicTrack ?? null,
+      youtubeUrl: game.highlightYoutubeUrl ?? null,
     }),
   );
 });

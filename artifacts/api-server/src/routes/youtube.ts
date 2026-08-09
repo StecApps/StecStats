@@ -34,6 +34,14 @@ setInterval(() => {
   }
 }, 60_000);
 
+// Returns a validated returnTo value, allowing root-relative web paths and
+// the mobile deep-link scheme so we don't accept open redirects.
+function validateReturnTo(raw: string): string {
+  const isWebPath = raw.startsWith("/") && !raw.startsWith("//");
+  const isMobileDeepLink = /^hoopsstats:\/\//i.test(raw);
+  return isWebPath || isMobileDeepLink ? raw : "/";
+}
+
 // GET /api/auth/youtube/connect
 // Requires auth. Redirects the coach to Google's OAuth consent screen.
 router.get("/auth/youtube/connect", requireAuth, (req, res) => {
@@ -43,7 +51,7 @@ router.get("/auth/youtube/connect", requireAuth, (req, res) => {
   }
 
   const raw = typeof req.query.returnTo === "string" ? req.query.returnTo : "/";
-  const returnTo = raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
+  const returnTo = validateReturnTo(raw);
 
   const nonce = randomUUID();
   oauthStateMap.set(nonce, {
@@ -53,6 +61,30 @@ router.get("/auth/youtube/connect", requireAuth, (req, res) => {
   });
 
   res.redirect(getAuthUrl(nonce));
+});
+
+// POST /api/auth/youtube/connect-url
+// Mobile clients cannot navigate a protected browser redirect while sending a
+// Bearer token. This endpoint authenticates via the Clerk JWT in the
+// Authorization header, creates the OAuth nonce, and returns the Google
+// consent URL so the mobile app can open it in an in-app browser session.
+router.post("/auth/youtube/connect-url", requireAuth, (req, res) => {
+  if (!isYoutubeConfigured()) {
+    res.status(503).json({ error: "YouTube OAuth not configured on this server" });
+    return;
+  }
+
+  const raw = typeof req.body?.returnTo === "string" ? req.body.returnTo : "/";
+  const returnTo = validateReturnTo(raw);
+
+  const nonce = randomUUID();
+  oauthStateMap.set(nonce, {
+    userId: req.appUser!.id,
+    returnTo,
+    expiresAt: Date.now() + 10 * 60 * 1000,
+  });
+
+  res.json({ url: getAuthUrl(nonce) });
 });
 
 // GET /api/auth/youtube/callback
@@ -329,6 +361,12 @@ router.post("/games/:gameId/highlight/upload-youtube", requireAuth, async (req, 
       privacyStatus: privacyStatus as "public" | "unlisted" | "private",
       stream,
     });
+
+    // Persist so the mobile app can re-surface the link after remounting.
+    await db
+      .update(gamesTable)
+      .set({ highlightYoutubeUrl: youtubeUrl })
+      .where(eq(gamesTable.id, gameId));
 
     res.json({ youtubeUrl });
   } catch (err) {

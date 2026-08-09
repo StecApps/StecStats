@@ -9,8 +9,14 @@ import {
   FlatList,
   Platform,
   useWindowDimensions,
+  Modal,
+  TextInput,
+  Alert,
+  Linking,
+  KeyboardAvoidingView,
+  Pressable,
 } from 'react-native';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -374,14 +380,31 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   );
 }
 
+type PrivacyStatus = 'public' | 'unlisted' | 'private';
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
+  const router = useRouter();
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
 
+  // YouTube upload state — seed from the highlight response so the link
+  // persists across remounts (the URL is persisted in the DB on the server).
+  const [uploadModalVisible, setUploadModalVisible] = useState(false);
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadPrivacy, setUploadPrivacy] = useState<PrivacyStatus>('unlisted');
+  const [uploading, setUploading] = useState(false);
+  const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
+
   const player = useVideoPlayer('', () => {});
+
+  // Sync stored YouTube URL from the server whenever the highlight data loads.
+  useEffect(() => {
+    if (highlight?.youtubeUrl && !youtubeUrl) {
+      setYoutubeUrl(highlight.youtubeUrl);
+    }
+  }, [highlight?.youtubeUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll every 3 s while the server is generating the reel
   useEffect(() => {
@@ -407,6 +430,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => clearInterval(t);
   }, [highlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Use the stream-token approach (from the seek-fix task) so the video can
+  // be seeked without freezing — signed object-storage URLs don't support
+  // Range requests reliably in production.
   const highlightReady = highlight?.status === 'ready';
 
   useEffect(() => {
@@ -424,23 +450,195 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [highlightReady, gameId]);
+  }, [highlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleYoutubeUpload() {
+    if (!uploadTitle.trim() || uploading) return;
+    setUploading(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_BASE}/api/games/${gameId}/highlight/upload-youtube`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title: uploadTitle.trim(), privacyStatus: uploadPrivacy }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === 'YOUTUBE_NOT_CONNECTED') {
+          setUploadModalVisible(false);
+          Alert.alert(
+            'YouTube Not Connected',
+            'Connect your YouTube account in the Profile tab first.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Go to Profile', onPress: () => router.push('/(tabs)/profile') },
+            ],
+          );
+        } else if (data.error === 'UPGRADE_REQUIRED') {
+          setUploadModalVisible(false);
+          Alert.alert(
+            'Pro Required',
+            data.message ?? 'YouTube upload requires a Pro subscription.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Upgrade', onPress: () => router.push('/paywall') },
+            ],
+          );
+        } else {
+          Alert.alert('Upload Failed', data.error ?? 'Something went wrong. Please try again.');
+        }
+        return;
+      }
+      setYoutubeUrl(data.youtubeUrl ?? null);
+      setUploadModalVisible(false);
+    } catch {
+      Alert.alert('Upload Failed', 'Something went wrong. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   if (!highlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (highlight.status === 'ready') {
     if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
     return (
-      <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
-        <VideoView
-          player={player}
-          style={{ flex: 1 }}
-          contentFit="contain"
-          allowsFullscreen
-          allowsPictureInPicture
-          nativeControls
-        />
-      </ZoomableVideo>
+      <View style={{ flex: 1, backgroundColor: colors.card }}>
+        {/* ZoomableVideo from the pinch-to-zoom task wraps only the player */}
+        <ZoomableVideo style={{ flex: 1 }}>
+          <VideoView
+            player={player}
+            style={{ flex: 1 }}
+            contentFit="contain"
+            allowsFullscreen
+            allowsPictureInPicture
+            nativeControls
+          />
+        </ZoomableVideo>
+
+        {/* YouTube upload row */}
+        <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          {youtubeUrl ? (
+            <TouchableOpacity
+              onPress={() => Linking.openURL(youtubeUrl)}
+              style={[ytStyle.btn, { backgroundColor: '#FF0000' }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-youtube" size={16} color="#fff" />
+              <Text style={ytStyle.btnText}>View on YouTube</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={() => {
+                setUploadTitle('Highlight Reel');
+                setUploadModalVisible(true);
+              }}
+              style={[ytStyle.btn, { backgroundColor: '#FF0000' }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-youtube" size={16} color="#fff" />
+              <Text style={ytStyle.btnText}>Upload to YouTube</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Upload modal */}
+        <Modal
+          visible={uploadModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => { if (!uploading) setUploadModalVisible(false); }}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+          >
+            <Pressable
+              style={ytStyle.overlay}
+              onPress={() => { if (!uploading) setUploadModalVisible(false); }}
+            >
+              <Pressable
+                style={[ytStyle.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={() => {}}
+              >
+                <Text style={[ytStyle.sheetTitle, { color: colors.foreground }]}>
+                  Upload to YouTube
+                </Text>
+
+                {/* Title input */}
+                <Text style={[ytStyle.fieldLabel, { color: colors.mutedForeground }]}>Title</Text>
+                <TextInput
+                  style={[ytStyle.input, { color: colors.foreground, borderColor: colors.border, backgroundColor: colors.background }]}
+                  value={uploadTitle}
+                  onChangeText={setUploadTitle}
+                  placeholder="Video title"
+                  placeholderTextColor={colors.mutedForeground}
+                  editable={!uploading}
+                  returnKeyType="done"
+                />
+
+                {/* Privacy selector */}
+                <Text style={[ytStyle.fieldLabel, { color: colors.mutedForeground }]}>Privacy</Text>
+                <View style={ytStyle.privacyRow}>
+                  {(['public', 'unlisted', 'private'] as PrivacyStatus[]).map((opt) => (
+                    <TouchableOpacity
+                      key={opt}
+                      onPress={() => { if (!uploading) setUploadPrivacy(opt); }}
+                      style={[
+                        ytStyle.privacyBtn,
+                        {
+                          borderColor: uploadPrivacy === opt ? colors.primary : colors.border,
+                          backgroundColor: uploadPrivacy === opt ? colors.primary + '18' : colors.background,
+                        },
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        ytStyle.privacyBtnText,
+                        { color: uploadPrivacy === opt ? colors.primary : colors.mutedForeground },
+                      ]}>
+                        {PRIVACY_LABELS[opt]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {uploading ? (
+                  <View style={{ alignItems: 'center', paddingVertical: 12, gap: 8 }}>
+                    <ActivityIndicator color={colors.primary} />
+                    <Text style={{ color: colors.mutedForeground, fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center' }}>
+                      Uploading to YouTube — this may take a few minutes…
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={ytStyle.sheetActions}>
+                    <TouchableOpacity
+                      onPress={() => setUploadModalVisible(false)}
+                      style={[ytStyle.actionBtn, { borderColor: colors.border, backgroundColor: colors.background }]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: colors.foreground, fontFamily: 'Inter_500Medium', fontSize: 15 }}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleYoutubeUpload}
+                      disabled={!uploadTitle.trim()}
+                      style={[ytStyle.actionBtn, { backgroundColor: !uploadTitle.trim() ? colors.muted : '#FF0000', borderColor: 'transparent' }]}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ color: !uploadTitle.trim() ? colors.mutedForeground : '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>
+                        Upload
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </Pressable>
+            </Pressable>
+          </KeyboardAvoidingView>
+        </Modal>
+      </View>
     );
   }
 
@@ -504,6 +702,86 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   );
 }
 
+const ytStyle = StyleSheet.create({
+  bar: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    alignItems: 'flex-start',
+  },
+  btn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
+  btnText: {
+    color: '#fff',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  sheet: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 20,
+    gap: 12,
+  },
+  sheetTitle: {
+    fontSize: 17,
+    fontFamily: 'Inter_700Bold',
+    marginBottom: 4,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: -4,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+  },
+  privacyRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  privacyBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  privacyBtnText: {
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+});
 export default function GameDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const gameId = Number(id);
@@ -676,3 +954,9 @@ function makeStyles(colors: any, insets: any) {
     tabText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   });
 }
+
+const PRIVACY_LABELS: Record<PrivacyStatus, string> = {
+  public: 'Public',
+  unlisted: 'Unlisted',
+  private: 'Private',
+};

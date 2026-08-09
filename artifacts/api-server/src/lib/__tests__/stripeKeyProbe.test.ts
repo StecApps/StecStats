@@ -284,6 +284,7 @@ describe("boot-time Stripe probe (NODE_ENV=production)", () => {
     vi.doMock("../../lib/seed", () => ({
       seedDatabase: vi.fn().mockResolvedValue(undefined),
       applyVideoOffsetFixes: vi.fn().mockResolvedValue(undefined),
+      applySchemaAdditions: vi.fn().mockResolvedValue(undefined),
     }));
   }
 
@@ -475,6 +476,7 @@ describe("boot-time Stripe test-key warning (NODE_ENV=development)", () => {
     vi.doMock("../../lib/seed", () => ({
       seedDatabase: vi.fn().mockResolvedValue(undefined),
       applyVideoOffsetFixes: vi.fn().mockResolvedValue(undefined),
+      applySchemaAdditions: vi.fn().mockResolvedValue(undefined),
     }));
   }
 

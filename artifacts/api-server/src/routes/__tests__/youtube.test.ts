@@ -360,9 +360,10 @@ describe("YouTube upload route — token-expiry reconnect flow", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Test 4: successful upload — returns YouTube URL, never touches DB token
+  // Test 4: successful upload — returns YouTube URL, persists it to the game
+  //         row, but never touches the refresh token
   // -------------------------------------------------------------------------
-  it("returns a YouTube URL on a successful upload without touching the DB token", async () => {
+  it("returns a YouTube URL on success, persists it to the game row, and never touches the refresh token", async () => {
     mocks.findFirstGame.mockResolvedValue(makeMockGame());
     mocks.findFirstUser.mockResolvedValue({
       id: 42,
@@ -376,7 +377,16 @@ describe("YouTube upload route — token-expiry reconnect flow", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.youtubeUrl).toBe("https://youtu.be/abc123Video");
 
-    // Token must NOT be touched on success.
-    expect(mocks.dbUpdate).not.toHaveBeenCalled();
+    // The route must persist the YouTube URL to the game row so the mobile
+    // app can re-surface the link after remounting.
+    expect(mocks.dbUpdate).toHaveBeenCalledTimes(1);
+    expect(mocks.dbUpdateSet).toHaveBeenCalledWith({
+      highlightYoutubeUrl: "https://youtu.be/abc123Video",
+    });
+
+    // The refresh token must NOT be cleared on a successful upload — only
+    // auth failures should clear it.
+    const setArg = mocks.dbUpdateSet.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(setArg).not.toHaveProperty("youtubeRefreshToken");
   });
 });

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,13 @@ import { useRouter } from 'expo-router';
 import { useGetBillingStatus, useListTeams, useListPlayers } from '@workspace/api-client-react';
 import { useSubscription } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
+
+const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : '';
 
 function ProfileRow({
   icon,
@@ -119,12 +124,99 @@ export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, getToken } = useAuth();
   const { user } = useUser();
   const { data: billing } = useGetBillingStatus();
   const { data: teams } = useListTeams();
   const { data: players } = useListPlayers();
   const { isPremium, isPro } = useSubscription();
+
+  // YouTube connection state
+  const [ytConnected, setYtConnected] = useState<boolean | null>(null);
+  const [ytActionLoading, setYtActionLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getToken()
+      .then((token) => {
+        if (!token || cancelled) return null;
+        return fetch(`${API_BASE}/api/auth/youtube/status`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      })
+      .then((res) => res?.json())
+      .then((data) => {
+        if (!cancelled && data != null) setYtConnected(data.connected ?? false);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleConnectYoutube() {
+    setYtActionLoading(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not authenticated');
+      const res = await fetch(`${API_BASE}/api/auth/youtube/connect-url`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ returnTo: 'hoopsstats://' }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? 'Server error');
+      }
+      const { url } = await res.json();
+      if (!url) throw new Error('No OAuth URL returned');
+
+      const result = await WebBrowser.openAuthSessionAsync(url, 'hoopsstats://');
+      if (result.type === 'success') {
+        if (result.url.includes('youtube=connected')) {
+          setYtConnected(true);
+        } else {
+          Alert.alert('YouTube Connect', "Couldn't connect YouTube. Please try again.");
+        }
+      }
+      // result.type === 'cancel' means the user dismissed — do nothing
+    } catch (err) {
+      Alert.alert('YouTube Connect', 'Something went wrong. Please try again.');
+    } finally {
+      setYtActionLoading(false);
+    }
+  }
+
+  async function handleDisconnectYoutube() {
+    Alert.alert('Disconnect YouTube', 'Remove your YouTube channel connection?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Disconnect',
+        style: 'destructive',
+        onPress: async () => {
+          setYtActionLoading(true);
+          try {
+            const token = await getToken();
+            if (!token) return;
+            const res = await fetch(`${API_BASE}/api/auth/youtube`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data.error ?? `Server error ${res.status}`);
+            }
+            setYtConnected(false);
+          } catch (err) {
+            Alert.alert('Error', 'Could not disconnect YouTube. Please try again.');
+          } finally {
+            setYtActionLoading(false);
+          }
+        },
+      },
+    ]);
+  }
 
   // On mobile, RevenueCat is the source of truth for active subscriptions.
   // Fall back to the web billing API plan (Stripe) when RC says free, so that
@@ -305,6 +397,28 @@ export default function ProfileScreen() {
             colors={colors}
           />
         </>
+      )}
+
+      {/* YouTube */}
+      <Text style={styles.sectionTitle}>YouTube</Text>
+      {ytConnected === null ? (
+        <ActivityIndicator color={colors.primary} style={{ alignSelf: 'flex-start', marginBottom: 8 }} />
+      ) : ytConnected ? (
+        <ProfileRow
+          icon="logo-youtube"
+          label="YouTube Connected"
+          value={ytActionLoading ? 'Disconnecting…' : 'Tap to disconnect'}
+          onPress={ytActionLoading ? undefined : handleDisconnectYoutube}
+          colors={colors}
+        />
+      ) : (
+        <ProfileRow
+          icon="logo-youtube"
+          label={ytActionLoading ? 'Connecting…' : 'Connect YouTube'}
+          value="Share highlights to your channel"
+          onPress={ytActionLoading ? undefined : handleConnectYoutube}
+          colors={colors}
+        />
       )}
 
       {/* Support & Legal */}
