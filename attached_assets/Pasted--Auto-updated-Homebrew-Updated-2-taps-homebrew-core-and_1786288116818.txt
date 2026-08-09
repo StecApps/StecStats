@@ -1,0 +1,178 @@
+==> Auto-updated Homebrew!
+Updated 2 taps (homebrew/core and homebrew/cask).
+==> New Formulae
+==> Downloading https://formulae.brew.sh/api/formula.jws.json
+honker: SQLite message queue extension
+libyang: YANG data modeling language library
+livebook-cli: Code notebooks for Elixir developers
+network-doctor: Network troubleshooting TUI
+oxvg: Fastest SVG toolchain for optimisation, minification, linting, and actions
+usbtree: Live USB device tree in your terminal
+
+You have 2 outdated formulae installed.
+
+==> Would install 1 formula:
+git
+==> Downloading https://ghcr.io/v2/homebrew/core/git/manifests/2.55.0
+######################################################################### 100.0%
+==> Would install 4 dependencies for git:
+pcre2
+json-c
+libunistring
+gettext
+==> Do you want to proceed with the installation? [y/n]
+==> Fetching downloads for: git
+✔︎ Bottle Manifest json-c (0.19)                     Downloaded    7.2KB/  7.2KB
+✔︎ Bottle Manifest pcre2 (10.47_1)                   Downloaded   11.7KB/ 11.7KB
+✔︎ Bottle Manifest libunistring (1.4.2)              Downloaded    7.3KB/  7.3KB
+✔︎ Bottle Manifest gettext (1.0)                     Downloaded   21.6KB/ 21.6KB
+✔︎ Bottle json-c (0.19)                              Downloaded  106.9KB/106.9KB
+✔︎ Bottle libunistring (1.4.2)                       Downloaded    1.9MB/  1.9MB
+✔︎ Bottle pcre2 (10.47_1)                            Downloaded    2.4MB/  2.4MB
+✔︎ Bottle gettext (1.0)                              Downloaded   10.2MB/ 10.2MB
+✔︎ Bottle git (2.55.0)                               Downloaded   23.0MB/ 23.0MB
+==> Installing dependencies for git: pcre2, json-c, libunistring and gettext
+==> Installing git dependency: pcre2
+==> Pouring pcre2--10.47_1.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/pcre2/10.47_1: 244 files, 7.2MB
+==> Installing git dependency: json-c
+==> Pouring json-c--0.19.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/json-c/0.19: 34 files, 360.5KB
+==> Installing git dependency: libunistring
+==> Pouring libunistring--1.4.2.arm64_tahoe.bottle.tar.gz
+🍺  /opt/homebrew/Cellar/libunistring/1.4.2: 59 files, 5.7MB
+==> Installing git dependency: gettext
+==> Pouring gettext--1.0.arm64_tahoe.bottle.1.tar.gz
+🍺  /opt/homebrew/Cellar/gettext/1.0: 2,499 files, 34.9MB
+==> Installing git
+==> Pouring git--2.55.0.arm64_tahoe.bottle.tar.gz
+==> Caveats
+The Tcl/Tk GUIs (e.g. gitk, git-gui) are now in the `git-gui` formula.
+Subversion interoperability (git-svn) is now in the `git-svn` formula.
+==> Summary
+🍺  /opt/homebrew/Cellar/git/2.55.0: 1,730 files, 63.3MB
+==> Running `brew cleanup git`...
+Disable this behaviour by setting `HOMEBREW_NO_INSTALL_CLEANUP=1`.
+Hide these hints with `HOMEBREW_NO_ENV_HINTS=1` (see `man brew`).
+==> Caveats
+zsh completions and functions have been installed to:
+  /opt/homebrew/share/zsh/site-functions
+==> git
+The Tcl/Tk GUIs (e.g. gitk, git-gui) are now in the `git-gui` formula.
+Subversion interoperability (git-svn) is now in the `git-svn` formula.
+stevenstec@Mac hoops-mobile  % eas build --platform ios --profile production
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+Environment variables loaded from the "production" build profile "env" configuration: APP_ENV, EXPO_PUBLIC_DOMAIN.
+
+Specified value for "ios.bundleIdentifier" in app.json is ignored because an ios directory was detected in the project.
+EAS Build will use the value found in the native code.
+✔ Incremented buildNumber from 3 to 4.
+
+
+ios.buildNumber field in app config is ignored when version source is set to remote, but this value will still be in the manifest available via expo-constants. It's recommended to remove this value from app config.
+✔ Using remote iOS credentials (Expo server)
+
+If you provide your Apple account credentials we will be able to generate all necessary build credentials and fully validate them.
+This is optional, but without Apple account access you will need to provide all the missing values manually and we can only run minimal validation on them.
+✔ Do you want to log in to your Apple account? … yes
+
+› Log in to your Apple Developer account to continue
+✔ Apple ID: … stecleadership24@gmail.com
+› Restoring session /Users/stevenstec/.app-store/auth/stecleadership24@gmail.com/cookie
+› Team STEVEN RAYMOND STEC (76529G6UKL)
+› Provider STEVEN RAYMOND STEC (129253533)
+✔ Logged in Local session
+✔ Bundle identifier registered com.hoopsstats.coach
+✔ Synced capabilities: No updates
+✔ Synced capability identifiers: No updates
+✔ Fetched Apple distribution certificates
+✔ Fetched Apple provisioning profiles
+
+Project Credentials Configuration
+
+Project                   @sstec/hoops-mobile
+Bundle Identifier         com.hoopsstats.coach
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             540DC88B97752E805917038A3625C7C3
+Expiration Date           Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   6 days ago
+                          
+Provisioning Profile      
+Developer Portal ID       5W8NQD6M5V
+Status                    active
+Expiration                Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   8 minutes ago
+                          
+All credentials are ready to build @sstec/hoops-mobile (com.hoopsstats.coach)
+
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+Failed to upload the project tarball to EAS Build
+
+Reason: spawn git ENOENT
+    Error: build command failed.
+stevenstec@Mac hoops-mobile  % export PATH="/opt/homebrew/bin:$PATH"
+eas build --platform ios --profile production
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+Environment variables loaded from the "production" build profile "env" configuration: APP_ENV, EXPO_PUBLIC_DOMAIN.
+
+Specified value for "ios.bundleIdentifier" in app.json is ignored because an ios directory was detected in the project.
+EAS Build will use the value found in the native code.
+✔ Incremented buildNumber from 4 to 5.
+
+
+ios.buildNumber field in app config is ignored when version source is set to remote, but this value will still be in the manifest available via expo-constants. It's recommended to remove this value from app config.
+✔ Using remote iOS credentials (Expo server)
+
+If you provide your Apple account credentials we will be able to generate all necessary build credentials and fully validate them.
+This is optional, but without Apple account access you will need to provide all the missing values manually and we can only run minimal validation on them.
+✔ Do you want to log in to your Apple account? … yes
+
+› Log in to your Apple Developer account to continue
+✔ Apple ID: … stecleadership24@gmail.com
+› Restoring session /Users/stevenstec/.app-store/auth/stecleadership24@gmail.com/cookie
+› Team STEVEN RAYMOND STEC (76529G6UKL)
+› Provider STEVEN RAYMOND STEC (129253533)
+✔ Logged in Local session
+✔ Bundle identifier registered com.hoopsstats.coach
+✔ Synced capabilities: No updates
+✔ Synced capability identifiers: No updates
+✔ Fetched Apple distribution certificates
+✔ Fetched Apple provisioning profiles
+
+Project Credentials Configuration
+
+Project                   @sstec/hoops-mobile
+Bundle Identifier         com.hoopsstats.coach
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             540DC88B97752E805917038A3625C7C3
+Expiration Date           Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   6 days ago
+                          
+Provisioning Profile      
+Developer Portal ID       5W8NQD6M5V
+Status                    active
+Expiration                Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   10 minutes ago
+                          
+All credentials are ready to build @sstec/hoops-mobile (com.hoopsstats.coach)
+
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+Failed to upload the project tarball to EAS Build
+
+Reason: spawn git ENOENT
+    Error: build command failed.
+stevenstec@Mac hoops-mobile  % 
