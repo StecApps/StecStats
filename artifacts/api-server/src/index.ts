@@ -138,6 +138,28 @@ async function initStripe() {
     process.exit(1);
   }
 
+  // One-time cleanup: delete two specific managed-webhook rows that were created
+  // by findOrCreateManagedWebhook during development (before STRIPE_WEBHOOK_BASE_URL
+  // was guarded). Both pointed at stecstats.replit.app; their underlying Stripe
+  // endpoints are already gone (Stripe returns 404), so the rows are dead orphans.
+  // Targeting exact IDs makes this truly one-time: once deleted the WHERE never
+  // matches again, so there is no ongoing runtime cost or risk on future boots.
+  // IDs of the two known stale rows (both pointed at stecstats.replit.app before
+  // STRIPE_WEBHOOK_BASE_URL was guarded). Hardcoded so the WHERE is exact and
+  // the DELETE becomes a no-op after the first successful boot.
+  const staleWebhookResult = await db.execute(
+    sql`DELETE FROM stripe._managed_webhooks
+        WHERE id = ${"we_1TxVHYGL3YM0YNIJQpsGznTE"}
+           OR id = ${"we_1TxY53PvBw5ornXn9AY9CvUc"}
+        RETURNING id, url`,
+  );
+  if (staleWebhookResult.rows.length > 0) {
+    logger.info(
+      { deleted: staleWebhookResult.rows.map((r) => ({ id: r.id, url: r.url })) },
+      `Removed ${staleWebhookResult.rows.length} stale managed webhook row(s) pointing at dev URLs`,
+    );
+  }
+
   const stripeSync = await getStripeSync();
 
   // Only register the managed webhook when STRIPE_WEBHOOK_BASE_URL is

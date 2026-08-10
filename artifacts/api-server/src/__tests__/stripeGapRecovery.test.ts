@@ -130,10 +130,11 @@ function epochHoursAgo(hours: number): number {
   return Math.floor(Date.now() / 1000) - hours * 3600;
 }
 
-/** Standard db.execute responses for the three guards that precede tier 3. */
+/** Standard db.execute responses for the guards that precede tier 3. */
 function preambleResponses() {
   return [
     { rows: [{ tbl: "stripe.accounts" }] }, // schema check
+    { rows: [] },                            // stale-webhook DELETE (no rows to clean up)
     { rows: [{ "1": 1 }] },                  // products non-empty
     { rows: [{ "1": 1 }] },                  // subscriptions non-empty
   ];
@@ -184,6 +185,58 @@ afterEach(() => {
     delete process.env[k];
   }
   delete process.env["STRIPE_SUBSCRIPTION_RECOVERY_HOURS"];
+});
+
+// ---------------------------------------------------------------------------
+// Stale webhook cleanup
+// ---------------------------------------------------------------------------
+describe("initStripe() stale-webhook cleanup", () => {
+  it("logs and no-ops when no stale rows are found", async () => {
+    const { logger } = await import("../lib/logger");
+
+    dbResponses.push(
+      { rows: [{ tbl: "stripe.accounts" }] }, // schema check
+      { rows: [] },                            // stale-webhook DELETE — nothing found
+      { rows: [{ "1": 1 }] },                  // products non-empty
+      { rows: [{ "1": 1 }] },                  // subscriptions non-empty
+      { rows: [] },                            // _sync_status: no row → conservative skip
+    );
+
+    await boot();
+
+    // logger.info should NOT have been called with the stale-row message
+    const infoCalls = (logger.info as ReturnType<typeof vi.fn>).mock.calls;
+    const staleCall = infoCalls.find((args) =>
+      typeof args[1] === "string" && args[1].includes("stale managed webhook"),
+    );
+    expect(staleCall).toBeUndefined();
+  });
+
+  it("logs deleted rows when stale webhook IDs are present", async () => {
+    const { logger } = await import("../lib/logger");
+
+    dbResponses.push(
+      { rows: [{ tbl: "stripe.accounts" }] }, // schema check
+      {                                        // stale-webhook DELETE — two rows removed
+        rows: [
+          { id: "we_1TxVHYGL3YM0YNIJQpsGznTE", url: "https://stecstats.replit.app/api/stripe/webhook" },
+          { id: "we_1TxY53PvBw5ornXn9AY9CvUc", url: "https://stecstats.replit.app/api/stripe/webhook" },
+        ],
+      },
+      { rows: [{ "1": 1 }] },                  // products non-empty
+      { rows: [{ "1": 1 }] },                  // subscriptions non-empty
+      { rows: [] },                            // _sync_status: no row → conservative skip
+    );
+
+    await boot();
+
+    const infoCalls = (logger.info as ReturnType<typeof vi.fn>).mock.calls;
+    const staleCall = infoCalls.find((args) =>
+      typeof args[1] === "string" && args[1].includes("stale managed webhook"),
+    );
+    expect(staleCall).toBeDefined();
+    expect(staleCall?.[1]).toMatch(/Removed 2 stale/);
+  });
 });
 
 // ---------------------------------------------------------------------------
