@@ -86,6 +86,25 @@ if (process.env["NODE_ENV"] === "production") {
   }
 }
 
+// Preflight: CLERK_PROXY_URL must NOT be set in production.
+//
+// The Clerk SDK reads CLERK_PROXY_URL from the environment automatically, even
+// when clerkMiddleware() is called with no options. When the env var is set,
+// the SDK changes the expected JWT issuer to the proxy URL. Mobile Bearer
+// tokens carry iss: https://immortal-swan-47.clerk.accounts.dev (direct Clerk
+// FAPI) — they will never match the proxy URL, so every mobile request gets a
+// 401. Removing proxyUrl from code alone is not enough; the env var must stay
+// absent.
+if (process.env["NODE_ENV"] === "production" && process.env["CLERK_PROXY_URL"]) {
+  console.error(
+    "[FATAL] CLERK_PROXY_URL is set in production. " +
+      "This causes the Clerk SDK to expect JWT iss: <proxyUrl> instead of the " +
+      "direct Clerk FAPI issuer. Every mobile Bearer token will be rejected with " +
+      "401. Remove CLERK_PROXY_URL from production Secrets and redeploy.",
+  );
+  process.exit(1);
+}
+
 // Preflight: STRIPE_WEBHOOK_SECRET must be set in production when using the
 // direct STRIPE_SECRET_KEY path (the preferred and documented production setup).
 // Without it, StripeSync falls back to an empty string for signature
