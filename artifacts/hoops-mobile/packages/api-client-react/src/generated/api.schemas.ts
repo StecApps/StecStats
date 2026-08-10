@@ -238,6 +238,8 @@ export interface Game {
   highlightObjectPath?: string | null;
   highlightStatus?: GameHighlightStatus;
   highlightError?: string | null;
+  /** True when the game has a video that is eligible for a playback proxy but the proxy is not yet ready. Disappears once the proxy build completes. */
+  videoProcessing?: boolean;
   createdAt: string;
   stats: PlayerGameStatLine[];
   events: GameEvent[];

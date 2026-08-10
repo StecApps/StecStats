@@ -299,6 +299,7 @@ export const ListTeamGamesResponseItem = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -362,6 +363,7 @@ export const ListAllGamesResponseItem = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),

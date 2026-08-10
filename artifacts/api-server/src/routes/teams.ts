@@ -32,6 +32,8 @@ import {
   countEligibleMomentsForTeam,
   generateTeamHighlight,
   GENERATOR_VERSION,
+  PROXY_VERSION,
+  MAX_PROXY_BUILD_DURATION_SEC,
 } from "../lib/highlightGenerator";
 
 const router: IRouter = Router();
@@ -223,6 +225,12 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
     highlightObjectPath: game.highlightObjectPath ?? null,
     highlightStatus: game.highlightStatus ?? null,
     highlightError: game.highlightError ?? null,
+    videoProcessing: (() => {
+      if (!game.videoObjectPath) return false;
+      const durSec = (game.videoDurationMs ?? 0) / 1000;
+      if (durSec <= 0 || durSec > MAX_PROXY_BUILD_DURATION_SEC) return false;
+      return !(game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION);
+    })(),
     createdAt: game.createdAt,
     stats: (statsByGame.get(game.id) ?? []).map(({ stat, playerName }) => ({
       playerId: stat.playerId,
@@ -342,6 +350,12 @@ router.get("/games", requireAuth, async (req, res) => {
       highlightObjectPath: game.highlightObjectPath ?? null,
       highlightStatus: game.highlightStatus ?? null,
       highlightError: game.highlightError ?? null,
+      videoProcessing: (() => {
+        if (!game.videoObjectPath) return false;
+        const durSec = (game.videoDurationMs ?? 0) / 1000;
+        if (durSec <= 0 || durSec > MAX_PROXY_BUILD_DURATION_SEC) return false;
+        return !(game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION);
+      })(),
       createdAt: game.createdAt,
       stats: (statsByGame.get(game.id) ?? []).map(({ stat, playerName }) => ({
         playerId: stat.playerId,

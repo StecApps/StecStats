@@ -398,9 +398,27 @@ function GameRow({ item, onDelete, colors, router }: { item: any; onDelete: (id:
           </Text>
         </View>
         <View style={gameRowStyles.rowMid}>
-          <Text style={[gameRowStyles.opponent, { color: colors.foreground }]} numberOfLines={1}>
-            vs {item.opponent}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+            <Text style={[gameRowStyles.opponent, { color: colors.foreground, marginBottom: 0 }]} numberOfLines={1}>
+              vs {item.opponent}
+            </Text>
+            {item.videoProcessing && (
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 3,
+                backgroundColor: 'rgba(255,83,26,0.12)',
+                borderRadius: 6,
+                paddingHorizontal: 5,
+                paddingVertical: 2,
+              }}>
+                <Ionicons name="time-outline" size={10} color={colors.primary} />
+                <Text style={{ fontSize: 9, color: colors.primary, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.3 }}>
+                  Processing
+                </Text>
+              </View>
+            )}
+          </View>
           <Text style={[gameRowStyles.score, { color: colors.mutedForeground }]}>
             {item.teamScore} – {item.opponentScore}
           </Text>
@@ -438,10 +456,24 @@ export default function GamesScreen() {
 
   const { data: teamGames, isLoading: teamGamesLoading, refetch: refetchTeamGames } = useListTeamGames(
     team?.id ?? 0,
-    { query: { enabled: !!team } as any },
+    {
+      query: {
+        enabled: !!team,
+        // Poll every 15 s while any game is still building its playback proxy.
+        // React Query v5 passes the Query object, not the data directly.
+        refetchInterval: (query: any) =>
+          query.state.data?.some((g: any) => g.videoProcessing) ? 15_000 : false,
+      } as any,
+    },
   );
   const { data: allGames, isLoading: allGamesLoading, refetch: refetchAllGames } = useListAllGames(
-    { query: { enabled: selectedTeamIdx === -1 } as any },
+    {
+      query: {
+        enabled: selectedTeamIdx === -1,
+        refetchInterval: (query: any) =>
+          query.state.data?.some((g: any) => g.videoProcessing) ? 15_000 : false,
+      } as any,
+    },
   );
 
   const games = selectedTeamIdx === -1 ? allGames : teamGames;

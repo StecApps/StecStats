@@ -990,6 +990,9 @@ components:
           nullable: true
           enum: [idle, processing, ready, failed]
         highlightError: { type: string, nullable: true }
+        videoProcessing:
+          type: boolean
+          description: True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.
         createdAt: { type: string, format: date-time }
         stats:
           type: array

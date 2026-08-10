@@ -146,7 +146,8 @@ export const GENERATOR_VERSION = 10;
 // v5 = orientation-aware scale: portrait sources use 720×1280 instead of being
 //      squashed into 1280×720 with embedded black bars that make the clip tiny.
 export const PROXY_VERSION = 5;
-// How long each caption stays on screen, centered on its moment.
+
+export const MAX_PROXY_BUILD_DURATION_SEC = 900; // 15 minutes
 const CAPTION_HALF_SECONDS = 2.5;
 
 // Target output dimensions for the reel. Lower resolution = much faster
@@ -1263,7 +1264,6 @@ export function ensureGameProxyInBackground(gameId: number, ownerId: number): vo
     // games skip the playback proxy and the film room streams the raw
     // source instead. (Reel generation never builds the full proxy at all —
     // it works chunk-by-chunk.)
-    const MAX_PROXY_BUILD_DURATION_SEC = 900;
     const durSec = (game.videoDurationMs ?? 0) / 1000;
     if (durSec <= 0 || durSec > MAX_PROXY_BUILD_DURATION_SEC) {
       logger.info(
