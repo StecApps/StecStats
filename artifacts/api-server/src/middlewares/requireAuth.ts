@@ -58,7 +58,8 @@ async function getPemForToken(token: string): Promise<string | null> {
       const kId = typeof j["kid"] === "string" ? j["kid"] : null;
       if (!kId) continue;
       try {
-        const pem = createPublicKey({ key: j as Parameters<typeof createPublicKey>[0], format: "jwk" })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const pem = createPublicKey({ key: j as any, format: "jwk" })
           .export({ type: "spki", format: "pem" }) as string;
         keyMap.set(kId, { pem });
       } catch { /* skip unrecognized key */ }
