@@ -10,6 +10,9 @@ router.get("/users/me", requireAuth, async (req, res) => {
   const user = await db.query.usersTable.findFirst({
     where: eq(usersTable.id, req.appUser!.id),
   });
+  // Disable ETag / 304 so a name change in the DB is never masked by a
+  // cached "Not Modified" response on the client.
+  res.set("Cache-Control", "no-store");
   res.json({
     firstName: user?.firstName ?? null,
     lastName: user?.lastName ?? null,

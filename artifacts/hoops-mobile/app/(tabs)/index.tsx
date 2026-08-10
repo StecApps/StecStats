@@ -843,7 +843,10 @@ const shootS = StyleSheet.create({
 function CoachGreeting() {
   const c = useColors();
   const { user } = useUser();
-  const { data: meData } = useGetMe();
+  // refetchOnMount:'always' forces a background revalidation on every mount so
+  // a DB name change (Profile → Edit Name) is never masked by a stale cache.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: meData } = useGetMe({ query: { refetchOnMount: 'always' } as any });
 
   const hour = new Date().getHours();
   const salutation = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
