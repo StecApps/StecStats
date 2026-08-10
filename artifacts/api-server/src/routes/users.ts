@@ -2,8 +2,30 @@ import { Router } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+import { clerkClient } from "@clerk/express";
 
 const router = Router();
+
+/**
+ * Silently sync our DB-stored firstName/lastName back into Clerk so the
+ * Clerk `user.firstName` fallback in the mobile greeting is also correct.
+ *
+ * We do this fire-and-forget — a failure never blocks the response.
+ */
+async function syncNameToClerk(
+  clerkUserId: string,
+  firstName: string | null | undefined,
+  lastName: string | null | undefined,
+): Promise<void> {
+  try {
+    await clerkClient.users.updateUser(clerkUserId, {
+      firstName: firstName ?? "",
+      lastName: lastName ?? "",
+    });
+  } catch {
+    // Non-fatal — Replit-managed Clerk may reject writes in some configs.
+  }
+}
 
 // GET /api/users/me — return the stored first/last name for the current user
 router.get("/users/me", requireAuth, async (req, res) => {
@@ -21,6 +43,16 @@ router.get("/users/me", requireAuth, async (req, res) => {
     firstName: user?.firstName ?? null,
     lastName: user?.lastName ?? null,
   });
+
+  // Fire-and-forget: keep Clerk's firstName in sync with our DB so that
+  // even the Clerk-fallback path in the mobile greeting shows the right name.
+  if (user?.firstName) {
+    void syncNameToClerk(
+      req.appUser!.clerkUserId,
+      user.firstName,
+      user.lastName,
+    );
+  }
 });
 
 // PATCH /api/users/me — store first/last name
@@ -47,6 +79,13 @@ router.patch("/users/me", requireAuth, async (req, res) => {
     firstName: updated.firstName ?? null,
     lastName: updated.lastName ?? null,
   });
+
+  // Also push the new name into Clerk so the mobile fallback stays correct.
+  void syncNameToClerk(
+    req.appUser!.clerkUserId,
+    updated.firstName,
+    updated.lastName,
+  );
 });
 
 export default router;
