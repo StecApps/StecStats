@@ -94,16 +94,19 @@ app.use(cors({ credentials: true, origin: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Configure Clerk middleware with the proxy URL when running behind a Clerk
-// proxy (production). Without proxyUrl, the middleware expects JWT `iss` to be
-// the direct Clerk FAPI host. But once the proxy sends Clerk-Proxy-Url, Clerk
-// permanently issues all JWTs (including mobile Bearer tokens) with
-// `iss: <proxyUrl>`. Without proxyUrl here, every mobile API call 401s.
-app.use(
-  clerkMiddleware(
-    process.env.CLERK_PROXY_URL ? { proxyUrl: process.env.CLERK_PROXY_URL } : {},
-  ),
-);
+// clerkMiddleware() without proxyUrl — intentional.
+//
+// The mobile app calls Clerk directly (not through clerkProxyMiddleware), so
+// mobile JWTs carry iss: https://immortal-swan-47.clerk.accounts.dev.
+// Setting proxyUrl here tells the SDK to expect iss: <proxyUrl> instead,
+// which causes every mobile Bearer token to be rejected.
+//
+// Web sessions use opaque cookies (not JWTs), so iss verification never runs
+// for them — removing proxyUrl has no effect on the web app.
+//
+// clerkProxyMiddleware() above still forwards browser→Clerk FAPI requests;
+// that is independent of how this middleware verifies incoming tokens.
+app.use(clerkMiddleware());
 
 app.use("/api", router);
 
