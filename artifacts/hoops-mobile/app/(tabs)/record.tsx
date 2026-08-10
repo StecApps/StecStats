@@ -118,12 +118,16 @@ export default function RecordScreen() {
           <>
             {/* Collapsed trigger row */}
             {(teams?.length ?? 0) === 0 && !showNewTeam ? (
-              <View style={[styles.emptyTeam, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Ionicons name="basketball-outline" size={22} color={colors.mutedForeground} />
-                <Text style={[styles.emptyTeamText, { color: colors.mutedForeground }]}>
-                  No teams yet — add one below.
+              <TouchableOpacity
+                onPress={() => setShowNewTeam(true)}
+                activeOpacity={0.75}
+                style={[styles.emptyTeam, { backgroundColor: colors.card, borderColor: colors.primary + '60' }]}
+              >
+                <Ionicons name="add-circle-outline" size={22} color={colors.primary} />
+                <Text style={[styles.emptyTeamText, { color: colors.primary }]}>
+                  Tap to add your first team
                 </Text>
-              </View>
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity
                 onPress={() => { setTeamDropOpen((v) => !v); setShowNewTeam(false); }}

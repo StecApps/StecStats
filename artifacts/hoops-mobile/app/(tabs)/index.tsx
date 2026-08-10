@@ -20,7 +20,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import {
   useListPlayers,
@@ -931,12 +931,22 @@ export default function DashboardScreen() {
     );
   }
 
+  const router = useRouter();
+
   if (!players?.length) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: c.background }]}>
         <Ionicons name="basketball-outline" size={52} color={c.border} />
         <Text style={[styles.emptyTitle, { color: c.foreground }]}>No players yet</Text>
-        <Text style={[styles.emptySub, { color: c.mutedForeground }]}>Add players from the Profile tab to start tracking.</Text>
+        <Text style={[styles.emptySub, { color: c.mutedForeground }]}>Add your roster to start tracking stats.</Text>
+        <TouchableOpacity
+          onPress={() => router.push('/roster')}
+          activeOpacity={0.8}
+          style={[styles.emptyBtn, { backgroundColor: c.primary }]}
+        >
+          <Ionicons name="person-add-outline" size={16} color="#fff" />
+          <Text style={styles.emptyBtnText}>Add Players</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -1053,4 +1063,6 @@ const styles = StyleSheet.create({
   logoBannerImage: { width: '100%', height: 60 },
   emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginTop: 16, marginBottom: 8 },
   emptySub:   { fontSize: 14, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
+  emptyBtn:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 14 },
+  emptyBtnText: { fontSize: 15, fontFamily: 'Inter_700Bold', color: '#fff' },
 });
