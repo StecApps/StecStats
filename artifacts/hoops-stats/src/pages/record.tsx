@@ -32,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, Plus, ArrowLeft, Minus, UserPlus, Check, X, CalendarDays, Video, Circle, Square, Play, Pause, Radio, Copy, Users, ZoomIn, ZoomOut, Aperture, Mic, MicOff, Sparkles, Download, Share2, Crosshair, Home, BarChart2, Music, Youtube } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -356,7 +357,7 @@ export default function RecordGame() {
       }
       await queryClient.invalidateQueries({ queryKey: ["games", gameId] });
       setExistingVideoObjectPath(null);
-      setVideoSignedUrl(null);
+      setStreamVideoUrl(null);
       setTimeout(() => window.location.reload(), 300);
     } catch (err) {
       setRepairError(err instanceof Error ? err.message : "Repair failed");
@@ -587,7 +588,8 @@ export default function RecordGame() {
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
 
   const [existingVideoObjectPath, setExistingVideoObjectPath] = useState<string | null>(null);
-  const [videoSignedUrl, setVideoSignedUrl] = useState<string | null>(null);
+  const [streamVideoUrl, setStreamVideoUrl] = useState<string | null>(null);
+  const [streamProxySkipped, setStreamProxySkipped] = useState<boolean>(false);
   const [events, setEvents] = useState<GameEventEntry[]>([]);
   const [videoOffsetMs, setVideoOffsetMs] = useState<number>(0);
   const [recordingQuality, setRecordingQuality] = useState<"standard" | "high">(
@@ -913,15 +915,23 @@ export default function RecordGame() {
   const [showShotUpgradeNudge, setShowShotUpgradeNudge] = useState(false);
   const [poseModelReady, setPoseModelReady] = useState(false);
 
-  // Fetch a short-lived signed GCS URL so Chrome can play the saved video
-  // directly from GCS (no proxy hop, proper range-request support).
+  // Mint a short-lived stream token so the browser can play the saved video
+  // via authenticated GCS range reads — same endpoint used by the mobile app.
+  // Browsers natively support VP9/WebM so games with proxySkipped=true still play.
   useEffect(() => {
-    if (!gameId || !existingVideoObjectPath) { setVideoSignedUrl(null); return; }
+    if (!gameId || !existingVideoObjectPath) {
+      setStreamVideoUrl(null);
+      setStreamProxySkipped(false);
+      return;
+    }
     let cancelled = false;
-    fetch(`/api/games/${gameId}/video-signed-url`)
+    fetch(`/api/games/${gameId}/stream-token/video`)
       .then(r => r.ok ? r.json() : null)
-      .then((data: { url: string } | null) => {
-        if (!cancelled && data?.url) setVideoSignedUrl(data.url);
+      .then((data: { token: string; proxyReady: boolean; proxySkipped: boolean } | null) => {
+        if (!cancelled && data?.token) {
+          setStreamVideoUrl(`/api/games/${gameId}/stream/video?t=${encodeURIComponent(data.token)}`);
+          setStreamProxySkipped(data.proxySkipped ?? false);
+        }
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -3472,34 +3482,18 @@ export default function RecordGame() {
             </div>
           )}
 
-          {!isRecording && (recordedPreviewUrl || existingVideoObjectPath) && (
+          {/* Fresh recording preview — shown outside tabs as part of the recording workflow */}
+          {!isRecording && recordedPreviewUrl && (
             <div className="space-y-3">
               <video
                 ref={playbackRef}
-                src={recordedPreviewUrl || videoSignedUrl || undefined}
+                src={recordedPreviewUrl}
                 controls
                 playsInline
                 preload="none"
                 onLoadedMetadata={(e) => {
                   const v = e.currentTarget;
                   setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
-                }}
-                onError={(e) => {
-                  const v = e.currentTarget;
-                  const err = v.error;
-                  const codes: Record<number, string> = {
-                    1: "MEDIA_ERR_ABORTED", 2: "MEDIA_ERR_NETWORK",
-                    3: "MEDIA_ERR_DECODE", 4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
-                  };
-                  const msg = err ? `${codes[err.code] ?? `code ${err.code}`}: ${err.message || "(no message)"}` : "unknown error";
-                  console.error("[video error]", msg, v.src);
-                  // Show a visible banner if the game video (not a local blob) fails
-                  if (!recordedPreviewUrl) {
-                    const banner = document.createElement("p");
-                    banner.style.cssText = "color:#f87171;font-size:0.8rem;text-align:center;padding:4px";
-                    banner.textContent = `⚠ Video error: ${msg}`;
-                    v.parentElement?.appendChild(banner);
-                  }
                 }}
                 className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
               />
@@ -3517,28 +3511,6 @@ export default function RecordGame() {
                 videoHalf2StartMs={gameToEdit?.videoHalf2StartMs ?? null}
                 videoHalftimeGapMs={gameToEdit?.videoHalftimeGapMs ?? null}
               />
-              {existingVideoObjectPath && !recordedPreviewUrl && (
-                <div className="max-w-md space-y-1">
-                  <Label className="text-xs text-muted-foreground">
-                    Video offset <span className="font-normal">(seconds to skip at start of recording clock)</span>
-                  </Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={videoOffsetMs > 0 ? Math.round(videoOffsetMs / 1000) : ""}
-                      placeholder="0"
-                      onChange={e => {
-                        const secs = parseInt(e.target.value, 10);
-                        setVideoOffsetMs(isNaN(secs) || secs <= 0 ? 0 : secs * 1000);
-                      }}
-                      className="w-28 h-8 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
-                    <span className="text-xs text-muted-foreground">sec — use this when the video covers only part of the game</span>
-                  </div>
-                </div>
-              )}
               <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" onClick={startRecording}>
                   <Circle className="w-4 h-4 mr-2 text-red-500" /> Record New Video
@@ -3547,60 +3519,6 @@ export default function RecordGame() {
                   <X className="w-4 h-4 mr-2" /> Discard Video
                 </Button>
               </div>
-              {existingVideoObjectPath && !recordedPreviewUrl && gameId && (
-                <div className="pt-1 space-y-1">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <p className="text-xs text-muted-foreground">
-                      Video not playing correctly?{" "}
-                      <button
-                        type="button"
-                        className="underline text-primary disabled:opacity-50"
-                        onClick={() => handleRepairVideo()}
-                        disabled={isRepairing}
-                      >
-                        {isRepairing ? "Repairing… (may take a few minutes)" : "Repair video"}
-                      </button>
-                    </p>
-                    <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
-                      <button
-                        type="button"
-                        className={`px-2 py-0.5 ${repairQuality === "original" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                        onClick={() => setRepairQuality("original")}
-                      >
-                        Original quality
-                      </button>
-                      <button
-                        type="button"
-                        className={`px-2 py-0.5 ${repairQuality === "720p" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-                        onClick={() => setRepairQuality("720p")}
-                      >
-                        720p
-                      </button>
-                    </div>
-                  </div>
-                  <details className="text-xs text-muted-foreground">
-                    <summary className="cursor-pointer select-none">Re-repair from original source</summary>
-                    <div className="mt-1 flex gap-2 items-center">
-                      <input
-                        type="text"
-                        value={repairSourcePath}
-                        onChange={e => setRepairSourcePath(e.target.value)}
-                        placeholder="/objects/uploads/1/original-uuid"
-                        className="flex-1 border border-border rounded px-2 py-0.5 bg-background text-xs font-mono"
-                      />
-                      <button
-                        type="button"
-                        className="underline text-primary disabled:opacity-50 whitespace-nowrap"
-                        disabled={isRepairing || !repairSourcePath.startsWith("/objects/")}
-                        onClick={() => handleRepairVideo(repairSourcePath)}
-                      >
-                        Re-repair
-                      </button>
-                    </div>
-                  </details>
-                  {repairError && <p className="text-xs text-destructive">{repairError}</p>}
-                </div>
-              )}
               <p className="text-xs text-muted-foreground">Keep this video to save it with the game, or discard it to save your stats only.</p>
             </div>
           )}
@@ -3721,318 +3639,469 @@ export default function RecordGame() {
             </div>
           )}
 
+          {/* Saved-game tabbed view: Video tab (stream-token player) + Highlights tab */}
           {isEditing && existingVideoObjectPath && !recordedPreviewUrl && (
-            <div className="space-y-3">
-            <div className="max-w-md rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-primary" />
-                <span className="font-display font-bold uppercase tracking-wide text-foreground">Highlight Reel</span>
-              </div>
+            <Tabs defaultValue="video">
+              <TabsList>
+                <TabsTrigger value="video" className="gap-1.5">
+                  <Video className="w-4 h-4" /> Video
+                </TabsTrigger>
+                <TabsTrigger value="highlights" className="gap-1.5">
+                  <Sparkles className="w-4 h-4" /> Highlights
+                </TabsTrigger>
+              </TabsList>
 
-              {highlight?.onFilmMoments != null && highlight.onFilmMoments < highlight.eligibleMoments && (
-                <p className="text-xs rounded-md bg-amber-500/10 text-amber-400 px-3 py-2">
-                  The recording ended before the game did — only {highlight.onFilmMoments} of {highlight.eligibleMoments} highlight
-                  moment{highlight.eligibleMoments === 1 ? "" : "s"} {highlight.onFilmMoments === 1 ? "is" : "are"} on film.
-                  The rest happened after the video stopped and can't be in the reel.
-                </p>
-              )}
-
-              {highlight && highlight.eligibleMoments === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Tag some made shots, rebounds, assists, steals or blocks during the game to build a highlight reel.
-                </p>
-              ) : highlight?.status === "processing" ? (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" /> {highlightStageText}
+              {/* ── Video tab ─────────────────────────────────────────────── */}
+              <TabsContent value="video" className="space-y-3 mt-4">
+                {streamProxySkipped && (
+                  <p className="rounded-md bg-blue-500/10 text-blue-400 px-3 py-2 text-sm">
+                    This recording is too long for the iOS app to optimize — it plays natively here in your browser.
                   </p>
-                  <Progress value={highlightProgressPct} />
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">This can take a minute — feel free to keep tapping stats while it builds.</p>
-                    <button
-                      onClick={handleCancelHighlight}
-                      className="text-xs text-muted-foreground underline underline-offset-2 shrink-0 hover:text-foreground transition-colors"
-                    >
-                      Cancel
-                    </button>
+                )}
+                {streamVideoUrl ? (
+                  <video
+                    ref={playbackRef}
+                    src={streamVideoUrl}
+                    controls
+                    playsInline
+                    preload="none"
+                    onLoadedMetadata={(e) => {
+                      const v = e.currentTarget;
+                      setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
+                    }}
+                    onError={(e) => {
+                      const v = e.currentTarget;
+                      const err = v.error;
+                      const codes: Record<number, string> = {
+                        1: "MEDIA_ERR_ABORTED", 2: "MEDIA_ERR_NETWORK",
+                        3: "MEDIA_ERR_DECODE", 4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
+                      };
+                      const msg = err ? `${codes[err.code] ?? `code ${err.code}`}: ${err.message || "(no message)"}` : "unknown error";
+                      console.error("[video error]", msg, v.src);
+                      const banner = document.createElement("p");
+                      banner.style.cssText = "color:#f87171;font-size:0.8rem;text-align:center;padding:4px";
+                      banner.textContent = `⚠ Video error: ${msg}`;
+                      v.parentElement?.appendChild(banner);
+                    }}
+                    className="block w-auto max-w-full max-h-[70vh] mx-auto rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground justify-center">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading video…
                   </div>
-                </div>
-              ) : highlight?.status === "ready" && highlight.highlightObjectPath ? (
-                <div className="space-y-3">
-                  <div className="relative inline-block w-auto max-w-full mx-auto">
-                    <video
-                      src={videoObjectSrc(highlight.highlightObjectPath)}
-                      controls
-                      playsInline
-                      preload="none"
-                      className="block w-auto max-w-full max-h-[70vh] rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
-                    />
-                    <a
-                      href="https://stecstats.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="absolute top-2 right-2 flex items-center gap-0.5 opacity-75 hover:opacity-100 transition-opacity drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
-                    >
-                      <img src="/logo.png" alt="StecStats" className="h-6 w-auto object-contain" />
-                      <span className="text-white font-bold text-[11px] leading-none">.com</span>
-                    </a>
-                  </div>
+                )}
+                {reviewIsPortrait && (
+                  <p className="text-xs text-muted-foreground">
+                    Portrait clip — will show with black bars when watched on a landscape screen.
+                  </p>
+                )}
+                <FilmRoom
+                  videoRef={playbackRef}
+                  events={events}
+                  players={players ?? []}
+                  videoOffsetMs={videoOffsetMs}
+                  videoDurationMs={gameToEdit?.videoDurationMs ?? null}
+                  videoHalf2StartMs={gameToEdit?.videoHalf2StartMs ?? null}
+                  videoHalftimeGapMs={gameToEdit?.videoHalftimeGapMs ?? null}
+                />
+                <div className="max-w-md space-y-1">
+                  <Label className="text-xs text-muted-foreground">
+                    Video offset <span className="font-normal">(seconds to skip at start of recording clock)</span>
+                  </Label>
                   <div className="flex items-center gap-2">
-                    <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-xs text-muted-foreground">Music</span>
-                    <MusicTrackSelector value={highlightMusicTrack} onChange={setHighlightMusicTrack} />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button type="button" onClick={handleShareHighlight} disabled={isPreparingShare}>
-                      {isPreparingShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
-                    </Button>
-                    <Button type="button" variant="outline" onClick={handleDownloadHighlight}>
-                      <Download className="w-4 h-4 mr-2" /> Download
-                    </Button>
-                    {isPro && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleUploadToYoutube}
-                        disabled={isYoutubeConnected === null}
-                      >
-                        <Youtube className="w-4 h-4 mr-2" />
-                        {isYoutubeConnected ? "YouTube" : "Connect YouTube"}
-                      </Button>
-                    )}
-                    <Button type="button" variant="ghost" onClick={handleGenerateHighlight} disabled={isGeneratingHighlight}>
-                      {isGeneratingHighlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                      Regenerate
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Music className="w-3 h-3 shrink-0" />
-                    Generated with: <span className="font-medium">{musicTrackLabel(highlightLastUsedTrack)}</span>
-                  </p>
-                  {isPro && (
-                    <Dialog
-                      open={isYoutubeDialogOpen}
-                      onOpenChange={(open) => {
-                        if (!isUploadingToYoutube) setIsYoutubeDialogOpen(open);
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={videoOffsetMs > 0 ? Math.round(videoOffsetMs / 1000) : ""}
+                      placeholder="0"
+                      onChange={e => {
+                        const secs = parseInt(e.target.value, 10);
+                        setVideoOffsetMs(isNaN(secs) || secs <= 0 ? 0 : secs * 1000);
                       }}
-                    >
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Upload to YouTube</DialogTitle>
-                        </DialogHeader>
-                        {youtubeVideoUrl ? (
-                          <div className="space-y-3">
-                            <p className="text-sm text-muted-foreground">Uploaded successfully!</p>
-                            <a
-                              href={youtubeVideoUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary underline text-sm break-all block"
-                            >
-                              {youtubeVideoUrl}
-                            </a>
-                          </div>
-                        ) : (
-                          <div className="space-y-4 pt-1">
-                            <div className="flex justify-end">
-                              <button
-                                type="button"
-                                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                                onClick={handleDisconnectYoutube}
-                                disabled={isUploadingToYoutube}
-                              >
-                                Switch account
-                              </button>
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label htmlFor="yt-title">Title</Label>
-                              <Input
-                                id="yt-title"
-                                value={youtubeTitle}
-                                onChange={(e) => setYoutubeTitle(e.target.value)}
-                                maxLength={100}
-                                disabled={isUploadingToYoutube}
-                              />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label>Privacy</Label>
-                              <Select
-                                value={youtubePrivacy}
-                                onValueChange={(v) => setYoutubePrivacy(v as "public" | "unlisted" | "private")}
-                                disabled={isUploadingToYoutube}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="unlisted">Unlisted (link-only)</SelectItem>
-                                  <SelectItem value="public">Public</SelectItem>
-                                  <SelectItem value="private">Private</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            {isUploadingToYoutube && (
-                              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                Uploading to YouTube — this may take a few minutes for large videos…
-                              </p>
-                            )}
-                          </div>
-                        )}
-                        <DialogFooter>
-                          {youtubeVideoUrl ? (
-                            <Button type="button" onClick={() => setIsYoutubeDialogOpen(false)}>
-                              Done
-                            </Button>
-                          ) : (
-                            <>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setIsYoutubeDialogOpen(false)}
-                                disabled={isUploadingToYoutube}
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                type="button"
-                                onClick={handleConfirmYoutubeUpload}
-                                disabled={isUploadingToYoutube || !youtubeTitle.trim()}
-                              >
-                                {isUploadingToYoutube ? (
-                                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Uploading…</>
-                                ) : (
-                                  "Upload to YouTube"
-                                )}
-                              </Button>
-                            </>
-                          )}
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Turn this game into one shareable clip of only the best plays{highlight ? ` — ${highlight.eligibleMoments} moment${highlight.eligibleMoments === 1 ? "" : "s"} found` : ""}.
-                  </p>
-                  {highlight?.status === "failed" && highlight.error && (
-                    <p className="text-sm text-destructive">{highlight.error}</p>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                    <span className="text-xs text-muted-foreground">Music</span>
-                    <MusicTrackSelector value={highlightMusicTrack} onChange={setHighlightMusicTrack} />
+                      className="w-28 h-8 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <span className="text-xs text-muted-foreground">sec — use this when the video covers only part of the game</span>
                   </div>
-                  <Button type="button" onClick={handleGenerateHighlight} disabled={isGeneratingHighlight}>
-                    {isGeneratingHighlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                    {highlight?.status === "failed" ? "Try Again" : "Generate Highlight Reel"}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" onClick={startRecording}>
+                    <Circle className="w-4 h-4 mr-2 text-red-500" /> Record New Video
+                  </Button>
+                  <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={discardVideo}>
+                    <X className="w-4 h-4 mr-2" /> Discard Video
                   </Button>
                 </div>
-              )}
-            </div>
+                {gameId && (
+                  <div className="pt-1 space-y-1">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <p className="text-xs text-muted-foreground">
+                        Video not playing correctly?{" "}
+                        <button
+                          type="button"
+                          className="underline text-primary disabled:opacity-50"
+                          onClick={() => handleRepairVideo()}
+                          disabled={isRepairing}
+                        >
+                          {isRepairing ? "Repairing… (may take a few minutes)" : "Repair video"}
+                        </button>
+                      </p>
+                      <div className="flex rounded-md border border-border overflow-hidden text-xs font-medium">
+                        <button
+                          type="button"
+                          className={`px-2 py-0.5 ${repairQuality === "original" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                          onClick={() => setRepairQuality("original")}
+                        >
+                          Original quality
+                        </button>
+                        <button
+                          type="button"
+                          className={`px-2 py-0.5 ${repairQuality === "720p" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                          onClick={() => setRepairQuality("720p")}
+                        >
+                          720p
+                        </button>
+                      </div>
+                    </div>
+                    <details className="text-xs text-muted-foreground">
+                      <summary className="cursor-pointer select-none">Re-repair from original source</summary>
+                      <div className="mt-1 flex gap-2 items-center">
+                        <input
+                          type="text"
+                          value={repairSourcePath}
+                          onChange={e => setRepairSourcePath(e.target.value)}
+                          placeholder="/objects/uploads/1/original-uuid"
+                          className="flex-1 border border-border rounded px-2 py-0.5 bg-background text-xs font-mono"
+                        />
+                        <button
+                          type="button"
+                          className="underline text-primary disabled:opacity-50 whitespace-nowrap"
+                          disabled={isRepairing || !repairSourcePath.startsWith("/objects/")}
+                          onClick={() => handleRepairVideo(repairSourcePath)}
+                        >
+                          Re-repair
+                        </button>
+                      </div>
+                    </details>
+                    {repairError && <p className="text-xs text-destructive">{repairError}</p>}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">Keep this video to save it with the game, or discard it to save your stats only.</p>
+              </TabsContent>
 
-            {isPro && (
-              <div className="max-w-md rounded-lg border border-orange-500/30 bg-orange-500/5 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <BarChart2 className="w-5 h-5 text-orange-400" />
-                  <span className="font-display font-bold uppercase tracking-wide text-foreground">Lowlight Reel</span>
-                  <span className="text-xs text-muted-foreground font-normal normal-case">— misses &amp; turnovers</span>
+              {/* ── Highlights tab ────────────────────────────────────────── */}
+              <TabsContent value="highlights" className="space-y-3 mt-4">
+                <div className="max-w-md rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-primary" />
+                    <span className="font-display font-bold uppercase tracking-wide text-foreground">Highlight Reel</span>
+                  </div>
+
+                  {highlight?.onFilmMoments != null && highlight.onFilmMoments < highlight.eligibleMoments && (
+                    <p className="text-xs rounded-md bg-amber-500/10 text-amber-400 px-3 py-2">
+                      The recording ended before the game did — only {highlight.onFilmMoments} of {highlight.eligibleMoments} highlight
+                      moment{highlight.eligibleMoments === 1 ? "" : "s"} {highlight.onFilmMoments === 1 ? "is" : "are"} on film.
+                      The rest happened after the video stopped and can't be in the reel.
+                    </p>
+                  )}
+
+                  {highlight && highlight.eligibleMoments === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Tag some made shots, rebounds, assists, steals or blocks during the game to build a highlight reel.
+                    </p>
+                  ) : highlight?.status === "processing" ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin" /> {highlightStageText}
+                      </p>
+                      <Progress value={highlightProgressPct} />
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-muted-foreground">This can take a minute — feel free to keep tapping stats while it builds.</p>
+                        <button
+                          onClick={handleCancelHighlight}
+                          className="text-xs text-muted-foreground underline underline-offset-2 shrink-0 hover:text-foreground transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : highlight?.status === "ready" && highlight.highlightObjectPath ? (
+                    <div className="space-y-3">
+                      <div className="relative inline-block w-auto max-w-full mx-auto">
+                        <video
+                          src={videoObjectSrc(highlight.highlightObjectPath)}
+                          controls
+                          playsInline
+                          preload="none"
+                          className="block w-auto max-w-full max-h-[70vh] rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
+                        />
+                        <a
+                          href="https://stecstats.com"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-2 right-2 flex items-center gap-0.5 opacity-75 hover:opacity-100 transition-opacity drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
+                        >
+                          <img src="/logo.png" alt="StecStats" className="h-6 w-auto object-contain" />
+                          <span className="text-white font-bold text-[11px] leading-none">.com</span>
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground">Music</span>
+                        <MusicTrackSelector value={highlightMusicTrack} onChange={setHighlightMusicTrack} />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="button" onClick={handleShareHighlight} disabled={isPreparingShare}>
+                          {isPreparingShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
+                        </Button>
+                        <Button type="button" variant="outline" onClick={handleDownloadHighlight}>
+                          <Download className="w-4 h-4 mr-2" /> Download
+                        </Button>
+                        {isPro && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleUploadToYoutube}
+                            disabled={isYoutubeConnected === null}
+                          >
+                            <Youtube className="w-4 h-4 mr-2" />
+                            {isYoutubeConnected ? "YouTube" : "Connect YouTube"}
+                          </Button>
+                        )}
+                        <Button type="button" variant="ghost" onClick={handleGenerateHighlight} disabled={isGeneratingHighlight}>
+                          {isGeneratingHighlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                          Regenerate
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Music className="w-3 h-3 shrink-0" />
+                        Generated with: <span className="font-medium">{musicTrackLabel(highlightLastUsedTrack)}</span>
+                      </p>
+                      {isPro && (
+                        <Dialog
+                          open={isYoutubeDialogOpen}
+                          onOpenChange={(open) => {
+                            if (!isUploadingToYoutube) setIsYoutubeDialogOpen(open);
+                          }}
+                        >
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Upload to YouTube</DialogTitle>
+                            </DialogHeader>
+                            {youtubeVideoUrl ? (
+                              <div className="space-y-3">
+                                <p className="text-sm text-muted-foreground">Uploaded successfully!</p>
+                                <a
+                                  href={youtubeVideoUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-primary underline text-sm break-all block"
+                                >
+                                  {youtubeVideoUrl}
+                                </a>
+                              </div>
+                            ) : (
+                              <div className="space-y-4 pt-1">
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                                    onClick={handleDisconnectYoutube}
+                                    disabled={isUploadingToYoutube}
+                                  >
+                                    Switch account
+                                  </button>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label htmlFor="yt-title">Title</Label>
+                                  <Input
+                                    id="yt-title"
+                                    value={youtubeTitle}
+                                    onChange={(e) => setYoutubeTitle(e.target.value)}
+                                    maxLength={100}
+                                    disabled={isUploadingToYoutube}
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Privacy</Label>
+                                  <Select
+                                    value={youtubePrivacy}
+                                    onValueChange={(v) => setYoutubePrivacy(v as "public" | "unlisted" | "private")}
+                                    disabled={isUploadingToYoutube}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="unlisted">Unlisted (link-only)</SelectItem>
+                                      <SelectItem value="public">Public</SelectItem>
+                                      <SelectItem value="private">Private</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {isUploadingToYoutube && (
+                                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    Uploading to YouTube — this may take a few minutes for large videos…
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            <DialogFooter>
+                              {youtubeVideoUrl ? (
+                                <Button type="button" onClick={() => setIsYoutubeDialogOpen(false)}>
+                                  Done
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setIsYoutubeDialogOpen(false)}
+                                    disabled={isUploadingToYoutube}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    onClick={handleConfirmYoutubeUpload}
+                                    disabled={isUploadingToYoutube || !youtubeTitle.trim()}
+                                  >
+                                    {isUploadingToYoutube ? (
+                                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Uploading…</>
+                                    ) : (
+                                      "Upload to YouTube"
+                                    )}
+                                  </Button>
+                                </>
+                              )}
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">
+                        Turn this game into one shareable clip of only the best plays{highlight ? ` — ${highlight.eligibleMoments} moment${highlight.eligibleMoments === 1 ? "" : "s"} found` : ""}.
+                      </p>
+                      {highlight?.status === "failed" && highlight.error && (
+                        <p className="text-sm text-destructive">{highlight.error}</p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-xs text-muted-foreground">Music</span>
+                        <MusicTrackSelector value={highlightMusicTrack} onChange={setHighlightMusicTrack} />
+                      </div>
+                      <Button type="button" onClick={handleGenerateHighlight} disabled={isGeneratingHighlight}>
+                        {isGeneratingHighlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                        {highlight?.status === "failed" ? "Try Again" : "Generate Highlight Reel"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
-                {lowlight?.onFilmMoments != null && lowlight.onFilmMoments < lowlight.eligibleMoments && (
-                  <p className="text-xs rounded-md bg-amber-500/10 text-amber-400 px-3 py-2">
-                    The recording ended before the game did — only {lowlight.onFilmMoments} of {lowlight.eligibleMoments} lowlight
-                    moment{lowlight.eligibleMoments === 1 ? "" : "s"} {lowlight.onFilmMoments === 1 ? "is" : "are"} on film.
-                    The rest happened after the video stopped and can't be in the reel.
-                  </p>
-                )}
+                {isPro && (
+                  <div className="max-w-md rounded-lg border border-orange-500/30 bg-orange-500/5 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <BarChart2 className="w-5 h-5 text-orange-400" />
+                      <span className="font-display font-bold uppercase tracking-wide text-foreground">Lowlight Reel</span>
+                      <span className="text-xs text-muted-foreground font-normal normal-case">— misses &amp; turnovers</span>
+                    </div>
 
-                {lowlight && lowlight.eligibleMoments === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Tag missed shots or turnovers during the game to build a lowlight reel for review.
-                  </p>
-                ) : lowlight?.status === "processing" ? (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" /> {lowlightStageText}
-                    </p>
-                    <Progress value={lowlightProgressPct} />
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground">Building your lowlight reel — this can take a minute.</p>
-                      <button
-                        onClick={handleCancelLowlight}
-                        className="text-xs text-muted-foreground underline underline-offset-2 shrink-0 hover:text-foreground transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : lowlight?.status === "ready" && lowlight.lowlightObjectPath ? (
-                  <div className="space-y-3">
-                    <div className="relative inline-block w-auto max-w-full mx-auto">
-                      <video
-                        src={videoObjectSrc(lowlight.lowlightObjectPath)}
-                        controls
-                        playsInline
-                        preload="none"
-                        className="block w-auto max-w-full max-h-[70vh] rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
-                      />
-                      <a
-                        href="https://stecstats.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute top-2 right-2 flex items-center gap-0.5 opacity-75 hover:opacity-100 transition-opacity drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
-                      >
-                        <img src="/logo.png" alt="StecStats" className="h-6 w-auto object-contain" />
-                        <span className="text-white font-bold text-[11px] leading-none">.com</span>
-                      </a>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-xs text-muted-foreground">Music</span>
-                      <MusicTrackSelector value={lowlightMusicTrack} onChange={setLowlightMusicTrack} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button type="button" onClick={handleShareLowlight} disabled={isPreparingLowlightShare}>
-                        {isPreparingLowlightShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
-                      </Button>
-                      <Button type="button" variant="outline" onClick={handleDownloadLowlight}>
-                        <Download className="w-4 h-4 mr-2" /> Download
-                      </Button>
-                      <Button type="button" variant="ghost" onClick={handleGenerateLowlight} disabled={isGeneratingLowlight}>
-                        {isGeneratingLowlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
-                        Regenerate
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Music className="w-3 h-3 shrink-0" />
-                      Generated with: <span className="font-medium">{musicTrackLabel(lowlightLastUsedTrack)}</span>
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      Build a review reel of every miss and turnover from this game{lowlight ? ` — ${lowlight.eligibleMoments} moment${lowlight.eligibleMoments === 1 ? "" : "s"} found` : ""}.
-                    </p>
-                    {lowlight?.status === "failed" && lowlight.error && (
-                      <p className="text-sm text-destructive">{lowlight.error}</p>
+                    {lowlight?.onFilmMoments != null && lowlight.onFilmMoments < lowlight.eligibleMoments && (
+                      <p className="text-xs rounded-md bg-amber-500/10 text-amber-400 px-3 py-2">
+                        The recording ended before the game did — only {lowlight.onFilmMoments} of {lowlight.eligibleMoments} lowlight
+                        moment{lowlight.eligibleMoments === 1 ? "" : "s"} {lowlight.onFilmMoments === 1 ? "is" : "are"} on film.
+                        The rest happened after the video stopped and can't be in the reel.
+                      </p>
                     )}
-                    <div className="flex items-center gap-2">
-                      <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                      <span className="text-xs text-muted-foreground">Music</span>
-                      <MusicTrackSelector value={lowlightMusicTrack} onChange={setLowlightMusicTrack} />
-                    </div>
-                    <Button type="button" onClick={handleGenerateLowlight} disabled={isGeneratingLowlight}>
-                      {isGeneratingLowlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
-                      {lowlight?.status === "failed" ? "Try Again" : "Generate Lowlight Reel"}
-                    </Button>
+
+                    {lowlight && lowlight.eligibleMoments === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Tag missed shots or turnovers during the game to build a lowlight reel for review.
+                      </p>
+                    ) : lowlight?.status === "processing" ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin" /> {lowlightStageText}
+                        </p>
+                        <Progress value={lowlightProgressPct} />
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-muted-foreground">Building your lowlight reel — this can take a minute.</p>
+                          <button
+                            onClick={handleCancelLowlight}
+                            className="text-xs text-muted-foreground underline underline-offset-2 shrink-0 hover:text-foreground transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : lowlight?.status === "ready" && lowlight.lowlightObjectPath ? (
+                      <div className="space-y-3">
+                        <div className="relative inline-block w-auto max-w-full mx-auto">
+                          <video
+                            src={videoObjectSrc(lowlight.lowlightObjectPath)}
+                            controls
+                            playsInline
+                            preload="none"
+                            className="block w-auto max-w-full max-h-[70vh] rounded-lg bg-black landscape:max-h-none landscape:w-[62vw]"
+                          />
+                          <a
+                            href="https://stecstats.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="absolute top-2 right-2 flex items-center gap-0.5 opacity-75 hover:opacity-100 transition-opacity drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
+                          >
+                            <img src="/logo.png" alt="StecStats" className="h-6 w-auto object-contain" />
+                            <span className="text-white font-bold text-[11px] leading-none">.com</span>
+                          </a>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-xs text-muted-foreground">Music</span>
+                          <MusicTrackSelector value={lowlightMusicTrack} onChange={setLowlightMusicTrack} />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button type="button" onClick={handleShareLowlight} disabled={isPreparingLowlightShare}>
+                            {isPreparingLowlightShare ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />} Share
+                          </Button>
+                          <Button type="button" variant="outline" onClick={handleDownloadLowlight}>
+                            <Download className="w-4 h-4 mr-2" /> Download
+                          </Button>
+                          <Button type="button" variant="ghost" onClick={handleGenerateLowlight} disabled={isGeneratingLowlight}>
+                            {isGeneratingLowlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
+                            Regenerate
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Music className="w-3 h-3 shrink-0" />
+                          Generated with: <span className="font-medium">{musicTrackLabel(lowlightLastUsedTrack)}</span>
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">
+                          Build a review reel of every miss and turnover from this game{lowlight ? ` — ${lowlight.eligibleMoments} moment${lowlight.eligibleMoments === 1 ? "" : "s"} found` : ""}.
+                        </p>
+                        {lowlight?.status === "failed" && lowlight.error && (
+                          <p className="text-sm text-destructive">{lowlight.error}</p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Music className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                          <span className="text-xs text-muted-foreground">Music</span>
+                          <MusicTrackSelector value={lowlightMusicTrack} onChange={setLowlightMusicTrack} />
+                        </div>
+                        <Button type="button" onClick={handleGenerateLowlight} disabled={isGeneratingLowlight}>
+                          {isGeneratingLowlight ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <BarChart2 className="w-4 h-4 mr-2" />}
+                          {lowlight?.status === "failed" ? "Try Again" : "Generate Lowlight Reel"}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
-            </div>
+              </TabsContent>
+            </Tabs>
           )}
         </CardContent>
       </Card>
