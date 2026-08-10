@@ -19,6 +19,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "ios": {
         "simulator": false
       },
@@ -31,6 +32,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
       "env": {
         "APP_ENV": "production",
         "EXPO_PUBLIC_DOMAIN": "stecstats.com",
