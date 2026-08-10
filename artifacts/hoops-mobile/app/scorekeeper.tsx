@@ -344,7 +344,7 @@ export default function ScorekeeperScreen() {
     if (pc) { try { pc.close(); } catch {} webrtcPeersRef.current.delete(viewerId); }
   }
 
-  async function closeAllWebRtcPeers() {
+  function closeAllWebRtcPeers() {
     for (const timer of disconnectWatchdogRef.current.values()) {
       clearTimeout(timer);
     }
@@ -354,11 +354,8 @@ export default function ScorekeeperScreen() {
     }
     bitrateIntervalRef.current.clear();
     iceRestartCountRef.current.clear();
-    // Close each peer in its own microtask to avoid flooding the React Native
-    // bridge with simultaneous native calls, which can stall the main thread.
     for (const pc of webrtcPeersRef.current.values()) {
       try { pc.close(); } catch {}
-      await Promise.resolve(); // yield to the event loop between closures
     }
     webrtcPeersRef.current.clear();
   }
@@ -515,8 +512,7 @@ export default function ScorekeeperScreen() {
     // reconnect — even if the stop-API call below is slow or hangs.
     liveWsIntentionalCloseRef.current = true;
     // Tear down WebRTC peers and camera stream before closing the WS.
-    // await so all pc.close() native calls complete before we close the socket.
-    await closeAllWebRtcPeers();
+    closeAllWebRtcPeers();
     stopWebRtcStream();
     // Close broadcaster WS first so viewers get the broadcaster-left signal
     if (liveWsReconnectRef.current) {

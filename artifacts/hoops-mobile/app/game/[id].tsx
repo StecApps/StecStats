@@ -212,10 +212,10 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
             setStreamUrl(result.url);
             player.replaceAsync({ uri: result.url });
           } else {
-            // Proxy not ready yet — poll every 8 s until it is.
+            // Proxy not ready yet — poll every 4 s until it is.
             retryTimerRef.current = setTimeout(() => {
               if (!cancelled.value) loadStream(cancelled);
-            }, 8_000);
+            }, 4_000);
           }
         })
         .catch(() => { if (!cancelled.value) setLoadError(true); });
