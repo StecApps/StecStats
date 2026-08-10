@@ -38,20 +38,33 @@ async function getPemForToken(token: string): Promise<string | null> {
   const b64 = mobilePubKey.replace(/^pk_(test|live)_/, "").replace(/\$?$/, "");
   let trustedFapi: string | null = null;
   try { trustedFapi = Buffer.from(b64, "base64").toString("utf8").replace(/\$$/, ""); } catch { /* ignore */ }
-  if (!trustedFapi || !iss.includes(trustedFapi)) return null;
+
+  const issMatchesTrusted = !!trustedFapi && iss.includes(trustedFapi);
+  if (!issMatchesTrusted) {
+    // Log enough to diagnose trust-check failures without exposing secrets.
+    console.warn(`[requireAuth/getPemForToken] trust check failed — iss="${iss}" trustedFapi="${trustedFapi ?? "(empty — mobilePubKey not set?)"}" mobilePubKeySet=${!!mobilePubKey}`);
+    return null;
+  }
 
   // Check cache.
   const cached = jwksCache.get(iss);
   if (cached && Date.now() - cached.fetchedAt < JWKS_TTL_MS) {
-    return cached.keys.get(kid)?.pem ?? null;
+    const cachedPem = cached.keys.get(kid)?.pem ?? null;
+    if (!cachedPem) console.warn(`[requireAuth/getPemForToken] kid="${kid}" not found in cached JWKS (${cached.keys.size} keys)`);
+    return cachedPem;
   }
 
   // Fetch fresh JWKS.
+  const jwksUrl = `${iss}/.well-known/jwks.json`;
   try {
-    const res = await fetch(`${iss}/.well-known/jwks.json`);
-    if (!res.ok) return null;
+    const res = await fetch(jwksUrl);
+    if (!res.ok) {
+      console.warn(`[requireAuth/getPemForToken] JWKS fetch failed: ${res.status} ${res.statusText} url=${jwksUrl}`);
+      return null;
+    }
     const json = await res.json() as { keys?: unknown[] };
     const keyMap = new Map<string, JwkEntry>();
+    let parseErrors = 0;
     for (const jwk of json.keys ?? []) {
       if (!jwk || typeof jwk !== "object") continue;
       const j = jwk as Record<string, unknown>;
@@ -62,11 +75,20 @@ async function getPemForToken(token: string): Promise<string | null> {
         const pem = createPublicKey({ key: j as any, format: "jwk" })
           .export({ type: "spki", format: "pem" }) as string;
         keyMap.set(kId, { pem });
-      } catch { /* skip unrecognized key */ }
+      } catch (e: any) {
+        parseErrors++;
+        console.warn(`[requireAuth/getPemForToken] createPublicKey failed for kid="${kId}": ${e?.message}`);
+      }
     }
+    console.info(`[requireAuth/getPemForToken] loaded ${keyMap.size} keys from JWKS (${parseErrors} parse errors) url=${jwksUrl}`);
     jwksCache.set(iss, { keys: keyMap, fetchedAt: Date.now() });
-    return keyMap.get(kid)?.pem ?? null;
-  } catch { return null; }
+    const pem = keyMap.get(kid)?.pem ?? null;
+    if (!pem) console.warn(`[requireAuth/getPemForToken] kid="${kid}" not found in freshly fetched JWKS (${keyMap.size} keys)`);
+    return pem;
+  } catch (e: any) {
+    console.warn(`[requireAuth/getPemForToken] JWKS fetch threw: ${e?.message} url=${jwksUrl}`);
+    return null;
+  }
 }
 
 declare global {
