@@ -148,7 +148,7 @@ export default function ProfileScreen() {
   // Displayed name: prefer DB-stored name, fall back to Clerk identity
   const storedFirst = meData?.firstName ?? null;
   const storedLast = meData?.lastName ?? null;
-  const displayFirst = storedFirst ?? user?.firstName ?? '';
+  const displayFirst = storedFirst ?? '';
   const displayLast = storedLast ?? user?.lastName ?? '';
   const displayName = [displayFirst, displayLast].filter(Boolean).join(' ')
     || user?.primaryEmailAddress?.emailAddress
