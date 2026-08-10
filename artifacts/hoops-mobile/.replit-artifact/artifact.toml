@@ -15,9 +15,16 @@ localPort = 25655
 [services.development]
 run = "pnpm --filter @workspace/hoops-mobile run dev"
 
-[services.production]
-build = [ "pnpm", "--filter", "@workspace/hoops-mobile", "run", "build" ]
-run = [ "pnpm", "--filter", "@workspace/hoops-mobile", "run", "serve" ]
+[services.production.build]
+args = [ "pnpm", "--filter", "@workspace/hoops-mobile", "run", "build" ]
+
+[services.production.run]
+args = [ "pnpm", "--filter", "@workspace/hoops-mobile", "run", "serve" ]
+
+[services.production.run.env]
+PORT = "25655"
+BASE_PATH = "/hoops-mobile/"
+NODE_ENV = "production"
 
 [services.env]
 PORT = "25655"
