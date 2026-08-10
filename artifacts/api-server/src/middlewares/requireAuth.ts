@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { getAuth, clerkClient, verifyToken } from "@clerk/express";
 import { createPublicKey } from "crypto";
-import { eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
 
 // ---------------------------------------------------------------------------
@@ -259,6 +259,23 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
               .where(isNull(gamesTable.ownerId));
           });
         }
+      }
+    }
+
+    // If this user record has an email that matches another existing user (e.g. the
+    // same person authenticated via a different Clerk instance — mobile test vs web
+    // live), use the primary account (lower id) so both surfaces share the same data.
+    if (user && email) {
+      const primaryUser = await db.query.usersTable.findFirst({
+        where: and(eq(usersTable.email, email), ne(usersTable.id, user.id)),
+        orderBy: (u, { asc }) => [asc(u.id)],
+      });
+      if (primaryUser) {
+        req.log?.info(
+          { secondaryId: user.id, primaryId: primaryUser.id },
+          "requireAuth: mapped secondary Clerk account to primary user by email",
+        );
+        user = primaryUser;
       }
     }
 
