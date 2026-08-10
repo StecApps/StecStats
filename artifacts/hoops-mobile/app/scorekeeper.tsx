@@ -344,7 +344,7 @@ export default function ScorekeeperScreen() {
     if (pc) { try { pc.close(); } catch {} webrtcPeersRef.current.delete(viewerId); }
   }
 
-  function closeAllWebRtcPeers() {
+  async function closeAllWebRtcPeers() {
     for (const timer of disconnectWatchdogRef.current.values()) {
       clearTimeout(timer);
     }
@@ -354,8 +354,11 @@ export default function ScorekeeperScreen() {
     }
     bitrateIntervalRef.current.clear();
     iceRestartCountRef.current.clear();
+    // Close each peer in its own microtask to avoid flooding the React Native
+    // bridge with simultaneous native calls, which can stall the main thread.
     for (const pc of webrtcPeersRef.current.values()) {
       try { pc.close(); } catch {}
+      await Promise.resolve(); // yield to the event loop between closures
     }
     webrtcPeersRef.current.clear();
   }
@@ -511,8 +514,9 @@ export default function ScorekeeperScreen() {
     // Mark as intentional BEFORE closing so ws.onclose does not schedule a
     // reconnect — even if the stop-API call below is slow or hangs.
     liveWsIntentionalCloseRef.current = true;
-    // Tear down WebRTC peers and camera stream before closing the WS
-    closeAllWebRtcPeers();
+    // Tear down WebRTC peers and camera stream before closing the WS.
+    // await so all pc.close() native calls complete before we close the socket.
+    await closeAllWebRtcPeers();
     stopWebRtcStream();
     // Close broadcaster WS first so viewers get the broadcaster-left signal
     if (liveWsReconnectRef.current) {
@@ -868,6 +872,30 @@ export default function ScorekeeperScreen() {
         });
         if (!cancelled) {
           webrtcStreamRef.current = stream;
+
+          // Watch for the camera track ending unexpectedly (iOS thermal throttle,
+          // AVFoundation session conflict with expo-camera, or system preemption).
+          // Switch viewers to score-only mode so the broadcast can continue
+          // without the frozen camera preview requiring a force-quit.
+          const videoTrack = stream.getVideoTracks?.()[0];
+          if (videoTrack) {
+            (videoTrack as any).addEventListener?.('ended', () => {
+              if (cancelled) return;
+              console.warn('[WebRTC] Camera track ended unexpectedly — switching to score-only');
+              webrtcCameraFailedRef.current = true;
+              // Close all peer connections — they can no longer send video.
+              closeAllWebRtcPeers();
+              stopWebRtcStream();
+              // Notify server/viewers that video is gone so they drop to scoreboard.
+              broadcastWsSend({
+                type: 'join-broadcaster',
+                code: liveCode,
+                hasVideo: false,
+                videoMode: 'none',
+              });
+            });
+          }
+
           // Offer any viewers who arrived while the stream was opening.
           drainPendingViewers(
             pendingViewerIdsRef.current,
