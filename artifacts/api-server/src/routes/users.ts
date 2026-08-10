@@ -10,8 +10,12 @@ router.get("/users/me", requireAuth, async (req, res) => {
   const user = await db.query.usersTable.findFirst({
     where: eq(usersTable.id, req.appUser!.id),
   });
-  // Disable ETag / 304 so a name change in the DB is never masked by a
-  // cached "Not Modified" response on the client.
+  // Prevent Express from returning 304 "Not Modified" for this route.
+  // A 304 carries no body — our customFetch returns null for it — so React
+  // Query stores null and the greeting falls back to Clerk's stale name.
+  // Deleting If-None-Match before res.json() stops Express from doing the
+  // ETag comparison; Cache-Control: no-store tells the client not to cache.
+  delete (req.headers as Record<string, unknown>)["if-none-match"];
   res.set("Cache-Control", "no-store");
   res.json({
     firstName: user?.firstName ?? null,
