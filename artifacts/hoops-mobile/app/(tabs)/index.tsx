@@ -843,10 +843,15 @@ const shootS = StyleSheet.create({
 function CoachGreeting() {
   const c = useColors();
   const { user } = useUser();
-  // refetchOnMount:'always' forces a background revalidation on every mount so
-  // a DB name change (Profile → Edit Name) is never masked by a stale cache.
+  const { isLoaded, isSignedIn } = useAuth();
+  // Gate the query on Clerk being fully loaded + signed in.
+  // Without this gate, on a cold open with a cached session the query fires
+  // during the ~100ms SecureStore init window when getToken() still returns
+  // null.  That gets a 401, which is not retried (by design), and the query
+  // stays in error state — meData stays undefined forever — so the greeting
+  // falls back to Clerk's stale "Sarah" and never updates.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: meData } = useGetMe({ query: { refetchOnMount: 'always' } as any });
+  const { data: meData } = useGetMe({ query: { enabled: isLoaded && !!isSignedIn, refetchOnMount: 'always' } as any });
 
   const hour = new Date().getHours();
   const salutation = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
