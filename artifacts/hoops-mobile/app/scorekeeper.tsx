@@ -172,6 +172,10 @@ export default function ScorekeeperScreen() {
   const disconnectWatchdogRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Per-viewer adaptive-bitrate poll intervals — cleared when a peer is torn down
   const bitrateIntervalRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  // Viewer IDs for which createPeerForViewer is currently in-flight.
+  // Prevents duplicate concurrent peer-creation attempts for the same viewer
+  // (e.g. two rapid new-viewer messages after a WS reconnect storm).
+  const peerCreationInFlightRef = useRef<Set<string>>(new Set());
   // Live camera MediaStream used for WebRTC — opened via mediaDevices.getUserMedia
   const webrtcStreamRef = useRef<any>(null);
   // Viewer IDs that sent new-viewer while getUserMedia was still in-flight
@@ -354,6 +358,9 @@ export default function ScorekeeperScreen() {
     }
     bitrateIntervalRef.current.clear();
     iceRestartCountRef.current.clear();
+    // Clear in-flight creation guards so a fresh broadcast doesn't block on
+    // stale viewer IDs from the previous session.
+    peerCreationInFlightRef.current.clear();
     for (const pc of webrtcPeersRef.current.values()) {
       try { pc.close(); } catch {}
     }
@@ -369,6 +376,16 @@ export default function ScorekeeperScreen() {
 
   async function createPeerForViewer(viewerId: string, code: string) {
     if (!RTCPeerConnection) return; // native module not available (Expo Go)
+    // Guard against concurrent duplicate calls for the same viewer (e.g. two
+    // rapid new-viewer messages arriving during a WS reconnect storm).  If a
+    // creation is already in-flight for this viewer, the second call would
+    // tear down the peer the first is building, leaving both in a broken state.
+    if (peerCreationInFlightRef.current.has(viewerId)) {
+      console.log(`[WebRTC] createPeerForViewer: already in-flight for ${viewerId} — skipping`);
+      return;
+    }
+    peerCreationInFlightRef.current.add(viewerId);
+    try {
     // Close and fully clean up any prior peer for this viewer before replacing it.
     // Without this, the old peer's callbacks keep firing and can send conflicting
     // ICE-restart offers or peer-connection-failed after the viewer has reconnected.
@@ -505,9 +522,18 @@ export default function ScorekeeperScreen() {
     const offer = await pc.createOffer({} as any);
     await pc.setLocalDescription(offer as any);
     broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp });
+    } finally {
+      // Always remove the in-flight guard so a future new-viewer for this
+      // viewer can create a fresh peer (e.g. after the viewer rejoins).
+      peerCreationInFlightRef.current.delete(viewerId);
+    }
   }
 
   async function stopLiveBroadcast(code: string) {
+    // Dismiss the go-live sheet first so it doesn't linger open while the
+    // stop sequence runs (handles the case where handleSave calls us directly
+    // without the sheet's own dismiss-then-stop button handler).
+    setShowGoLiveSheet(false);
     // Mark as intentional BEFORE closing so ws.onclose does not schedule a
     // reconnect — even if the stop-API call below is slow or hangs.
     liveWsIntentionalCloseRef.current = true;

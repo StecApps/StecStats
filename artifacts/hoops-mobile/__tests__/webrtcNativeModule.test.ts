@@ -70,7 +70,7 @@ describe('react-native-webrtc module surface', () => {
 
 // ─── 2. ICE-server resolution ─────────────────────────────────────────────────
 
-import { fetchIceServers } from '../lib/fetchIceServers';
+import { fetchIceServers, resetIceServerCache, CACHE_TTL_MS } from '../lib/fetchIceServers';
 
 const STUN_FALLBACK = [{ urls: 'stun:stun.l.google.com:19302' }];
 
@@ -80,6 +80,10 @@ beforeEach(() => {
   // mockResolvedValue set in the react-native-webrtc manual mock, making
   // getUserMedia return undefined instead of a stream object.
   jest.clearAllMocks();
+  // Reset module-level cache state so each test starts from a clean slate.
+  // Without this, cached ICE servers from one case bleed into the next,
+  // causing fetch() never to be called and fallback tests to silently pass.
+  resetIceServerCache();
 });
 
 describe('fetchIceServers — API reachable', () => {
@@ -159,6 +163,104 @@ describe('fetchIceServers — fallback to public STUN', () => {
 
     const result = await fetchIceServers('');
     expect(result).toEqual(STUN_FALLBACK);
+  });
+});
+
+// ─── 2b. ICE-server cache and deduplication ───────────────────────────────────
+
+describe('fetchIceServers — cache and deduplication', () => {
+  const servers = [{ urls: 'turn:turn.example.com:3478', username: 'u', credential: 'p' }];
+
+  test('returns cached result on second call without re-fetching', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ iceServers: servers }),
+    }) as any;
+
+    const first = await fetchIceServers('https://api.example.com');
+    const second = await fetchIceServers('https://api.example.com');
+
+    expect(first).toEqual(servers);
+    expect(second).toEqual(servers);
+    // Only one network call for two invocations
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  test('concurrent callers share a single in-flight fetch', async () => {
+    let resolveJson!: (v: any) => void;
+    const jsonPromise = new Promise<any>((res) => { resolveJson = res; });
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => jsonPromise,
+    }) as any;
+
+    // Fire 5 concurrent callers before the fetch resolves
+    const [r1, r2, r3, r4, r5] = await Promise.all([
+      fetchIceServers('https://api.example.com'),
+      fetchIceServers('https://api.example.com'),
+      fetchIceServers('https://api.example.com'),
+      fetchIceServers('https://api.example.com'),
+      (async () => { resolveJson({ iceServers: servers }); return fetchIceServers('https://api.example.com'); })(),
+    ]);
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    for (const r of [r1, r2, r3, r4, r5]) expect(r).toEqual(servers);
+  });
+
+  test('issues a fresh fetch after the TTL expires', async () => {
+    jest.useFakeTimers();
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ iceServers: servers }),
+    }) as any;
+
+    await fetchIceServers('https://api.example.com');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    // Advance time past the TTL so the cache entry is stale
+    jest.advanceTimersByTime(CACHE_TTL_MS + 1);
+
+    await fetchIceServers('https://api.example.com');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    jest.useRealTimers();
+  });
+
+  test('distinct apiBase values are cached independently', async () => {
+    const serversA = [{ urls: 'stun:a.example.com' }];
+    const serversB = [{ urls: 'stun:b.example.com' }];
+
+    global.fetch = jest.fn()
+      .mockImplementation((url: string) => {
+        const body = url.includes('api.a.') ? { iceServers: serversA } : { iceServers: serversB };
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+      }) as any;
+
+    const [a, b] = await Promise.all([
+      fetchIceServers('https://api.a.example.com'),
+      fetchIceServers('https://api.b.example.com'),
+    ]);
+
+    expect(a).toEqual(serversA);
+    expect(b).toEqual(serversB);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+
+    // Second call to each base must use the cache, not re-fetch
+    await fetchIceServers('https://api.a.example.com');
+    await fetchIceServers('https://api.b.example.com');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test('caches the STUN fallback so a failed endpoint is not retried until TTL', async () => {
+    global.fetch = jest.fn().mockRejectedValue(new Error('Network request failed')) as any;
+
+    const first = await fetchIceServers('https://api.example.com');
+    const second = await fetchIceServers('https://api.example.com');
+
+    expect(first).toEqual(STUN_FALLBACK);
+    expect(second).toEqual(STUN_FALLBACK);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });
 
