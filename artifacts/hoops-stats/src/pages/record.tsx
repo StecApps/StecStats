@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { backgroundUpload, PENDING_VIDEO_UPLOADS_KEY } from "@/lib/backgroundUpload";
 import { uploadVideoBlob } from "@/lib/videoUpload";
 import FilmRoom from "@/components/film-room";
@@ -590,6 +590,19 @@ export default function RecordGame() {
   const [existingVideoObjectPath, setExistingVideoObjectPath] = useState<string | null>(null);
   const [streamVideoUrl, setStreamVideoUrl] = useState<string | null>(null);
   const [streamProxySkipped, setStreamProxySkipped] = useState<boolean>(false);
+  // React-managed error surfaced when a stream-token re-mint fails (instead of
+  // appending DOM banners, which can duplicate on repeated onError events).
+  const [streamVideoError, setStreamVideoError] = useState<string | null>(null);
+  // Single-flight guard: prevents concurrent token mints from racing each other.
+  const streamTokenRefreshingRef = useRef(false);
+  // Playback restore state set before a src swap; consumed by the onLoadedMetadata
+  // React prop — avoids the race where loadedmetadata fires before an imperatively-
+  // registered addEventListener listener is attached.
+  const streamTokenPendingRestoreRef = useRef<{ time: number; play: boolean } | null>(null);
+  // Bounded retry counter: reset to 0 on successful loadedmetadata so a
+  // legitimately-expired token gets up to MAX attempts; guards against looping
+  // on a genuinely corrupt or unsupported asset.
+  const streamTokenRefreshAttemptsRef = useRef(0);
   const [events, setEvents] = useState<GameEventEntry[]>([]);
   const [videoOffsetMs, setVideoOffsetMs] = useState<number>(0);
   const [recordingQuality, setRecordingQuality] = useState<"standard" | "high">(
@@ -922,6 +935,10 @@ export default function RecordGame() {
     if (!gameId || !existingVideoObjectPath) {
       setStreamVideoUrl(null);
       setStreamProxySkipped(false);
+      setStreamVideoError(null);
+      streamTokenRefreshingRef.current = false;
+      streamTokenPendingRestoreRef.current = null;
+      streamTokenRefreshAttemptsRef.current = 0;
       return;
     }
     let cancelled = false;
@@ -936,6 +953,53 @@ export default function RecordGame() {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [gameId, existingVideoObjectPath]);
+
+  // Centralized token-refresh routine used by both the proactive timer and the
+  // onError handler. Single-flight guard (streamTokenRefreshingRef) ensures at
+  // most one mint is in flight at any time, so rapid repeated onError events
+  // don't spawn concurrent requests or duplicate error messages.
+  // Seek/resume state is written to streamTokenPendingRestoreRef before the src
+  // swap so the onLoadedMetadata React prop (not an imperative addEventListener)
+  // applies it — eliminating the race where metadata fires before a DOM listener
+  // is registered.
+  const doStreamTokenRefresh = useCallback(async (savedTime: number, wasPlaying: boolean) => {
+    if (streamTokenRefreshingRef.current || !gameId) return;
+    streamTokenRefreshingRef.current = true;
+    streamTokenPendingRestoreRef.current = { time: savedTime, play: wasPlaying };
+    try {
+      const r = await fetch(`/api/games/${gameId}/stream-token/video`);
+      if (!r.ok) throw new Error(`token-mint ${r.status}`);
+      const data = await r.json() as { token: string; proxySkipped: boolean };
+      // Swap the src; onLoadedMetadata reads streamTokenPendingRestoreRef to seek
+      // and resume. Release the guard immediately so that if the freshly-swapped
+      // URL itself produces a network error (e.g. a transient fetch failure on the
+      // new stream URL before loadedmetadata fires), onError can call us again for
+      // a retry rather than being permanently blocked with a dark player.
+      setStreamVideoUrl(`/api/games/${gameId}/stream/video?t=${encodeURIComponent(data.token)}`);
+      setStreamProxySkipped(data.proxySkipped ?? false);
+      setStreamVideoError(null);
+      streamTokenRefreshingRef.current = false;
+    } catch {
+      streamTokenPendingRestoreRef.current = null;
+      streamTokenRefreshingRef.current = false;
+      setStreamVideoError("Video session expired and couldn't be refreshed — please reload the page.");
+    }
+  }, [gameId]);
+
+  // Stream tokens have a 4-hour TTL. Re-mint the token every 3.5 hours so the
+  // video never goes dark mid-session when a coach leaves the tab open during
+  // a long team debrief and then returns to play the recording. The onError
+  // handler below covers cases where background timer throttling pushes past
+  // the expiry.
+  useEffect(() => {
+    if (!gameId || !existingVideoObjectPath) return;
+    const REFRESH_MS = 3.5 * 60 * 60 * 1000; // 3.5 hours — just under the 4h TTL
+    const id = setInterval(() => {
+      const video = playbackRef.current;
+      doStreamTokenRefresh(video?.currentTime ?? 0, video ? !video.paused && !video.ended : false);
+    }, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [gameId, existingVideoObjectPath, doStreamTokenRefresh]);
   const autoFollowRef = useRef(false);
   // trackCenterXRef/YRef + trackZoomRef are the SMOOTHED, actually-rendered
   // pan/zoom — only ever written by the draw loop below, at 60fps. The
@@ -3668,6 +3732,19 @@ export default function RecordGame() {
                     onLoadedMetadata={(e) => {
                       const v = e.currentTarget;
                       setReviewIsPortrait(v.videoWidth > 0 && v.videoHeight > v.videoWidth);
+                      // After a token-refresh src swap, restore the saved position and
+                      // resume playback. Using the React prop (not addEventListener) ensures
+                      // the handler is always registered before the browser fires the event,
+                      // even when metadata is served from cache immediately after src changes.
+                      const restore = streamTokenPendingRestoreRef.current;
+                      if (restore) {
+                        streamTokenPendingRestoreRef.current = null;
+                        if (restore.time > 0) v.currentTime = restore.time;
+                        if (restore.play) v.play().catch(() => {/* autoplay policy — coach can tap play */});
+                      }
+                      // Successful load — reset the retry counter so a future expiry
+                      // gets a full budget of re-mint attempts.
+                      streamTokenRefreshAttemptsRef.current = 0;
                     }}
                     onError={(e) => {
                       const v = e.currentTarget;
@@ -3678,6 +3755,21 @@ export default function RecordGame() {
                       };
                       const msg = err ? `${codes[err.code] ?? `code ${err.code}`}: ${err.message || "(no message)"}` : "unknown error";
                       console.error("[video error]", msg, v.src);
+                      // Browsers may surface a 401/403 from an expired token as either
+                      // MEDIA_ERR_NETWORK (code 2) or MEDIA_ERR_SRC_NOT_SUPPORTED (code 4),
+                      // depending on browser and network stack. Handle both for /stream/ URLs.
+                      // Delegate to doStreamTokenRefresh (single-flight guard) so rapid
+                      // repeated error events don't spawn concurrent mints or duplicate banners.
+                      // Bounded by MAX_TOKEN_REFRESH_ATTEMPTS: if the new source also errors
+                      // (genuinely corrupt/unsupported asset), we fall through to the legacy
+                      // banner after the budget is exhausted.
+                      const MAX_TOKEN_REFRESH_ATTEMPTS = 2;
+                      if ((err?.code === 2 || err?.code === 4) && v.src.includes("/stream/") && gameId
+                          && streamTokenRefreshAttemptsRef.current < MAX_TOKEN_REFRESH_ATTEMPTS) {
+                        streamTokenRefreshAttemptsRef.current++;
+                        doStreamTokenRefresh(v.currentTime, !v.paused && !v.ended);
+                        return; // guard is set; streamVideoError shows if mint fails
+                      }
                       const banner = document.createElement("p");
                       banner.style.cssText = "color:#f87171;font-size:0.8rem;text-align:center;padding:4px";
                       banner.textContent = `⚠ Video error: ${msg}`;
@@ -3689,6 +3781,9 @@ export default function RecordGame() {
                   <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground justify-center">
                     <Loader2 className="w-4 h-4 animate-spin" /> Loading video…
                   </div>
+                )}
+                {streamVideoError && (
+                  <p className="text-sm text-destructive text-center py-1">⚠ {streamVideoError}</p>
                 )}
                 {reviewIsPortrait && (
                   <p className="text-xs text-muted-foreground">
