@@ -181,19 +181,13 @@ router.get("/storage/objects/*path", requireAuth, async (req: Request, res: Resp
           await objectFile.setMetadata({ contentDisposition: disposition });
         }
       }
-      // TTL is 60 s — short enough that a captured URL is useless after the
-      // browser's initial buffering window, but long enough for the video
-      // player to open the connection and start streaming.  300 s was the
-      // previous default; cutting it to 60 s means a leaked redirect URL
-      // expires before most viewers could share and replay it.
-      //
-      // We deliberately do NOT bind the URL to the requester's IP or
-      // User-Agent: GCS V4 signed URLs don't natively support those
-      // conditions, and rewriting via Cloud Armor would require infra outside
-      // Replit's managed environment.  The 60 s window is the chosen
-      // tradeoff: small enough to be practically unreplayable, large enough
-      // for any CDN/proxy hop a legitimate viewer might traverse.
-      const signedUrl = await objectStorageService.getObjectEntitySignedURL(objectPath, 60);
+      // TTL is 3600 s — matches the /games/:id/video-signed-url endpoint and
+      // is required for the browser's video element to make Range (seek)
+      // requests throughout playback. The browser caches the redirect URL
+      // and re-uses it for all subsequent Range reads directly to GCS; a
+      // 60 s TTL caused 403s on seeks and resumes after the first minute.
+      // Auth + ownership checks above already ran, so the redirect is safe.
+      const signedUrl = await objectStorageService.getObjectEntitySignedURL(objectPath, 3600);
       req.log.info({ fileSize, url: req.url }, "storage: redirecting video to signed URL");
       res.redirect(302, signedUrl);
       return;

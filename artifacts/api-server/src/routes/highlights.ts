@@ -90,6 +90,10 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
   }
 
   const { eligibleMoments, onFilmMoments } = await getHighlightCoverage(game);
+  // Prevent the deployment edge from caching this response. Without this the
+  // processing→ready transition is invisible: the client keeps getting 304
+  // with the stale "processing" body until the CDN cache expires.
+  res.setHeader("Cache-Control", "no-store");
   res.json(
     GetGameHighlightResponse.parse({
       status: normalizeStatus(highlightStatus),
