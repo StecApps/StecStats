@@ -1195,6 +1195,52 @@ async function acquireGameProxy(
 const backgroundProxyBuilds = new Set<number>();
 
 /**
+ * Build (or verify) the proxy for a game and return a Promise that resolves
+ * when the build is done (or skipped). Unlike ensureGameProxyInBackground this
+ * is awaitable, so callers can rate-limit a batch of builds.
+ *
+ * No-ops and resolves immediately if:
+ *  - a build for this game is already in progress
+ *  - a valid current-version proxy already exists in the DB
+ *  - the video is too long for safe local concat (>15 min / 900 s)
+ */
+export async function buildGameProxyNow(
+  gameId: number,
+  ownerId: number,
+): Promise<void> {
+  if (backgroundProxyBuilds.has(gameId)) return;
+  backgroundProxyBuilds.add(gameId);
+  const proxyAc = new AbortController();
+  proxyBuildAbortControllers.set(gameId, proxyAc);
+  try {
+    const game = await db.query.gamesTable.findFirst({
+      where: eq(gamesTable.id, gameId),
+    });
+    if (!game?.videoObjectPath) return;
+    if (game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION) return;
+    const MAX_PROXY_BUILD_DURATION_SEC = 900;
+    const durSec = (game.videoDurationMs ?? 0) / 1000;
+    if (durSec <= 0 || durSec > MAX_PROXY_BUILD_DURATION_SEC) {
+      logger.info(
+        { gameId, durSec: Math.round(durSec) },
+        "Proxy sweep: skipped — video too long (or duration unknown) for full local concat on tmpfs",
+      );
+      return;
+    }
+    if (proxyAc.signal.aborted) return;
+    logger.info({ gameId }, "Proxy sweep: build starting");
+    const { release } = await acquireGameProxy(gameId, ownerId, proxyAc.signal);
+    release();
+    logger.info({ gameId }, "Proxy sweep: build complete");
+  } catch (err) {
+    logger.error({ err, gameId }, "Proxy sweep: build failed");
+  } finally {
+    backgroundProxyBuilds.delete(gameId);
+    proxyBuildAbortControllers.delete(gameId);
+  }
+}
+
+/**
  * Ensure a current-version proxy MP4 exists for a game, building it in the
  * background if needed. Safe to call on every playback request: no-ops when
  * a valid proxy already exists in the DB or a build is already running.

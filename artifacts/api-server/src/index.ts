@@ -12,6 +12,7 @@ import { db } from "@workspace/db";
 import { resumeHighlightJob } from "./routes/highlights";
 import { resumeLowlightJob } from "./routes/lowlights";
 import { seedDatabase, applyVideoOffsetFixes, applySchemaAdditions } from "./lib/seed";
+import { PROXY_VERSION, buildGameProxyNow } from "./lib/highlightGenerator";
 
 const rawPort = process.env["PORT"];
 
@@ -424,6 +425,63 @@ async function resumeOrphanedJobs(): Promise<void> {
   }
 }
 
+/**
+ * One-time boot-time sweep: find every game that has a recorded video but
+ * lacks a current-version proxy, and build those proxies in the background.
+ *
+ * Rate-limited to CONCURRENCY=2 simultaneous builds so we don't OOM the
+ * server by downloading multiple large videos at once.  The sweep is fully
+ * idempotent — re-running it (e.g. after a server restart) just no-ops
+ * games whose proxies are already valid.
+ */
+async function sweepMissingProxies(): Promise<void> {
+  const CONCURRENCY = 2;
+  try {
+    const rows = await db.execute(sql`
+      SELECT id, owner_id
+      FROM games
+      WHERE video_object_path IS NOT NULL
+        AND video_duration_ms > 0
+        AND video_duration_ms <= ${900 * 1000}
+        AND (
+          video_proxy_object_path IS NULL
+          OR video_proxy_version IS NULL
+          OR video_proxy_version != ${PROXY_VERSION}
+        )
+      ORDER BY id DESC
+    `);
+
+    const games = rows.rows as { id: unknown; owner_id: unknown }[];
+    if (games.length === 0) {
+      logger.info("Proxy sweep: all games already have a current-version proxy — nothing to do");
+      return;
+    }
+
+    logger.info(
+      { count: games.length, proxyVersion: PROXY_VERSION },
+      "Proxy sweep: starting — games with missing or stale proxies",
+    );
+
+    // Process in batches of CONCURRENCY so at most 2 builds run at once.
+    for (let i = 0; i < games.length; i += CONCURRENCY) {
+      const batch = games.slice(i, i + CONCURRENCY);
+      await Promise.all(
+        batch.map((row) =>
+          buildGameProxyNow(Number(row.id), Number(row.owner_id)),
+        ),
+      );
+      logger.info(
+        { processed: Math.min(i + CONCURRENCY, games.length), total: games.length },
+        "Proxy sweep: batch complete",
+      );
+    }
+
+    logger.info({ total: games.length }, "Proxy sweep: finished");
+  } catch (err) {
+    logger.error({ err }, "Proxy sweep: failed to query or process games");
+  }
+}
+
 async function boot() {
   // Definitive Stripe credential check: actually resolve credentials before
   // accepting any traffic. This catches cases where connector env vars are
@@ -556,8 +614,14 @@ async function boot() {
   void checkTurnAvailability();
 
   // Clean up temp dirs orphaned by previous OOM kills, then resume jobs.
+  // After that, kick off the proxy sweep with a further delay so it doesn't
+  // compete with the initial reel-resume I/O spike.
   setTimeout(() => {
-    void cleanupOrphanedTempDirs().finally(() => resumeOrphanedJobs());
+    void cleanupOrphanedTempDirs()
+      .finally(() => resumeOrphanedJobs())
+      .finally(() => {
+        setTimeout(() => void sweepMissingProxies(), 30_000);
+      });
   }, 5_000);
 }
 
