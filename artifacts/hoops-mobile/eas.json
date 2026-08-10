@@ -35,8 +35,7 @@
       "channel": "production",
       "env": {
         "APP_ENV": "production",
-        "EXPO_PUBLIC_DOMAIN": "stecstats.com",
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_aW1tb3J0YWwtc3dhbi00Ny5jbGVyay5hY2NvdW50cy5kZXYk"
+        "EXPO_PUBLIC_DOMAIN": "stecstats.com"
       }
     }
   },
