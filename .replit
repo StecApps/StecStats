@@ -44,7 +44,6 @@ REVENUECAT_TEST_STORE_APP_ID = "appce03651cb3"
 
 [userenv.production]
 EXPO_PUBLIC_DOMAIN = "stecstats.com"
-CLERK_PROXY_URL = "https://stecstats.com/api/__clerk"
 STRIPE_WEBHOOK_BASE_URL = "https://stecstats.com"
 
 [objectStorage]
