@@ -1,0 +1,101 @@
+2026-08-10T03:23:11.784Z {"level":30,"time":1786332191783,"pid":19,"hostname":"localhost","req":{"id":788,"method":"GET","url":"/api/players/11/summary"},"res":{"statusCode":401},"responseTime":1,"msg":"request completed"}
+2026-08-10T03:23:11.790Z {"level":30,"time":1786332191790,"pid":19,"hostname":"localhost","req":{"id":789,"method":"GET","url":"/api/teams/23/highlight"},"res":{"statusCode":401},"responseTime":0,"msg":"request completed"}
+2026-08-10T03:23:30.907Z {"level":30,"time":1786332210907,"pid":19,"hostname":"localhost","req":{"id":796,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":58,"msg":"request completed"}
+2026-08-10T03:24:26.363Z {"level":30,"time":1786332266363,"pid":19,"hostname":"localhost","req":{"id":797,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":71,"msg":"request completed"}
+2026-08-10T03:25:21.626Z {"level":30,"time":1786332321626,"pid":19,"hostname":"localhost","req":{"id":798,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":69,"msg":"request completed"}
+2026-08-10T03:26:16.996Z {"level":30,"time":1786332376996,"pid":19,"hostname":"localhost","req":{"id":799,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":63,"msg":"request completed"}
+2026-08-10T03:26:53.087Z metasidecar: loaded enterprise status from environment is_enterprise=false
+2026-08-10T03:26:53.087Z starting up user application
+2026-08-10T03:26:53.087Z starting artifact processes for monorepo deployment
+2026-08-10T03:26:53.087Z artifact mode enabled runnable=2 static=1
+2026-08-10T03:26:53.102Z forwarding local port 0 to external port 80 (mapped as 1104)
+2026-08-10T03:26:53.102Z registered static handler for artifact publicDir=artifacts/hoops-stats/dist/public path=/
+2026-08-10T03:26:53.102Z waiting for runnable artifact ports ports=[8080 25655]
+2026-08-10T03:26:53.104Z healthcheck failed error=healthcheck /hoops-mobile/ returned status 500
+2026-08-10T03:26:53.105Z baseline ports snapshot before artifact start ports=[1104 1106 1105]
+2026-08-10T03:26:53.115Z healthcheck failed error=healthcheck /hoops-mobile/ returned status 500
+2026-08-10T03:26:53.121Z healthcheck failed error=healthcheck /api returned status 500
+2026-08-10T03:26:53.132Z starting artifact processes count=2
+2026-08-10T03:26:53.133Z starting artifact process args=[pnpm --filter @workspace/hoops-mobile run serve] port=25655 artifact=artifacts/hoops-mobile
+2026-08-10T03:26:53.133Z starting artifact process args=[node --enable-source-maps artifacts/api-server/dist/index.mjs] port=8080 artifact=artifacts/api-server
+2026-08-10T03:26:53.137Z healthcheck failed error=healthcheck /api returned status 500
+2026-08-10T03:26:53.168Z artifact process started artifact=artifacts/hoops-mobile pid=22
+2026-08-10T03:26:53.173Z artifact process started artifact=artifacts/api-server pid=21
+2026-08-10T03:26:53.216Z healthcheck failed error=healthcheck /hoops-mobile/ returned status 500
+2026-08-10T03:26:53.342Z healthcheck failed error=healthcheck /api returned status 500
+2026-08-10T03:26:53.595Z healthcheck failed error=healthcheck /hoops-mobile/ returned status 500
+2026-08-10T03:26:58.610Z {"level":30,"time":1786332418610,"pid":21,"hostname":"localhost","webhookBaseUrl":"https://stecstats.com","msg":"Registering managed Stripe webhook endpoint"}
+2026-08-10T03:26:58.610Z { autoExpandLists: undefined, stripeApiVersion: undefined } StripeSync initialized
+2026-08-10T03:26:59.167Z   webhookId: 'we_1U2fOL6vApWe2vRRFeYAP3LZ',
+2026-08-10T03:26:59.167Z   newUrl: 'https://stecstats.com/api/stripe/webhook'
+2026-08-10T03:26:59.167Z {
+2026-08-10T03:26:59.167Z   oldUrl: 'https://stecstats.replit.app/api/stripe/webhook',
+2026-08-10T03:26:59.167Z } Webhook URL mismatch, deleting
+2026-08-10T03:26:59.290Z       at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-08-10T03:26:59.290Z   error: StripeInvalidRequestError: No such webhook endpoint: 'we_1U2fOL6vApWe2vRRFeYAP3LZ'
+2026-08-10T03:26:59.290Z       at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+2026-08-10T03:26:59.290Z {
+2026-08-10T03:26:59.290Z       at generateV1Error (/home/runner/workspace/node_modules/.pnpm/stripe@22.3.0_@types+node@25.9.4/node_modules/stripe/src/Error.ts:23:12)
+2026-08-10T03:26:59.290Z       at <anonymous> (/home/runner/workspace/node_modules/.pnpm/stripe@22.3.0_@types+node@25.9.4/node_modules/stripe/src/RequestSender.ts:205:23)
+2026-08-10T03:26:59.290Z       at WebhookEndpointResource.del (/home/runner/workspace/node_modules/.pnpm/stripe@22.3.0_@types+node@25.9.4/node_modules/stripe/src/resources/WebhookEndpoints.ts:21:17)
+2026-08-10T03:26:59.290Z       at Proxy.<anonymous> (/home/runner/workspace/node_modules/.pnpm/stripe-replit-sync@1.0.0_stripe@22.3.0_@types+node@25.9.4_/node_modules/stripe-replit-sync/dist/index.js:501:35)
+2026-08-10T03:26:59.290Z       at async PostgresClient.withAdvisoryLock (/home/runner/workspace/node_modules/.pnpm/stripe-replit-sync@1.0.0_stripe@22.3.0_@types+node@25.9.4_/node_modules/stripe-replit-sync/dist/index.js:342:14)
+2026-08-10T03:26:59.290Z       at async Promise.all (index 2)
+2026-08-10T03:26:59.290Z       at WebhookEndpointResource._makeRequest (/home/runner/workspace/node_modules/.pnpm/stripe@22.3.0_@types+node@25.9.4/node_modules/stripe/src/StripeResource.ts:98:27)
+2026-08-10T03:26:59.290Z       at <anonymous> (/home/runner/workspace/node_modules/.pnpm/stripe-replit-sync@1.0.0_stripe@22.3.0_@types+node@25.9.4_/node_modules/stripe-replit-sync/dist/index.js:2186:48)
+2026-08-10T03:26:59.290Z       at async initStripe (/home/runner/workspace/artifacts/api-server/src/index.ts:156:5)
+2026-08-10T03:27:12.228Z {"level":30,"time":1786332432228,"pid":19,"hostname":"localhost","req":{"id":800,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":61,"msg":"request completed"}
+2026-08-10T03:27:15.676Z received signal, shutting down artifact processes signal=terminated
+2026-08-10T03:27:15.676Z sending SIGTERM to artifact process artifact=artifacts/hoops-mobile
+2026-08-10T03:27:15.676Z sending SIGTERM to artifact process artifact=artifacts/api-server
+2026-08-10T03:27:15.693Z  ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/hoops-mobile@0.0.0 serve: `node server/serve.js`
+2026-08-10T03:27:15.693Z /home/runner/workspace/artifacts/hoops-mobile:
+2026-08-10T03:27:15.693Z Command failed with signal "SIGTERM"
+2026-08-10T03:27:15.704Z artifact process exited with error error=signal: terminated artifact=artifacts/api-server
+2026-08-10T03:27:15.706Z all artifact processes stopped
+2026-08-10T03:27:15.706Z artifact process exited with error error=signal: terminated artifact=artifacts/hoops-mobile
+2026-08-10T03:27:15.706Z main done, exiting
+2026-08-10T03:27:26.061Z {"level":30,"time":1786332446061,"pid":21,"hostname":"localhost","req":{"id":2,"method":"GET","url":"/api"},"res":{"statusCode":404},"responseTime":5,"msg":"request completed"}
+2026-08-10T03:27:26.207Z {"level":30,"time":1786332446207,"pid":21,"hostname":"localhost","req":{"id":3,"method":"GET","url":"/api/__clerk/npm/@clerk/clerk-js@6/dist/clerk.browser.js"},"res":{"statusCode":307},"responseTime":80,"msg":"request completed"}
+2026-08-10T03:27:26.334Z {"level":30,"time":1786332446334,"pid":21,"hostname":"localhost","req":{"id":4,"method":"GET","url":"/api/__clerk/npm/@clerk/clerk-js@6.26.0/dist/clerk.browser.js"},"res":{"statusCode":200},"responseTime":52,"msg":"request completed"}
+2026-08-10T03:27:26.553Z {"level":30,"time":1786332446553,"pid":21,"hostname":"localhost","req":{"id":5,"method":"GET","url":"/api/__clerk/npm/@clerk/ui@1/dist/ui.browser.js"},"res":{"statusCode":307},"responseTime":28,"msg":"request completed"}
+2026-08-10T03:27:26.644Z {"level":30,"time":1786332446644,"pid":21,"hostname":"localhost","req":{"id":6,"method":"GET","url":"/api/__clerk/npm/@clerk/ui@1.28.0/dist/ui.browser.js"},"res":{"statusCode":200},"responseTime":37,"msg":"request completed"}
+2026-08-10T03:27:26.818Z {"level":30,"time":1786332446818,"pid":21,"hostname":"localhost","req":{"id":7,"method":"GET","url":"/api/__clerk/v1/client"},"res":{"statusCode":200},"responseTime":85,"msg":"request completed"}
+2026-08-10T03:27:26.859Z {"level":30,"time":1786332446859,"pid":21,"hostname":"localhost","req":{"id":8,"method":"GET","url":"/api/__clerk/v1/environment"},"res":{"statusCode":200},"responseTime":118,"msg":"request completed"}
+2026-08-10T03:27:26.975Z {"level":30,"time":1786332446975,"pid":21,"hostname":"localhost","req":{"id":9,"method":"GET","url":"/api/__clerk/npm/@clerk/ui@1.28.0/dist/framework_ui_e0cb5a_1.28.0.js"},"res":{"statusCode":200},"responseTime":40,"msg":"request completed"}
+2026-08-10T03:27:26.979Z {"level":30,"time":1786332446979,"pid":21,"hostname":"localhost","req":{"id":10,"method":"GET","url":"/api/__clerk/npm/@clerk/ui@1.28.0/dist/ui-common_ui_e0cb5a_1.28.0.js"},"res":{"statusCode":200},"responseTime":41,"msg":"request completed"}
+2026-08-10T03:27:27.173Z {"level":30,"time":1786332447173,"pid":21,"hostname":"localhost","req":{"id":11,"method":"GET","url":"/api/__clerk/npm/@clerk/ui@1.28.0/dist/vendors_ui_e0cb5a_1.28.0.js"},"res":{"statusCode":200},"responseTime":34,"msg":"request completed"}
+2026-08-10T03:27:27.174Z {"level":30,"time":1786332447174,"pid":21,"hostname":"localhost","req":{"id":12,"method":"GET","url":"/api/__clerk/npm/@clerk/ui@1.28.0/dist/subscriptionDetails_ui_e0cb5a_1.28.0.js"},"res":{"statusCode":200},"responseTime":31,"msg":"request completed"}
+2026-08-10T03:28:07.507Z {"level":30,"time":1786332487507,"pid":21,"hostname":"localhost","req":{"id":13,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":88,"msg":"request completed"}
+2026-08-10T03:28:47.215Z {"level":40,"time":1786332527214,"pid":21,"hostname":"localhost","req":{"id":15,"method":"GET","url":"/api/billing/status"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332586,"jwtExpired":false,"secondsToExpiry":59,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:28:47.216Z {"level":30,"time":1786332527215,"pid":21,"hostname":"localhost","req":{"id":15,"method":"GET","url":"/api/billing/status"},"res":{"statusCode":401},"responseTime":74,"msg":"request completed"}
+2026-08-10T03:28:47.218Z {"level":40,"time":1786332527218,"pid":21,"hostname":"localhost","req":{"id":17,"method":"GET","url":"/api/games"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332586,"jwtExpired":false,"secondsToExpiry":59,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:28:47.220Z {"level":30,"time":1786332527219,"pid":21,"hostname":"localhost","req":{"id":17,"method":"GET","url":"/api/games"},"res":{"statusCode":401},"responseTime":69,"msg":"request completed"}
+2026-08-10T03:28:47.222Z {"level":30,"time":1786332527222,"pid":21,"hostname":"localhost","req":{"id":18,"method":"GET","url":"/api/users/me"},"res":{"statusCode":401},"responseTime":70,"msg":"request completed"}
+2026-08-10T03:28:47.222Z {"level":40,"time":1786332527222,"pid":21,"hostname":"localhost","req":{"id":18,"method":"GET","url":"/api/users/me"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332586,"jwtExpired":false,"secondsToExpiry":59,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:28:47.224Z {"level":30,"time":1786332527223,"pid":21,"hostname":"localhost","req":{"id":16,"method":"GET","url":"/api/players"},"res":{"statusCode":401},"responseTime":75,"msg":"request completed"}
+2026-08-10T03:28:47.224Z {"level":40,"time":1786332527223,"pid":21,"hostname":"localhost","req":{"id":16,"method":"GET","url":"/api/players"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332586,"jwtExpired":false,"secondsToExpiry":59,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:28:47.225Z {"level":40,"time":1786332527225,"pid":21,"hostname":"localhost","req":{"id":19,"method":"GET","url":"/api/auth/youtube/status"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332586,"jwtExpired":false,"secondsToExpiry":59,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:28:47.226Z {"level":30,"time":1786332527225,"pid":21,"hostname":"localhost","req":{"id":19,"method":"GET","url":"/api/auth/youtube/status"},"res":{"statusCode":401},"responseTime":69,"msg":"request completed"}
+2026-08-10T03:28:47.238Z {"level":40,"time":1786332527238,"pid":21,"hostname":"localhost","req":{"id":14,"method":"GET","url":"/api/teams"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332586,"jwtExpired":false,"secondsToExpiry":59,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:28:47.238Z {"level":30,"time":1786332527238,"pid":21,"hostname":"localhost","req":{"id":14,"method":"GET","url":"/api/teams"},"res":{"statusCode":401},"responseTime":104,"msg":"request completed"}
+2026-08-10T03:29:02.741Z {"level":30,"time":1786332542741,"pid":21,"hostname":"localhost","req":{"id":20,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":72,"msg":"request completed"}
+2026-08-10T03:29:14.492Z {"level":40,"time":1786332554492,"pid":21,"hostname":"localhost","req":{"id":23,"method":"GET","url":"/api/games"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332614,"jwtExpired":false,"secondsToExpiry":60,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:29:14.495Z {"level":30,"time":1786332554493,"pid":21,"hostname":"localhost","req":{"id":23,"method":"GET","url":"/api/games"},"res":{"statusCode":401},"responseTime":66,"msg":"request completed"}
+2026-08-10T03:29:14.495Z {"level":40,"time":1786332554493,"pid":21,"hostname":"localhost","req":{"id":24,"method":"GET","url":"/api/teams"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332614,"jwtExpired":false,"secondsToExpiry":60,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:29:14.495Z {"level":30,"time":1786332554493,"pid":21,"hostname":"localhost","req":{"id":24,"method":"GET","url":"/api/teams"},"res":{"statusCode":401},"responseTime":65,"msg":"request completed"}
+2026-08-10T03:29:14.497Z {"level":40,"time":1786332554497,"pid":21,"hostname":"localhost","req":{"id":22,"method":"GET","url":"/api/billing/status"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332614,"jwtExpired":false,"secondsToExpiry":60,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:29:14.499Z {"level":30,"time":1786332554498,"pid":21,"hostname":"localhost","req":{"id":22,"method":"GET","url":"/api/billing/status"},"res":{"statusCode":401},"responseTime":73,"msg":"request completed"}
+2026-08-10T03:29:14.500Z {"level":40,"time":1786332554499,"pid":21,"hostname":"localhost","req":{"id":25,"method":"GET","url":"/api/auth/youtube/status"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332614,"jwtExpired":false,"secondsToExpiry":60,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:29:14.500Z {"level":30,"time":1786332554500,"pid":21,"hostname":"localhost","req":{"id":21,"method":"GET","url":"/api/players"},"res":{"statusCode":401},"responseTime":78,"msg":"request completed"}
+2026-08-10T03:29:14.500Z {"level":30,"time":1786332554499,"pid":21,"hostname":"localhost","req":{"id":25,"method":"GET","url":"/api/auth/youtube/status"},"res":{"statusCode":401},"responseTime":68,"msg":"request completed"}
+2026-08-10T03:29:14.500Z {"level":40,"time":1786332554500,"pid":21,"hostname":"localhost","req":{"id":21,"method":"GET","url":"/api/players"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332614,"jwtExpired":false,"secondsToExpiry":60,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:29:14.501Z {"level":40,"time":1786332554500,"pid":21,"hostname":"localhost","req":{"id":26,"method":"GET","url":"/api/users/me"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332614,"jwtExpired":false,"secondsToExpiry":60,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:29:14.501Z {"level":30,"time":1786332554501,"pid":21,"hostname":"localhost","req":{"id":26,"method":"GET","url":"/api/users/me"},"res":{"statusCode":401},"responseTime":69,"msg":"request completed"}
+2026-08-10T03:29:15.713Z {"level":40,"time":1786332555712,"pid":21,"hostname":"localhost","req":{"id":27,"method":"GET","url":"/api/players"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332614,"jwtExpired":false,"secondsToExpiry":58,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:29:15.713Z {"level":30,"time":1786332555713,"pid":21,"hostname":"localhost","req":{"id":27,"method":"GET","url":"/api/players"},"res":{"statusCode":401},"responseTime":45,"msg":"request completed"}
+2026-08-10T03:29:22.659Z {"level":40,"time":1786332562659,"pid":21,"hostname":"localhost","req":{"id":28,"method":"POST","url":"/api/players"},"jwtIss":"https://immortal-swan-47.clerk.accounts.dev","jwtSub":"user_3G8g1nIAe…","jwtExp":1786332614,"jwtExpired":false,"secondsToExpiry":51,"msg":"requireAuth: 401 — JWT payload"}
+2026-08-10T03:29:22.659Z {"level":30,"time":1786332562659,"pid":21,"hostname":"localhost","req":{"id":28,"method":"POST","url":"/api/players"},"res":{"statusCode":401},"responseTime":69,"msg":"request completed"}
+2026-08-10T03:29:58.027Z {"level":30,"time":1786332598027,"pid":21,"hostname":"localhost","req":{"id":29,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":72,"msg":"request completed"}
+2026-08-10T03:30:53.313Z {"level":30,"time":1786332653313,"pid":21,"hostname":"localhost","req":{"id":30,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":57,"msg":"request completed"}
+2026-08-10T03:31:48.792Z {"level":30,"time":1786332708792,"pid":21,"hostname":"localhost","req":{"id":31,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":240,"msg":"request completed"}

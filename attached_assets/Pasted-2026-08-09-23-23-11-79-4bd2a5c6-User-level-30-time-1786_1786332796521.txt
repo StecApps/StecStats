@@ -1,0 +1,129 @@
+2026-08-09 23:23:11.79
+4bd2a5c6
+User
+{"level":30,"time":1786332191790,"pid":19,"hostname":"localhost","req":{"id":789,"method":"GET","url":"/api/teams/23/highlight"},"res":{"statusCode":401},"responseTime":0,"msg":"request completed"}
+
+2026-08-09 23:23:30.90
+4bd2a5c6
+User
+{"level":30,"time":1786332210907,"pid":19,"hostname":"localhost","req":{"id":796,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":58,"msg":"request completed"}
+
+2026-08-09 23:24:26.36
+4bd2a5c6
+User
+{"level":30,"time":1786332266363,"pid":19,"hostname":"localhost","req":{"id":797,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":71,"msg":"request completed"}
+
+2026-08-09 23:25:21.62
+4bd2a5c6
+User
+{"level":30,"time":1786332321626,"pid":19,"hostname":"localhost","req":{"id":798,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":69,"msg":"request completed"}
+
+2026-08-09 23:26:16.99
+4bd2a5c6
+User
+{"level":30,"time":1786332376996,"pid":19,"hostname":"localhost","req":{"id":799,"method":"POST","url":"/api/__clerk/v1/client/sessions/sess_3HO9Ijvi76yR9LZoWSpsmUKSSPg/tokens"},"res":{"statusCode":200},"responseTime":63,"msg":"request completed"}
+
+2026-08-09 23:26:53.08
+b711e8b7
+System
+metasidecar: loaded enterprise status from environment is_enterprise=false
+
+2026-08-09 23:26:53.08
+b711e8b7
+System
+starting up user application
+
+2026-08-09 23:26:53.08
+b711e8b7
+System
+starting artifact processes for monorepo deployment
+
+2026-08-09 23:26:53.08
+b711e8b7
+System
+artifact mode enabled runnable=2 static=1
+
+2026-08-09 23:26:53.10
+b711e8b7
+System
+forwarding local port 0 to external port 80 (mapped as 1104)
+
+2026-08-09 23:26:53.10
+b711e8b7
+System
+registered static handler for artifact publicDir=artifacts/hoops-stats/dist/public path=/
+
+2026-08-09 23:26:53.10
+b711e8b7
+System
+waiting for runnable artifact ports ports=[8080 25655]
+
+2026-08-09 23:26:53.10
+b711e8b7
+System
+healthcheck failed error=healthcheck /hoops-mobile/ returned status 500
+
+2026-08-09 23:26:53.10
+b711e8b7
+System
+baseline ports snapshot before artifact start ports=[1104 1106 1105]
+
+2026-08-09 23:26:53.11
+b711e8b7
+System
+healthcheck failed error=healthcheck /hoops-mobile/ returned status 500
+
+2026-08-09 23:26:53.12
+b711e8b7
+System
+healthcheck failed error=healthcheck /api returned status 500
+
+2026-08-09 23:26:53.13
+b711e8b7
+System
+starting artifact processes count=2
+
+2026-08-09 23:26:53.13
+b711e8b7
+System
+starting artifact process args=[pnpm --filter @workspace/hoops-mobile run serve] port=25655 artifact=artifacts/hoops-mobile
+
+2026-08-09 23:26:53.13
+b711e8b7
+System
+starting artifact process args=[node --enable-source-maps artifacts/api-server/dist/index.mjs] port=8080 artifact=artifacts/api-server
+
+2026-08-09 23:26:53.13
+b711e8b7
+System
+healthcheck failed error=healthcheck /api returned status 500
+
+2026-08-09 23:26:53.16
+b711e8b7
+System
+artifact process started artifact=artifacts/hoops-mobile pid=22
+
+2026-08-09 23:26:53.17
+b711e8b7
+System
+artifact process started artifact=artifacts/api-server pid=21
+
+
+2026-08-09 23:26:53.21
+b711e8b7
+System
+healthcheck failed error=healthcheck /hoops-mobile/ returned status 500
+
+2026-08-09 23:26:53.34
+b711e8b7
+System
+healthcheck failed error=healthcheck /api returned status 500
+
+2026-08-09 23:26:53.59
+b711e8b7
+System
+healthcheck failed error=healthcheck /hoops-mobile/ returned status 500
+
+2026-08-09 23:26:58.61
+b711e8b7
+User
