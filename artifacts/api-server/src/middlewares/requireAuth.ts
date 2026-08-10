@@ -1,7 +1,72 @@
 import type { NextFunction, Request, Response } from "express";
 import { getAuth, clerkClient, verifyToken } from "@clerk/express";
+import { createPublicKey } from "crypto";
 import { eq, isNull } from "drizzle-orm";
 import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
+
+// ---------------------------------------------------------------------------
+// Mobile Clerk instance JWKS cache
+//
+// The mobile app uses EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY (test instance) which
+// Replit does NOT auto-swap on publish. The server's clerkMiddleware() uses the
+// live instance (auto-swapped). We verify mobile Bearer tokens manually using
+// JWKS fetched from the token's own iss URL so no separate secret is needed.
+// ---------------------------------------------------------------------------
+interface JwkEntry { pem: string; }
+const jwksCache = new Map<string, { keys: Map<string, JwkEntry>; fetchedAt: number }>();
+const JWKS_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getPemForToken(token: string): Promise<string | null> {
+  // Decode header to get kid + alg, payload to get iss.
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  let header: Record<string, unknown>;
+  let payload: Record<string, unknown>;
+  try {
+    header  = JSON.parse(Buffer.from(parts[0]!, "base64url").toString("utf8"));
+    payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8"));
+  } catch { return null; }
+
+  const kid = typeof header["kid"] === "string" ? header["kid"] : null;
+  const iss = typeof payload["iss"] === "string" ? payload["iss"] : null;
+  if (!kid || !iss) return null;
+
+  // Only trust the test/mobile Clerk instance (from EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY).
+  // Derive the expected FAPI host from the publishable key so we never blindly
+  // fetch JWKS from an untrusted iss value.
+  const mobilePubKey = process.env["EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY"] ?? "";
+  const b64 = mobilePubKey.replace(/^pk_(test|live)_/, "").replace(/\$?$/, "");
+  let trustedFapi: string | null = null;
+  try { trustedFapi = Buffer.from(b64, "base64").toString("utf8").replace(/\$$/, ""); } catch { /* ignore */ }
+  if (!trustedFapi || !iss.includes(trustedFapi)) return null;
+
+  // Check cache.
+  const cached = jwksCache.get(iss);
+  if (cached && Date.now() - cached.fetchedAt < JWKS_TTL_MS) {
+    return cached.keys.get(kid)?.pem ?? null;
+  }
+
+  // Fetch fresh JWKS.
+  try {
+    const res = await fetch(`${iss}/.well-known/jwks.json`);
+    if (!res.ok) return null;
+    const json = await res.json() as { keys?: unknown[] };
+    const keyMap = new Map<string, JwkEntry>();
+    for (const jwk of json.keys ?? []) {
+      if (!jwk || typeof jwk !== "object") continue;
+      const j = jwk as Record<string, unknown>;
+      const kId = typeof j["kid"] === "string" ? j["kid"] : null;
+      if (!kId) continue;
+      try {
+        const pem = createPublicKey({ key: j as Parameters<typeof createPublicKey>[0], format: "jwk" })
+          .export({ type: "spki", format: "pem" }) as string;
+        keyMap.set(kId, { pem });
+      } catch { /* skip unrecognized key */ }
+    }
+    jwksCache.set(iss, { keys: keyMap, fetchedAt: Date.now() });
+    return keyMap.get(kid)?.pem ?? null;
+  } catch { return null; }
+}
 
 declare global {
   namespace Express {
@@ -44,38 +109,34 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
     if (token) {
-      const mobilePubKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
-      if (mobilePubKey) {
-        try {
-          const payload = await verifyToken(token, { publishableKey: mobilePubKey });
-          clerkUserId = payload.sub ?? null;
+      try {
+        const pem = await getPemForToken(token);
+        if (pem) {
+          const mobilePayload = await verifyToken(token, { jwtKey: pem });
+          clerkUserId = mobilePayload.sub ?? null;
           if (clerkUserId) {
             req.log?.info({ clerkUserId: clerkUserId.slice(0, 14) + '…' },
-              'requireAuth: mobile token verified via EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY');
+              'requireAuth: mobile token verified via EXPO instance JWKS');
           }
-        } catch (err: any) {
-          // Log the actual Clerk rejection reason for debugging
-          const authHeaderVal = req.headers.authorization;
-          const tok = authHeaderVal?.startsWith('Bearer ') ? authHeaderVal.slice(7) : null;
-          try {
-            if (tok) {
-              const parts = tok.split('.');
-              if (parts.length === 3) {
-                const p = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-                req.log?.warn({
-                  jwtIss: p.iss,
-                  jwtSub: typeof p.sub === 'string' ? p.sub.slice(0, 14) + '…' : null,
-                  jwtExp: p.exp,
-                  jwtExpired: p.exp < Date.now() / 1000,
-                  secondsToExpiry: Math.round(p.exp - Date.now() / 1000),
-                  verifyErr: err?.message ?? String(err),
-                }, 'requireAuth: 401 — mobile verifyToken also failed');
-              }
-            }
-          } catch { /* ignore decode errors */ }
+        } else {
+          // Token iss doesn't match the trusted mobile instance — log and fall through to 401.
+          const parts = token.split('.');
+          if (parts.length === 3) {
+            try {
+              const p = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString('utf8'));
+              req.log?.warn({
+                jwtIss: p.iss,
+                jwtSub: typeof p.sub === 'string' ? p.sub.slice(0, 14) + '…' : null,
+                jwtExp: p.exp,
+                jwtExpired: p.exp < Date.now() / 1000,
+                secondsToExpiry: Math.round(p.exp - Date.now() / 1000),
+              }, 'requireAuth: 401 — JWT payload (iss not in trusted mobile instance)');
+            } catch { /* ignore */ }
+          }
         }
-      } else {
-        req.log?.warn({}, 'requireAuth: 401 — Bearer token present but EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY not set');
+      } catch (err: any) {
+        req.log?.warn({ verifyErr: err?.message ?? String(err) },
+          'requireAuth: 401 — mobile verifyToken failed');
       }
     } else {
       req.log?.warn({ hasAuthHeader: !!req.headers.authorization },
