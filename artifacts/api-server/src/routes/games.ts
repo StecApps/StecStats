@@ -1917,12 +1917,17 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     streamType: type,
   });
 
-  // proxyReady tells the client whether the URL points to the optimized H.264
-  // proxy MP4 (true) or the raw recording (false, may be VP9/WebM which iOS
-  // cannot play). The client uses this to show a "processing" state instead of
-  // a broken player while the proxy build is in-flight.
+  // proxyReady: true  → URL is an H.264 proxy MP4 (safe on all platforms)
+  // proxyReady: false → URL is the raw recording (VP9/WebM); iOS cannot play it
+  // proxySkipped: true → the proxy will never be built for this game because
+  //   the video is too long to safely transcode on RAM-backed /tmp (the build
+  //   gate in ensureGameProxyInBackground uses the same 900 s threshold).
+  //   The client should stop polling and tell the user instead of spinning.
   const proxyReady = type !== "video" || (!!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION);
-  res.json({ token, proxyReady });
+  const MAX_PROXY_BUILD_DURATION_SEC = 900; // must match highlightGenerator.ts
+  const durSec = (game.videoDurationMs ?? null) !== null ? (game.videoDurationMs! / 1000) : null;
+  const proxySkipped = type === "video" && !proxyReady && durSec !== null && durSec > MAX_PROXY_BUILD_DURATION_SEC;
+  res.json({ token, proxyReady, proxySkipped });
 });
 
 /**

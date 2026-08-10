@@ -43,18 +43,20 @@ async function fetchStreamUrl(
   gameId: number,
   type: 'video' | 'highlight' | 'lowlight',
   token: string,
-): Promise<{ url: string; proxyReady: boolean }> {
+): Promise<{ url: string; proxyReady: boolean; proxySkipped: boolean }> {
   const res = await fetch(`${API_BASE}/api/games/${gameId}/stream-token/${type}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Could not get stream token');
-  const { token: streamToken, proxyReady } = await res.json();
+  const { token: streamToken, proxyReady, proxySkipped } = await res.json();
   return {
     url: `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`,
-    // Server sets proxyReady=false when the raw WebM is being served (proxy not
-    // built yet). iOS cannot play VP9/WebM, so the client shows a processing
-    // state rather than a broken player. Defaults to true for highlight/lowlight.
+    // proxyReady=false → server is building the H.264 proxy; raw VP9/WebM
+    // served in the meantime is unplayable on iOS.
     proxyReady: proxyReady !== false,
+    // proxySkipped=true → game is too long to transcode; proxy will never be
+    // built. Stop polling and show an informational message instead.
+    proxySkipped: proxySkipped === true,
   };
 }
 
@@ -193,6 +195,9 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   // the raw file (VP9/WebM) is not playable on iOS, so we show a processing
   // state and poll until the proxy is ready.
   const [proxyReady, setProxyReady] = useState<boolean | null>(null);
+  // proxySkipped=true when the server will never build a proxy (game too long
+  // to transcode on RAM-backed /tmp). Stop polling and show a static message.
+  const [proxySkipped, setProxySkipped] = useState(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const player = useVideoPlayer('', () => {});
@@ -207,6 +212,12 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
         })
         .then((result) => {
           if (!result || cancelled.value) return;
+          if (result.proxySkipped) {
+            // Proxy will never be built — stop polling immediately.
+            setProxySkipped(true);
+            setProxyReady(false);
+            return;
+          }
           setProxyReady(result.proxyReady);
           if (result.proxyReady) {
             setStreamUrl(result.url);
@@ -250,6 +261,21 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
         <Ionicons name="alert-circle-outline" size={40} color={colors.mutedForeground} />
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
           Could not load video
+        </Text>
+      </View>
+    );
+  }
+
+  // Game too long to transcode — proxy will never be built.
+  if (proxySkipped) {
+    return (
+      <View style={videoStyle.empty}>
+        <Ionicons name="time-outline" size={40} color={colors.mutedForeground} style={{ marginBottom: 12 }} />
+        <Text style={[videoStyle.emptyText, { color: colors.foreground }]}>
+          Video too long to optimize
+        </Text>
+        <Text style={[videoStyle.emptySubText, { color: colors.mutedForeground }]}>
+          Full-game recordings over 15 minutes can't be processed on this device. Open the game in a browser to watch the video.
         </Text>
       </View>
     );
