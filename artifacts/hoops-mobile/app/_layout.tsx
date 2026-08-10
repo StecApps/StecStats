@@ -110,11 +110,22 @@ export function ApiAuthSetup() {
   // It is preferred over invalidateQueries() because invalidation does not
   // remove error entries from the cache — a cached 401 error persists and
   // blocks the re-fetch even after a valid token is available.
+  //
+  // IMPORTANT: we await getToken() before calling resetQueries() so the
+  // re-fetches only fire once the token is actually available. Without this,
+  // resetQueries() can trigger re-fetches during a token refresh (which takes
+  // ~600ms), causing those requests to also go out with no Authorization
+  // header and get cached as 401 errors again.
   useEffect(() => {
-    if (isSignedIn) {
-      qc.resetQueries();
-    }
-  }, [isSignedIn, qc]);
+    if (!isSignedIn) return;
+    let cancelled = false;
+    getToken().then((token) => {
+      if (!cancelled && token) {
+        qc.resetQueries();
+      }
+    });
+    return () => { cancelled = true; };
+  }, [isSignedIn, qc, getToken]);
 
   // Sync RevenueCat subscriber identity with Clerk — guarded on isLoaded so
   // the transient reload state (isLoaded=false, isSignedIn=false) is never
