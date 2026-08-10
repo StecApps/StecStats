@@ -19,7 +19,7 @@ run = "pnpm --filter @workspace/hoops-mobile run dev"
 args = [ "pnpm", "--filter", "@workspace/hoops-mobile", "run", "build" ]
 
 [services.production.run]
-args = [ "pnpm", "--filter", "@workspace/hoops-mobile", "run", "serve" ]
+args = [ "node", "artifacts/hoops-mobile/server/serve.js" ]
 
 [services.production.run.env]
 PORT = "25655"
