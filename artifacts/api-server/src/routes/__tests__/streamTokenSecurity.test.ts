@@ -124,6 +124,12 @@ vi.mock("@workspace/db", () => ({
       teamsTable: {
         findFirst: vi.fn().mockResolvedValue({ id: 1, ownerId: COACH_A.id, name: "Test Squad" }),
       },
+      usersTable: {
+        // Required by the entitlement re-check in the stream route.  Return null
+        // so isPro() is called with (null, undefined, undefined) — still returns
+        // true via the isPro mock, but the DB call doesn't crash.
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
       playersTable: { findMany: vi.fn().mockResolvedValue([]) },
       gameEventsTable: { findMany: vi.fn().mockResolvedValue([]) },
     },
@@ -261,9 +267,19 @@ vi.mock("../../lib/videoDuration", () => ({
 
 vi.mock("../../lib/highlightGenerator", () => ({
   PROXY_VERSION: 1,
+  PROXY_CHUNK_DURATION_SEC: 360,
   ensureGameProxyInBackground: vi.fn(),
   cancelHighlightGeneration: vi.fn(),
   cancelProxyBuild: vi.fn(),
+  // HLS helpers added for long-game iOS playback — must be present so the
+  // games router can import them without throwing at module load time.
+  makeProxyChunkGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number, i: number) => `/chunks/${i}`,
+  ),
+  getReadyProxyChunkCount: vi.fn().mockResolvedValue(-1),
+  readHlsSentinel: vi.fn().mockResolvedValue(null),
+  ensureAllProxyChunksInBackground: vi.fn(),
+  acquireProxyChunkLocally: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({
@@ -355,7 +371,12 @@ async function mintToken(gameId: number, type: string): Promise<string> {
 
 /** Issue a stream request using the given token against the given gameId/type. */
 async function streamRequest(gameId: number, type: string, token: string) {
-  return fetch(`${baseUrl}/api/games/${gameId}/stream/${type}?t=${token}`);
+  // Include a Range header so the server takes the partial-content (206) path
+  // rather than redirecting to a signed GCS URL (302).  The redirect would
+  // follow to a real GCS URL which returns an unexpected status in tests.
+  return fetch(`${baseUrl}/api/games/${gameId}/stream/${type}?t=${token}`, {
+    headers: { Range: "bytes=0-1023" },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -363,12 +384,12 @@ async function streamRequest(gameId: number, type: string, token: string) {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/games/:gameId/stream/:type — expired token is rejected", () => {
-  it("returns 200 for a freshly minted token", async () => {
+  it("returns 206 for a freshly minted token (Range request → partial content)", async () => {
     gameFinderMode.value = "game-a";
     const token = await mintToken(GAME_A_ID, "highlight");
 
     const res = await streamRequest(GAME_A_ID, "highlight", token);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(206);
   });
 
   it("returns 401 after the token's TTL has elapsed", async () => {
@@ -407,52 +428,48 @@ describe("GET /api/games/:gameId/stream/:type — token is scoped to its object 
     expect(res.status).toBe(401);
   });
 
-  it("serves game A's objectPath (not game B's) when game A's token is used with game B's ID in the URL", async () => {
+  it("returns 401 when game A's token is used with game B's ID in the URL", async () => {
     /**
-     * Scenario: An attacker steals game A's highlight token (PATH_A_HIGHLIGHT)
-     * and substitutes game B's ID in the URL hoping to stream game B's content.
+     * Scenario: An attacker steals game A's highlight token and substitutes
+     * game B's ID in the URL hoping to access game B's content.
      *
-     * Expected: The server ignores the URL's gameId after token validation and
-     * uses the token's bound objectPath (PATH_A_HIGHLIGHT). Game B's video path
-     * (PATH_B_VIDEO) is never accessed.
+     * Expected: The server rejects the request with 401 because every stream
+     * token is now bound to the exact gameId it was minted for.  Swapping the
+     * gameId in the URL is detected and denied before any object is served.
      *
-     * This confirms the token is the sole authority on what content is served —
-     * swapping the gameId in the URL cannot redirect the stream to a different
-     * object than the one the token was issued for.
+     * This is a stronger guarantee than the old objectPath-authority model:
+     * mismatched gameId never reaches the GCS read at all.
      */
     gameFinderMode.value = "game-a";
     const tokenForGameA = await mintToken(GAME_A_ID, "highlight");
+    lastObjectPathRequested.value = "";
 
-    // Now issue the stream request with game B's ID but game A's token.
-    // The server must use PATH_A_HIGHLIGHT (token-bound), not PATH_B_VIDEO.
+    // Issue the stream request with game B's ID but game A's token.
     const res = await streamRequest(GAME_B_ID, "highlight", tokenForGameA);
 
-    // The response must be 200 (token is still valid) …
-    expect(res.status).toBe(200);
+    // Must be rejected — token is bound to game A, not game B.
+    expect(res.status).toBe(401);
 
-    // … and the server must have opened PATH_A_HIGHLIGHT, not PATH_B_VIDEO.
-    // If PATH_B_VIDEO were served, the attacker gained access to another game's footage.
-    expect(lastObjectPathRequested.value).toBe(PATH_A_HIGHLIGHT);
+    // No GCS object was opened (request rejected at token-gameId check).
     expect(lastObjectPathRequested.value).not.toBe(PATH_B_VIDEO);
   });
 
-  it("cannot use a token for game B's video to stream game A's highlight", async () => {
+  it("returns 401 when a game B video token is used on game A's highlight URL", async () => {
     /**
-     * Mirror scenario: token minted for game B's video cannot serve
-     * game A's highlight. The token is bound to PATH_B_VIDEO; hitting
-     * /games/gameA/stream/highlight with it still serves PATH_B_VIDEO only.
+     * Mirror scenario: token minted for game B's video cannot serve game A's
+     * highlight.  The token's gameId binding (game B) and streamType binding
+     * (video) both mismatch the URL's gameId (game A) and type (highlight),
+     * so the server rejects the request before accessing any object.
      */
     gameFinderMode.value = "game-b";
     const tokenForGameB = await mintToken(GAME_B_ID, "video");
-
     lastObjectPathRequested.value = "";
 
     // Request game A's highlight using game B's video token.
     const res = await streamRequest(GAME_A_ID, "highlight", tokenForGameB);
 
-    // Token is valid → 200, but content served must be game B's video path.
-    expect(res.status).toBe(200);
-    expect(lastObjectPathRequested.value).toBe(PATH_B_VIDEO);
+    // Must be rejected — token is bound to game B / video, not game A / highlight.
+    expect(res.status).toBe(401);
     expect(lastObjectPathRequested.value).not.toBe(PATH_A_HIGHLIGHT);
   });
 

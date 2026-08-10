@@ -35,7 +35,18 @@ import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
-import { PROXY_VERSION, ensureGameProxyInBackground, cancelHighlightGeneration, cancelProxyBuild } from "../lib/highlightGenerator";
+import {
+  PROXY_VERSION,
+  PROXY_CHUNK_DURATION_SEC,
+  makeProxyChunkGcsPath,
+  getReadyProxyChunkCount,
+  readHlsSentinel,
+  acquireProxyChunkLocally,
+  ensureAllProxyChunksInBackground,
+  ensureGameProxyInBackground,
+  cancelHighlightGeneration,
+  cancelProxyBuild,
+} from "../lib/highlightGenerator";
 
 // ── Rate limiter for public game endpoint ─────────────────────────────────────
 const PUB_RATE_WINDOW_MS = 60_000;
@@ -1835,6 +1846,11 @@ interface StreamTokenEntry {
    */
   gameId: number;
   streamType: string;
+  /**
+   * True for HLS playlist/segment tokens — objectPath is unused.  The HLS
+   * routes serve proxy chunks directly from GCS rather than a single object.
+   */
+  isHls?: boolean;
 }
 
 const streamTokens = new Map<string, StreamTokenEntry>();
@@ -1887,6 +1903,37 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
   if (type === "video") {
     if (!game.videoObjectPath) return void res.status(404).json({ error: "No video available" });
     const hasValidProxy = !!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION;
+    const durSec = game.videoDurationMs != null ? game.videoDurationMs / 1000 : null;
+    const MAX_PROXY_BUILD_DURATION_SEC = 900;
+    const isLongGame = !hasValidProxy && durSec != null && durSec > MAX_PROXY_BUILD_DURATION_SEC;
+
+    if (isLongGame && game.videoDurationMs) {
+      // Long game: the full-proxy concat path would OOM on RAM-backed /tmp.
+      // Serve via HLS using per-chunk proxy files in GCS instead.
+      const chunkCount = await getReadyProxyChunkCount(gameId, ownerId, game.videoDurationMs);
+      if (chunkCount > 0) {
+        // All proxy chunks are ready — issue an HLS token and return the playlist URL.
+        const hlsToken = randomUUID();
+        streamTokens.set(hlsToken, {
+          objectPath: "",
+          expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
+          ownerId,
+          entitlementOkUntil: Date.now() + STREAM_ENTITLEMENT_RECHECK_MS,
+          gameId,
+          streamType: "hls",
+          isHls: true,
+        });
+        return void res.json({
+          token: hlsToken,
+          proxyReady: true,
+          proxyType: "hls",
+        });
+      }
+      // Chunks not ready yet — kick off background encode and tell client to keep polling.
+      ensureAllProxyChunksInBackground(gameId, ownerId, game.videoObjectPath, game.videoDurationMs);
+      return void res.json({ token: randomUUID(), proxyReady: false, proxySkipped: false });
+    }
+
     if (!hasValidProxy) ensureGameProxyInBackground(gameId, ownerId);
     objectPath = hasValidProxy ? game.videoProxyObjectPath! : game.videoObjectPath;
   } else if (type === "highlight") {
@@ -2027,6 +2074,170 @@ router.get("/games/:gameId/stream/:type", async (req, res) => {
     req.log.error({ err: error }, "stream: error serving video");
     res.status(500).json({ error: "Failed to stream video" });
   }
+});
+
+// ── HLS playlist + segment endpoints for long-game iOS playback ──────────────
+//
+// Long game recordings (>15 min) cannot be concatenated into a single proxy
+// MP4 on RAM-backed /tmp without OOM-killing the server.  Instead, we serve
+// them as an HLS stream backed by the per-chunk H.264 proxy files that are
+// already built by the highlight/lowlight pipeline.  Each chunk is remuxed
+// on-the-fly from MP4 to MPEG-TS by ffmpeg (copy — no re-encode, ~instant).
+//
+// Auth uses the same short-lived stream-token mechanism as /stream/:type but
+// the token entry is tagged isHls=true.  The playlist URL is returned by the
+// stream-token endpoint when proxyType==='hls'.
+
+/** Shared entitlement re-check used by both HLS routes. */
+async function revalidateHlsEntitlement(entry: StreamTokenEntry, token: string): Promise<boolean> {
+  if (Date.now() <= entry.entitlementOkUntil) return true;
+  try {
+    const owner = await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, entry.ownerId),
+      columns: { stripeCustomerId: true, email: true, revenueCatEntitlement: true },
+    });
+    const ents = await getEntitlements(
+      owner?.stripeCustomerId ?? null,
+      owner?.email,
+      owner?.revenueCatEntitlement,
+    );
+    if (!isPro(ents)) { streamTokens.delete(token); return false; }
+    entry.entitlementOkUntil = Date.now() + STREAM_ENTITLEMENT_RECHECK_MS;
+    return true;
+  } catch {
+    return false; // fail closed on DB/Stripe outage
+  }
+}
+
+/**
+ * GET /games/:gameId/hls/playlist.m3u8?t=<token>
+ * Returns an HLS Version-3 playlist listing each proxy chunk as a MPEG-TS
+ * segment URL.  The token must have been issued by the stream-token endpoint
+ * with proxyType==="hls".
+ */
+router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
+  const token = String(req.query.t ?? "");
+  const entry = streamTokens.get(token);
+  if (!entry || !entry.isHls || Date.now() > entry.expiresAt) {
+    return void res.status(401).end();
+  }
+  const gameId = Number(req.params.gameId);
+  if (isNaN(gameId) || entry.gameId !== gameId) return void res.status(401).end();
+
+  if (!await revalidateHlsEntitlement(entry, token)) {
+    return void res.status(403).json({ error: "Subscription required" });
+  }
+
+  // Read the sentinel for exact per-segment durations (ffprobe-measured at
+  // encode time) rather than using PROXY_CHUNK_DURATION_SEC estimates.
+  // The sentinel is written by ensureAllProxyChunksInBackground only after
+  // every chunk is safely in GCS, so its presence alone confirms readiness.
+  const sentinel = await readHlsSentinel(entry.ownerId, gameId);
+  if (!sentinel) {
+    return void res.status(503).json({ error: "Proxy chunks not yet ready — try again shortly" });
+  }
+  const { chunkCount, segmentDurationsSec } = sentinel;
+
+  // #EXT-X-TARGETDURATION must be >= ceil of the longest actual segment
+  // (RFC 8216 §4.3.3.1).  Derive from measured durations, not the nominal
+  // PROXY_CHUNK_DURATION_SEC, since GOP alignment can shift boundaries ≤2 s.
+  const maxDur = Math.max(...segmentDurationsSec, 1);
+  const lines: string[] = [
+    "#EXTM3U",
+    "#EXT-X-VERSION:3",
+    `#EXT-X-TARGETDURATION:${Math.ceil(maxDur)}`,
+    "#EXT-X-MEDIA-SEQUENCE:0",
+  ];
+  for (let i = 0; i < chunkCount; i++) {
+    // Use the ffprobe-measured duration stored in the sentinel.  Falls back to
+    // PROXY_CHUNK_DURATION_SEC when the entry is missing or zero (shouldn't
+    // happen in practice but guards against corrupt sentinel data).
+    const dur = (segmentDurationsSec[i] ?? 0) > 0
+      ? segmentDurationsSec[i]!
+      : PROXY_CHUNK_DURATION_SEC;
+    lines.push(`#EXTINF:${dur.toFixed(3)},`);
+    // Relative URL so AVPlayer resolves it against the playlist base path.
+    lines.push(`segment/${i}?t=${token}`);
+  }
+  lines.push("#EXT-X-ENDLIST");
+
+  res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+  res.setHeader("Cache-Control", "private, max-age=60");
+  res.end(lines.join("\n"));
+});
+
+/**
+ * GET /games/:gameId/hls/segment/:chunkIndex?t=<token>
+ * Downloads the H.264 proxy chunk for chunkIndex from GCS, remuxes it to
+ * MPEG-TS via ffmpeg -c copy, and streams the result to the client.  The
+ * remux is a container-format change only — no video or audio re-encoding —
+ * so it completes in a few seconds regardless of chunk length.
+ *
+ * The GCS chunk is cached in shared /tmp for the duration of the stream
+ * (ref-counted via acquireProxyChunkLocally) so concurrent segment requests
+ * for the same chunk share a single download.
+ */
+router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
+  const token = String(req.query.t ?? "");
+  const entry = streamTokens.get(token);
+  if (!entry || !entry.isHls || Date.now() > entry.expiresAt) {
+    return void res.status(401).end();
+  }
+  const gameId = Number(req.params.gameId);
+  const chunkIndex = Number(req.params.chunkIndex);
+  if (isNaN(gameId) || isNaN(chunkIndex) || chunkIndex < 0 || entry.gameId !== gameId) {
+    return void res.status(401).end();
+  }
+
+  if (!await revalidateHlsEntitlement(entry, token)) {
+    return void res.status(403).json({ error: "Subscription required" });
+  }
+
+  const chunkGcsPath = makeProxyChunkGcsPath(entry.ownerId, gameId, chunkIndex);
+  let chunk: Awaited<ReturnType<typeof acquireProxyChunkLocally>>;
+  try {
+    chunk = await acquireProxyChunkLocally(chunkGcsPath);
+  } catch (err) {
+    console.error("HLS segment: failed to acquire proxy chunk", { gameId, chunkIndex, err });
+    return void res.status(503).json({ error: "Segment not available — try again shortly" });
+  }
+
+  res.setHeader("Content-Type", "video/mp2t");
+  res.setHeader("Cache-Control", "private, max-age=3600");
+
+  // Remux MP4 → MPEG-TS via ffmpeg -c copy (container change only, no re-encode).
+  const ffmpegProc = spawn("nice", [
+    "-n", "10", "ffmpeg",
+    "-y",
+    "-i", chunk.localPath,
+    "-c", "copy",
+    "-f", "mpegts",
+    "pipe:1",
+  ]);
+  ffmpegProc.stderr.resume(); // discard stderr to avoid pipe backpressure
+
+  ffmpegProc.stdout.pipe(res);
+
+  let released = false;
+  const releaseOnce = () => {
+    if (released) return;
+    released = true;
+    chunk.release().catch(() => {});
+  };
+
+  ffmpegProc.on("close", () => {
+    releaseOnce();
+    if (!res.writableEnded) res.end();
+  });
+  ffmpegProc.on("error", () => {
+    releaseOnce();
+    if (!res.writableEnded) res.end();
+  });
+  // If the client disconnects early, kill ffmpeg and release the chunk.
+  res.on("close", () => {
+    ffmpegProc.kill("SIGTERM");
+    releaseOnce();
+  });
 });
 
 // ── Generate / return game share token (auth required) ───────────────────────

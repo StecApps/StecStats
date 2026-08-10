@@ -111,6 +111,10 @@ vi.mock("@workspace/db", () => {
 vi.mock("drizzle-orm", () => ({
   eq:     vi.fn((_col: unknown, _val: unknown) => ({})),
   isNull: vi.fn((_col: unknown) => ({})),
+  // and() and ne() are used by the secondary-account mapping query
+  // (finds any row sharing the same email but a different id).
+  and:    vi.fn((..._args: unknown[]) => ({})),
+  ne:     vi.fn((_col: unknown, _val: unknown) => ({})),
 }));
 
 // ---------------------------------------------------------------------------
@@ -124,7 +128,8 @@ import { requireAuth } from "../requireAuth";
 
 function makeMockReq(overrides: Partial<Request> = {}): Request {
   return {
-    log: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+    log:     { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+    headers: {},          // requireAuth reads req.headers.authorization in the Bearer fallback
     ...overrides,
   } as unknown as Request;
 }
@@ -145,8 +150,17 @@ describe("requireAuth — per-request DB read contract", () => {
     // Reset call counts only — do not wipe mock implementations.
     vi.clearAllMocks();
 
-    // Re-apply happy-path implementations that clearAllMocks may have cleared.
-    findFirstMock.mockImplementation(async () => ({ ...mockUser }));
+    // requireAuth now makes TWO findFirst calls per request:
+    //   1. Look up the user by Clerk ID (main lookup).
+    //   2. Look for a primary account sharing the same email (secondary-account
+    //      mapping added to deduplicate mobile-test vs web-live Clerk instances).
+    //
+    // Odd-numbered calls (1st, 3rd, …) are the main lookup → return the user.
+    // Even-numbered calls (2nd, 4th, …) are the mapping lookup → no match.
+    findFirstMock.mockImplementation(async () => {
+      const callN = findFirstMock.mock.calls.length; // 1-indexed at call time
+      return callN % 2 === 1 ? { ...mockUser } : undefined;
+    });
     getAuthMock.mockReturnValue({ userId: mockUser.clerkUserId });
 
     delete process.env["OWNER_CLERK_EMAIL"];
@@ -162,7 +176,9 @@ describe("requireAuth — per-request DB read contract", () => {
 
     await requireAuth(req, res, next);
 
-    expect(findFirstMock).toHaveBeenCalledTimes(1);
+    // requireAuth makes 2 findFirst calls per request: user lookup + secondary-
+    // account mapping query. Both must fire on every request (no caching).
+    expect(findFirstMock).toHaveBeenCalledTimes(2);
     expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -176,19 +192,19 @@ describe("requireAuth — per-request DB read contract", () => {
   it("calls db.query.usersTable.findFirst on every request — not just the first", async () => {
     const next = vi.fn() as NextFunction;
 
-    // First request
+    // First request (2 findFirst calls: main lookup + secondary-account mapping)
     const req1 = makeMockReq();
     const res1 = makeMockRes();
     await requireAuth(req1, res1, next);
-    expect(findFirstMock).toHaveBeenCalledTimes(1);
+    expect(findFirstMock).toHaveBeenCalledTimes(2);
 
     // Second request — same Clerk session, different req/res objects
     const req2 = makeMockReq();
     const res2 = makeMockRes();
     await requireAuth(req2, res2, next);
 
-    // Must be 2 — one per invocation, never cached.
-    expect(findFirstMock).toHaveBeenCalledTimes(2);
+    // 2 DB calls per request (main lookup + secondary-account mapping) × 2 requests = 4.
+    expect(findFirstMock).toHaveBeenCalledTimes(4);
     expect(next).toHaveBeenCalledTimes(2);
   });
 
@@ -205,7 +221,8 @@ describe("requireAuth — per-request DB read contract", () => {
       await requireAuth(req, res, next);
     }
 
-    expect(findFirstMock).toHaveBeenCalledTimes(N);
+    // 2 DB calls per request (main lookup + secondary-account mapping) × N requests.
+    expect(findFirstMock).toHaveBeenCalledTimes(2 * N);
   });
 
   // -------------------------------------------------------------------------
@@ -251,7 +268,8 @@ describe("requireAuth — per-request DB read contract", () => {
 
     // Must see null — not the cached "pro" from the first request.
     expect(req2.appUser?.revenueCatEntitlement).toBeNull();
-    expect(findFirstMock).toHaveBeenCalledTimes(2);
+    // 2 DB calls per request (main lookup + secondary-account mapping) × 2 requests = 4.
+    expect(findFirstMock).toHaveBeenCalledTimes(4);
   });
 
   // -------------------------------------------------------------------------

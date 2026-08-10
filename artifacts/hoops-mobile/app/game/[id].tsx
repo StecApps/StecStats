@@ -48,14 +48,22 @@ async function fetchStreamUrl(
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Could not get stream token');
-  const { token: streamToken, proxyReady, proxySkipped } = await res.json();
+  const { token: streamToken, proxyReady, proxySkipped, proxyType } = await res.json();
+
+  // proxyType==='hls' → long game served as an HLS playlist backed by proxy
+  // chunks; AVPlayer on iOS handles M3U8 natively.  Use the playlist URL
+  // directly instead of the single-file stream endpoint.
+  const url = proxyType === 'hls'
+    ? `${API_BASE}/api/games/${gameId}/hls/playlist.m3u8?t=${streamToken}`
+    : `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`;
+
   return {
-    url: `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`,
-    // proxyReady=false → server is building the H.264 proxy; raw VP9/WebM
-    // served in the meantime is unplayable on iOS.
+    url,
+    // proxyReady=false → server is still building the proxy (H.264 or HLS);
+    // raw VP9/WebM is unplayable on iOS so we show a spinner and keep polling.
     proxyReady: proxyReady !== false,
-    // proxySkipped=true → game is too long to transcode; proxy will never be
-    // built. Stop polling and show an informational message instead.
+    // proxySkipped=true → proxy build permanently skipped (genuine error
+    // fallback; should not normally occur with the HLS path in place).
     proxySkipped: proxySkipped === true,
   };
 }
