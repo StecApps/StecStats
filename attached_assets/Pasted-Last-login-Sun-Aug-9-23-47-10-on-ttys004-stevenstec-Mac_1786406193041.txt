@@ -1,0 +1,154 @@
+Last login: Sun Aug  9 23:47:10 on ttys004
+stevenstec@Mac ~ % # One-time: install EAS CLI if you haven't
+npm install -g eas-cli
+eas login   # use stecleadership24@gmail.com
+
+# From the repo root
+cd artifacts/hoops-mobile
+eas build --platform ios --profile production
+quote> eas submit --platform ios --profile production
+quote> 
+stevenstec@Mac ~ % npm install -g eas-cli
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated rimraf@2.4.5: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated lodash.get@4.4.2: This package is deprecated. Use the optional chaining (?.) operator instead.
+npm warn deprecated glob@6.0.4: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated uuid@7.0.3: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated uuid@8.3.2: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated uuid@9.0.1: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+
+added 2 packages, and changed 510 packages in 18s
+
+65 packages are looking for funding
+  run `npm fund` for details
+stevenstec@Mac ~ % git clone https://github.com/StecApps/StecStats.git
+cd StecStats/artifacts/hoops-mobile
+Cloning into 'StecStats'...
+remote: Enumerating objects: 8063, done.
+remote: Counting objects: 100% (1000/1000), done.
+remote: Compressing objects: 100% (458/458), done.
+remote: Total 8063 (delta 680), reused 785 (delta 531), pack-reused 7063 (from 2)
+Receiving objects: 100% (8063/8063), 260.42 MiB | 3.11 MiB/s, done.
+Resolving deltas: 100% (5408/5408), done.
+Updating files: 100% (848/848), done.
+stevenstec@Mac hoops-mobile % cd StecStats
+git pull
+cd artifacts/hoops-mobile
+cd: no such file or directory: StecStats
+Already up to date.
+cd: no such file or directory: artifacts/hoops-mobile
+stevenstec@Mac hoops-mobile % npm install
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: '@testing-library/react-native@14.0.1',
+npm warn EBADENGINE   required: { node: '^22.13.0 || >=24' },
+npm warn EBADENGINE   current: { node: 'v20.20.2', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn EBADENGINE Unsupported engine {
+npm warn EBADENGINE   package: 'commander@15.0.0',
+npm warn EBADENGINE   required: { node: '>=22.12.0' },
+npm warn EBADENGINE   current: { node: 'v20.20.2', npm: '10.8.2' }
+npm warn EBADENGINE }
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated whatwg-encoding@2.0.0: Use @exodus/bytes instead for a more spec-conformant and faster implementation
+npm warn deprecated abab@2.0.6: Use your platform's native atob() and btoa() methods instead
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated domexception@4.0.0: Use your platform's native DOMException instead
+npm warn deprecated uuid@3.4.0: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated uuid@7.0.3: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
+npm warn deprecated crypto-js@4.2.0: Active development of CryptoJS has been discontinued. This library is no longer maintained.
+npm warn deprecated @clerk/clerk-expo@2.20.0: @clerk/clerk-expo is deprecated. Migrate to @clerk/expo by following the Core 3 upgrade guide https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3
+
+added 1163 packages, and audited 1166 packages in 50s
+
+117 packages are looking for funding
+  run `npm fund` for details
+
+22 vulnerabilities (11 moderate, 11 high)
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+stevenstec@Mac hoops-mobile % eas build --platform ios --profile production
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+EAS project not configured.
+✔ Existing EAS project found for @sstec/hoops-mobile (id = 2115ac2f-b1d6-42f5-a109-9dd376d0121a). Configure this project? … yes
+✔ Linked local project to EAS project 2115ac2f-b1d6-42f5-a109-9dd376d0121a
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+Environment variables loaded from the "production" build profile "env" configuration: APP_ENV, EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY.
+
+✔ iOS app only uses standard/exempt encryption? Learn more: https://developer.apple.com/documentation/Security/complying-with-encryption-export-regulations … yes
+✔ Incremented buildNumber from 19 to 20.
+
+
+ios.buildNumber field in app config is ignored when version source is set to remote, but this value will still be in the manifest available via expo-constants. It's recommended to remove this value from app config.
+✔ Using remote iOS credentials (Expo server)
+
+If you provide your Apple account credentials we will be able to generate all necessary build credentials and fully validate them.
+This is optional, but without Apple account access you will need to provide all the missing values manually and we can only run minimal validation on them.
+✔ Do you want to log in to your Apple account? … yes
+
+› Log in to your Apple Developer account to continue
+✔ Apple ID: … stecleadership24@gmail.com
+› Restoring session /Users/stevenstec/.app-store/auth/stecleadership24@gmail.com/cookie
+› Session expired Local session
+› Using password for stecleadership24@gmail.com from your local Keychain
+  Learn more: https://docs.expo.dev/distribution/security#keychain
+✔ Logged in New session
+› Team STEVEN RAYMOND STEC (76529G6UKL)
+› Provider STEVEN RAYMOND STEC (129253533)
+✔ Bundle identifier registered com.hoopsstats.coach
+✔ Synced capabilities: No updates
+✔ Synced capability identifiers: No updates
+✔ Fetched Apple distribution certificates
+✔ Fetched Apple provisioning profiles
+
+Project Credentials Configuration
+
+Project                   @sstec/hoops-mobile
+Bundle Identifier         com.hoopsstats.coach
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             540DC88B97752E805917038A3625C7C3
+Expiration Date           Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   7 days ago
+                          
+Provisioning Profile      
+Developer Portal ID       5W8NQD6M5V
+Status                    active
+Expiration                Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   1 day ago
+                          
+All credentials are ready to build @sstec/hoops-mobile (com.hoopsstats.coach)
+
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+✔ Compressed project files 12s (516 MB)
+Your project archive is 516 MB. You can reduce its size and the time it takes to upload by excluding files that are unnecessary for the build process in .easignore file. Learn more: https://expo.fyi/eas-build-archive
+✔ Uploaded to EAS 2m 43s
+✔ Computed project fingerprint
+This account has used its iOS builds from the Free plan this month, which will reset in 21 days (on Tue Sep 01 2026). Upgrade your plan for more builds with shorter wait times and longer timeouts, and to run more builds concurrently with a subscription plan. https://expo.dev/accounts/sstec/settings/billing
+    Error: build command failed.
