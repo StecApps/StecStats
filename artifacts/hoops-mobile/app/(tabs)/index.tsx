@@ -27,6 +27,7 @@ import {
   useGetPlayerSummary,
   useUpdatePlayer,
   getListPlayersQueryKey,
+  useGetMe,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -842,10 +843,13 @@ const shootS = StyleSheet.create({
 function CoachGreeting() {
   const c = useColors();
   const { user } = useUser();
+  const { data: meData } = useGetMe();
 
   const hour = new Date().getHours();
   const salutation = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
-  const firstName = user?.firstName ?? user?.fullName?.split(' ')[0] ?? 'Coach';
+  // Prefer the name stored in the DB (editable via Profile → Edit Name) so that
+  // changes made there are reflected here without waiting for a Clerk sync.
+  const firstName = meData?.firstName ?? user?.firstName ?? user?.fullName?.split(' ')[0] ?? 'Coach';
 
   const initials = firstName.slice(0, 1).toUpperCase();
 

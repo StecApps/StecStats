@@ -1295,29 +1295,10 @@ export default function ScorekeeperScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Opponent score */}
+        {/* Opponent score — display only in overlay; use the OPP bar below to score */}
         <View style={styles.scoreCol}>
           <Text style={styles.teamLabel} numberOfLines={1}>{opponent}</Text>
-          <View style={styles.oppScoreRow}>
-            <TouchableOpacity
-              onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-              style={styles.oppBtn}
-              hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
-            >
-              <Text style={styles.oppBtnText}>−</Text>
-            </TouchableOpacity>
-            <Text style={styles.scoreNum}>{opponentScore}</Text>
-            {([1, 2, 3] as const).map((pts) => (
-              <TouchableOpacity
-                key={pts}
-                onPress={() => { setOpponentScore((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                style={styles.oppOverlayQuickBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
-              >
-                <Text style={styles.oppOverlayQuickBtnText}>+{pts}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Text style={styles.scoreNum}>{opponentScore}</Text>
         </View>
       </View>
     </View>
@@ -1330,8 +1311,8 @@ export default function ScorekeeperScreen() {
 
   const statArea = (
     <>
-      {/* ── Opponent score bar — prominent OPP label so it's obvious ── */}
-      <View style={[styles.oppBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+      {/* ── Opponent score bar — shown only during recording; non-recording uses the compact header ── */}
+      {recordVideo && <View style={[styles.oppBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <View style={styles.oppBarLeft}>
           <View style={[styles.oppBarTagPill, { backgroundColor: colors.primary + '1A' }]}>
             <Text style={[styles.oppBarTagText, { color: colors.primary }]}>OPP</Text>
@@ -1358,7 +1339,7 @@ export default function ScorekeeperScreen() {
             </TouchableOpacity>
           ))}
         </View>
-      </View>
+      </View>}
 
       {/* Camera hidden badge — subtle reminder that recording is still running */}
       {recordVideo && !previewVisible && (
