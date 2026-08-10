@@ -436,12 +436,11 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }
 
   if (lowlight.status === 'processing') {
-    const pct = Math.min(92, Math.round(100 * (1 - Math.exp(-elapsedSec / 900))));
+    const pct = Math.min(97, Math.round(100 * (1 - Math.exp(-elapsedSec / 2000))));
     const label =
-      elapsedSec < 30   ? 'Finding missed shots & turnovers…'
-      : elapsedSec < 360  ? 'Downloading game footage…'
-      : elapsedSec < 2700 ? 'Compressing clips…'
-      : elapsedSec < 3300 ? 'Encoding reel…'
+      elapsedSec < 60   ? 'Finding missed shots & turnovers…'
+      : elapsedSec < 900  ? 'Downloading game footage…'
+      : elapsedSec < 4500 ? 'Compressing clips…'
       : 'Finalizing…';
     const mins = Math.floor(elapsedSec / 60);
     const secs = elapsedSec % 60;
@@ -458,7 +457,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.destructive ?? '#ef4444', borderRadius: 3 }} />
         </View>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
-          {pct}% · {elapsed} elapsed — typically 5–15 min for a full game
+          {pct}% · {elapsed} elapsed — typically 30–90 min for a full game
         </Text>
       </View>
     );
@@ -806,15 +805,14 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }
 
   if (highlight.status === 'processing') {
-    // Synthetic progress — exponential approach towards 92 %
-    // (same formula as the web app). Caps so it never reaches 100 %
-    // until the server says "ready".
-    const pct = Math.min(92, Math.round(100 * (1 - Math.exp(-elapsedSec / 900))));
+    // Synthetic progress — exponential approach towards 97 %.
+    // Time constant 2000 s → reaches ~80 % at 54 min, ~92 % at 84 min.
+    // Caps below 100 % so the bar never claims done before the server confirms.
+    const pct = Math.min(97, Math.round(100 * (1 - Math.exp(-elapsedSec / 2000))));
     const label =
-      elapsedSec < 30  ? 'Finding highlight moments…'
-      : elapsedSec < 360  ? 'Downloading game footage…'
-      : elapsedSec < 2700 ? 'Compressing clips…'
-      : elapsedSec < 3300 ? 'Encoding reel…'
+      elapsedSec < 60   ? 'Finding highlight moments…'
+      : elapsedSec < 900  ? 'Downloading game footage…'
+      : elapsedSec < 4500 ? 'Compressing clips…'
       : 'Finalizing…';
     const mins = Math.floor(elapsedSec / 60);
     const secs = elapsedSec % 60;
@@ -832,7 +830,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.primary, borderRadius: 3 }} />
         </View>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
-          {pct}% · {elapsed} elapsed — typically 5–15 min for a full game
+          {pct}% · {elapsed} elapsed — typically 30–90 min for a full game
         </Text>
       </View>
     );

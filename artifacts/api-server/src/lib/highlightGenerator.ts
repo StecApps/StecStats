@@ -145,7 +145,7 @@ export const GENERATOR_VERSION = 10;
 // overhead — encoding speed stays at the ultrafast-preset baseline (~5× rt).
 // v5 = orientation-aware scale: portrait sources use 720×1280 instead of being
 //      squashed into 1280×720 with embedded black bars that make the clip tiny.
-export const PROXY_VERSION = 5;
+export const PROXY_VERSION = 6;
 
 export const MAX_PROXY_BUILD_DURATION_SEC = 900; // 15 minutes
 const CAPTION_HALF_SECONDS = 2.5;
@@ -692,7 +692,7 @@ async function encodeChunksToGcs(
     ...(encodeLimitSec != null ? ["-t", String(Math.ceil(encodeLimitSec))] : []),
     "-c:v", "libx264",
     "-preset", "ultrafast",
-    "-crf", "28",
+    "-crf", "33",
     // Fix keyframe interval at 60 frames so the segment muxer's chunk
     // boundaries land within ≤ 60 frames (≤ 2 s at 30 fps, ≤ 1 s at 60 fps)
     // of the nominal PROXY_CHUNK_DURATION_SEC.  Without this, libx264 ultrafast
@@ -1987,7 +1987,7 @@ async function renderGameSegments(
   // acquiredChunks.  A chunk acquired for both preload and render has refs=2
   // and is deleted only after both are released — no early eviction.
   // ---------------------------------------------------------------------------
-  const MAX_PARALLEL_PRELOAD = 4;
+  const MAX_PARALLEL_PRELOAD = 6;
   const preloadedRefs: number[] = []; // chunk indices with an extra preload ref
   if (chunked && neededChunks.size > 0 && neededChunks.size <= MAX_PARALLEL_PRELOAD) {
     const sorted = [...neededChunks].sort((a, b) => a - b);
