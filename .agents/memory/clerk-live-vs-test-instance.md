@@ -1,40 +1,36 @@
 ---
 name: Replit Clerk live vs test instance split — mobile auth
-description: Replit auto-swaps CLERK_PUBLISHABLE_KEY to a live Clerk instance on publish; EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY stays as the test key. Mobile tokens are always from the test instance and are rejected by the live-instance clerkMiddleware.
+description: Replit auto-swaps CLERK_PUBLISHABLE_KEY to a live Clerk instance on publish. Mobile app has the test key baked in at build time. Server-side JWKS fallback bridges the gap.
 ---
 
-## The Rule
+## The Problem
 
-**EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is NOT auto-swapped on publish.** It stays as the test Clerk key (`pk_test_...`, `immortal-swan-47.clerk.accounts.dev`) even in production.
+**Replit auto-swaps `CLERK_PUBLISHABLE_KEY` (and `VITE_CLERK_PUBLISHABLE_KEY`) to a live Clerk instance key on publish.** The server's `clerkMiddleware()` uses the live JWKS and expects `iss: <live-instance>`. The TestFlight binary was built with the test key (`pk_test_...`, `immortal-swan-47.clerk.accounts.dev`) baked in — mobile tokens carry `iss: https://immortal-swan-47.clerk.accounts.dev` → rejected.
 
-Replit auto-swaps `CLERK_PUBLISHABLE_KEY` and `VITE_CLERK_PUBLISHABLE_KEY` to live keys when publishing. The server's `clerkMiddleware()` therefore uses the live Clerk JWKS and expects `iss: <live-instance>`. Mobile tokens always carry `iss: immortal-swan-47.clerk.accounts.dev` → rejected.
+Web sessions work fine (cookies bypass JWKS verification). Only Bearer token (mobile) requests fail.
 
-## The Fix (no new app build required)
+## The Workaround (in place, no new app build required)
 
-In `requireAuth.ts`, add a fallback `verifyToken` call using `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` when the primary middleware rejects a Bearer token:
+`requireAuth.ts` has a fallback: when `clerkMiddleware()` rejects a Bearer token, fetch JWKS directly from the JWT's own `iss` URL, build a PEM, and call `verifyToken(token, { jwtKey: pem })`.
+
+**Trust check:** only fetch JWKS from `*.clerk.accounts.dev` (Clerk-controlled infrastructure). Cryptographic signature verification is the real security gate.
 
 ```typescript
-if (!clerkUserId && token && process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-  try {
-    const payload = await verifyToken(token, {
-      publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-    });
-    clerkUserId = payload.sub ?? null;
-  } catch (err) {
-    // log the verifyErr for debugging
-  }
-}
+const isClerkHostedInstance = /^https:\/\/[a-z0-9-]+\.clerk\.accounts\.dev$/.test(iss);
 ```
 
-`verifyToken` from `@clerk/express` fetches JWKS from the FAPI URL derived from the publishable key — no secret key needed for public JWT verification.
+**Do NOT** derive the trusted FAPI host from `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`. In production that variable holds the LIVE key (decoding to something like `clerk.stecstats.stecco.org`), not the test key the mobile binary was built with. The iss mismatch would cause all mobile requests to fail.
 
-## Why
+## JWKS cache
 
-Replit provisions separate Clerk tenants for dev and prod. The mobile app has its key baked in at build time and can't be auto-swapped. The only way to permanently fix this without a server-side fallback is to rebuild the mobile app with the live publishable key — but that requires knowing the live key value (not auto-surfaced by Replit) and uploading a new TestFlight build.
+5-minute in-memory cache keyed by `iss`. Lives in the module scope of `requireAuth.ts`. Survives across requests but resets on server restart.
 
 ## Diagnostic signature
 
-- `requireAuth: 401 — JWT payload` with `jwtIss: "https://immortal-swan-47.clerk.accounts.dev"` in PRODUCTION logs
-- All three publishable keys decode to the same test instance in the dev environment
-- Web sessions work fine (cookies bypass JWKS verification)
-- Only Bearer token (mobile) requests fail
+- `requireAuth: 401 — JWT payload` + `jwtIss: "https://immortal-swan-47.clerk.accounts.dev"` in PRODUCTION logs
+- `trust check failed — trustedFapi="clerk.stecstats.stecco.org"` means the EXPO key decoding was being used incorrectly as the trust anchor
+- Web sessions work fine; only Bearer token (mobile) requests fail
+
+## Permanent fix
+
+Rebuild the mobile app (`eas build --platform ios --profile production --local`) with the live Clerk publishable key so both app and server use the same instance. The live key isn't surfaced easily in Replit — user must find it in the Clerk dashboard for the live tenant. EAS cloud quota exhausted until Sep 1; local builds only.
