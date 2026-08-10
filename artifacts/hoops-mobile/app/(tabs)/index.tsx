@@ -857,7 +857,7 @@ function CoachGreeting() {
   const salutation = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
   // Prefer the name stored in the DB (editable via Profile → Edit Name) so that
   // changes made there are reflected here without waiting for a Clerk sync.
-  const firstName = meData?.firstName ?? user?.firstName ?? user?.fullName?.split(' ')[0] ?? 'Coach';
+  const firstName = meData?.firstName ?? 'Coach';
 
   const initials = firstName.slice(0, 1).toUpperCase();
 
