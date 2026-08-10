@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { getAuth, clerkClient } from "@clerk/express";
+import { getAuth, clerkClient, verifyToken } from "@clerk/express";
 import { eq, isNull } from "drizzle-orm";
 import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
 
@@ -28,32 +28,62 @@ declare global {
  * read is the guarantee that revoked entitlements are honoured immediately.
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const auth = getAuth(req);
-  const clerkUserId = auth?.userId;
+  let clerkUserId = getAuth(req)?.userId ?? null;
+
+  // Fallback: if the primary clerkMiddleware (live Clerk instance) didn't
+  // authenticate the request but a Bearer token is present, try verifying it
+  // against the mobile/test Clerk instance (EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY).
+  //
+  // Why this is needed: Replit auto-swaps CLERK_PUBLISHABLE_KEY to a live key
+  // on publish, but EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY is a user-set secret that
+  // stays as the test key. Mobile Bearer tokens come from the test Clerk
+  // instance; the live-instance clerkMiddleware rejects them. This fallback
+  // verifies them directly so no new app build is required.
   if (!clerkUserId) {
-    // Decode JWT payload + call verifyToken directly to get the actual Clerk error.
-    // Neither is sensitive: JWT payloads are signed, not encrypted.
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
     if (token) {
-      // 1. Decode payload to see which Clerk instance issued it
-      try {
-        const parts = token.split('.');
-        if (parts.length === 3) {
-          const p = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-          req.log?.warn({
-            jwtIss: p.iss,
-            jwtAzp: p.azp,
-            jwtSub: typeof p.sub === 'string' ? p.sub.slice(0, 14) + '…' : null,
-            jwtExp: p.exp,
-            jwtExpired: p.exp < Date.now() / 1000,
-            secondsToExpiry: Math.round(p.exp - Date.now() / 1000),
-          }, 'requireAuth: 401 — JWT payload');
+      const mobilePubKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+      if (mobilePubKey) {
+        try {
+          const payload = await verifyToken(token, { publishableKey: mobilePubKey });
+          clerkUserId = payload.sub ?? null;
+          if (clerkUserId) {
+            req.log?.info({ clerkUserId: clerkUserId.slice(0, 14) + '…' },
+              'requireAuth: mobile token verified via EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY');
+          }
+        } catch (err: any) {
+          // Log the actual Clerk rejection reason for debugging
+          const authHeaderVal = req.headers.authorization;
+          const tok = authHeaderVal?.startsWith('Bearer ') ? authHeaderVal.slice(7) : null;
+          try {
+            if (tok) {
+              const parts = tok.split('.');
+              if (parts.length === 3) {
+                const p = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+                req.log?.warn({
+                  jwtIss: p.iss,
+                  jwtSub: typeof p.sub === 'string' ? p.sub.slice(0, 14) + '…' : null,
+                  jwtExp: p.exp,
+                  jwtExpired: p.exp < Date.now() / 1000,
+                  secondsToExpiry: Math.round(p.exp - Date.now() / 1000),
+                  verifyErr: err?.message ?? String(err),
+                }, 'requireAuth: 401 — mobile verifyToken also failed');
+              }
+            }
+          } catch { /* ignore decode errors */ }
         }
-      } catch { /* ignore */ }
+      } else {
+        req.log?.warn({}, 'requireAuth: 401 — Bearer token present but EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY not set');
+      }
     } else {
-      req.log?.warn({ hasAuthHeader: !!authHeader }, 'requireAuth: 401 — no Bearer token');
+      req.log?.warn({ hasAuthHeader: !!req.headers.authorization },
+        'requireAuth: 401 — no Bearer token');
     }
+  }
+
+  if (!clerkUserId) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
