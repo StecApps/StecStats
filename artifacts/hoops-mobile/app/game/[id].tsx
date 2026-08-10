@@ -39,13 +39,23 @@ const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : '';
 
-async function fetchStreamUrl(gameId: number, type: 'video' | 'highlight' | 'lowlight', token: string): Promise<string> {
+async function fetchStreamUrl(
+  gameId: number,
+  type: 'video' | 'highlight' | 'lowlight',
+  token: string,
+): Promise<{ url: string; proxyReady: boolean }> {
   const res = await fetch(`${API_BASE}/api/games/${gameId}/stream-token/${type}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Could not get stream token');
-  const { token: streamToken } = await res.json();
-  return `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`;
+  const { token: streamToken, proxyReady } = await res.json();
+  return {
+    url: `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`,
+    // Server sets proxyReady=false when the raw WebM is being served (proxy not
+    // built yet). iOS cannot play VP9/WebM, so the client shows a processing
+    // state rather than a broken player. Defaults to true for highlight/lowlight.
+    proxyReady: proxyReady !== false,
+  };
 }
 
 type Tab = 'stats' | 'video' | 'highlights' | 'lowlights';
@@ -179,25 +189,49 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const { getToken } = useAuth();
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
+  // proxyReady=false means the server is still building the H.264 proxy;
+  // the raw file (VP9/WebM) is not playable on iOS, so we show a processing
+  // state and poll until the proxy is ready.
+  const [proxyReady, setProxyReady] = useState<boolean | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const player = useVideoPlayer('', () => {});
 
+  const loadStream = useCallback(
+    (cancelled: { value: boolean }) => {
+      if (!game.videoObjectPath) return;
+      getToken()
+        .then((token) => {
+          if (!token || cancelled.value) return;
+          return fetchStreamUrl(game.id, 'video', token);
+        })
+        .then((result) => {
+          if (!result || cancelled.value) return;
+          setProxyReady(result.proxyReady);
+          if (result.proxyReady) {
+            setStreamUrl(result.url);
+            player.replaceAsync({ uri: result.url });
+          } else {
+            // Proxy not ready yet — poll every 8 s until it is.
+            retryTimerRef.current = setTimeout(() => {
+              if (!cancelled.value) loadStream(cancelled);
+            }, 8_000);
+          }
+        })
+        .catch(() => { if (!cancelled.value) setLoadError(true); });
+    },
+    [game.id, game.videoObjectPath],
+  );
+
   useEffect(() => {
     if (!game.videoObjectPath) return;
-    let cancelled = false;
-    getToken()
-      .then((token) => {
-        if (!token || cancelled) return;
-        return fetchStreamUrl(game.id, 'video', token);
-      })
-      .then((url) => {
-        if (!url || cancelled) return;
-        setStreamUrl(url);
-        player.replaceAsync({ uri: url });
-      })
-      .catch(() => { if (!cancelled) setLoadError(true); });
-    return () => { cancelled = true; };
-  }, [game.videoObjectPath]);
+    const cancelled = { value: false };
+    loadStream(cancelled);
+    return () => {
+      cancelled.value = true;
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, [game.videoObjectPath, loadStream]);
 
   if (!game.videoObjectPath) {
     return (
@@ -216,6 +250,21 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
         <Ionicons name="alert-circle-outline" size={40} color={colors.mutedForeground} />
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
           Could not load video
+        </Text>
+      </View>
+    );
+  }
+
+  // Proxy is still being built — raw WebM is unplayable on iOS.
+  if (proxyReady === false) {
+    return (
+      <View style={videoStyle.empty}>
+        <ActivityIndicator color={colors.primary} style={{ marginBottom: 12 }} />
+        <Text style={[videoStyle.emptyText, { color: colors.foreground }]}>
+          Optimizing video for playback…
+        </Text>
+        <Text style={[videoStyle.emptySubText, { color: colors.mutedForeground }]}>
+          This usually takes 1–2 minutes. The page will update automatically.
         </Text>
       </View>
     );
@@ -241,8 +290,9 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
 const videoStyle = StyleSheet.create({
   wrap: { marginHorizontal: 16, marginTop: 16, borderRadius: 12, overflow: 'hidden' },
   video: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' },
-  empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
-  emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular' },
+  empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 8 },
+  emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  emptySubText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4, opacity: 0.75 },
 });
 
 // Module-level maps so processing start times survive tab-switches/remounts.
@@ -293,10 +343,10 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         if (!token || cancelled) return;
         return fetchStreamUrl(gameId, 'lowlight', token);
       })
-      .then((url) => {
-        if (!url || cancelled) return;
-        setSignedUrl(url);
-        player.replaceAsync({ uri: url });
+      .then((result) => {
+        if (!result || cancelled) return;
+        setSignedUrl(result.url);
+        player.replaceAsync({ uri: result.url });
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -315,18 +365,16 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       } else if (nextState === 'active') {
         const bg = lowlightBgAtRef.current;
         lowlightBgAtRef.current = null;
-        // Only refresh if we've been backgrounded long enough for the signed
-        // URL to have expired (> 50 s, giving a 10 s safety margin).
         if (bg !== null && Date.now() - bg > 50_000) {
           getToken()
             .then((token) => {
               if (!token) return;
               return fetchStreamUrl(gameId, 'lowlight', token);
             })
-            .then((url) => {
-              if (!url) return;
-              setSignedUrl(url);
-              player.replaceAsync({ uri: url });
+            .then((result) => {
+              if (!result) return;
+              setSignedUrl(result.url);
+              player.replaceAsync({ uri: result.url });
             })
             .catch(() => {});
         }
@@ -478,10 +526,10 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         if (!token || cancelled) return;
         return fetchStreamUrl(gameId, 'highlight', token);
       })
-      .then((url) => {
-        if (!url || cancelled) return;
-        setSignedUrl(url);
-        player.replaceAsync({ uri: url });
+      .then((result) => {
+        if (!result || cancelled) return;
+        setSignedUrl(result.url);
+        player.replaceAsync({ uri: result.url });
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -500,18 +548,16 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       } else if (nextState === 'active') {
         const bg = highlightBgAtRef.current;
         highlightBgAtRef.current = null;
-        // Only refresh if we've been backgrounded long enough for the signed
-        // URL to have expired (> 50 s, giving a 10 s safety margin).
         if (bg !== null && Date.now() - bg > 50_000) {
           getToken()
             .then((token) => {
               if (!token) return;
               return fetchStreamUrl(gameId, 'highlight', token);
             })
-            .then((url) => {
-              if (!url) return;
-              setSignedUrl(url);
-              player.replaceAsync({ uri: url });
+            .then((result) => {
+              if (!result) return;
+              setSignedUrl(result.url);
+              player.replaceAsync({ uri: result.url });
             })
             .catch(() => {});
         }

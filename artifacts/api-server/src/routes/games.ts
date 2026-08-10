@@ -1917,7 +1917,12 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     streamType: type,
   });
 
-  res.json({ token });
+  // proxyReady tells the client whether the URL points to the optimized H.264
+  // proxy MP4 (true) or the raw recording (false, may be VP9/WebM which iOS
+  // cannot play). The client uses this to show a "processing" state instead of
+  // a broken player while the proxy build is in-flight.
+  const proxyReady = type !== "video" || (!!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION);
+  res.json({ token, proxyReady });
 });
 
 /**
