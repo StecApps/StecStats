@@ -945,6 +945,10 @@ const ytStyle = StyleSheet.create({
     alignItems: 'center',
   },
 });
+const WEB_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : 'https://stecstats.com';
+
 export default function GameDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const gameId = Number(id);
@@ -952,8 +956,30 @@ export default function GameDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [tab, setTab] = useState<Tab>('stats');
+  const [isSharing, setIsSharing] = useState(false);
+  const { getToken } = useAuth();
 
   const { data: game, isLoading } = useGetGame(gameId);
+
+  const handleShareBoxScore = useCallback(async () => {
+    if (isSharing) return;
+    setIsSharing(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_BASE}/api/games/${gameId}/share-token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Could not generate share link');
+      const { shareToken } = await res.json();
+      const url = `${WEB_BASE}/game/${shareToken}`;
+      await Share.share({ message: url, url });
+    } catch {
+      Alert.alert('Share Failed', 'Could not generate a share link. Please try again.');
+    } finally {
+      setIsSharing(false);
+    }
+  }, [gameId, getToken, isSharing]);
 
   useLayoutEffect(() => {
     if (game) {
@@ -1069,6 +1095,32 @@ export default function GameDetailScreen() {
                       <PlayerStatCard key={stat.playerId} stat={stat} rank={i + 1} colors={colors} />
                     ))}
                   <TeamTotalsRow stats={game.stats as any[]} colors={colors} />
+                  <TouchableOpacity
+                    onPress={handleShareBoxScore}
+                    disabled={isSharing}
+                    activeOpacity={0.75}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      marginHorizontal: 16,
+                      marginTop: 16,
+                      paddingVertical: 14,
+                      borderRadius: 12,
+                      backgroundColor: colors.primary,
+                      opacity: isSharing ? 0.6 : 1,
+                    }}
+                  >
+                    {isSharing ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Feather name="share-2" size={16} color="#fff" />
+                    )}
+                    <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 15, color: '#fff' }}>
+                      {isSharing ? 'Generating link…' : 'Share Box Score'}
+                    </Text>
+                  </TouchableOpacity>
                 </>
               )}
             </>
