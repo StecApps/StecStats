@@ -1443,6 +1443,7 @@ packages:
   '@clerk/clerk-expo@2.19.31':
     resolution: {integrity: sha512-w3npdpbgmOQ2ybFuNo5XGauHJ1eq8ID76Y3l2zjj9wvawPCA3UKdPvPwFdR6ukVzd+ktzhTbFnKUeIM4vXe/6w==}
     engines: {node: '>=18.17.0'}
+    deprecated: '@clerk/clerk-expo is deprecated. Migrate to @clerk/expo by following the Core 3 upgrade guide https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3'
     peerDependencies:
       '@clerk/expo-passkeys': '>=0.0.6'
       expo-apple-authentication: '>=7.0.0'
