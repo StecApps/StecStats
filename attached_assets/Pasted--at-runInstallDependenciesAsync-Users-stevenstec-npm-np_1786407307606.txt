@@ -1,0 +1,381 @@
+    at runInstallDependenciesAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:193:107)
+    at fn (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:97:19)
+    at BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:126:34)
+    at runHookableBuildPhaseAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/hookableBuildPhase.js:21:28)
+    at setupAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:76:63)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:65:5)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+
+Build failed
+Unknown error. See logs of the Install dependencies build phase for more information.
+Error: Unknown error. See logs of the Install dependencies build phase for more information.
+    at resolveBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/buildErrors/detectError.js:61:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async BuildContext.handleBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:193:28)
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:138:35)
+    at async runHookableBuildPhaseAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/hookableBuildPhase.js:21:18)
+    at async setupAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:76:5)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:65:5)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+
+Build context (for debugging this failed local build):
+  Platform: ios
+  Build profile: production
+  Workflow: managed
+  Distribution: store
+  Credentials source: remote
+  Project root directory: artifacts/hoops-mobile
+  Required package manager: pnpm
+  eas-cli version: 21.7.1
+  SDK version: 54.0.0
+  React Native version: 0.81.5
+  Expo package version: 54.0.36
+  App version: 1.0.0
+  Fingerprint hash: bea08e539ac9cb3f0737af51a15b4a1c0da50885
+  Git commit: 47ce32b77c7abdb46c8c3b5565b2dc5ee8b5aec5
+  Git working tree dirty: true
+  Build tracking ID: d9eb1a91-66c8-4e90-b4ca-e257320b2e4e
+  Project ID: 2115ac2f-b1d6-42f5-a109-9dd376d0121a
+npx -y eas-cli-local-build-plugin@21.6.0 exited with non-zero code: 1
+    Error: build command failed.
+stevenstec@Mac hoops-mobile % [ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: @clerk/shared@3.47.7, @clerk/shared@3.47.8, browser-tabs-lock@1.3.0, core-js@3.41.0, esbuild@0.27.3
+zsh: no matches found: [ERR_PNPM_IGNORED_BUILDS]
+stevenstec@Mac hoops-mobile % cd ~/StecStats
+git pull
+cd artifacts/hoops-mobile
+eas build --local --platform ios --profile production
+remote: Enumerating objects: 27, done.
+remote: Counting objects: 100% (27/27), done.
+remote: Compressing objects: 100% (6/6), done.
+remote: Total 19 (delta 13), reused 19 (delta 13), pack-reused 0 (from 0)
+Unpacking objects: 100% (19/19), 9.22 KiB | 471.00 KiB/s, done.
+From https://github.com/StecApps/StecStats
+   47ce32b..39c39da  main       -> origin/main
+Updating 47ce32b..39c39da
+Fast-forward
+ artifacts/hoops-mobile/DEPLOY.md                   |  52 +++
+ artifacts/hoops-mobile/app/_layout.tsx             |  58 +++
+ artifacts/hoops-mobile/package.json                |   3 +-
+ ...ackage-json-READ-PACKAGE-JSON_1786406894758.txt | 481 +++++++++++++++++++++
+ pnpm-workspace.yaml                                |   3 +
+ 5 files changed, 596 insertions(+), 1 deletion(-)
+ create mode 100644 artifacts/hoops-mobile/DEPLOY.md
+ create mode 100644 attached_assets/Pasted--READ-PACKAGE-JSON-Using-package-json-READ-PACKAGE-JSON_1786406894758.txt
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+Environment variables loaded from the "production" build profile "env" configuration: APP_ENV, EXPO_PUBLIC_DOMAIN.
+
+✔ Incremented buildNumber from 26 to 27.
+ios.buildNumber field in app config is ignored when version source is set to remote, but this value will still be in the manifest available via expo-constants. It's recommended to remove this value from app config.
+✔ Using remote iOS credentials (Expo server)
+
+If you provide your Apple account credentials we will be able to generate all necessary build credentials and fully validate them.
+This is optional, but without Apple account access you will need to provide all the missing values manually and we can only run minimal validation on them.
+✔ Do you want to log in to your Apple account? … yes
+
+› Log in to your Apple Developer account to continue
+✔ Apple ID: … stecleadership24@gmail.com
+› Restoring session /Users/stevenstec/.app-store/auth/stecleadership24@gmail.com/cookie
+› Team STEVEN RAYMOND STEC (76529G6UKL)
+› Provider STEVEN RAYMOND STEC (129253533)
+✔ Logged in Local session
+✔ Bundle identifier registered com.hoopsstats.coach
+✔ Synced capabilities: No updates
+✔ Synced capability identifiers: No updates
+✔ Fetched Apple distribution certificates
+✔ Fetched Apple provisioning profiles
+
+Project Credentials Configuration
+
+Project                   @sstec/hoops-mobile
+Bundle Identifier         com.hoopsstats.coach
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             540DC88B97752E805917038A3625C7C3
+Expiration Date           Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   7 days ago
+                          
+Provisioning Profile      
+Developer Portal ID       5W8NQD6M5V
+Status                    active
+Expiration                Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   1 day ago
+                          
+All credentials are ready to build @sstec/hoops-mobile (com.hoopsstats.coach)
+
+✔ Compressed project files 11s (516 MB)
+✔ Computed project fingerprint
+[SETUP_WORKINGDIR] Preparing workingdir /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/d1ae84d7-13f8-49c7-8c19-3ce901b41b36
+[START_BUILD] Starting build
+  "job": {
+    "type": "managed",
+    "platform": "ios",
+    "projectArchive": {
+      "type": "PATH",
+      "path": "/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-cli-nodejs/c69199d2-2ae8-4977-bd83-d8068a6f04dd.tar.gz"
+    },
+    "projectRootDirectory": "artifacts/hoops-mobile",
+    "builderEnvironment": {
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "stecstats.com"
+      }
+    },
+    "cache": {
+      "disabled": false,
+      "paths": [],
+      "clear": false
+    },
+    "updates": {
+      "channel": "production"
+    },
+    "scheme": "StecStats",
+    "username": "sstec",
+    "version": {
+      "buildNumber": "27"
+    },
+    "experimental": {},
+    "mode": "build",
+    "triggeredBy": "EAS_CLI",
+    "appId": "2115ac2f-b1d6-42f5-a109-9dd376d0121a",
+    "initiatingUserId": "7187090b-bb96-4998-be5c-b39171806660"
+  }
+Local build, skipping project archive refresh
+[PREPARE_PROJECT] .npmrc found at .npmrc
+[READ_EAS_JSON] Using eas.json:
+[READ_EAS_JSON] {
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "development"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "preview"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "stecstats.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "stecleadership24@gmail.com",
+        "ascAppId": "6799710028",
+        "appleTeamId": "76529G6UKL"
+      }
+    }
+  }
+}
+
+[READ_PACKAGE_JSON] Using package.json:
+[READ_PACKAGE_JSON] {
+  "name": "@workspace/hoops-mobile",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=${EXPO_PUBLIC_DOMAIN:-$REPLIT_DEV_DOMAIN} EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN pnpm exec expo start --localhost --port $PORT",
+    "build": "node scripts/build.js",
+    "serve": "node server/serve.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "jest --config jest.config.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "rollback:prod": "eas update --republish --channel production --group $GROUP"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@expo-google-fonts/inter": "^0.4.0",
+    "@expo/cli": "54.0.23",
+    "@expo/ngrok": "^4.1.0",
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@stardazed/streams-text-encoding": "^1.0.2",
+    "@tanstack/react-query": "^5.90.21",
+    "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "^29.5.14",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/react-test-renderer": "~19.0.0",
+    "@ungap/structured-clone": "^1.3.0",
+    "@workspace/api-client-react": "file:./packages/api-client-react",
+    "@workspace/plan-copy": "file:./packages/plan-copy",
+    "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
+    "expo": "~54.0.27",
+    "expo-blur": "~15.0.8",
+    "expo-constants": "~18.0.11",
+    "expo-font": "~14.0.10",
+    "expo-glass-effect": "~0.1.4",
+    "expo-haptics": "~15.0.8",
+    "expo-image": "~3.0.11",
+    "expo-image-picker": "~17.0.9",
+    "expo-linear-gradient": "~15.0.8",
+    "expo-linking": "~8.0.10",
+    "expo-location": "~19.0.8",
+    "expo-router": "~6.0.17",
+    "expo-splash-screen": "~31.0.12",
+    "expo-status-bar": "~3.0.9",
+    "expo-symbols": "~1.0.8",
+    "expo-system-ui": "~6.0.9",
+    "expo-web-browser": "~15.0.10",
+    "jest": "^29.7.0",
+    "jest-expo": "^57.0.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-keyboard-controller": "1.18.5",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "15.12.1",
+    "react-native-web": "^0.21.0",
+    "react-native-worklets": "0.5.1",
+    "react-test-renderer": "19.1.0",
+    "typescript": "~5.9.2",
+    "zod": "^3.25.76",
+    "zod-validation-error": "^3.4.0"
+  },
+  "dependencies": {
+    "@clerk/clerk-expo": "^2.19.31",
+    "@expo-google-fonts/teko": "^0.4.1",
+    "expo-apple-authentication": "^57.0.1",
+    "expo-auth-session": "^7.0.11",
+    "expo-camera": "^17.0.10",
+    "expo-secure-store": "^15.0.8",
+    "expo-updates": "~0.28.0",
+    "expo-video": "^3.0.16",
+    "react-native-purchases": "^10.6.0",
+    "react-native-webrtc": "^124.0.8",
+    "expo": "~54.0.36",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  }
+}
+[INSTALL_DEPENDENCIES] We detected that 'artifacts/hoops-mobile' is a pnpm workspace
+[INSTALL_DEPENDENCIES] Running "pnpm install --frozen-lockfile" in /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/d1ae84d7-13f8-49c7-8c19-3ce901b41b36/build directory
+[INSTALL_DEPENDENCIES] Scope: all 11 workspace projects
+[INSTALL_DEPENDENCIES] ✓ Lockfile passes supply-chain policies (verified 2m ago)
+[INSTALL_DEPENDENCIES] Lockfile is up to date, resolution step is skipped
+[INSTALL_DEPENDENCIES] Progress: resolved 1, reused 0, downloaded 0, added 0
+[INSTALL_DEPENDENCIES] Packages: +1576
+[INSTALL_DEPENDENCIES] ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+[INSTALL_DEPENDENCIES] Packages are cloned from the content-addressable store to the virtual store.
+[INSTALL_DEPENDENCIES]   Content-addressable store is at: /Users/stevenstec/Library/pnpm/store/v11
+[INSTALL_DEPENDENCIES]   Virtual store is at:             node_modules/.pnpm
+[INSTALL_DEPENDENCIES] Progress: resolved 1576, reused 1576, downloaded 0, added 54
+[INSTALL_DEPENDENCIES] Progress: resolved 1576, reused 1576, downloaded 0, added 216
+[INSTALL_DEPENDENCIES] Progress: resolved 1576, reused 1576, downloaded 0, added 363
+[INSTALL_DEPENDENCIES] Progress: resolved 1576, reused 1576, downloaded 0, added 678
+[INSTALL_DEPENDENCIES] Progress: resolved 1576, reused 1576, downloaded 0, added 1145
+[INSTALL_DEPENDENCIES] Progress: resolved 1576, reused 1576, downloaded 0, added 1573
+[INSTALL_DEPENDENCIES] Progress: resolved 1576, reused 1576, downloaded 0, added 1575
+[INSTALL_DEPENDENCIES] Progress: resolved 1576, reused 1576, downloaded 0, added 1576, done
+[INSTALL_DEPENDENCIES] dependencies:
+[INSTALL_DEPENDENCIES] + @replit/connectors-sdk 0.4.1
+[INSTALL_DEPENDENCIES] + @replit/revenuecat-sdk 5.0.0
+[INSTALL_DEPENDENCIES] + stripe 22.3.0
+[INSTALL_DEPENDENCIES] + stripe-replit-sync 1.0.0
+[INSTALL_DEPENDENCIES] 
+[INSTALL_DEPENDENCIES] devDependencies:
+[INSTALL_DEPENDENCIES] + prettier 3.8.4
+[INSTALL_DEPENDENCIES] + typescript 5.9.3
+[INSTALL_DEPENDENCIES] . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+[INSTALL_DEPENDENCIES] . preinstall: Done
+[INSTALL_DEPENDENCIES] [ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: @clerk/shared@3.47.7, @clerk/shared@3.47.8, browser-tabs-lock@1.3.0, core-js@3.41.0, esbuild@0.27.3
+[INSTALL_DEPENDENCIES] 
+[INSTALL_DEPENDENCIES] Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+[INSTALL_DEPENDENCIES] 
+Error: pnpm install --frozen-lockfile exited with non-zero code: 1
+    at ChildProcess.completionListener (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:113:23)
+    at Object.onceWrapper (node:events:634:26)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess.emit (node:domain:489:12)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+    ...
+    at spawnAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:9:23)
+    at spawn (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/turtle-spawn/dist/index.js:16:47)
+    at installDependenciesAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/installDependencies.js:62:50)
+    at runInstallDependenciesAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:193:107)
+    at fn (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:97:19)
+    at BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:126:34)
+    at runHookableBuildPhaseAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/hookableBuildPhase.js:21:28)
+    at setupAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:76:63)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:65:5)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+
+Build failed
+Unknown error. See logs of the Install dependencies build phase for more information.
+Error: Unknown error. See logs of the Install dependencies build phase for more information.
+    at resolveBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/buildErrors/detectError.js:61:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async BuildContext.handleBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:193:28)
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:138:35)
+    at async runHookableBuildPhaseAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/hookableBuildPhase.js:21:18)
+    at async setupAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:76:5)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:65:5)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+
+Build context (for debugging this failed local build):
+  Platform: ios
+  Build profile: production
+  Workflow: managed
+  Distribution: store
+  Credentials source: remote
+  Project root directory: artifacts/hoops-mobile
+  Required package manager: pnpm
+  eas-cli version: 21.7.1
+  SDK version: 54.0.0
+  React Native version: 0.81.5
+  Expo package version: 54.0.36
+  App version: 1.0.0
+  Fingerprint hash: 0dfa34ce091835b5da8a3fe87a87dd01464780fb
+  Git commit: 39c39dac3408bc755583d3eaedf8b855271ef029
+  Git working tree dirty: true
+  Build tracking ID: c3ab4c73-fbc9-474a-830e-7484ea631948
+  Project ID: 2115ac2f-b1d6-42f5-a109-9dd376d0121a
+npx -y eas-cli-local-build-plugin@21.6.0 exited with non-zero code: 1
+    Error: build command failed.
+stevenstec@Mac hoops-mobile % 
