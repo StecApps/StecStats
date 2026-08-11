@@ -11,7 +11,9 @@ import {
   gameEventsTable,
   playersTable,
   teamsTable,
+  usersTable,
 } from "@workspace/db";
+import { sendExpoPush } from "./expoPush";
 import { ObjectStorageService } from "./objectStorage";
 import { logger } from "./logger";
 
@@ -2874,6 +2876,43 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
 }
 
 /**
+ * Send a "highlights ready" push notification to the team owner — but only if
+ * the notification has not already been sent for the current reel
+ * (`highlightNotificationSent` is false/null). Marks the flag true after
+ * sending so repeated calls are idempotent.
+ *
+ * Exported for unit testing. Called by generateTeamHighlight after the reel
+ * has been successfully written to storage.
+ */
+export async function maybeSendTeamHighlightNotification(
+  team: Pick<
+    typeof teamsTable.$inferSelect,
+    "id" | "name" | "ownerId" | "highlightNotificationSent"
+  >,
+): Promise<void> {
+  if (team.highlightNotificationSent || team.ownerId == null) return;
+  try {
+    const userRow = await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, team.ownerId),
+    });
+    if (userRow?.pushToken) {
+      await sendExpoPush(userRow.pushToken, {
+        title: "Your highlights are ready 🏀",
+        body: `Your ${team.name} season reel is ready to watch`,
+        data: { teamId: team.id },
+        channelId: "highlights",
+      });
+    }
+    await db
+      .update(teamsTable)
+      .set({ highlightNotificationSent: true })
+      .where(eq(teamsTable.id, team.id));
+  } catch (notifyErr) {
+    logger.warn({ err: notifyErr, teamId: team.id }, "Failed to send highlight push notification");
+  }
+}
+
+/**
  * Generate one combined MP4 highlight reel across every video-having game on
  * a team, in date order. Runs fully async (fire-and-forget); progress is
  * tracked via the team's highlightStatus column.
@@ -3004,6 +3043,9 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
       { teamId, games: videoGames.length, segments: allSegPaths.length },
       "Season highlight reel generated",
     );
+
+    // Send a push notification to the coach — best-effort, never throws.
+    await maybeSendTeamHighlightNotification(team);
   } catch (err) {
     const message =
       err instanceof HighlightError

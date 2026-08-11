@@ -1,5 +1,4 @@
 import React, { useEffect } from 'react';
-import { Alert } from 'react-native';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -36,6 +35,9 @@ import { PendingPhotoRetry } from '@/components/PendingPhotoRetry';
 import { useOfflineQueueSync } from '@/lib/useOfflineQueueSync';
 
 SplashScreen.preventAutoHideAsync();
+import { Alert, Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
 /**
  * OTA update strategy — ON_LOAD with a mandatory reload prompt.
@@ -199,6 +201,14 @@ export function ApiAuthSetup() {
   return null;
 }
 
+async function ensureHighlightChannel() {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync('highlights', {
+    name: 'Highlights Ready',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 250, 250],
+  });
+}
 /** Redirects unauthenticated users to the auth screen and vice-versa. */
 function AuthGate() {
   const { isSignedIn, isLoaded } = useAuth();
@@ -223,6 +233,7 @@ function RootLayoutNav() {
     <>
       <ApiAuthSetup />
       <AuthGate />
+      <PushNotificationSetup />
       <PendingPhotoRetry />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" options={{ animation: 'none' }} />
@@ -288,4 +299,103 @@ export default function RootLayout() {
       </SafeAreaProvider>
     </ClerkProvider>
   );
+}
+
+/**
+ * Requests push notification permission once the coach is signed in, obtains
+ * the Expo push token, and registers it with the API server so the server can
+ * send notifications (e.g. "Your highlights are ready 🏀").
+ *
+ * Also handles notification taps — tapping a highlight notification navigates
+ * to the Games tab so the coach can find and play the reel.
+ */
+function PushNotificationSetup() {
+  const { getToken, isSignedIn } = useAuth();
+  const router = useRouter();
+
+  // Deep-link when the coach taps a notification.
+  const lastResponse = Notifications.useLastNotificationResponse();
+  useEffect(() => {
+    if (!lastResponse) return;
+    // All current notification types deep-link to the Games tab.
+    router.replace('/(tabs)/games');
+  }, [lastResponse, router]);
+
+  // Register for push notifications once signed in. Re-runs on sign-in so a
+  // fresh token is always registered (tokens can rotate across app installs).
+  useEffect(() => {
+    if (!isSignedIn) return;
+    let cancelled = false;
+
+    async function registerPushToken() {
+      try {
+        await ensureHighlightChannel();
+
+        // expo-notifications v57 declares NotificationPermissionsStatus as
+        // extending PermissionResponse from 'expo', but expo SDK 54 doesn't
+        // re-export that type, so TypeScript resolves it as `{}` and hides
+        // `granted`/`status`. The runtime object is correct; cast safely.
+        type _Perms = { granted: boolean };
+        const existing = await Notifications.getPermissionsAsync() as unknown as _Perms;
+        let isGranted = existing.granted;
+        if (!isGranted) {
+          const requested = await Notifications.requestPermissionsAsync() as unknown as _Perms;
+          isGranted = requested.granted;
+        }
+        if (!isGranted) return;
+
+        // Resolve the EAS project ID — required by getExpoPushTokenAsync for
+        // standalone (non–Expo Go) builds. Checked explicitly so a missing ID
+        // produces a named, actionable warning instead of a thrown error that
+        // gets swallowed by the outer catch.
+        //
+        // To configure: run `eas init` in the hoops-mobile directory; the CLI
+        // writes the UUID to app.json `expo.extra.eas.projectId` and to
+        // eas.json. Alternatively set EXPO_PUBLIC_PROJECT_ID in eas.json build
+        // env and the Replit Secrets panel.
+        const projectId =
+          (Constants.expoConfig?.extra as Record<string, any> | undefined)?.eas?.projectId as
+            | string
+            | undefined
+          ?? process.env.EXPO_PUBLIC_PROJECT_ID;
+
+        if (!projectId) {
+          console.warn(
+            '[PushNotifications] EAS project ID is not configured. ' +
+            'Run `eas init` or set EXPO_PUBLIC_PROJECT_ID to enable push notifications.',
+          );
+          return;
+        }
+
+        const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
+        const pushToken = tokenResult.data;
+        if (cancelled || !pushToken) return;
+
+        const authToken = await getToken();
+        if (!authToken) return;
+
+        const baseUrl = process.env.EXPO_PUBLIC_DOMAIN
+          ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+          : '';
+        await fetch(`${baseUrl}/api/users/me/push-token`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({ token: pushToken }),
+        });
+      } catch (err) {
+        // Non-fatal — coach continues without push notifications.
+        console.warn('[PushNotifications] Registration failed:', err);
+      }
+    }
+
+    registerPushToken();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSignedIn, getToken]);
+
+  return null;
 }

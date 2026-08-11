@@ -204,6 +204,68 @@ describe("PATCH /api/users/me — save name", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// PUT /api/users/me/push-token — store the Expo push token
+// ---------------------------------------------------------------------------
+
+async function putPushToken(body: object) {
+  return fetch(`${baseUrl}/api/users/me/push-token`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("PUT /api/users/me/push-token — valid token", () => {
+  it("returns 204 when a well-formed ExponentPushToken is supplied", async () => {
+    const res = await putPushToken({ token: "ExponentPushToken[abc123XYZ]" });
+    expect(res.status).toBe(204);
+  });
+
+  it("persists the token — the in-memory store receives the update", async () => {
+    await putPushToken({ token: "ExponentPushToken[storeMe999]" });
+    expect(store.users[0].pushToken).toBe("ExponentPushToken[storeMe999]");
+  });
+
+  it("accepts tokens with dashes and dots inside the brackets", async () => {
+    const res = await putPushToken({ token: "ExponentPushToken[Abc-123.xyz_OK]" });
+    expect(res.status).toBe(204);
+  });
+});
+
+describe("PUT /api/users/me/push-token — invalid inputs", () => {
+  it("rejects a plain string with HTTP 400", async () => {
+    const res = await putPushToken({ token: "not-a-valid-token" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an FCM-style token with HTTP 400", async () => {
+    const res = await putPushToken({ token: "APA91bFcm-token-xyz" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an empty string with HTTP 400", async () => {
+    const res = await putPushToken({ token: "" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a missing token field with HTTP 400", async () => {
+    const res = await putPushToken({});
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a numeric token with HTTP 400", async () => {
+    const res = await putPushToken({ token: 12345 });
+    expect(res.status).toBe(400);
+  });
+
+  it("does not overwrite a valid stored token after a failed update", async () => {
+    store.users[0].pushToken = "ExponentPushToken[original]";
+    await putPushToken({ token: "bad-token" });
+    expect(store.users[0].pushToken).toBe("ExponentPushToken[original]");
+  });
+});
+
 describe("PATCH /api/users/me — validation", () => {
   it("rejects an empty firstName with HTTP 400", async () => {
     const res = await patchMe({ firstName: "" });

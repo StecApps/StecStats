@@ -4,6 +4,8 @@ import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { clerkClient } from "@clerk/express";
 
+const EXPO_PUSH_TOKEN_RE = /^ExponentPushToken\[.+\]$/;
+
 const router = Router();
 
 /**
@@ -53,6 +55,25 @@ router.get("/users/me", requireAuth, async (req, res) => {
       user.lastName,
     );
   }
+});
+
+// PUT /api/users/me/push-token — store or update the Expo push token for push
+// notifications (e.g. "Your highlights are ready"). Called once at app launch
+// after notification permission is granted.
+router.put("/users/me/push-token", requireAuth, async (req, res) => {
+  const { token } = req.body ?? {};
+
+  if (typeof token !== "string" || !EXPO_PUSH_TOKEN_RE.test(token)) {
+    res.status(400).json({ error: "token must be a valid ExponentPushToken[…] string" });
+    return;
+  }
+
+  await db
+    .update(usersTable)
+    .set({ pushToken: token })
+    .where(eq(usersTable.id, req.appUser!.id));
+
+  res.status(204).send();
 });
 
 // PATCH /api/users/me — store first/last name

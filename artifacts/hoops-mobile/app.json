@@ -75,13 +75,27 @@
           "supportsPictureInPicture": true
         }
       ],
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#0C0A09",
+          "sounds": [],
+          "androidMode": "default"
+        }
+      ]
     ],
     "updates": {
       "url": "https://u.expo.dev/hoops-mobile",
       "enabled": true,
       "runtimeVersion": {
         "policy": "appVersion"
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
       }
     },
     "experiments": {

@@ -31,6 +31,11 @@ export const usersTable = pgTable("users", {
   // Clerk instance does not accept firstName/lastName writes from the client SDK.
   firstName: text("first_name"),
   lastName: text("last_name"),
+  // Expo push token registered at app launch. Used to send push notifications
+  // (e.g. "Your highlights are ready"). Null when the coach hasn't granted
+  // notification permission yet or hasn't opened the app since the feature
+  // was added.
+  pushToken: text("push_token"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

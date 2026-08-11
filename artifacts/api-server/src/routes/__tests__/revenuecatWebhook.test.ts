@@ -31,6 +31,7 @@ const { testUserState } = vi.hoisted(() => {
     revenueCatEntitlement: null as string | null,
     firstName: null as string | null,
     lastName: null as string | null,
+    pushToken: null as string | null,
     createdAt: new Date(),
   };
   return { testUserState };

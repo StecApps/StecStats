@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
@@ -22,6 +22,11 @@ export const teamsTable = pgTable("teams", {
   // NULL/older than GENERATOR_VERSION (highlightGenerator.ts) means the reel
   // was built with outdated clip-timing logic and is invalidated on read.
   highlightGeneratorVersion: integer("highlight_generator_version"),
+  // Set to true when the push notification for the current reel has been sent.
+  // Reset to false when the user triggers a new generation (POST /teams/:teamId/highlight)
+  // so the notification fires again for the new reel. Prevents duplicate
+  // notifications if the server re-processes the same reel for any reason.
+  highlightNotificationSent: boolean("highlight_notification_sent").default(false),
 });
 
 export const insertTeamSchema = createInsertSchema(teamsTable).omit({

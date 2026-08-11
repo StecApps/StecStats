@@ -113,5 +113,11 @@ export async function applySchemaAdditions(): Promise<void> {
       ON games (owner_id, client_game_id)
       WHERE client_game_id IS NOT NULL
   `);
-  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id)");
+  // Added for push notifications — stores the coach's Expo push token so the
+  // server can notify them when their highlight reel is ready.
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token text`);
+  // Added for push notifications — guards against duplicate highlight-ready
+  // notifications when the server re-processes the same reel.
+  await db.execute(sql`ALTER TABLE teams ADD COLUMN IF NOT EXISTS highlight_notification_sent boolean DEFAULT false`);
+  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id, push_token, highlight_notification_sent)");
 }

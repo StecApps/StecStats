@@ -491,6 +491,8 @@ router.post("/teams/:teamId/highlight", requireAuth, async (req, res) => {
         highlightStatus: "processing",
         highlightError: null,
         highlightStartedAt: new Date(),
+        // Reset so the completion notification fires for this new generation.
+        highlightNotificationSent: false,
       })
       .where(eq(teamsTable.id, teamId));
 
