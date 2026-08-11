@@ -306,8 +306,9 @@ export default function RootLayout() {
  * the Expo push token, and registers it with the API server so the server can
  * send notifications (e.g. "Your highlights are ready 🏀").
  *
- * Also handles notification taps — tapping a highlight notification navigates
- * to the Games tab so the coach can find and play the reel.
+ * Also handles notification taps — tapping a game highlight/lowlight
+ * notification navigates directly to that game's film room; tapping a season
+ * reel notification falls back to the Games tab.
  */
 function PushNotificationSetup() {
   const { getToken, isSignedIn } = useAuth();
@@ -317,8 +318,18 @@ function PushNotificationSetup() {
   const lastResponse = Notifications.useLastNotificationResponse();
   useEffect(() => {
     if (!lastResponse) return;
-    // All current notification types deep-link to the Games tab.
-    router.replace('/(tabs)/games');
+    const data = lastResponse.notification.request.content.data as
+      | Record<string, unknown>
+      | null
+      | undefined;
+    const gameId = data?.gameId;
+    if (gameId != null) {
+      // Game highlight or lowlight notification — open that game's film room.
+      router.replace(`/game/${gameId}` as never);
+    } else {
+      // Season reel or unknown notification — fall back to the Games tab.
+      router.replace('/(tabs)/games');
+    }
   }, [lastResponse, router]);
 
   // Register for push notifications once signed in. Re-runs on sign-in so a
