@@ -161,6 +161,8 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
         highlightError: null,
         highlightStartedAt: startedAt,
         highlightMusicTrack: musicTrackId ?? null,
+        // Reset so the notification fires again when the new reel completes.
+        highlightNotificationSent: false,
       })
       .where(eq(gamesTable.id, gameId));
 

@@ -7,6 +7,7 @@ import {
   timestamp,
   pgEnum,
   uuid,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -86,6 +87,11 @@ export const gamesTable = pgTable("games", {
   // and returns the already-created game instead of inserting a duplicate.
   // NULL for games created without offline support.
   clientGameId: text("client_game_id"),
+  // Tracks whether a push notification has already been sent for the current
+  // per-game highlight reel. Mirrors the same flag on the teams table.
+  // Reset to false whenever a new reel is started so the notification fires
+  // again if the coach regenerates the reel.
+  highlightNotificationSent: boolean("highlight_notification_sent").default(false),
 });
 
 export const insertGameSchema = createInsertSchema(gamesTable).omit({

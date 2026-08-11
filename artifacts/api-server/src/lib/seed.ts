@@ -119,5 +119,8 @@ export async function applySchemaAdditions(): Promise<void> {
   // Added for push notifications — guards against duplicate highlight-ready
   // notifications when the server re-processes the same reel.
   await db.execute(sql`ALTER TABLE teams ADD COLUMN IF NOT EXISTS highlight_notification_sent boolean DEFAULT false`);
-  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id, push_token, highlight_notification_sent)");
+  // Per-game highlight notification guard — mirrors the teams column but scoped
+  // to individual game reels generated from the film room.
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_notification_sent boolean DEFAULT false`);
+  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id, push_token, highlight_notification_sent for teams+games)");
 }
