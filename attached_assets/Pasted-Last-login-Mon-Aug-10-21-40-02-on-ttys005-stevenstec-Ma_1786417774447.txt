@@ -1,0 +1,88 @@
+Last login: Mon Aug 10 21:40:02 on ttys005
+stevenstec@Mac ~ % # Get the Public iOS API key from RevenueCat → Project Settings → API Keys
+eas secret:create --scope project \
+  --name EXPO_PUBLIC_REVENUECAT_IOS_API_KEY \
+  --value appl_xxxxxxxx
+zsh: command not found: #
+This command is deprecated. Use eas env:create instead.
+
+Run this command inside a project directory.
+    Error: secret:create command failed.
+stevenstec@Mac ~ % cd ~/StecStats
+git pull
+eas build --platform ios --profile production
+eas submit --platform ios --profile production
+remote: Enumerating objects: 94, done.
+remote: Counting objects: 100% (94/94), done.
+remote: Compressing objects: 100% (40/40), done.
+remote: Total 80 (delta 47), reused 71 (delta 38), pack-reused 0 (from 0)
+Unpacking objects: 100% (80/80), 599.89 KiB | 3.01 MiB/s, done.
+From https://github.com/StecApps/StecStats
+   154cc04..72dba67  main       -> origin/main
+Updating 154cc04..72dba67
+Fast-forward
+ .../app-store/6.5in/screenshot1-scorekeeper.jpg    |  Bin 0 -> 120962 bytes
+ .../app-store/6.5in/screenshot2-stats.jpg          |  Bin 0 -> 134852 bytes
+ .../app-store/6.5in/screenshot3-gamefilm.jpg       |  Bin 0 -> 118592 bytes
+ .../app-store/6.5in/screenshot4-highlights.jpg     |  Bin 0 -> 132356 bytes
+ .../app-store/6.5in/screenshot5-paywall.jpg        |  Bin 0 -> 139078 bytes
+ artifacts/hoops-mobile/app-store/copy.md           |   62 +
+ .../app-store/screenshot1-scorekeeper.jpg          |  Bin 0 -> 24320 bytes
+ .../hoops-mobile/app-store/screenshot2-stats.jpg   |  Bin 0 -> 28507 bytes
+ .../app-store/screenshot3-gamefilm.jpg             |  Bin 0 -> 23591 bytes
+ .../app-store/screenshot4-highlights.jpg           |  Bin 0 -> 30443 bytes
+ .../hoops-mobile/app-store/screenshot5-paywall.jpg |  Bin 0 -> 36092 bytes
+ artifacts/hoops-mobile/app/(tabs)/record.tsx       |   23 +-
+ artifacts/hoops-mobile/eas.json                    |   10 +-
+ .../src/.generated/mockup-components.ts            |    6 +
+ .../components/mockups/AppStore/ScaledWrapper.tsx  |   11 +
+ .../mockups/AppStore/Screenshot1_Scorekeeper.tsx   |   86 +
+ .../mockups/AppStore/Screenshot2_Stats.tsx         |   70 +
+ .../mockups/AppStore/Screenshot3_GameFilm.tsx      |   90 +
+ .../mockups/AppStore/Screenshot4_Highlights.tsx    |   62 +
+ .../mockups/AppStore/Screenshot5_Paywall.tsx       |   81 +
+ ...-PROXY-URL-https-REPLIT-EXPO-_1786408095000.txt | 2240 ++++++++++++++++++++
+ 21 files changed, 2734 insertions(+), 7 deletions(-)
+ create mode 100644 artifacts/hoops-mobile/app-store/6.5in/screenshot1-scorekeeper.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/6.5in/screenshot2-stats.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/6.5in/screenshot3-gamefilm.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/6.5in/screenshot4-highlights.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/6.5in/screenshot5-paywall.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/copy.md
+ create mode 100644 artifacts/hoops-mobile/app-store/screenshot1-scorekeeper.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/screenshot2-stats.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/screenshot3-gamefilm.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/screenshot4-highlights.jpg
+ create mode 100644 artifacts/hoops-mobile/app-store/screenshot5-paywall.jpg
+ create mode 100644 artifacts/mockup-sandbox/src/components/mockups/AppStore/ScaledWrapper.tsx
+ create mode 100644 artifacts/mockup-sandbox/src/components/mockups/AppStore/Screenshot1_Scorekeeper.tsx
+ create mode 100644 artifacts/mockup-sandbox/src/components/mockups/AppStore/Screenshot2_Stats.tsx
+ create mode 100644 artifacts/mockup-sandbox/src/components/mockups/AppStore/Screenshot3_GameFilm.tsx
+ create mode 100644 artifacts/mockup-sandbox/src/components/mockups/AppStore/Screenshot4_Highlights.tsx
+ create mode 100644 artifacts/mockup-sandbox/src/components/mockups/AppStore/Screenshot5_Paywall.tsx
+ create mode 100644 attached_assets/Pasted--scripts-dev-EXPO-PACKAGER-PROXY-URL-https-REPLIT-EXPO-_1786408095000.txt
+✔ Generated eas.json. Learn more: https://docs.expo.dev/build-reference/eas-json/
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+EAS project not configured.
+✔ Would you like to automatically create an EAS project for @sstec/workspace? … yes
+✔ Created @sstec/workspace: https://expo.dev/accounts/sstec/projects/workspace on EAS
+✔ Linked local project to EAS project 36b5087a-fd9c-4eea-a0e4-8aa783aef650
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+
+📝  iOS Bundle Identifier Learn more: https://expo.fyi/bundle-identifier
+✔ What would you like your iOS bundle identifier to be? … y
+✔ iOS app only uses standard/exempt encryption? Learn more: https://developer.apple.com/documentation/Security/complying-with-encryption-export-regulations … yes
+Failed to resolve iOS entitlements from Expo config using the bundled config fallback: Cannot find 'expo-modules-autolinking' package in your project, make sure that you have 'expo' package installed
+    Error: build command failed.
+
+? What would you like to submit? › - Use arrow-keys. Return to submit.
+❯   Select a build from EAS
+    Provide a URL to the app archive
+    Provide a path to a local app binary file
+    Provide a build ID to identify a build on EAS
+
