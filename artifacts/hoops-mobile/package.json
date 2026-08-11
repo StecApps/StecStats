@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest --config jest.config.js",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "rollback:prod": "eas update --republish --channel production --group $GROUP"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
