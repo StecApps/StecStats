@@ -15,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useListTeams, useCreateTeam } from '@workspace/api-client-react';
+import { useListTeams, useCreateTeam, getListTeamsQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -49,7 +49,7 @@ export default function RecordScreen() {
     setCreateTeamError(null);
     try {
       await createTeamMutation.mutateAsync({ data: { name: newTeamName.trim(), sport: 'basketball' } });
-      await qc.invalidateQueries({ queryKey: ['listTeams'] });
+      await qc.invalidateQueries({ queryKey: getListTeamsQueryKey() });
       setNewTeamName('');
       setShowNewTeam(false);
       setTeamDropOpen(false);
