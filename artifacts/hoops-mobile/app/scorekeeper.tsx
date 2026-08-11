@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  saveDraft,
+  clearDraft,
+  loadDraft,
+  queueGame,
+  checkConnectivity,
+  generateClientId,
+  type ScorekeeperDraft,
+} from '@/lib/offlineQueue';
 
 export const PENDING_UPLOAD_KEY = 'stec:pending-mobile-upload';
 export type PendingUpload = {
@@ -126,9 +135,58 @@ export default function ScorekeeperScreen() {
       refetchPlayers();
     }, [refetchPlayers]),
   );
+
+  // ── Draft recovery on mount ────────────────────────────────────────────────
+  // If a previous session was interrupted (crash, force-quit), offer to restore.
+  useEffect(() => {
+    (async () => {
+      const draft = await loadDraft();
+      if (!draft) return;
+      // Only restore if the draft matches this game's team/opponent/date
+      if (
+        draft.teamId !== Number(teamId) ||
+        draft.opponent !== (opponent as string) ||
+        draft.date !== (date as string)
+      ) {
+        // Stale draft from a different game — silently discard
+        await clearDraft();
+        return;
+      }
+      const { Alert: RNAlert } = await import('react-native');
+      RNAlert.alert(
+        'Resume Game?',
+        'It looks like this game was interrupted. Restore your stats from the last autosave?',
+        [
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => clearDraft(),
+          },
+          {
+            text: 'Restore',
+            style: 'default',
+            onPress: () => {
+              setStats(draft.stats);
+              setEvents(draft.events);
+              setOpponentScore(draft.opponentScore);
+              setTeamScoreAdj(draft.teamScoreAdj);
+              setHalf(draft.half);
+              setSeconds(draft.seconds);
+            },
+          },
+        ],
+      );
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [stats, setStats] = useState<Record<number, StatLine>>({});
   const [events, setEvents] = useState<GameEvent[]>([]);
+
+  // ── Offline / connectivity state ───────────────────────────────────────────
+  const [isOnline, setIsOnline] = useState(true);
+  // Mirror in a ref so async callbacks read the latest value without stale closures.
+  const isOnlineRef = useRef(true);
+  const connectivityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [opponentScore, setOpponentScore] = useState(0);
   // Manual quick-score adjustment for our team (on top of auto-calculated player stats).
   // Coaches can tap +1/+2/+3 in the camera overlay to credit untracked points quickly.
@@ -983,6 +1041,58 @@ export default function ScorekeeperScreen() {
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
     : '';
 
+  // ── Connectivity polling ───────────────────────────────────────────────────
+  // Probe the API's health endpoint every 5 s. On transition online→offline or
+  // offline→online, update state and (on recovery) kick off queued-game sync.
+  useEffect(() => {
+    let mounted = true;
+
+    async function probe() {
+      const online = await checkConnectivity(API_BASE);
+      if (!mounted) return;
+      const wasOnline = isOnlineRef.current;
+      isOnlineRef.current = online;
+      setIsOnline(online);
+      // Sync is handled app-level via useOfflineQueueSync in _layout.tsx
+    }
+
+    probe(); // immediate first check
+    connectivityIntervalRef.current = setInterval(probe, 5_000);
+    return () => {
+      mounted = false;
+      if (connectivityIntervalRef.current) {
+        clearInterval(connectivityIntervalRef.current);
+        connectivityIntervalRef.current = null;
+      }
+    };
+  }, [API_BASE]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Draft autosave ─────────────────────────────────────────────────────────
+  // Debounced: waits 2 s after the last change before writing to AsyncStorage,
+  // so rapid stat taps don't hammer the storage layer.
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (saving) return; // don't overwrite during the save flow
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+    draftSaveTimer.current = setTimeout(() => {
+      const draft: ScorekeeperDraft = {
+        teamId: Number(teamId),
+        teamName: teamName as string,
+        opponent: opponent as string,
+        date: date as string,
+        stats,
+        events,
+        opponentScore,
+        teamScoreAdj,
+        half,
+        seconds,
+        savedAt: new Date().toISOString(),
+      };
+      saveDraft(draft);
+    }, 2_000);
+    return () => { if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current); };
+  }, [stats, events, opponentScore, teamScoreAdj, half, seconds]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Guarded back navigation ──────────────────────────────────────────────
   // Intercepts the close/back button when a save is in progress so the coach
   // can't accidentally lose all stats by navigating away mid-upload.
@@ -1078,6 +1188,32 @@ export default function ScorekeeperScreen() {
     if (liveCode) {
       await stopLiveBroadcast(liveCode);
     }
+
+    // ── Offline shortcut ───────────────────────────────────────────────────
+    // When there's no network, skip video upload entirely and queue the game
+    // locally.  Video requires a working upload connection so we offer
+    // stats-only or cancellation.
+    if (!isOnlineRef.current) {
+      if (recordVideo && recordedUrisRef.current.length > 0) {
+        Alert.alert(
+          'No connection',
+          'Video upload requires a connection. Save stats now without video, or wait until you\'re back online.',
+          [
+            { text: 'Wait', style: 'cancel' },
+            {
+              text: 'Save stats only',
+              style: 'default',
+              onPress: () => { setSaving(true); doSaveGame(null); },
+            },
+          ],
+        );
+      } else {
+        setSaving(true);
+        doSaveGame(null);
+      }
+      return;
+    }
+
     // Create a fresh per-attempt token. The async stages below close over this
     // object, so a subsequent attempt's fresh token can never un-cancel us.
     const attemptToken = { cancelled: false };
@@ -1227,7 +1363,69 @@ export default function ScorekeeperScreen() {
     }
   }
 
+  /**
+   * Builds the QueuedGame payload from current state and persists it locally.
+   * Accepts the `clientId` that was generated at the start of the save attempt
+   * so that a retry after a dropped-response scenario can hit the server's
+   * ON CONFLICT DO NOTHING path rather than creating a duplicate game.
+   */
+  async function queueCurrentGame(clientId: string): Promise<void> {
+    const statLines = (players as any[]).map((p: any) => {
+      const line = stats[p.id] ?? defaultLine();
+      return { playerId: p.id, ...line };
+    });
+    const result = teamScore > opponentScore ? 'W' : 'L';
+    // queueGame throws on AsyncStorage failure — let it propagate so the
+    // caller can alert the coach instead of silently losing data.
+    await queueGame({
+      clientId,
+      teamId: Number(teamId),
+      opponent: opponent as string,
+      date: date as string,
+      result,
+      teamScore,
+      opponentScore,
+      stats: statLines,
+      events,
+      queuedAt: new Date().toISOString(),
+    });
+    await clearDraft();
+    await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
+  }
+
   function doSaveGame(videoObjectPath: string | null) {
+    // Generate ONE stable ID for this entire save attempt.  The same ID is:
+    //   • sent in the online POST body so the server stores it as client_game_id
+    //   • used by onNetworkFailure when queuing locally after a dropped response
+    //   • used by the offline-only path below
+    // This ensures a retry of a queued game finds the already-created server row
+    // via ON CONFLICT DO NOTHING instead of inserting a duplicate.
+    const saveClientId = generateClientId();
+
+    // ── Offline path: queue locally and navigate back ─────────────────────
+    // Only available for stats-only saves (no video) — video upload requires
+    // an active connection and is automatically skipped when offline.
+    if (!isOnlineRef.current && !videoObjectPath) {
+      return (async () => {
+        try {
+          await queueCurrentGame(saveClientId);
+          Alert.alert(
+            'Game saved locally',
+            'Your stats are saved on this device and will sync automatically when your connection returns.',
+            [{
+              text: 'OK',
+              onPress: () => router.replace('/(tabs)/games' as any),
+            }],
+          );
+        } catch {
+          Alert.alert('Save failed', 'Could not save game locally — storage may be full. Please try again.');
+        } finally {
+          setSaving(false);
+        }
+      })();
+    }
+
+    // ── Online path: save to server ────────────────────────────────────────
     return saveGame(videoObjectPath, {
       players: (players as any[]),
       stats,
@@ -1237,14 +1435,36 @@ export default function ScorekeeperScreen() {
       opponent: opponent as string,
       date: date as string,
       events,
+      // Pass the stable ID so the server can store it and detect replays.
+      clientId: saveClientId,
       createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
       invalidateQueries: (opts) => qc.invalidateQueries(opts),
       routerReplace: async (path) => {
-        // Clear the pending-upload marker only after the game is confirmed saved.
+        // Clear the pending-upload marker and draft only after the game is confirmed saved.
         await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
+        await clearDraft();
         router.replace(path as any);
       },
       setSaving,
+      // If the network drops between tapping "End Game" and the POST completing,
+      // queue the game locally using the SAME clientId so the server-side
+      // ON CONFLICT DO NOTHING deduplicates the replay if the row was already
+      // committed before the response was lost.
+      onNetworkFailure: async () => {
+        try {
+          await queueCurrentGame(saveClientId);
+          Alert.alert(
+            'Connection lost — game saved locally',
+            'Stats are saved on this device and will sync automatically when your connection returns.',
+            [{ text: 'OK', onPress: () => router.replace('/(tabs)/games' as any) }],
+          );
+        } catch {
+          Alert.alert(
+            'Save failed',
+            'Connection lost and local storage failed. Please screenshot your stats and try again.',
+          );
+        }
+      },
     });
   }
 
@@ -1361,6 +1581,14 @@ export default function ScorekeeperScreen() {
 
   const statArea = (
     <>
+      {/* ── Offline banner ─────────────────────────────────────────────────── */}
+      {!isOnline && (
+        <View style={[styles.offlineBanner, { backgroundColor: '#78350f', borderBottomColor: '#92400e' }]}>
+          <Ionicons name="cloud-offline-outline" size={14} color="#fde68a" />
+          <Text style={styles.offlineBannerText}>Stats saving locally — will sync when connected</Text>
+        </View>
+      )}
+
       {/* ── Opponent score bar — shown only during recording; non-recording uses the compact header ── */}
       {recordVideo && <View style={[styles.oppBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <View style={styles.oppBarLeft}>
@@ -2075,6 +2303,22 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     root: { flex: 1, backgroundColor: colors.background },
     rootLandscape: { flexDirection: 'row' },
     centered: { alignItems: 'center', justifyContent: 'center' },
+
+    // ── Offline banner ──────────────────────────────────────────────────────
+    offlineBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+    },
+    offlineBannerText: {
+      fontSize: 12,
+      fontFamily: 'Inter_500Medium',
+      color: '#fde68a',
+      flex: 1,
+    },
 
     // ── Camera section ─────────────────────────────────────────────────────
     cameraSectionPort: {

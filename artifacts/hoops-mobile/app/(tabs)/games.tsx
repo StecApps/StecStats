@@ -29,6 +29,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { uploadVideoFile } from '@/lib/uploadVideoFile';
 import { saveGame } from '@/lib/saveGame';
+import { generateClientId } from '@/lib/offlineQueue';
 import { PENDING_UPLOAD_KEY, type PendingUpload } from '@/app/scorekeeper';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 
@@ -101,6 +102,7 @@ export function PendingUploadBanner({ onDismiss }: { onDismiss: () => void }) {
         opponent: pending.opponent,
         date: pending.date,
         events: pending.events,
+        clientId: generateClientId(),
         createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
         invalidateQueries: (opts) => qc.invalidateQueries(opts),
         routerReplace: async () => {
@@ -131,6 +133,7 @@ export function PendingUploadBanner({ onDismiss }: { onDismiss: () => void }) {
       opponent: pending.opponent,
       date: pending.date,
       events: pending.events,
+      clientId: generateClientId(),
       createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
       invalidateQueries: (opts) => qc.invalidateQueries(opts),
       routerReplace: async () => {

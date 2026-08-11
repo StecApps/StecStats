@@ -32,6 +32,21 @@ export interface SaveGameDeps {
   routerReplace: (path: string) => void;
   /** Component setSaving state setter. */
   setSaving: (v: boolean) => void;
+  /**
+   * Stable client-generated UUID for this save attempt.  Sent to the server so
+   * it can store the ID with the created game.  If a network drop means the
+   * server wrote the row but the response was lost, the same ID is passed to
+   * onNetworkFailure so the retry can dedup rather than create a duplicate.
+   * Generate once (before calling saveGame) and share with onNetworkFailure.
+   */
+  clientId: string;
+  /**
+   * Called instead of the generic 'Save failed' alert when a network-level
+   * error (TypeError / "Network request failed") prevents the POST from
+   * reaching the server.  Use this to queue the game locally for offline sync.
+   * If omitted the generic alert is shown as before.
+   */
+  onNetworkFailure?: () => Promise<void> | void;
 }
 
 const defaultLine = (): StatLine => ({
@@ -67,6 +82,7 @@ export async function saveGame(
     opponent,
     date,
     events,
+    clientId,
     createGameMutateAsync,
     invalidateQueries,
     routerReplace,
@@ -81,6 +97,12 @@ export async function saveGame(
     const result = teamScore > opponentScore ? 'W' : 'L';
     const game = await createGameMutateAsync({
       data: {
+        // clientId is sent as an extra field (not in the Zod schema) and read
+        // by the server before Zod parsing for durable idempotency.  If the
+        // network drops after the server writes the row but before the response
+        // arrives, the onNetworkFailure queue uses this same ID so the replay
+        // hits the ON CONFLICT DO NOTHING path instead of inserting a duplicate.
+        clientId,
         teamId: Number(teamId),
         opponent,
         date,
@@ -96,6 +118,20 @@ export async function saveGame(
     await invalidateQueries({ queryKey: ['listTeamGames'] });
     routerReplace(`/game/${game.id}`);
   } catch (err: any) {
+    // Network-level failures (no connection, ECONNREFUSED, timeout) produce a
+    // TypeError with 'Network request failed' rather than an HTTP status error.
+    // Give the caller a chance to queue the game locally instead of losing it.
+    const isNetworkError =
+      err instanceof TypeError ||
+      (typeof err?.message === 'string' &&
+        (err.message.includes('Network request failed') ||
+          err.message.includes('Failed to fetch') ||
+          err.message.includes('network')));
+    if (isNetworkError && deps.onNetworkFailure) {
+      setSaving(false);
+      await deps.onNetworkFailure();
+      return;
+    }
     Alert.alert('Save failed', err?.message ?? 'Could not save game');
     setSaving(false);
   }

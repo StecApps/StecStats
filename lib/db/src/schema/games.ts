@@ -80,6 +80,12 @@ export const gamesTable = pgTable("games", {
   // YouTube video URL after a successful highlight upload. Persisted so the
   // mobile app can re-surface the "View on YouTube" link after remounting.
   highlightYoutubeUrl: text("highlight_youtube_url"),
+  // Client-generated UUID for offline-sync idempotency. When a mobile client
+  // queues a game while offline and later syncs it, the server uses this field
+  // to detect duplicate POSTs (network drop between server write and client ACK)
+  // and returns the already-created game instead of inserting a duplicate.
+  // NULL for games created without offline support.
+  clientGameId: text("client_game_id"),
 });
 
 export const insertGameSchema = createInsertSchema(gamesTable).omit({

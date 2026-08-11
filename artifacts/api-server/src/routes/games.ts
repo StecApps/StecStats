@@ -48,6 +48,9 @@ import {
   cancelProxyBuild,
 } from "../lib/highlightGenerator";
 
+// (Idempotency for offline-queued games is now handled via the clientGameId
+//  column on gamesTable — see POST /games handler below.)
+
 // ── Rate limiter for public game endpoint ─────────────────────────────────────
 const PUB_RATE_WINDOW_MS = 60_000;
 const PUB_RATE_LIMIT = 60;
@@ -590,8 +593,16 @@ router.get("/games/public/:shareToken/highlight", publicGameRateLimit, async (re
 });
 
 router.post("/games", requireAuth, async (req, res) => {
+  // Extract optional clientId before Zod strips it (Zod drops unknown fields by default).
+  // Used to deduplicate offline-queued game syncs — same clientId returns the existing game.
+  const rawClientId = typeof req.body?.clientId === "string" && req.body.clientId.length > 0
+    ? (req.body.clientId as string)
+    : null;
+
   const body = CreateGameBody.parse(req.body);
   const ownerId = req.appUser!.id;
+
+  // Durable idempotency handled atomically during insert via ON CONFLICT below.
 
   const team = await db.query.teamsTable.findFirst({
     where: and(eq(teamsTable.id, body.teamId), eq(teamsTable.ownerId, ownerId)),
@@ -653,7 +664,16 @@ router.post("/games", requireAuth, async (req, res) => {
     }
   }
 
+  // Capture a conflicting existing game's ID when the insert is a no-op —
+  // declared outside the transaction so we can return early after it commits.
+  let idempotentGameId: number | null = null;
+
   const game = await db.transaction(async (tx) => {
+    // Atomic insert with conflict handling: if a game with this clientGameId
+    // already exists for this owner (e.g. offline sync replay after a dropped
+    // ACK), skip the insert and re-select the existing row.  This prevents
+    // duplicates without a race-prone preflight lookup, and is safe even under
+    // concurrent retries because the unique index serialises them.
     const [createdGame] = await tx
       .insert(gamesTable)
       .values({
@@ -665,8 +685,26 @@ router.post("/games", requireAuth, async (req, res) => {
         teamScore: body.teamScore,
         opponentScore: body.opponentScore,
         videoObjectPath,
+        ...(rawClientId ? { clientGameId: rawClientId } : {}),
       })
+      .onConflictDoNothing()
       .returning();
+
+    // Insert was a no-op — record the existing game ID and bail out of the tx.
+    if (!createdGame && rawClientId) {
+      const existing = await tx.query.gamesTable.findFirst({
+        where: and(eq(gamesTable.ownerId, ownerId), eq(gamesTable.clientGameId, rawClientId)),
+      });
+      if (existing) {
+        idempotentGameId = existing.id;
+        return null;
+      }
+    }
+
+    if (!createdGame) {
+      // Should not happen: insert returned nothing with no clientGameId conflict.
+      throw new Error("Game insert returned no rows and no idempotency key was set");
+    }
 
     if (body.stats.length > 0) {
       await tx.insert(playerGameStatsTable).values(
@@ -691,7 +729,15 @@ router.post("/games", requireAuth, async (req, res) => {
     return createdGame;
   });
 
-  const serialized = await serializeGame(game.id, ownerId);
+  // Idempotent replay: return the already-existing game.
+  if (idempotentGameId !== null) {
+    const serialized = await serializeGame(idempotentGameId, ownerId);
+    res.status(201).json(CreateGameResponse.parse(serialized));
+    return;
+  }
+
+  // At this point idempotentGameId was null (handled above) so game must be non-null.
+  const serialized = await serializeGame(game!.id, ownerId);
   res.status(201).json(CreateGameResponse.parse(serialized));
 });
 

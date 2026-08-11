@@ -33,6 +33,7 @@ import { setBaseUrl, setAuthTokenGetter } from '@workspace/api-client-react';
 import { SubscriptionProvider, initializeRevenueCat } from '@/lib/revenuecat';
 import { useRevenueCatAuthSync } from '@/lib/useRevenueCatAuthSync';
 import { PendingPhotoRetry } from '@/components/PendingPhotoRetry';
+import { useOfflineQueueSync } from '@/lib/useOfflineQueueSync';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -187,6 +188,13 @@ export function ApiAuthSetup() {
   // the transient reload state (isLoaded=false, isSignedIn=false) is never
   // mistaken for a deliberate sign-out. See lib/useRevenueCatAuthSync.ts.
   useRevenueCatAuthSync({ isLoaded, isSignedIn, userId });
+
+  // Flush offline-queued games whenever connectivity returns or the app
+  // comes to the foreground — survives scorekeeper unmount/navigation.
+  const apiBase = process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+    : '';
+  useOfflineQueueSync(apiBase);
 
   return null;
 }

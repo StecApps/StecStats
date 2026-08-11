@@ -105,5 +105,13 @@ export async function applySchemaAdditions(): Promise<void> {
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_youtube_url text`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name text`);
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name text`);
-  logger.info("Schema additions applied (highlight_youtube_url, users name columns)");
+  // Offline-sync idempotency key — client-generated UUID stored with each game
+  // that was saved while offline, used to detect duplicate POSTs on retry.
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS client_game_id text`);
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS games_owner_client_game_id_uidx
+      ON games (owner_id, client_game_id)
+      WHERE client_game_id IS NOT NULL
+  `);
+  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id)");
 }
