@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Platform,
   Switch,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
@@ -36,6 +37,7 @@ export default function RecordScreen() {
   const [newTeamName, setNewTeamName] = useState('');
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [creatingTeam, setCreatingTeam] = useState(false);
+  const [createTeamError, setCreateTeamError] = useState<string | null>(null);
   const [recordVideo, setRecordVideo] = useState(false);
 
   const selectedTeam = (teams as any[])?.[teamIdx] ?? null;
@@ -44,6 +46,7 @@ export default function RecordScreen() {
   async function handleCreateTeam() {
     if (!newTeamName.trim()) return;
     setCreatingTeam(true);
+    setCreateTeamError(null);
     try {
       await createTeamMutation.mutateAsync({ data: { name: newTeamName.trim(), sport: 'basketball' } });
       await qc.invalidateQueries({ queryKey: ['listTeams'] });
@@ -51,6 +54,13 @@ export default function RecordScreen() {
       setShowNewTeam(false);
       setTeamDropOpen(false);
       setTeamIdx((teams?.length ?? 0));
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ??
+        err?.message ??
+        'Could not create team. Please try again.';
+      setCreateTeamError(msg);
+      Alert.alert('Could not create team', msg);
     } finally {
       setCreatingTeam(false);
     }
@@ -214,7 +224,7 @@ export default function RecordScreen() {
                   onSubmitEditing={handleCreateTeam}
                 />
                 <View style={styles.newTeamBtns}>
-                  <TouchableOpacity onPress={() => setShowNewTeam(false)} style={styles.cancelBtn}>
+                  <TouchableOpacity onPress={() => { setShowNewTeam(false); setCreateTeamError(null); }} style={styles.cancelBtn}>
                     <Text style={[styles.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -229,6 +239,11 @@ export default function RecordScreen() {
                     )}
                   </TouchableOpacity>
                 </View>
+                {createTeamError ? (
+                  <Text style={{ color: '#ef4444', fontSize: 12, marginTop: 6, fontFamily: 'Inter_400Regular' }}>
+                    {createTeamError}
+                  </Text>
+                ) : null}
               </View>
             )}
           </>
