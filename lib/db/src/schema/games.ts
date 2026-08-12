@@ -92,6 +92,10 @@ export const gamesTable = pgTable("games", {
   // Reset to false whenever a new reel is started so the notification fires
   // again if the coach regenerates the reel.
   highlightNotificationSent: boolean("highlight_notification_sent").default(false),
+  // Tracks whether a push notification has already been sent for the current
+  // per-game lowlight reel. Reset to false whenever a new lowlight job starts
+  // so the notification fires again if the coach regenerates the reel.
+  lowlightNotificationSent: boolean("lowlight_notification_sent").default(false),
 });
 
 export const insertGameSchema = createInsertSchema(gamesTable).omit({

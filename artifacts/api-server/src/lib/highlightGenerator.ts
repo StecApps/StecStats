@@ -2861,6 +2861,9 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       lowlightError: null,
     });
     logger.info({ gameId, segments: segPaths.length }, "Lowlight reel generated");
+
+    // Send a push notification to the game owner (best-effort, never throws).
+    await maybeSendGameLowlightNotification(game);
   } catch (err) {
     const message =
       err instanceof HighlightError
@@ -2912,6 +2915,43 @@ export async function maybeSendGameHighlightNotification(
       .where(eq(gamesTable.id, game.id));
   } catch (notifyErr) {
     logger.warn({ err: notifyErr, gameId: game.id }, "Failed to send game highlight push notification");
+  }
+}
+
+/**
+ * Send a "lowlights ready" push notification to the game owner — but only if
+ * the notification has not already been sent for the current reel
+ * (`lowlightNotificationSent` is false/null). Marks the flag true after
+ * sending so repeated calls are idempotent.
+ *
+ * Exported for unit testing. Called by generateLowlight after the reel has
+ * been successfully written to storage.
+ */
+export async function maybeSendGameLowlightNotification(
+  game: Pick<
+    typeof gamesTable.$inferSelect,
+    "id" | "opponent" | "ownerId" | "lowlightNotificationSent"
+  >,
+): Promise<void> {
+  if (game.lowlightNotificationSent || game.ownerId == null) return;
+  try {
+    const userRow = await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, game.ownerId),
+    });
+    if (userRow?.pushToken) {
+      await sendExpoPush(userRow.pushToken, {
+        title: "Lowlights ready 🎬",
+        body: `Your lowlights vs ${game.opponent} are ready to watch`,
+        data: { gameId: game.id },
+        channelId: "highlights",
+      });
+    }
+    await db
+      .update(gamesTable)
+      .set({ lowlightNotificationSent: true })
+      .where(eq(gamesTable.id, game.id));
+  } catch (notifyErr) {
+    logger.warn({ err: notifyErr, gameId: game.id }, "Failed to send game lowlight push notification");
   }
 }
 
