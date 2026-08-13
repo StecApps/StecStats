@@ -79,7 +79,7 @@ export default function PrivacyPolicy() {
               (name, statistics, photos) are entered and controlled by the adult coach or parent who
               created the account. If you believe we have inadvertently collected information from a
               child under 13 without parental consent, please contact us immediately at{" "}
-              <a href="mailto:sstec@stecstats.com" className="text-primary hover:underline">sstec@stecstats.com</a>{" "}
+              <a href="mailto:sstec@stecco.org" className="text-primary hover:underline">sstec@stecco.org</a>{" "}
               and we will delete it promptly.
             </p>
           </section>
@@ -140,7 +140,7 @@ export default function PrivacyPolicy() {
             </ul>
             <p className="mt-3">
               To exercise any of these rights, email us at{" "}
-              <a href="mailto:sstec@stecstats.com" className="text-primary hover:underline">sstec@stecstats.com</a>.
+              <a href="mailto:sstec@stecco.org" className="text-primary hover:underline">sstec@stecco.org</a>.
               We will respond within 30 days.
             </p>
           </section>
@@ -173,8 +173,8 @@ export default function PrivacyPolicy() {
               <p className="text-foreground font-medium mb-1">StecStats</p>
               <p>
                 Email:{" "}
-                <a href="mailto:sstec@stecstats.com" className="text-primary hover:underline">
-                  sstec@stecstats.com
+                <a href="mailto:sstec@stecco.org" className="text-primary hover:underline">
+                  sstec@stecco.org
                 </a>
               </p>
               <p>
