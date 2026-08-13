@@ -20,8 +20,10 @@
         "NSCameraUsageDescription": "Allow Hoops Stats to access your camera to record game footage.",
         "NSMicrophoneUsageDescription": "Allow Hoops Stats to access your microphone to record game audio.",
         "LSApplicationQueriesSchemes": [
+          "itms-apps",
           "itms-apps"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       },
       "buildNumber": "20260809"
     },
@@ -85,6 +87,15 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "2115ac2f-b1d6-42f5-a109-9dd376d0121a"
+      }
+    },
+    "owner": "sstec"
   }
 }
