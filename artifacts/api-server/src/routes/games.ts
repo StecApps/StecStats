@@ -513,6 +513,14 @@ router.get("/games/public/:shareToken", publicGameRateLimit, async (req, res) =>
   });
   if (!game) return res.status(404).json({ error: "Game not found" });
 
+  // Reject the request if the owning account no longer exists (deleted/suspended).
+  if (game.ownerId != null) {
+    const owner = await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, game.ownerId),
+    });
+    if (!owner) return res.status(404).json({ error: "Not found" });
+  }
+
   const team = await db.query.teamsTable.findFirst({
     where: eq(teamsTable.id, game.teamId),
   });
@@ -565,6 +573,14 @@ router.get("/games/public/:shareToken/highlight", publicGameRateLimit, async (re
     where: eq(gamesTable.shareToken, shareToken),
   });
   if (!game) return res.status(404).json({ error: "Game not found" });
+
+  // Reject the request if the owning account no longer exists (deleted/suspended).
+  if (game.ownerId != null) {
+    const owner = await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, game.ownerId),
+    });
+    if (!owner) return res.status(404).json({ error: "Not found" });
+  }
 
   if (!game.highlightObjectPath || game.highlightStatus !== "ready") {
     return res.status(404).json({ error: "Highlight reel not available" });
