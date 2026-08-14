@@ -11,6 +11,8 @@
     "test": "jest --config jest.config.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "release:staging": "eas update --channel preview --message \"${MESSAGE:-staging release}\"",
+    "release:prod": "eas update --channel production --message \"${MESSAGE:-production release}\"",
     "rollback:prod": "eas update --republish --channel production --group $GROUP"
   },
   "devDependencies": {

@@ -2,13 +2,43 @@
 
 ## OTA Updates (EAS Update)
 
-Over-the-air updates are published via EAS Update and delivered through the `production` channel. Coaches receive JS bundle updates without a new App Store submission.
+Over-the-air updates are published via EAS Update. Updates are **staged to the `preview` channel first** and promoted to `production` only after a smoke test passes. This prevents a bad JS bundle from reaching all coaches at once.
 
-### Publishing an OTA update
+### Two-step publish flow
+
+#### Step 1 — Publish to the preview channel
+
+```bash
+eas update --channel preview --message "describe what changed"
+# or use the package.json alias:
+pnpm release:staging
+```
+
+Open the Expo dashboard for the preview channel and install the update on a test device (or ask a beta coach to verify):
+
+```
+https://expo.dev/accounts/stec/projects/hoops-mobile/updates?channel=preview
+```
+
+Verify that the app launches, scoring works, and there are no crashes.
+
+#### Step 2 — Promote to production
+
+Once the preview build is confirmed good, publish the same change to production:
 
 ```bash
 eas update --channel production --message "describe what changed"
+# or use the package.json alias:
+pnpm release:prod
 ```
+
+Monitor the production channel on the Expo dashboard:
+
+```
+https://expo.dev/accounts/stec/projects/hoops-mobile/updates?channel=production
+```
+
+Coaches receive the update on the next app foreground.
 
 ---
 
