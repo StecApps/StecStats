@@ -1,6 +1,6 @@
 ---
 name: Replit Clerk live vs test instance — mobile auth
-description: No Clerk Production instance exists yet; mobile app has the test key baked into the EAS binary; server-side JWKS fallback bridges the gap until the Production instance is provisioned.
+description: JWKS fallback removed; requireAuth now relies solely on clerkMiddleware(). Mobile app must use the live Clerk key once the Production instance is provisioned.
 ---
 
 ## The Problem
