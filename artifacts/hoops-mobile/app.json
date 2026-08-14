@@ -17,8 +17,8 @@
       "bundleIdentifier": "com.hoopsstats.coach",
       "supportsTablet": false,
       "infoPlist": {
-        "NSCameraUsageDescription": "Allow Hoops Stats to access your camera to record game footage.",
-        "NSMicrophoneUsageDescription": "Allow Hoops Stats to access your microphone to record game audio.",
+        "NSCameraUsageDescription": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
+        "NSMicrophoneUsageDescription": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
         "LSApplicationQueriesSchemes": [
           "itms-apps",
           "itms-apps"
@@ -57,15 +57,15 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow StecStats to access your camera to record game footage.",
-          "microphonePermission": "Allow StecStats to access your microphone to record game audio.",
+          "cameraPermission": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
+          "microphonePermission": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
           "recordAudioAndroid": true
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow StecStats to access your photos to set a player profile picture."
+          "photosPermission": "StecStats uses your photo library to let you set profile photos for players on your roster. Selected photos are uploaded to your account and shown on player profile pages."
         }
       ],
       [
