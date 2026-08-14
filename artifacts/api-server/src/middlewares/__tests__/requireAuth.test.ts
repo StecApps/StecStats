@@ -289,3 +289,153 @@ describe("requireAuth — per-request DB read contract", () => {
     expect(next).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mobile Bearer token — live Clerk instance contract
+//
+// Context: the JWKS fallback was removed from requireAuth.ts. All mobile
+// Bearer tokens are now verified exclusively by clerkMiddleware() (from
+// @clerk/express), which is mounted globally in server.ts BEFORE any routes.
+// requireAuth itself only calls getAuth(req) to read the already-verified
+// userId that clerkMiddleware deposited on the request.
+//
+// These tests confirm the two sides of that contract:
+//   A) When clerkMiddleware resolves a Bearer token from the live Clerk
+//      instance (pk_live_...) it deposits a userId via getAuth(req).
+//      requireAuth must populate req.appUser and call next() — no 401.
+//   B) When there is no token, or the token is expired/invalid and
+//      clerkMiddleware cannot verify it, getAuth(req) returns null.
+//      requireAuth must respond 401 immediately, without touching the DB.
+// ---------------------------------------------------------------------------
+describe("requireAuth — mobile Bearer token / live Clerk instance", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Standard two-call pattern: odd call = main lookup, even call = secondary-
+    // account dedup query (no match → undefined keeps the primary user).
+    findFirstMock.mockImplementation(async () => {
+      const callN = findFirstMock.mock.calls.length;
+      return callN % 2 === 1 ? { ...mockUser } : undefined;
+    });
+
+    delete process.env["OWNER_CLERK_EMAIL"];
+  });
+
+  // -------------------------------------------------------------------------
+  // A1. Happy path — live-instance token resolved by clerkMiddleware
+  //
+  // Simulates: EAS production binary built with pk_live_... sends a Bearer
+  // token. clerkMiddleware verifies it against the live JWKS and deposits
+  // the userId on the request. requireAuth reads it via getAuth(req).
+  // -------------------------------------------------------------------------
+  it("accepts a Bearer token resolved by clerkMiddleware and populates req.appUser", async () => {
+    // clerkMiddleware already verified the token; it exposes the userId here.
+    getAuthMock.mockReturnValueOnce({ userId: mockUser.clerkUserId });
+
+    const req  = makeMockReq({
+      // Authorization header present (as a mobile app would send).
+      headers: { authorization: `Bearer live-clerk-token-stub` },
+    });
+    const res  = makeMockRes();
+    const next = vi.fn() as NextFunction;
+
+    await requireAuth(req, res, next);
+
+    // Must reach next() — no 401.
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+
+    // req.appUser must be populated with the local DB row.
+    expect(req.appUser).toBeDefined();
+    expect(req.appUser?.id).toBe(mockUser.id);
+    expect(req.appUser?.clerkUserId).toBe(mockUser.clerkUserId);
+  });
+
+  // -------------------------------------------------------------------------
+  // A2. DB round-trip always happens — entitlement reflects the live DB row
+  //
+  // Even when clerkMiddleware resolves the token, requireAuth must re-read
+  // the DB row so that a RevenueCat EXPIRATION webhook is honoured without
+  // a server restart.
+  // -------------------------------------------------------------------------
+  it("always reads the DB row so entitlement state is current", async () => {
+    getAuthMock.mockReturnValueOnce({ userId: mockUser.clerkUserId });
+
+    const req  = makeMockReq({ headers: { authorization: "Bearer live-clerk-token-stub" } });
+    const res  = makeMockRes();
+    const next = vi.fn() as NextFunction;
+
+    await requireAuth(req, res, next);
+
+    // findFirst must be called (main lookup + secondary-account dedup = 2).
+    expect(findFirstMock).toHaveBeenCalledTimes(2);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // B1. No Authorization header → 401, DB never touched
+  //
+  // Simulates: an unauthenticated request (no token at all).
+  // clerkMiddleware deposits nothing; getAuth(req) returns null userId.
+  // -------------------------------------------------------------------------
+  it("returns 401 when no Bearer token is present (unauthenticated request)", async () => {
+    getAuthMock.mockReturnValueOnce({ userId: null });
+
+    const req  = makeMockReq({ headers: {} });
+    const res  = makeMockRes();
+    const next = vi.fn() as NextFunction;
+
+    await requireAuth(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: "Unauthorized" });
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // B2. Expired or invalid token → 401, DB never touched
+  //
+  // Simulates: a mobile app sends a Bearer token that clerkMiddleware cannot
+  // verify (expired JWT, wrong audience, revoked session, wrong Clerk
+  // instance, etc.). clerkMiddleware deposits nothing; getAuth(req) returns
+  // null userId. requireAuth must reject without hitting the DB.
+  // -------------------------------------------------------------------------
+  it("returns 401 when the Bearer token is expired or invalid (clerkMiddleware rejected it)", async () => {
+    // clerkMiddleware could not verify the token → userId is null.
+    getAuthMock.mockReturnValueOnce({ userId: null });
+
+    const req  = makeMockReq({
+      headers: { authorization: "Bearer expired-or-invalid-token" },
+    });
+    const res  = makeMockRes();
+    const next = vi.fn() as NextFunction;
+
+    await requireAuth(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: "Unauthorized" });
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------------------------------------
+  // B3. getAuth returns undefined (clerkMiddleware not mounted upstream)
+  //
+  // Defensive: if clerkMiddleware is somehow not in the chain, getAuth()
+  // may return undefined. requireAuth must still reject with 401.
+  // -------------------------------------------------------------------------
+  it("returns 401 when getAuth returns undefined (clerkMiddleware not mounted)", async () => {
+    getAuthMock.mockReturnValueOnce(undefined);
+
+    const req  = makeMockReq({ headers: { authorization: "Bearer some-token" } });
+    const res  = makeMockRes();
+    const next = vi.fn() as NextFunction;
+
+    await requireAuth(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(findFirstMock).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+});

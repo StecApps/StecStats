@@ -88,14 +88,17 @@ if (process.env["NODE_ENV"] === "production") {
 }
 
 // Note: CLERK_PROXY_URL may be injected automatically by the Replit Clerk
-// integration at production runtime. When set, the Clerk SDK changes the
-// expected JWT issuer to the proxy URL — but requireAuth.ts has a JWKS
-// fallback that handles mobile Bearer tokens (which carry the direct Clerk
-// FAPI iss) even when clerkMiddleware() rejects them. No action needed.
+// integration at production runtime. IMPORTANT: this value must NOT be
+// forwarded as a proxyUrl option to clerkMiddleware() in app.ts. Doing so
+// would cause clerkMiddleware to expect iss: <proxyUrl> and reject every
+// live mobile Bearer token (whose iss is the Clerk FAPI domain). The
+// clerkMiddleware() call in app.ts intentionally omits proxyUrl so that
+// mobile tokens are verified directly by Clerk's standard JWKS path.
 if (process.env["NODE_ENV"] === "production" && process.env["CLERK_PROXY_URL"]) {
   console.info(
     "[INFO] CLERK_PROXY_URL is set in production (injected by Replit). " +
-      "Mobile tokens will be verified via the JWKS fallback in requireAuth.",
+      "It is NOT forwarded to clerkMiddleware() — mobile Bearer tokens are " +
+      "verified directly via Clerk's standard JWKS path without a proxy iss override.",
   );
 }
 
