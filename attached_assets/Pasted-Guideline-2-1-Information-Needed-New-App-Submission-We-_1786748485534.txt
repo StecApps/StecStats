@@ -1,0 +1,45 @@
+Guideline 2.1 - Information Needed - New App Submission
+
+
+We need additional information to continue the review of this new app. To help us fully understand the app and conduct a complete review, app submissions should include relevant details in the App Review Information section in App Store Connect.
+
+Next Steps
+
+Reply in App Store Connect with all of the following information:
+
+1. A screen recording captured on a physical device, running the latest operating system, demonstrating the app's functionality. The recording must begin with launching the app and show the typical user flow through its core features. If the app has any of the following, include them in the recording:
+
+- Account registration, login, and account deletion flows
+- Accessing paid content or features within the app, including any purchase or subscription flows
+- User-generated content, including content reporting and blocking mechanisms
+- Any prompts requesting access to sensitive data or device capabilities (for example, location, contacts, camera, or App Tracking Transparency)
+
+2. A list of the device models and operating systems the app was tested on before submitting for review
+3. A description of the app's functions and target audience, including the problem it solves and the value it provides
+4. Instructions for setting up and accessing the app's main features, including any required login credentials or sample files
+5. A list of the external services, tools, or platforms the app uses to deliver its core functionality (for example, data providers, authentication services, payment processors, or AI services)
+6. Describe any regional differences in the app’s features or content, or confirm that the app functions consistently across all regions
+7. If the app operates in a highly regulated industry or includes protected third-party material, provide any relevant documentation or credentials to demonstrate you are authorized to provide these services or protected material
+
+Include this information in the Notes field of the App Review Information section in App Store Connect for future submissions.
+
+
+How to Prevent Common Issues
+
+- Guideline 2.1 - Bugs and crashes: Apps are reviewed on physical devices to mirror real-world conditions. Test the app on each supported device platform before submitting. Use TestFlight to distribute builds for beta testing on real devices. 
+- Guideline 2.1 - Accessing the app: If the app includes account-based features, provide up-to-date login credentials for a demo account in App Store Connect. If the app has multiple account types, provide credentials for each type in the Notes field.
+- Guideline 2.3.3 - Screenshots: App screenshots on the App Store are an opportunity to highlight the app's core concept and help users understand the app’s value. Screenshots must show the actual app in use, and not merely the title art, login page, or splash screen. 
+- Guideline 3.1.2 - Subscription information: Apps that offer auto-renewable subscriptions must clearly display the title, length, and price of each subscription, as well as links to the Terms of Use and privacy policy. 
+- Guideline 5.1.1 - Purpose strings: Each purpose string, also called a usage description string, must clearly and completely describe why the app needs access to the requested data or capability, and in most cases provide an example of how the data will be used. 
+
+Read more tips for a smooth review experience. Watch a video with more tips for preventing common rejections.
+Reply to App Review
+
+Date Submitted
+Aug 8, 2026 at 1:32 AM
+Submission ID
+2fddfc83-120a-429b-8401-0c5405ba29c5
+Submitted By
+Steven Stec
+Last Updated By
+Apple
