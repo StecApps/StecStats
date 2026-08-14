@@ -1,0 +1,40 @@
+ lib/db/src/schema/users.ts                         |   5 +
+ pnpm-lock.yaml                                     | 431 ++++++++++++++-------
+ 37 files changed, 2453 insertions(+), 239 deletions(-)
+ create mode 100644 artifacts/api-server/src/lib/__tests__/gameHighlightNotification.test.ts
+ create mode 100644 artifacts/api-server/src/lib/__tests__/highlightNotification.test.ts
+ create mode 100644 artifacts/api-server/src/lib/expoPush.ts
+ create mode 100644 artifacts/api-server/src/routes/__tests__/teamHighlightFlagReset.test.ts
+ create mode 100644 artifacts/hoops-mobile/app-store/icon-1024.png
+ create mode 100644 artifacts/hoops-mobile/lib/offlineQueue.ts
+ create mode 100644 artifacts/hoops-mobile/lib/useOfflineQueueSync.ts
+ create mode 100644 artifacts/hoops-stats/public/logo_2.png
+ create mode 100644 attached_assets/Pasted--RUN-FASTLANE-Compiling-react-native-reanimated-Pods-RN_1786582849195.txt
+ create mode 100644 attached_assets/image_1786583586042.png
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+/Users/stevenstec/StecStats/artifacts/hoops-mobile/node_modules/expo/bin/cli config --json exited with non-zero code: 1
+    Error: build command failed.
+zsh: command not found: #
+stevenstec@Mac hoops-mobile % cd ~/StecStats/artifacts/hoops-mobile
+git pull
+eas build --local --platform ios --profile production
+# then upload the new .ipa via Transporte
+Already up to date.
+★ eas-cli@22.0.0 is now available.
+To upgrade, run:
+npm install -g eas-cli
+Proceeding with outdated version.
+
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+/Users/stevenstec/StecStats/artifacts/hoops-mobile/node_modules/expo/bin/cli config --json exited with non-zero code: 1
+    Error: build command failed.
+zsh: command not found: #
+stevenstec@Mac hoops-mobile % 
