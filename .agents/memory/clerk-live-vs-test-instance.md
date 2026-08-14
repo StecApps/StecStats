@@ -1,13 +1,13 @@
 ---
-name: Replit Clerk live vs test instance split — mobile auth
-description: Replit auto-swaps CLERK_PUBLISHABLE_KEY to a live Clerk instance on publish. Mobile app has the test key baked in at build time. Server-side JWKS fallback bridges the gap.
+name: Replit Clerk live vs test instance — mobile auth
+description: No Clerk Production instance exists yet; mobile app has the test key baked into the EAS binary; server-side JWKS fallback bridges the gap until the Production instance is provisioned.
 ---
 
 ## The Problem
 
-**Replit auto-swaps `CLERK_PUBLISHABLE_KEY` (and `VITE_CLERK_PUBLISHABLE_KEY`) to a live Clerk instance key on publish.** The server's `clerkMiddleware()` uses the live JWKS and expects `iss: <live-instance>`. The TestFlight binary was built with the test key (`pk_test_...`, `immortal-swan-47.clerk.accounts.dev`) baked in — mobile tokens carry `iss: https://immortal-swan-47.clerk.accounts.dev` → rejected.
+**Replit auto-swaps `CLERK_PUBLISHABLE_KEY` to a live Clerk instance key on publish.** The server's `clerkMiddleware()` uses the live JWKS and expects `iss: <live-instance>`. The EAS production binary was built with the test key (`pk_test_...`, `immortal-swan-47.clerk.accounts.dev`) baked in — mobile tokens carry `iss: https://immortal-swan-47.clerk.accounts.dev` → rejected by live-instance JWKS.
 
-Web sessions work fine (cookies bypass JWKS verification). Only Bearer token (mobile) requests fail.
+**Important:** No Clerk Production instance exists yet in the Clerk dashboard. Replit only auto-provisions it on the **first publish via Replit's deployment pipeline** (Deployments → Publish). Until that happens, all Replit secrets (`CLERK_PUBLISHABLE_KEY`, `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`) remain `pk_test_`.
 
 ## The Workaround (in place, no new app build required)
 
@@ -19,18 +19,17 @@ Web sessions work fine (cookies bypass JWKS verification). Only Bearer token (mo
 const isClerkHostedInstance = /^https:\/\/[a-z0-9-]+\.clerk\.accounts\.dev$/.test(iss);
 ```
 
-**Do NOT** derive the trusted FAPI host from `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`. In production that variable holds the LIVE key (decoding to something like `clerk.stecstats.stecco.org`), not the test key the mobile binary was built with. The iss mismatch would cause all mobile requests to fail.
-
-## JWKS cache
-
-5-minute in-memory cache keyed by `iss`. Lives in the module scope of `requireAuth.ts`. Survives across requests but resets on server restart.
-
 ## Diagnostic signature
 
-- `requireAuth: 401 — JWT payload` + `jwtIss: "https://immortal-swan-47.clerk.accounts.dev"` in PRODUCTION logs
-- `trust check failed — trustedFapi="clerk.stecstats.stecco.org"` means the EXPO key decoding was being used incorrectly as the trust anchor
+- `requireAuth: 401 — JWT payload` + `jwtIss: "https://immortal-swan-47.clerk.accounts.dev"` in PRODUCTION logs → fallback is active
 - Web sessions work fine; only Bearer token (mobile) requests fail
 
-## Permanent fix
+## Permanent fix (requires user action first)
 
-Rebuild the mobile app (`eas build --platform ios --profile production --local`) with the live Clerk publishable key so both app and server use the same instance. The live key isn't surfaced easily in Replit — user must find it in the Clerk dashboard for the live tenant. EAS cloud quota exhausted until Sep 1; local builds only.
+1. **Publish the app via Replit** (Deployments → Publish) — this auto-provisions the Clerk Production instance
+2. Open `dashboard.clerk.com` → switch to **Production** instance → **API Keys** → copy the `pk_live_...` publishable key
+3. Replace `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in `artifacts/hoops-mobile/eas.json` production env block (currently `pk_test_aW1tb3J0...`)
+4. Run `eas build --platform ios --profile production` and test sign-in on device
+5. Once live tokens are in use, `clerkMiddleware()` handles them directly; the `*.clerk.accounts.dev` fallback becomes a harmless safety net
+
+**Why the live key is not derivable:** `immortal-swan-47.clerk.accounts.com` does not exist (DNS fails) — Replit uses a different domain scheme for production Clerk instances that is only known after the instance is provisioned.

@@ -199,14 +199,16 @@ vi.mock("@workspace/db", () => {
       transaction: vi.fn().mockImplementation(async (fn: (tx: any) => Promise<any>) => {
         const tx = {
           insert: vi.fn().mockReturnValue({
-            values: vi.fn().mockReturnValue({
-              returning: vi.fn().mockImplementation(async () => [
+            values: vi.fn().mockImplementation(() => {
+              const returning = vi.fn().mockImplementation(async () => [
                 {
                   ...COACH_A_GAME_ROW(),
                   id: currentUser.value.id === COACH_A.id ? 10 : 20,
                   ownerId: currentUser.value.id,
                 },
-              ]),
+              ]);
+              // Route uses .onConflictDoNothing().returning() for clientGameId idempotency.
+              return { returning, onConflictDoNothing: vi.fn().mockReturnValue({ returning }) };
             }),
           }),
           update: vi.fn().mockReturnValue({

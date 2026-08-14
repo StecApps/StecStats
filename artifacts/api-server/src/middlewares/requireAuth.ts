@@ -7,10 +7,26 @@ import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from 
 // ---------------------------------------------------------------------------
 // Mobile Clerk instance JWKS cache
 //
-// The mobile app uses EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY (test instance) which
-// Replit does NOT auto-swap on publish. The server's clerkMiddleware() uses the
-// live instance (auto-swapped). We verify mobile Bearer tokens manually using
-// JWKS fetched from the token's own iss URL so no separate secret is needed.
+// Background: Replit auto-swaps CLERK_PUBLISHABLE_KEY to the live instance on
+// publish, but EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY (used by the EAS production
+// build) is user-managed and currently set to the test key. Mobile Bearer
+// tokens therefore carry iss: *.clerk.accounts.dev which the live-instance
+// clerkMiddleware() rejects. This fallback verifies them manually using JWKS
+// fetched from the token's own iss URL.
+//
+// Permanent fix (two steps):
+//
+//   1. Publish the app through Replit (Deployments → Publish). This auto-creates
+//      the Clerk Production instance and injects pk_live_... into the production
+//      environment. The live key then appears in dashboard.clerk.com under the
+//      Production instance → API Keys.
+//
+//   2. Put that pk_live_... value in artifacts/hoops-mobile/eas.json (production
+//      env → EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY) and rebuild the EAS production
+//      binary. Once live-instance tokens are in use, clerkMiddleware() handles
+//      them directly and this fallback becomes an unused safety net
+//      (harmless — it only fires for *.clerk.accounts.dev issuers, which the live
+//      app will never produce after the rebuild).
 // ---------------------------------------------------------------------------
 interface JwkEntry { pem: string; }
 const jwksCache = new Map<string, { keys: Map<string, JwkEntry>; fetchedAt: number }>();

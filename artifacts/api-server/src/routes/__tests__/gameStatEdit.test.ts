@@ -218,7 +218,9 @@ vi.mock("@workspace/db", () => {
           if (table === EVENTS_T) store.events.push(...vals);
           if (table === GAMES_T) {
             const row = { id: 99, ownerId: 1, videoObjectPath: null, ...vals[0] };
-            return { returning: vi.fn().mockResolvedValue([row]) };
+            const returning = vi.fn().mockResolvedValue([row]);
+            // Route uses .onConflictDoNothing().returning() for clientGameId idempotency.
+            return { returning, onConflictDoNothing: vi.fn().mockReturnValue({ returning }) };
           }
           return Promise.resolve(undefined);
         }),
