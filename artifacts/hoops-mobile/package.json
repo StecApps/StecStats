@@ -13,7 +13,7 @@
     "ios": "expo run:ios",
     "release:staging": "eas update --channel preview --message \"${MESSAGE:-staging release}\"",
     "release:prod": "eas update --channel production --message \"${MESSAGE:-production release}\"",
-    "rollback:prod": "eas update --republish --channel production --group $GROUP"
+    "rollback:prod": "eas update:republish --group $GROUP --destination-channel production"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

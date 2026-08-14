@@ -13,6 +13,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Pressable,
+  Share,
 } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,6 +25,7 @@ import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
+import * as Updates from 'expo-updates';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -490,6 +492,44 @@ export default function ProfileScreen() {
         onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/privacy`)}
         colors={colors}
       />
+
+      {/* About — surfaces the EAS update group ID so rollback verification
+           is possible without developer tools. `updateGroup` is the UUID
+           used by `eas update --republish --group <id>` and matches the
+           group listed in the Expo dashboard. Tap the row to open the
+           native share sheet so a tester can paste/record it. */}
+      <Text style={styles.sectionTitle}>About</Text>
+      {(() => {
+        const channel = Updates.channel ?? 'dev';
+        // EAS Update manifests include the group UUID in metadata.updateGroup.
+        // This is the same ID required by `eas update --republish --group`.
+        // Falls back to updateId (individual update) when metadata is absent,
+        // then to null in a local dev build where Updates is disabled.
+        const manifest = Updates.manifest as any;
+        // updateGroup is the EAS group UUID used by `eas update:republish --group`.
+        // It is only present in EAS-delivered manifests (production / preview channels).
+        // Updates.updateId is a per-platform asset ID — NOT a group ID — so we do NOT
+        // expose it as a rollback target. Dev builds and Expo Go show "dev build".
+        const groupId: string | null =
+          manifest?.metadata?.updateGroup ?? null;
+        const shortId = groupId ? groupId.slice(-8) : null;
+        const fullLabel = shortId
+          ? `${channel}  ·  …${shortId}`
+          : `${channel}  ·  dev build`;
+        return (
+          <ProfileRow
+            icon="information-circle-outline"
+            label="Bundle"
+            value={fullLabel}
+            onPress={groupId ? () => {
+              // Share sheet lets the tester forward the full group UUID to use in:
+              //   eas update:republish --group <groupId> --destination-channel <ch>
+              Share.share({ message: groupId, title: 'EAS Update Group ID' });
+            } : undefined}
+            colors={colors}
+          />
+        );
+      })()}
 
       {/* Account */}
       <Text style={styles.sectionTitle}>Account</Text>
