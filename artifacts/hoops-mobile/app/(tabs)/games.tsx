@@ -29,7 +29,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { uploadVideoFile } from '@/lib/uploadVideoFile';
 import { saveGame } from '@/lib/saveGame';
-import { generateClientId } from '@/lib/offlineQueue';
+import { generateClientId, loadQueuedGames, type QueuedGame } from '@/lib/offlineQueue';
 import { PENDING_UPLOAD_KEY, type PendingUpload } from '@/app/scorekeeper';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 
@@ -441,6 +441,202 @@ function GameRow({ item, onDelete, colors, router }: { item: any; onDelete: (id:
   );
 }
 
+// ─── Queued game box-score modal ─────────────────────────────────────────────
+function QueuedGameBoxScoreModal({
+  game,
+  onClose,
+  colors,
+  insets,
+}: {
+  game: QueuedGame | null;
+  onClose: () => void;
+  colors: any;
+  insets: any;
+}) {
+  if (!game) return null;
+
+  const date = new Date(game.date + 'T12:00:00');
+  const dateStr = date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+
+  return (
+    <Modal visible={!!game} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)' }} onPress={onClose} />
+      <View style={{
+        backgroundColor: colors.card,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingHorizontal: 20,
+        paddingTop: 16,
+        paddingBottom: insets.bottom + 24,
+        maxHeight: '80%',
+      }}>
+        {/* Handle */}
+        <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 16 }} />
+
+        {/* Pending sync badge */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 12 }}>
+          <Ionicons name="cloud-offline-outline" size={14} color={colors.mutedForeground} />
+          <Text style={{ fontSize: 12, fontFamily: 'Inter_500Medium', color: colors.mutedForeground, letterSpacing: 0.3 }}>
+            Pending sync · saved locally
+          </Text>
+        </View>
+
+        {/* Score header */}
+        <View style={{ alignItems: 'center', marginBottom: 4 }}>
+          <Text style={{ ...tekoStyle(42), color: colors.foreground, letterSpacing: 1 }}>
+            {game.teamScore} – {game.opponentScore}
+          </Text>
+          <Text style={{ fontSize: 13, fontFamily: 'Inter_600SemiBold', color: colors.mutedForeground }}>
+            vs {game.opponent}
+          </Text>
+          <Text style={{ fontSize: 12, fontFamily: 'Inter_400Regular', color: colors.mutedForeground, marginTop: 2 }}>
+            {dateStr}
+          </Text>
+        </View>
+
+        {/* Divider */}
+        <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 14 }} />
+
+        {/* Box score table */}
+        {game.stats.length > 0 ? (
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {/* Header row */}
+            <View style={{ flexDirection: 'row', paddingHorizontal: 4, marginBottom: 6 }}>
+              <Text style={{ flex: 1, fontSize: 11, fontFamily: 'Inter_600SemiBold', color: colors.mutedForeground, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Player
+              </Text>
+              {(['PTS', 'REB', 'AST', 'STL', 'BLK', 'TO'] as const).map((col) => (
+                <Text key={col} style={{ width: 36, fontSize: 11, fontFamily: 'Inter_600SemiBold', color: colors.mutedForeground, textAlign: 'center', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  {col}
+                </Text>
+              ))}
+            </View>
+
+            {/* Stat rows — sorted by points desc */}
+            {[...game.stats]
+              .sort((a, b) => {
+                const pts = (s: typeof a) => s.ftMade + 2 * s.twoMade + 3 * s.threeMade;
+                return pts(b) - pts(a);
+              })
+              .map((s, i) => {
+                const pts = s.ftMade + 2 * s.twoMade + 3 * s.threeMade;
+                return (
+                <View
+                  key={s.playerId}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 4,
+                    paddingVertical: 8,
+                    borderTopWidth: i === 0 ? 0 : 1,
+                    borderTopColor: colors.border,
+                  }}
+                >
+                  <Text style={{ flex: 1, fontSize: 13, fontFamily: 'Inter_500Medium', color: colors.foreground }} numberOfLines={1}>
+                    #{s.playerId}
+                  </Text>
+                  {([
+                    pts,
+                    s.rebounds,
+                    s.assists,
+                    s.steals,
+                    s.blocks,
+                    s.turnovers,
+                  ] as number[]).map((val, ci) => (
+                    <Text key={ci} style={{ width: 36, fontSize: 13, fontFamily: 'Inter_500Medium', color: colors.foreground, textAlign: 'center' }}>
+                      {val}
+                    </Text>
+                  ))}
+                </View>
+              ); })}
+          </ScrollView>
+        ) : (
+          <Text style={{ textAlign: 'center', color: colors.mutedForeground, fontSize: 14, fontFamily: 'Inter_400Regular', paddingVertical: 16 }}>
+            No stats recorded
+          </Text>
+        )}
+
+        <TouchableOpacity
+          onPress={onClose}
+          style={{ marginTop: 16, alignItems: 'center', paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}
+        >
+          <Text style={{ fontSize: 14, fontFamily: 'Inter_600SemiBold', color: colors.mutedForeground }}>Close</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── Queued (offline) game row ───────────────────────────────────────────────
+function QueuedGameRow({ item, colors, onPress }: { item: QueuedGame; colors: any; onPress: () => void }) {
+  const isWin = item.result === 'W';
+  const date = new Date(item.date + 'T12:00:00');
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={[
+        gameRowStyles.row,
+        {
+          backgroundColor: colors.card,
+          borderColor: 'rgba(255,255,255,0.10)',
+          overflow: 'hidden',
+          opacity: 0.65,
+        },
+      ]}
+    >
+      {/* Date pill */}
+      <View style={[gameRowStyles.datePill, { backgroundColor: colors.muted }]}>
+        <Text style={[gameRowStyles.dateStr, { color: colors.mutedForeground }]}>
+          {date.toLocaleString('en', { month: 'short' })}
+        </Text>
+        <Text style={[gameRowStyles.dateDay, { color: colors.foreground }]}>
+          {date.getDate()}
+        </Text>
+      </View>
+
+      {/* Middle — opponent + score + syncing badge */}
+      <View style={gameRowStyles.rowMid}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+          <Text style={[gameRowStyles.opponent, { color: colors.foreground, marginBottom: 0 }]} numberOfLines={1}>
+            vs {item.opponent}
+          </Text>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 3,
+            backgroundColor: 'rgba(255,255,255,0.08)',
+            borderRadius: 6,
+            paddingHorizontal: 5,
+            paddingVertical: 2,
+          }}>
+            <Ionicons name="cloud-offline-outline" size={10} color={colors.mutedForeground} />
+            <Text style={{ fontSize: 9, color: colors.mutedForeground, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.3 }}>
+              Syncing…
+            </Text>
+          </View>
+        </View>
+        <Text style={[gameRowStyles.score, { color: colors.mutedForeground }]}>
+          {item.teamScore} – {item.opponentScore}
+        </Text>
+      </View>
+
+      {/* W/L badge */}
+      <View style={[
+        gameRowStyles.resultBadge,
+        { backgroundColor: colors.muted, overflow: 'hidden' },
+      ]}>
+        <Text style={[gameRowStyles.resultText, { color: colors.mutedForeground }]}>
+          {isWin ? 'W' : 'L'}
+        </Text>
+      </View>
+
+      <Feather name="chevron-right" size={15} color={colors.mutedForeground} style={{ marginRight: 12 }} />
+    </TouchableOpacity>
+  );
+}
+
 // ─── Main Screen ────────────────────────────────────────────────────────────
 export default function GamesScreen() {
   const colors = useColors();
@@ -536,6 +732,34 @@ export default function GamesScreen() {
   const canSwitchTeam = (teams?.length ?? 0) >= 1;
 
   const [bannerKey, setBannerKey] = useState(0);
+
+  // ── Offline queue ──────────────────────────────────────────────────────────
+  const [queuedGames, setQueuedGames] = useState<QueuedGame[]>([]);
+  const [selectedQueuedGame, setSelectedQueuedGame] = useState<QueuedGame | null>(null);
+
+  const reloadQueue = useCallback(() => {
+    loadQueuedGames()
+      .then(setQueuedGames)
+      .catch(() => { /* display errors are non-fatal; queue is still intact */ });
+  }, []);
+
+  // Reload on tab focus so games queued mid-session appear immediately.
+  useFocusEffect(useCallback(() => { reloadQueue(); }, [reloadQueue]));
+
+  // Reload whenever the server game list refreshes — the background sync calls
+  // removeQueuedGame() then invalidates the query, so by the time `games`
+  // updates the entry is already gone from AsyncStorage.
+  useEffect(() => { reloadQueue(); }, [games, reloadQueue]);
+
+  const visibleQueuedGames = useMemo(() => {
+    const q = search.toLowerCase();
+    return queuedGames.filter(
+      (g) =>
+        (selectedTeamIdx === -1 || g.teamId === team?.id) &&
+        (!q || g.opponent.toLowerCase().includes(q)) &&
+        (!selectedPlayerId || g.stats.some((s) => s.playerId === selectedPlayerId)),
+    );
+  }, [queuedGames, search, selectedTeamIdx, team, selectedPlayerId]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -693,22 +917,48 @@ export default function GamesScreen() {
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={colors.primary} />}
+          ListHeaderComponent={
+            visibleQueuedGames.length > 0 ? (
+              <>
+                {visibleQueuedGames.map((qg) => (
+                  <QueuedGameRow
+                    key={qg.clientId}
+                    item={qg}
+                    colors={colors}
+                    onPress={() => setSelectedQueuedGame(qg)}
+                  />
+                ))}
+                {filtered.length > 0 && (
+                  <View style={{ height: 1, backgroundColor: colors.border, marginBottom: 8, marginHorizontal: 2 }} />
+                )}
+              </>
+            ) : null
+          }
           renderItem={({ item }) => (
             <GameRow item={item} onDelete={handleDeleteGame} colors={colors} router={router} />
           )}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons name="basketball-outline" size={44} color={colors.mutedForeground} />
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-                {search ? 'No matches' : 'No games yet'}
-              </Text>
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                {search ? 'Try a different opponent name' : 'Tap + to record your first game'}
-              </Text>
-            </View>
+            visibleQueuedGames.length === 0 ? (
+              <View style={styles.empty}>
+                <Ionicons name="basketball-outline" size={44} color={colors.mutedForeground} />
+                <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                  {search ? 'No matches' : 'No games yet'}
+                </Text>
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                  {search ? 'Try a different opponent name' : 'Tap + to record your first game'}
+                </Text>
+              </View>
+            ) : null
           }
         />
       )}
+
+      <QueuedGameBoxScoreModal
+        game={selectedQueuedGame}
+        onClose={() => setSelectedQueuedGame(null)}
+        colors={colors}
+        insets={insets}
+      />
 
       <SeasonPickerModal
         visible={pickerOpen}

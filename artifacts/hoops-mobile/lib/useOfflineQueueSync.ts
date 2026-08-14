@@ -20,6 +20,10 @@ import {
   removeQueuedGame,
   checkConnectivity,
 } from './offlineQueue';
+import {
+  getListTeamGamesQueryKey,
+  getListAllGamesQueryKey,
+} from '@workspace/api-client-react';
 
 export function useOfflineQueueSync(apiBase: string) {
   const { getToken, isSignedIn } = useAuth();
@@ -78,7 +82,13 @@ export function useOfflineQueueSync(apiBase: string) {
       syncInFlightRef.current = false;
     }
     if (synced > 0) {
-      qc.invalidateQueries({ queryKey: ['listTeamGames'] });
+      // Invalidate the all-games list (default "All Teams" view)
+      qc.invalidateQueries({ queryKey: getListAllGamesQueryKey() });
+      // Invalidate per-team lists for every team that had a game synced
+      const syncedTeamIds = new Set(queued.map((g) => g.teamId));
+      for (const teamId of syncedTeamIds) {
+        qc.invalidateQueries({ queryKey: getListTeamGamesQueryKey(teamId) });
+      }
     }
   }
 
