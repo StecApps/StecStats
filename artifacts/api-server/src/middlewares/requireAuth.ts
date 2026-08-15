@@ -28,9 +28,24 @@ declare global {
  * read is the guarantee that revoked entitlements are honoured immediately.
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const clerkUserId = getAuth(req)?.userId ?? null;
+  const authHeader = req.headers["authorization"] ?? null;
+  const hasBearer = typeof authHeader === "string" && authHeader.startsWith("Bearer ");
+
+  // Decode (not verify) the JWT to log the iss claim for diagnostics.
+  let jwtIss: string | null = null;
+  if (hasBearer) {
+    try {
+      const token = (authHeader as string).slice(7);
+      const payload = JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString());
+      jwtIss = payload.iss ?? null;
+    } catch { /* non-fatal */ }
+  }
+
+  const clerkAuth = getAuth(req);
+  const clerkUserId = clerkAuth?.userId ?? null;
 
   if (!clerkUserId) {
+    req.log?.warn({ hasBearer, jwtIss, clerkAuth }, "requireAuth: 401 — JWT payload");
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
