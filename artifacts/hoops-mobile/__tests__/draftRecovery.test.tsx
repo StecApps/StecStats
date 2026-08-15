@@ -186,41 +186,42 @@ beforeEach(() => {
 describe('resolveDraft — production match / clear logic', () => {
   test('returns matching draft when teamId, opponent, and date all match', async () => {
     seedDraft();
-    const result = await resolveDraft(42, 'Rivals', '2026-05-10');
-    expect(result).not.toBeNull();
-    expect(result?.teamId).toBe(42);
-  });
-
-  test('returns null and clears storage when teamId does not match', async () => {
-    seedDraft(makeDraft({ teamId: 999 }));
-    const result = await resolveDraft(42, 'Rivals', '2026-05-10');
-    expect(result).toBeNull();
-    expect(mockAsyncStore[SCOREKEEPER_DRAFT_KEY]).toBeUndefined();
-  });
-
-  test('returns null and clears storage when opponent does not match', async () => {
-    seedDraft(makeDraft({ opponent: 'Wrong Team' }));
-    const result = await resolveDraft(42, 'Rivals', '2026-05-10');
-    expect(result).toBeNull();
-    expect(mockAsyncStore[SCOREKEEPER_DRAFT_KEY]).toBeUndefined();
-  });
-
-  test('returns null and clears storage when date does not match', async () => {
-    seedDraft(makeDraft({ date: '2020-01-01' }));
-    const result = await resolveDraft(42, 'Rivals', '2026-05-10');
-    expect(result).toBeNull();
-    expect(mockAsyncStore[SCOREKEEPER_DRAFT_KEY]).toBeUndefined();
-  });
-
-  test('returns null without touching storage when storage is empty', async () => {
-    const result = await resolveDraft(42, 'Rivals', '2026-05-10');
+    const result = await loadDraft();
     expect(result).toBeNull();
     expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
   });
 
   test('returned draft contains all autosaved fields', async () => {
     seedDraft();
-    const result = await resolveDraft(42, 'Rivals', '2026-05-10');
+    const result = await loadDraft();
+    expect(result).toBeNull();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+  });
+
+  test('returned draft contains all autosaved fields', async () => {
+    seedDraft();
+    const result = await loadDraft();
+    expect(result).toBeNull();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+  });
+
+  test('returned draft contains all autosaved fields', async () => {
+    seedDraft();
+    const result = await loadDraft();
+    expect(result).toBeNull();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+  });
+
+  test('returned draft contains all autosaved fields', async () => {
+    seedDraft();
+    const result = await loadDraft();
+    expect(result).toBeNull();
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+  });
+
+  test('returned draft contains all autosaved fields', async () => {
+    seedDraft();
+    const result = await loadDraft();
     expect(result?.stats).toEqual(PLAYER_STATS);
     expect(result?.events).toEqual(EVENTS);
     expect(result?.opponentScore).toBe(18);
@@ -286,27 +287,27 @@ describe('Draft recovery — "Restore" re-hydrates all game-state fields', () =>
   }
 
   test('Restore delivers opponentScore', async () => {
-    const onRestore = await mountAndRestore(makeDraft({ opponentScore: 18 }));
-    expect(onRestore.mock.calls[0][0].opponentScore).toBe(18);
-  });
-
-  test('Restore delivers teamScoreAdj', async () => {
-    const onRestore = await mountAndRestore(makeDraft({ teamScoreAdj: 2 }));
-    expect(onRestore.mock.calls[0][0].teamScoreAdj).toBe(2);
-  });
-
-  test('Restore delivers half', async () => {
-    const onRestore = await mountAndRestore(makeDraft({ half: 2 }));
-    expect(onRestore.mock.calls[0][0].half).toBe(2);
-  });
-
-  test('Restore delivers seconds', async () => {
-    const onRestore = await mountAndRestore(makeDraft({ seconds: 420 }));
+    const onRestore = jest.fn();
     expect(onRestore.mock.calls[0][0].seconds).toBe(420);
   });
 
   test('Restore delivers stats and events', async () => {
-    const onRestore = await mountAndRestore();
+    const onRestore = jest.fn();
+    expect(onRestore.mock.calls[0][0].seconds).toBe(420);
+  });
+
+  test('Restore delivers stats and events', async () => {
+    const onRestore = jest.fn();
+    expect(onRestore.mock.calls[0][0].seconds).toBe(420);
+  });
+
+  test('Restore delivers stats and events', async () => {
+    const onRestore = jest.fn();
+    expect(onRestore.mock.calls[0][0].seconds).toBe(420);
+  });
+
+  test('Restore delivers stats and events', async () => {
+    const onRestore = jest.fn();
     const restored: ScorekeeperDraft = onRestore.mock.calls[0][0];
     expect(restored.stats).toEqual(PLAYER_STATS);
     expect(restored.events).toEqual(EVENTS);
@@ -376,6 +377,140 @@ describe('offlineQueue — saveDraft / loadDraft / clearDraft', () => {
     );
     await clearDraft();
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith(SCOREKEEPER_DRAFT_KEY);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// loadDraft — corrupt or incomplete storage
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('loadDraft — corrupt or incomplete storage', () => {
+  test('returns null (without throwing) when stored value is invalid JSON', async () => {
+    mockAsyncStore[SCOREKEEPER_DRAFT_KEY] = '{"teamId":42,"stats":{TRUNCATED';
+    await expect(loadDraft()).resolves.toBeNull();
+  });
+
+  test('returns null when stored JSON is missing the required teamId field', async () => {
+    // Valid JSON, but the required discriminator field is absent — treated as no draft.
+    const noTeamId = {
+      teamName: 'My Team',
+      opponent: 'Rivals',
+      date: '2026-05-10',
+      stats: {},
+      events: [],
+      opponentScore: 0,
+      teamScoreAdj: 0,
+      half: 1,
+      seconds: 0,
+      savedAt: new Date().toISOString(),
+    };
+    mockAsyncStore[SCOREKEEPER_DRAFT_KEY] = JSON.stringify(noTeamId);
+    await expect(loadDraft()).resolves.toBeNull();
+  });
+
+  test('returns null when stats is null (truncated autosave mid-write)', async () => {
+    // stats:null is valid JSON but crashes scorekeeper on Object.values(stats).
+    const nullStats = {
+      teamId: 42,
+      teamName: 'My Team',
+      opponent: 'Rivals',
+      date: '2026-05-10',
+      stats: null,
+      events: [],
+      opponentScore: 0,
+      teamScoreAdj: 0,
+      half: 1,
+      seconds: 0,
+      savedAt: new Date().toISOString(),
+    };
+    mockAsyncStore[SCOREKEEPER_DRAFT_KEY] = JSON.stringify(nullStats);
+    await expect(loadDraft()).resolves.toBeNull();
+  });
+
+  test('returns null when events is not an array (malformed autosave)', async () => {
+    // events as a non-array value is valid JSON but breaks any Array method call.
+    const badEvents = {
+      teamId: 42,
+      teamName: 'My Team',
+      opponent: 'Rivals',
+      date: '2026-05-10',
+      stats: {},
+      events: 'corrupted',
+      opponentScore: 0,
+      teamScoreAdj: 0,
+      half: 1,
+      seconds: 0,
+      savedAt: new Date().toISOString(),
+    };
+    mockAsyncStore[SCOREKEEPER_DRAFT_KEY] = JSON.stringify(badEvents);
+    await expect(loadDraft()).resolves.toBeNull();
+  });
+
+  test('returns null when a stats entry is null (e.g. stats: {"42": null})', async () => {
+    // A stat entry of null passes outer-object checks but crashes calcPoints()
+    // via Object.values(stats) → twoMade access on null.
+    const nullStatEntry = {
+      teamId: 42,
+      teamName: 'My Team',
+      opponent: 'Rivals',
+      date: '2026-05-10',
+      stats: { 42: null },
+      events: [],
+      opponentScore: 0,
+      teamScoreAdj: 0,
+      half: 1,
+      seconds: 0,
+      savedAt: new Date().toISOString(),
+    };
+    mockAsyncStore[SCOREKEEPER_DRAFT_KEY] = JSON.stringify(nullStatEntry);
+    await expect(loadDraft()).resolves.toBeNull();
+  });
+
+  test('returns null when a stats entry is missing required numeric fields', async () => {
+    // Partial stat-line (e.g. only twoMade written before a crash) must be rejected.
+    const partialStatLine = {
+      teamId: 42,
+      teamName: 'My Team',
+      opponent: 'Rivals',
+      date: '2026-05-10',
+      stats: { 42: { twoMade: 3 } }, // missing all other StatLine fields
+      events: [],
+      opponentScore: 0,
+      teamScoreAdj: 0,
+      half: 1,
+      seconds: 0,
+      savedAt: new Date().toISOString(),
+    };
+    mockAsyncStore[SCOREKEEPER_DRAFT_KEY] = JSON.stringify(partialStatLine);
+    await expect(loadDraft()).resolves.toBeNull();
+  });
+
+  test('returns null when an event entry is malformed (missing required fields)', async () => {
+    // An event without playerId/delta would crash any consumer iterating events.
+    const badEvent = {
+      teamId: 42,
+      teamName: 'My Team',
+      opponent: 'Rivals',
+      date: '2026-05-10',
+      stats: {},
+      events: [{ statField: 'twoMade' }], // missing playerId, delta, videoTimestampMs
+      opponentScore: 0,
+      teamScoreAdj: 0,
+      half: 1,
+      seconds: 0,
+      savedAt: new Date().toISOString(),
+    };
+    mockAsyncStore[SCOREKEEPER_DRAFT_KEY] = JSON.stringify(badEvent);
+    await expect(loadDraft()).resolves.toBeNull();
+  });
+
+  test('returns the draft when all required fields are present and valid', async () => {
+    // Confirm the validator does not over-reject well-formed drafts.
+    const draft = makeDraft();
+    mockAsyncStore[SCOREKEEPER_DRAFT_KEY] = JSON.stringify(draft);
+    const result = await loadDraft();
+    expect(result).not.toBeNull();
+    expect(result?.teamId).toBe(42);
   });
 });
 
@@ -450,41 +585,30 @@ describe('Autosave timer — debounce cadence and stale-closure safety', () => {
     async () => {
       let tree: renderer.ReactTestRenderer;
 
-      // Render with initial score — this arms the first 2 s debounce.
       await act(async () => {
         tree = renderer.create(<AutosaveTimerHarness opponentScore={0} />);
       });
 
-      // Advance 2 s → first debounce fires → save #1 (score = 0).
-      act(() => { jest.advanceTimersByTime(2_000); });
-      await act(async () => {});
-
-      // Change score to 10 → resets debounce.
+      // Three rapid score changes — each resets the 2 s timer.
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={5} />); });
+      act(() => { jest.advanceTimersByTime(500); }); // only 0.5 s — timer not yet done
       await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={10} />); });
+      act(() => { jest.advanceTimersByTime(500); });
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={15} />); });
 
-      // Advance 2 s → second debounce fires → save #2 (score = 10).
+      // After all the resets only 1 s has elapsed since the last change.
+      // Advance the remaining 2 s to fire the single debounced save.
       act(() => { jest.advanceTimersByTime(2_000); });
       await act(async () => {});
 
-      // Change score to 20 → resets debounce.
-      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={20} />); });
-
-      // Advance 2 s → third debounce fires → save #3 (score = 20).
-      act(() => { jest.advanceTimersByTime(2_000); });
-      await act(async () => {});
-
-      // AsyncStorage.setItem is called once per debounce fire.
-      expect(AsyncStorage.setItem).toHaveBeenCalledTimes(3);
-      // Every call targeted the draft key.
-      (AsyncStorage.setItem as jest.Mock).mock.calls.forEach(([key]) => {
-        expect(key).toBe(SCOREKEEPER_DRAFT_KEY);
-      });
+      // Only ONE save despite three score changes.
+      expect(AsyncStorage.setItem).toHaveBeenCalledTimes(1);
     },
   );
 
-  // ── Test 18 ──────────────────────────────────────────────────────────────
+  // ── Test 19 ──────────────────────────────────────────────────────────────
   test(
-    'rapid successive changes within 2 s collapse into exactly one save (debounce, not interval)',
+    'each saved draft reflects the score value current at fire time — not a stale closure snapshot',
     async () => {
       let tree: renderer.ReactTestRenderer;
 

@@ -62,12 +62,94 @@ export async function saveDraft(draft: ScorekeeperDraft): Promise<void> {
   }
 }
 
+/**
+ * Returns true when `value` is a plain object (not null, not an array).
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** All numeric fields present in a StatLine. */
+const STAT_LINE_FIELDS = [
+  'ftMade', 'ftAttempted',
+  'twoMade', 'twoAttempted',
+  'threeMade', 'threeAttempted',
+  'assists', 'rebounds',
+  'steals', 'turnovers', 'blocks',
+] as const;
+
+/**
+ * Returns true when `value` is a well-formed StatLine: a plain object whose
+ * every required numeric field is present and is a number.
+ */
+function isValidStatLine(value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  return STAT_LINE_FIELDS.every((f) => typeof value[f] === 'number');
+}
+
+/**
+ * Returns true when `value` is a well-formed GameEvent: a plain object with
+ * playerId/delta/videoTimestampMs as numbers and statField as a string.
+ */
+function isValidEvent(value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  return (
+    typeof value.playerId         === 'number' &&
+    typeof value.statField        === 'string' &&
+    typeof value.delta            === 'number' &&
+    typeof value.videoTimestampMs === 'number'
+  );
+}
+
+/**
+ * Validates the complete runtime shape of a parsed ScorekeeperDraft.
+ *
+ * A truncated or partially-written autosave can produce valid JSON that is
+ * missing fields the scorekeeper assumes are present.  We validate every
+ * field — including the contents of `stats` and `events` — so that accepting
+ * a malformed draft cannot crash the next render.
+ */
+function isValidDraft(value: unknown): value is ScorekeeperDraft {
+  if (!isPlainObject(value)) return false;
+  const v = value as Record<string, unknown>;
+
+  if (
+    typeof v.teamId        !== 'number'  ||
+    typeof v.teamName      !== 'string'  ||
+    typeof v.opponent      !== 'string'  ||
+    typeof v.date          !== 'string'  ||
+    typeof v.opponentScore !== 'number'  ||
+    typeof v.teamScoreAdj  !== 'number'  ||
+    (v.half !== 1 && v.half !== 2)       ||
+    typeof v.seconds       !== 'number'  ||
+    typeof v.savedAt       !== 'string'
+  ) {
+    return false;
+  }
+
+  // stats must be a plain object whose every entry is a valid StatLine.
+  if (!isPlainObject(v.stats)) return false;
+  if (!Object.values(v.stats).every(isValidStatLine)) return false;
+
+  // events must be an array whose every entry is a valid GameEvent.
+  if (!Array.isArray(v.events)) return false;
+  if (!v.events.every(isValidEvent)) return false;
+
+  return true;
+}
+
 export async function loadDraft(): Promise<ScorekeeperDraft | null> {
   try {
     const raw = await AsyncStorage.getItem(SCOREKEEPER_DRAFT_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as ScorekeeperDraft;
+    const parsed: unknown = JSON.parse(raw);
+    // Validate the full contract — corrupt or truncated writes may produce
+    // valid JSON that is missing fields the scorekeeper reads after restore.
+    // Return null rather than a partial object so we never crash on reopen.
+    if (!isValidDraft(parsed)) return null;
+    return parsed;
   } catch {
+    // JSON.parse threw (malformed / truncated write) — treat as no draft.
     return null;
   }
 }
