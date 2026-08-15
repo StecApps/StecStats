@@ -226,9 +226,9 @@ export default function AuthScreen() {
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
             <TouchableOpacity
-              style={[styles.btn, (!email.trim() || loading) && styles.btnDisabled]}
+              style={[styles.btn, (!isLoaded || !email.trim() || loading) && styles.btnDisabled]}
               onPress={handleEmailSubmit}
-              disabled={!email.trim() || loading}
+              disabled={!isLoaded || !email.trim() || loading}
               activeOpacity={0.8}
             >
               {loading ? (
