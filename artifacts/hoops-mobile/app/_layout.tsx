@@ -256,6 +256,12 @@ function RootLayoutNav() {
 }
 
 const PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
+// Route Clerk API calls through our own proxy so mobile auth works even if the
+// clerk.stecstats.stecco.org custom-domain DNS record is not yet propagated.
+// The proxy is already live at /api/__clerk on the API server.
+const CLERK_PROXY_URL = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/__clerk`
+  : undefined;
 
 export default function RootLayout() {
   useOTAUpdate();
@@ -283,7 +289,7 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY} tokenCache={tokenCache}>
+    <ClerkProvider publishableKey={PUBLISHABLE_KEY} tokenCache={tokenCache} {...(CLERK_PROXY_URL ? { proxyUrl: CLERK_PROXY_URL } : {})}>
       <SafeAreaProvider>
         <ErrorBoundary>
           <QueryClientProvider client={queryClient}>
