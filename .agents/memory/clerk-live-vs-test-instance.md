@@ -1,6 +1,6 @@
 ---
 name: Replit Clerk live vs test instance — mobile auth
-description: JWKS fallback removed; requireAuth now relies solely on clerkMiddleware(). Mobile app must use the live Clerk key once the Production instance is provisioned.
+description: Fallback verifyToken fully removed. Both mobile and web now use the Replit-managed Clerk instance. requireAuth relies solely on clerkMiddleware(). The dual-account email-merge block in requireAuth (~lines 133-148) is the remaining cleanup item.
 ---
 
 ## The Problem
