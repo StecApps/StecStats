@@ -75,6 +75,7 @@
           "supportsPictureInPicture": true
         }
       ],
+      "./plugins/withSwiftConcurrencyFix",
       "expo-apple-authentication",
       [
         "expo-notifications",
