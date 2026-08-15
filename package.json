@@ -18,5 +18,10 @@
     "@replit/revenuecat-sdk": "^5.0.0",
     "stripe": "^22.3.0",
     "stripe-replit-sync": "^1.0.0"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "react-native-worklets@0.5.1": "patches/react-native-worklets@0.5.1.patch"
+    }
   }
 }

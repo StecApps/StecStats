@@ -106,6 +106,30 @@ jest.mock('react-native', () => {
     Platform: { OS: 'ios', select: (o: any) => o.ios ?? o.default },
     // useWindowDimensions normally calls NativeDeviceInfo — return a fixed viewport.
     useWindowDimensions: jest.fn(() => ({ width: 390, height: 844 })),
+    // Animated — scorekeeper.tsx uses Value, timing, loop, sequence.
+    Animated: {
+      Value: class {
+        _value: number;
+        constructor(v: number) { this._value = v; }
+        setValue(_v: number) {}
+        addListener(_cb: any) { return '0'; }
+        removeListener(_id: string) {}
+        interpolate(_cfg: any) { return this; }
+      },
+      timing:   jest.fn((_val: any, _cfg: any) => ({ start: jest.fn((cb?: () => void) => cb && cb()) })),
+      loop:     jest.fn((_anim: any) => ({ start: jest.fn(), stop: jest.fn() })),
+      sequence: jest.fn((_anims: any[]) => ({ start: jest.fn() })),
+      View:     hostEl('Animated.View'),
+      Text:     hostEl('Animated.Text'),
+    },
+    Modal:   hostEl('Modal'),
+    Share:   { share: jest.fn(async () => ({ action: 'sharedAction' })) },
+    PermissionsAndroid: {
+      request: jest.fn(async () => 'granted'),
+      PERMISSIONS: { BLUETOOTH_CONNECT: 'android.permission.BLUETOOTH_CONNECT' },
+      RESULTS: { GRANTED: 'granted' },
+    },
+    ToastAndroid: { show: jest.fn(), LONG: 1, SHORT: 0 },
   };
 });
 
@@ -117,6 +141,42 @@ jest.mock('expo-camera', () => ({
 
 jest.mock('@clerk/clerk-expo', () => ({
   useAuth: jest.fn(() => ({ getToken: jest.fn(async () => 'test-token') })),
+}));
+
+// react-native-gesture-handler reaches into the native bridge on require.
+// Provide a minimal stub so scorekeeper.tsx imports without crashing in Node.
+jest.mock('react-native-gesture-handler', () => {
+  const passThrough = ({ children }: any) => children ?? null;
+  // Fluent gesture builder — every method returns `this` so chains work.
+  function makeGesture() {
+    const g: any = {};
+    ['onStart', 'onUpdate', 'onEnd', 'onFinalize', 'onBegin', 'onChange',
+     'runOnJS', 'simultaneousWithExternalGesture', 'enabled', 'minPointers'].forEach((m) => {
+      g[m] = jest.fn(() => g);
+    });
+    return g;
+  }
+  return {
+    GestureHandlerRootView: passThrough,
+    GestureDetector:        passThrough,
+    Gesture: {
+      Pinch:    jest.fn(() => makeGesture()),
+      Tap:      jest.fn(() => makeGesture()),
+      Pan:      jest.fn(() => makeGesture()),
+      Race:     jest.fn((...gs: any[]) => gs[0]),
+      Composed: jest.fn((...gs: any[]) => gs[0]),
+      Simultaneous: jest.fn((...gs: any[]) => gs[0]),
+    },
+  };
+});
+
+// react-native-reanimated uses Babel worklets and native threads — stub out
+// the hooks used by scorekeeper.tsx so they return safe JS-side values.
+jest.mock('react-native-reanimated', () => ({
+  useSharedValue: jest.fn((initial: any) => ({ value: initial })),
+  runOnJS:        jest.fn((fn: any) => fn),
+  withSpring:     jest.fn((v: any) => v),
+  withTiming:     jest.fn((v: any) => v),
 }));
 
 // ── Imports run after mock hoisting ──────────────────────────────────────────

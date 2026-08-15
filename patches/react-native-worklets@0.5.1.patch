@@ -1,0 +1,15 @@
+diff --git a/plugin/index.js b/plugin/index.js
+index 6419dc44d51d8e46743c1f69b84bfc4771802dec..e661c999e31c8e3832a63cf7aff7303d39bcf9a9 100644
+--- a/plugin/index.js
++++ b/plugin/index.js
+@@ -881,8 +881,8 @@ var require_workletFactory = __commonJS({
+         statements.unshift((0, types_12.variableDeclaration)("const", [
+           (0, types_12.variableDeclarator)((0, types_12.identifier)("_e"), (0, types_12.arrayExpression)([
+             (0, types_12.newExpression)((0, types_12.memberExpression)((0, types_12.identifier)("global"), (0, types_12.identifier)("Error")), []),
+-            (0, types_12.numericLiteral)(lineOffset),
+-            (0, types_12.numericLiteral)(-27)
++            (0, types_12.valueToNode)(lineOffset),
++            (0, types_12.valueToNode)(-27)
+           ]))
+         ]));
+         statements.push((0, types_12.expressionStatement)((0, types_12.assignmentExpression)("=", (0, types_12.memberExpression)((0, types_12.identifier)(reactName), (0, types_12.identifier)("__stackDetails"), false), (0, types_12.identifier)("_e"))));
