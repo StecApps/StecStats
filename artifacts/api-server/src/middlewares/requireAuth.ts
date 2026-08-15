@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { getAuth, clerkClient } from "@clerk/express";
+import { getAuth, clerkClient, verifyToken } from "@clerk/express";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
 
@@ -28,24 +28,56 @@ declare global {
  * read is the guarantee that revoked entitlements are honoured immediately.
  */
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers["authorization"] ?? null;
-  const hasBearer = typeof authHeader === "string" && authHeader.startsWith("Bearer ");
+  let clerkUserId = getAuth(req)?.userId ?? null;
 
-  // Decode (not verify) the JWT to log the iss claim for diagnostics.
-  let jwtIss: string | null = null;
-  if (hasBearer) {
-    try {
-      const token = (authHeader as string).slice(7);
-      const payload = JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString());
-      jwtIss = payload.iss ?? null;
-    } catch { /* non-fatal */ }
+  // Fallback: the primary clerkMiddleware() is configured for the live Clerk
+  // instance. Mobile Bearer tokens come from the Replit-managed test instance
+  // (EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY). When the live middleware rejects them,
+  // verify directly against the mobile instance's JWKS so no new app build is
+  // required to restore access.
+  if (!clerkUserId) {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+    if (token) {
+      const mobilePubKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+      if (mobilePubKey) {
+        try {
+          const payload = await verifyToken(token, { publishableKey: mobilePubKey });
+          clerkUserId = payload.sub ?? null;
+          if (clerkUserId) {
+            req.log?.info(
+              { clerkUserId: clerkUserId.slice(0, 14) + "…" },
+              "requireAuth: mobile token verified via EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY",
+            );
+          }
+        } catch (err: unknown) {
+          // Log why the mobile fallback also failed — helps diagnose instance mismatches.
+          try {
+            const parts = token.split(".");
+            if (parts.length === 3) {
+              const p = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8"));
+              req.log?.warn(
+                {
+                  jwtIss: p.iss,
+                  jwtExp: p.exp,
+                  jwtExpired: p.exp < Date.now() / 1000,
+                  verifyErr: err instanceof Error ? err.message : String(err),
+                },
+                "requireAuth: 401 — mobile verifyToken also failed",
+              );
+            }
+          } catch { /* ignore decode errors */ }
+        }
+      } else {
+        req.log?.warn({}, "requireAuth: 401 — Bearer token present but EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY not set");
+      }
+    } else {
+      req.log?.warn({ hasAuthHeader: !!authHeader }, "requireAuth: 401 — no Bearer token");
+    }
   }
 
-  const clerkAuth = getAuth(req);
-  const clerkUserId = clerkAuth?.userId ?? null;
-
   if (!clerkUserId) {
-    req.log?.warn({ hasBearer, jwtIss, clerkAuth }, "requireAuth: 401 — JWT payload");
     res.status(401).json({ error: "Unauthorized" });
     return;
   }

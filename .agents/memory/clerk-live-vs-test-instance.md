@@ -1,35 +1,32 @@
 ---
 name: Replit Clerk live vs test instance — mobile auth
-description: Fallback verifyToken fully removed. Both mobile and web now use the Replit-managed Clerk instance. requireAuth relies solely on clerkMiddleware(). The dual-account email-merge block in requireAuth (~lines 133-148) is the remaining cleanup item.
+description: Mobile tokens use immortal-swan-47 (test instance); live Clerk middleware rejects them. Fallback verifyToken in requireAuth is REQUIRED — do not remove it until the mobile app is rebuilt with a live-instance key.
 ---
 
 ## The Problem
 
 **Replit auto-swaps `CLERK_PUBLISHABLE_KEY` to a live Clerk instance key on publish.** The server's `clerkMiddleware()` uses the live JWKS and expects `iss: <live-instance>`. The EAS production binary was built with the test key (`pk_test_...`, `immortal-swan-47.clerk.accounts.dev`) baked in — mobile tokens carry `iss: https://immortal-swan-47.clerk.accounts.dev` → rejected by live-instance JWKS.
 
-**Important:** No Clerk Production instance exists yet in the Clerk dashboard. Replit only auto-provisions it on the **first publish via Replit's deployment pipeline** (Deployments → Publish). Until that happens, all Replit secrets (`CLERK_PUBLISHABLE_KEY`, `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`) remain `pk_test_`.
+## The Fallback (MUST stay in requireAuth.ts)
 
-## The Workaround (in place, no new app build required)
+`requireAuth.ts` has a fallback using `verifyToken(token, { publishableKey: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY })`. When `clerkMiddleware()` rejects a Bearer token, this verifies it directly against the mobile/test Clerk instance.
 
-`requireAuth.ts` has a fallback: when `clerkMiddleware()` rejects a Bearer token, fetch JWKS directly from the JWT's own `iss` URL, build a PEM, and call `verifyToken(token, { jwtKey: pem })`.
+**Do NOT remove this fallback** until the mobile app is rebuilt with a live-instance publishable key. Task agents have removed it twice already — each time broke all mobile authentication on the next production deploy.
 
-**Trust check:** only fetch JWKS from `*.clerk.accounts.dev` (Clerk-controlled infrastructure). Cryptographic signature verification is the real security gate.
-
-```typescript
-const isClerkHostedInstance = /^https:\/\/[a-z0-9-]+\.clerk\.accounts\.dev$/.test(iss);
-```
+**Why it keeps getting removed:** task agents see "dual Clerk instance workaround" and treat it as cleanup. It is NOT safe to remove until step 4 of the permanent fix below is complete.
 
 ## Diagnostic signature
 
-- `requireAuth: 401 — JWT payload` + `jwtIss: "https://immortal-swan-47.clerk.accounts.dev"` in PRODUCTION logs → fallback is active
-- Web sessions work fine; only Bearer token (mobile) requests fail
+- All mobile API calls return 401 at ~200–450ms (Clerk fetches JWKS, validates, fails)
+- Web sessions work fine (cookies, no iss check)
+- Production logs show no `requireAuth: mobile token verified` lines → fallback is missing or `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` is unset
 
-## Permanent fix (requires user action first)
+## Permanent fix (requires a new app build)
 
-1. **Publish the app via Replit** (Deployments → Publish) — this auto-provisions the Clerk Production instance
+1. **Publish via Replit** (already done) — auto-provisions the Clerk Production instance
 2. Open `dashboard.clerk.com` → switch to **Production** instance → **API Keys** → copy the `pk_live_...` publishable key
-3. Replace `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in `artifacts/hoops-mobile/eas.json` production env block (currently `pk_test_aW1tb3J0...`)
-4. Run `eas build --platform ios --profile production` and test sign-in on device
-5. Once live tokens are in use, `clerkMiddleware()` handles them directly; the `*.clerk.accounts.dev` fallback becomes a harmless safety net
+3. Replace `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in `artifacts/hoops-mobile/eas.json` production env block
+4. Run `eas build --platform ios --profile production` and confirm sign-in works on device
+5. Only after confirming step 4: remove the fallback block from `requireAuth.ts`
 
-**Why the live key is not derivable:** `immortal-swan-47.clerk.accounts.com` does not exist (DNS fails) — Replit uses a different domain scheme for production Clerk instances that is only known after the instance is provisioned.
+**Why the live key is not derivable from env:** the live Clerk instance domain differs from `immortal-swan-47.clerk.accounts.dev` and is only known after Clerk provisions it on first publish.
