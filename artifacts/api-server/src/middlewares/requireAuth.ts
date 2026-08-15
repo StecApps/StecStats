@@ -12,6 +12,36 @@ declare global {
   }
 }
 
+/** Module-level JWKS cache keyed by `iss`. Entries expire after 5 minutes. */
+const jwksCache = new Map<string, { keys: Record<string, unknown>[]; fetchedAt: number }>();
+const JWKS_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function fetchJwks(iss: string): Promise<Record<string, unknown>[]> {
+  const jwksRes = await fetch(`${iss}/.well-known/jwks.json`);
+  if (!jwksRes.ok) throw new Error(`JWKS fetch failed: ${jwksRes.status}`);
+  const jwks = await jwksRes.json() as { keys: Record<string, unknown>[] };
+  jwksCache.set(iss, { keys: jwks.keys, fetchedAt: Date.now() });
+  return jwks.keys;
+}
+
+async function getJwkForKid(iss: string, kid: string): Promise<Record<string, unknown>> {
+  const cached = jwksCache.get(iss);
+  const now = Date.now();
+
+  // Use cached keys if they are fresh.
+  if (cached && now - cached.fetchedAt < JWKS_TTL_MS) {
+    const jwk = cached.keys.find((k) => k["kid"] === kid);
+    if (jwk) return jwk;
+    // kid miss on a fresh cache — key rotation; fall through to refetch.
+  }
+
+  // Cache is cold, expired, or had a kid miss — fetch fresh JWKS.
+  const keys = await fetchJwks(iss);
+  const jwk = keys.find((k) => k["kid"] === kid);
+  if (!jwk) throw new Error(`No JWK found for kid=${kid}`);
+  return jwk;
+}
+
 /**
  * Requires a valid Clerk session. On success, JIT-provisions (or looks up) a
  * local `users` row mirroring the Clerk user id and attaches it to
@@ -65,12 +95,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
           throw new Error(`Untrusted iss: ${iss}`);
         }
 
-        // Fetch JWKS from the pinned legacy instance only.
-        const jwksRes = await fetch(`${LEGACY_ISS}/.well-known/jwks.json`);
-        if (!jwksRes.ok) throw new Error(`JWKS fetch failed: ${jwksRes.status}`);
-        const jwks = await jwksRes.json() as { keys: Record<string, unknown>[] };
-        const jwk = jwks.keys.find((k) => k["kid"] === kid);
-        if (!jwk) throw new Error(`No JWK found for kid=${kid}`);
+        // Fetch JWKS from the pinned legacy instance (cached with 5-min TTL;
+        // kid miss on a fresh cache triggers an immediate refetch for rotation).
+        const jwk = await getJwkForKid(LEGACY_ISS, kid);
 
         // Manual RS256 signature verification — bypass Clerk's verifyToken
         // entirely so its iss-check against CLERK_PUBLISHABLE_KEY (the live
