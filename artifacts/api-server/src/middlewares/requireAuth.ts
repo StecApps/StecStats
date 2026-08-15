@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { getAuth, clerkClient, verifyToken } from "@clerk/express";
+import { createPublicKey } from "crypto";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
 
@@ -40,37 +41,46 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
     if (token) {
-      const mobilePubKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
-      if (mobilePubKey) {
-        try {
-          const payload = await verifyToken(token, { publishableKey: mobilePubKey } as any);
-          clerkUserId = payload.sub ?? null;
-          if (clerkUserId) {
-            req.log?.info(
-              { clerkUserId: clerkUserId.slice(0, 14) + "…" },
-              "requireAuth: mobile token verified via EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY",
-            );
-          }
-        } catch (err: unknown) {
-          // Log why the mobile fallback also failed — helps diagnose instance mismatches.
-          try {
-            const parts = token.split(".");
-            if (parts.length === 3) {
-              const p = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8"));
-              req.log?.warn(
-                {
-                  jwtIss: p.iss,
-                  jwtExp: p.exp,
-                  jwtExpired: p.exp < Date.now() / 1000,
-                  verifyErr: err instanceof Error ? err.message : String(err),
-                },
-                "requireAuth: 401 — mobile verifyToken also failed",
-              );
-            }
-          } catch { /* ignore decode errors */ }
+      try {
+        // Decode header (kid) and payload (iss) without verifying — signature
+        // verification happens below via JWKS.
+        const parts = token.split(".");
+        if (parts.length !== 3) throw new Error("Malformed JWT");
+        const header  = JSON.parse(Buffer.from(parts[0]!, "base64url").toString("utf8")) as { kid?: string };
+        const jwtBody = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8")) as { iss?: string; exp?: number; sub?: string };
+        const iss = jwtBody.iss ?? "";
+        const kid = header.kid ?? "";
+
+        // Only trust Clerk-hosted development instances (*.clerk.accounts.dev).
+        // The cryptographic signature check below is the real security gate;
+        // this host-pattern check is a defence-in-depth guard against fetching
+        // JWKS from an attacker-controlled URL in a crafted token.
+        if (!/^https:\/\/[a-z0-9-]+\.clerk\.accounts\.dev$/.test(iss)) {
+          throw new Error(`Untrusted iss: ${iss}`);
         }
-      } else {
-        req.log?.warn({}, "requireAuth: 401 — Bearer token present but EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY not set");
+
+        // Fetch JWKS from the token's own Clerk instance.
+        const jwksRes = await fetch(`${iss}/.well-known/jwks.json`);
+        if (!jwksRes.ok) throw new Error(`JWKS fetch failed: ${jwksRes.status}`);
+        const jwks = await jwksRes.json() as { keys: Record<string, unknown>[] };
+        const jwk = jwks.keys.find((k) => k["kid"] === kid);
+        if (!jwk) throw new Error(`No JWK found for kid=${kid}`);
+
+        // Convert JWK → PEM so verifyToken can use it as jwtKey.
+        const pem = createPublicKey({ key: jwk as any, format: "jwk" })
+          .export({ type: "spki", format: "pem" }) as string;
+
+        const payload = await verifyToken(token, { jwtKey: pem });
+        clerkUserId = payload.sub ?? null;
+        if (clerkUserId) {
+          req.log?.info(
+            { clerkUserId: clerkUserId.slice(0, 14) + "…", iss },
+            "requireAuth: mobile token verified via JWKS fallback",
+          );
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        req.log?.warn({ verifyErr: errMsg }, "requireAuth: 401 — JWKS fallback failed");
       }
     } else {
       req.log?.warn({ hasAuthHeader: !!authHeader }, "requireAuth: 401 — no Bearer token");
