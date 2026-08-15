@@ -9,6 +9,7 @@ import {
   generateClientId,
   type ScorekeeperDraft,
 } from '@/lib/offlineQueue';
+import { useAutosaveDraft } from '@/lib/useAutosaveDraft';
 
 export const PENDING_UPLOAD_KEY = 'stec:pending-mobile-upload';
 export type PendingUpload = {
@@ -1066,28 +1067,19 @@ export default function ScorekeeperScreen() {
   // ── Draft autosave ─────────────────────────────────────────────────────────
   // Debounced: waits 2 s after the last change before writing to AsyncStorage,
   // so rapid stat taps don't hammer the storage layer.
-  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (saving) return; // don't overwrite during the save flow
-    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
-    draftSaveTimer.current = setTimeout(() => {
-      const draft: ScorekeeperDraft = {
-        teamId: Number(teamId),
-        teamName: teamName as string,
-        opponent: opponent as string,
-        date: date as string,
-        stats,
-        events,
-        opponentScore,
-        teamScoreAdj,
-        half,
-        seconds,
-        savedAt: new Date().toISOString(),
-      };
-      saveDraft(draft);
-    }, 2_000);
-    return () => { if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current); };
-  }, [stats, events, opponentScore, teamScoreAdj, half, seconds]); // eslint-disable-line react-hooks/exhaustive-deps
+  useAutosaveDraft({
+    teamId: Number(teamId),
+    teamName: teamName as string,
+    opponent: opponent as string,
+    date: date as string,
+    stats,
+    events,
+    opponentScore,
+    teamScoreAdj,
+    half,
+    seconds,
+    saving,
+  });
 
   // ─── Guarded back navigation ──────────────────────────────────────────────
   // Intercepts the close/back button when a save is in progress so the coach

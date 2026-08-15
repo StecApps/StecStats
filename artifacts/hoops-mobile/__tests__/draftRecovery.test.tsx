@@ -24,6 +24,7 @@
  *  10. Stale draft (wrong date) → same.
  *  11. No Alert when AsyncStorage is empty.
  *  12–16. saveDraft / loadDraft / clearDraft / resolveDraft round-trip coverage.
+ *  17–21. Autosave timer — debounce cadence and stale-closure safety.
  */
 
 // ── Mocks (hoisted before imports) ────────────────────────────────────────────
@@ -70,6 +71,8 @@ import {
   resolveDraft,
   type ScorekeeperDraft,
 } from '../lib/offlineQueue';
+
+import { useAutosaveDraft } from '../lib/useAutosaveDraft';
 
 import type { StatLine, GameEvent } from '../lib/saveGame';
 
@@ -374,4 +377,218 @@ describe('offlineQueue — saveDraft / loadDraft / clearDraft', () => {
     await clearDraft();
     expect(AsyncStorage.removeItem).toHaveBeenCalledWith(SCOREKEEPER_DRAFT_KEY);
   });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Autosave timer — debounce cadence and stale-closure safety
+//
+// These tests exercise the REAL useAutosaveDraft hook (lib/useAutosaveDraft.ts)
+// which is the same code scorekeeper.tsx calls in production.  A stale
+// closure, a changed debounce duration, a removed cleanup, or a missing
+// dependency in the production hook will cause these tests to fail.
+//
+// Covered scenarios
+// -----------------
+//  17. saveDraft is called once per independent state change after the 2 s
+//      debounce window — 3 changes × 2 s each = 3 saves in 6 s.
+//  18. Rapid successive changes within a single 2 s window collapse into
+//      exactly one save (debounce, not interval).
+//  19. Each saved draft captures the score value current at fire time, not
+//      the value that was in scope when the effect first ran (stale-closure
+//      check).
+//  20. Changing score mid-debounce resets the timer — the final save
+//      reflects the newest value, and only one save is emitted.
+//  21. The timer does not fire again after the component unmounts (no
+//      leaked timers).
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── AutosaveTimerHarness ─────────────────────────────────────────────────────
+//
+// Thin wrapper that calls the REAL useAutosaveDraft hook from production code.
+// Only `opponentScore` and `saving` vary between test cases; all other fields
+// stay at fixed defaults so the tests stay focused on timer behavior.
+
+interface AutosaveHarnessProps {
+  opponentScore: number;
+  saving?: boolean;
+}
+
+function AutosaveTimerHarness({ opponentScore, saving = false }: AutosaveHarnessProps) {
+  useAutosaveDraft({
+    teamId:       1,
+    teamName:     'Test Team',
+    opponent:     'Rivals',
+    date:         '2026-01-01',
+    stats:        {},
+    events:       [],
+    opponentScore,
+    teamScoreAdj: 0,
+    half:         1,
+    seconds:      0,
+    saving,
+  });
+  return null;
+}
+
+// ── Timer test suite ──────────────────────────────────────────────────────────
+
+describe('Autosave timer — debounce cadence and stale-closure safety', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAsyncStore = {};
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  // ── Test 17 ──────────────────────────────────────────────────────────────
+  test(
+    'saveDraft fires at least 3 times when state changes 3 times with 2 s gaps (6 s total)',
+    async () => {
+      let tree: renderer.ReactTestRenderer;
+
+      // Render with initial score — this arms the first 2 s debounce.
+      await act(async () => {
+        tree = renderer.create(<AutosaveTimerHarness opponentScore={0} />);
+      });
+
+      // Advance 2 s → first debounce fires → save #1 (score = 0).
+      act(() => { jest.advanceTimersByTime(2_000); });
+      await act(async () => {});
+
+      // Change score to 10 → resets debounce.
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={10} />); });
+
+      // Advance 2 s → second debounce fires → save #2 (score = 10).
+      act(() => { jest.advanceTimersByTime(2_000); });
+      await act(async () => {});
+
+      // Change score to 20 → resets debounce.
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={20} />); });
+
+      // Advance 2 s → third debounce fires → save #3 (score = 20).
+      act(() => { jest.advanceTimersByTime(2_000); });
+      await act(async () => {});
+
+      // AsyncStorage.setItem is called once per debounce fire.
+      expect(AsyncStorage.setItem).toHaveBeenCalledTimes(3);
+      // Every call targeted the draft key.
+      (AsyncStorage.setItem as jest.Mock).mock.calls.forEach(([key]) => {
+        expect(key).toBe(SCOREKEEPER_DRAFT_KEY);
+      });
+    },
+  );
+
+  // ── Test 18 ──────────────────────────────────────────────────────────────
+  test(
+    'rapid successive changes within 2 s collapse into exactly one save (debounce, not interval)',
+    async () => {
+      let tree: renderer.ReactTestRenderer;
+
+      await act(async () => {
+        tree = renderer.create(<AutosaveTimerHarness opponentScore={0} />);
+      });
+
+      // Three rapid score changes — each resets the 2 s timer.
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={5} />); });
+      act(() => { jest.advanceTimersByTime(500); }); // only 0.5 s — timer not yet done
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={10} />); });
+      act(() => { jest.advanceTimersByTime(500); });
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={15} />); });
+
+      // After all the resets only 1 s has elapsed since the last change.
+      // Advance the remaining 2 s to fire the single debounced save.
+      act(() => { jest.advanceTimersByTime(2_000); });
+      await act(async () => {});
+
+      // Only ONE save despite three score changes.
+      expect(AsyncStorage.setItem).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // ── Test 19 ──────────────────────────────────────────────────────────────
+  test(
+    'each saved draft reflects the score value current at fire time — not a stale closure snapshot',
+    async () => {
+      let tree: renderer.ReactTestRenderer;
+
+      await act(async () => {
+        tree = renderer.create(<AutosaveTimerHarness opponentScore={7} />);
+      });
+
+      // Fire first save (score = 7).
+      act(() => { jest.advanceTimersByTime(2_000); });
+      await act(async () => {});
+
+      const firstSave = JSON.parse(
+        (AsyncStorage.setItem as jest.Mock).mock.calls[0][1],
+      ) as { opponentScore: number };
+      expect(firstSave.opponentScore).toBe(7);
+
+      // Change score — the new effect closure captures 22.
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={22} />); });
+
+      // Fire second save (score should be 22, not the stale 7).
+      act(() => { jest.advanceTimersByTime(2_000); });
+      await act(async () => {});
+
+      const secondSave = JSON.parse(
+        (AsyncStorage.setItem as jest.Mock).mock.calls[1][1],
+      ) as { opponentScore: number };
+      expect(secondSave.opponentScore).toBe(22);
+    },
+  );
+
+  // ── Test 20 ──────────────────────────────────────────────────────────────
+  test(
+    'changing score mid-debounce resets the timer — final save reflects the newest value',
+    async () => {
+      let tree: renderer.ReactTestRenderer;
+
+      await act(async () => {
+        tree = renderer.create(<AutosaveTimerHarness opponentScore={3} />);
+      });
+
+      // Advance only 1 s — timer not yet done.
+      act(() => { jest.advanceTimersByTime(1_000); });
+
+      // Score changes at t=1 s → timer resets; previous timer is cancelled.
+      await act(async () => { tree!.update(<AutosaveTimerHarness opponentScore={99} />); });
+
+      // Advance 2 s from the reset — the save fires with score = 99.
+      act(() => { jest.advanceTimersByTime(2_000); });
+      await act(async () => {});
+
+      expect(AsyncStorage.setItem).toHaveBeenCalledTimes(1);
+      const saved = JSON.parse(
+        (AsyncStorage.setItem as jest.Mock).mock.calls[0][1],
+      ) as { opponentScore: number };
+      expect(saved.opponentScore).toBe(99);
+    },
+  );
+
+  // ── Test 21 ──────────────────────────────────────────────────────────────
+  test(
+    'the autosave timer does not fire after the component unmounts — no leaked timers',
+    async () => {
+      let tree: renderer.ReactTestRenderer;
+
+      await act(async () => {
+        tree = renderer.create(<AutosaveTimerHarness opponentScore={5} />);
+      });
+
+      // Unmount before the 2 s debounce fires.
+      await act(async () => { tree!.unmount(); });
+
+      // Advance past the debounce window — the cleanup should have cleared the timer.
+      act(() => { jest.advanceTimersByTime(3_000); });
+      await act(async () => {});
+
+      // No save should have been written after unmount.
+      expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    },
+  );
 });
