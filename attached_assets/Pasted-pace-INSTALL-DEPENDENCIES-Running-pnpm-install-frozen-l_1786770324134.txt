@@ -1,0 +1,1643 @@
+pace
+[INSTALL_DEPENDENCIES] Running "pnpm install --frozen-lockfile" in /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/c3b9c7ce-bff5-4ca7-b79f-d6420e9f4c60/build directory
+[INSTALL_DEPENDENCIES] Scope: all 11 workspace projects
+[INSTALL_DEPENDENCIES] Lockfile is up to date, resolution step is skipped
+[INSTALL_DEPENDENCIES] Progress: resolved 1, reused 0, downloaded 0, added 0
+[INSTALL_DEPENDENCIES] Packages: +1607
+[INSTALL_DEPENDENCIES] ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 316
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 695
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 793
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1141
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1427
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1605
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1606
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1607, done
+[INSTALL_DEPENDENCIES] dependencies:
+[INSTALL_DEPENDENCIES] + @replit/connectors-sdk 0.4.1
+[INSTALL_DEPENDENCIES] + @replit/revenuecat-sdk 5.0.0
+[INSTALL_DEPENDENCIES] + stripe 22.3.0
+[INSTALL_DEPENDENCIES] + stripe-replit-sync 1.0.0
+[INSTALL_DEPENDENCIES] 
+[INSTALL_DEPENDENCIES] devDependencies:
+[INSTALL_DEPENDENCIES] + prettier 3.8.4
+[INSTALL_DEPENDENCIES] + typescript 5.9.3
+[INSTALL_DEPENDENCIES] . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+[INSTALL_DEPENDENCIES] . preinstall: Done
+[INSTALL_DEPENDENCIES] Done in 8.1s using pnpm v10.26.1
+The NODE_ENV environment variable is required but was not specified. Ensure the project is bundled with Expo CLI or NODE_ENV is set.
+Proceeding without mode-specific .env
+[READ_APP_CONFIG] Failed to read the app config file with `expo config` command:
+/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/c3b9c7ce-bff5-4ca7-b79f-d6420e9f4c60/build/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo/bin/cli config --json --full --type public exited with non-zero code: 1
+[READ_APP_CONFIG] 
+Error: Cannot find module '@expo/config-plugins'
+Require stack:
+- /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/c3b9c7ce-bff5-4ca7-b79f-d6420e9f4c60/build/artifacts/hoops-mobile/plugins/withSwiftConcurrencyFix.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/config-plugins/build/utils/plugin-resolver.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/config-plugins/build/plugins/withStaticPlugin.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/config-plugins/build/plugins/withPlugins.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/config-plugins/build/index.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/utils/resolveRuntimeVersionAsync.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/utils/expoUpdates.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/steps/functions/calculateEASUpdateRuntimeVersion.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/steps/functionGroups/build.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/steps/easFunctionGroups.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/custom.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/android.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/index.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/index.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/eas-cli-local-build-plugin/dist/build.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/eas-cli-local-build-plugin/dist/main.js
+- /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/eas-cli-local-build-plugin/bin/run
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    at Module._load (node:internal/modules/cjs/loader:1216:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Module.require (node:internal/modules/cjs/loader:1527:12)
+    at require (node:internal/modules/helpers:147:16)
+    at Object.<anonymous> (/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/c3b9c7ce-bff5-4ca7-b79f-d6420e9f4c60/build/artifacts/hoops-mobile/plugins/withSwiftConcurrencyFix.js:1:30)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1913:10)
+
+Build failed
+Unknown error. See logs of the Read app config build phase for more information.
+Error: Unknown error. See logs of the Read app config build phase for more information.
+    at resolveBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/buildErrors/detectError.js:61:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async BuildContext.handleBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:193:28)
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:138:35)
+    at async setupAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:106:5)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:65:5)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+    at async buildIosAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/eas-cli-local-build-plugin/dist/ios.js:43:12)
+
+Build context (for debugging this failed local build):
+  Platform: ios
+  Build profile: production
+  Workflow: managed
+  Distribution: store
+  Credentials source: remote
+  Project root directory: artifacts/hoops-mobile
+  Required package manager: pnpm
+  eas-cli version: 21.8.0
+  SDK version: 54.0.0
+  React Native version: 0.81.5
+  Expo package version: 54.0.36
+  App version: 1.0.0
+  Fingerprint hash: d9d105d51032b03b1deafc93bb3162e3e7bba674
+  Git commit: 22b9ed402dfffd9977475bb87edf342035f9978b
+  Git working tree dirty: true
+  Build tracking ID: 279da54c-da13-4ce8-882d-86aae2b383a8
+  Project ID: 2115ac2f-b1d6-42f5-a109-9dd376d0121a
+npx -y eas-cli-local-build-plugin@21.6.0 exited with non-zero code: 1
+    Error: build command failed.
+stevenstec@Mac hoops-mobile % >....                                             
++
+        '    end\n' +
+        '  end\n' +
+        'end\n';
+
+      fs.writeFileSync(podfilePath, contents);
+    }
+
+    return modConfig;
+  };
+
+  return {
+    ...config,
+    mods: {
+      ...(config.mods || {}),
+      ios: {
+        ...((config.mods || {}).ios || {}),
+        dangerous: newMod,
+      },
+    },
+  };
+};
+EOF
+stevenstec@Mac hoops-mobile % cd ~/StecStats/artifacts/hoops-mobile
+eas build --local --platform ios --profile production
+★ eas-cli@22.0.0 is now available.
+To upgrade, run:
+npm install -g eas-cli
+Proceeding with outdated version.
+
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+Environment variables loaded from the "production" build profile "env" configuration: APP_ENV, EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY, EXPO_PUBLIC_REVENUECAT_IOS_API_KEY, EXPO_PUBLIC_REVENUECAT_TEST_API_KEY.
+
+✔ Incremented buildNumber from 39 to 40.
+ios.buildNumber field in app config is ignored when version source is set to remote, but this value will still be in the manifest available via expo-constants. It's recommended to remove this value from app config.
+✔ Using remote iOS credentials (Expo server)
+
+If you provide your Apple account credentials we will be able to generate all necessary build credentials and fully validate them.
+This is optional, but without Apple account access you will need to provide all the missing values manually and we can only run minimal validation on them.
+✔ Do you want to log in to your Apple account? … yes
+
+› Log in to your Apple Developer account to continue
+✔ Apple ID: … stecleadership24@gmail.com
+› Restoring session /Users/stevenstec/.app-store/auth/stecleadership24@gmail.com/cookie
+› Team STEVEN RAYMOND STEC (76529G6UKL)
+› Provider STEVEN RAYMOND STEC (129253533)
+✔ Logged in Local session
+✔ Bundle identifier registered com.hoopsstats.coach
+✔ Synced capabilities: No updates
+✔ Synced capability identifiers: No updates
+✔ Fetched Apple distribution certificates
+✔ Fetched Apple provisioning profiles
+
+Project Credentials Configuration
+
+Project                   @sstec/hoops-mobile
+Bundle Identifier         com.hoopsstats.coach
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             540DC88B97752E805917038A3625C7C3
+Expiration Date           Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   12 days ago
+                          
+Provisioning Profile      
+Developer Portal ID       5W8NQD6M5V
+Status                    active
+Expiration                Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   22 minutes ago
+                          
+All credentials are ready to build @sstec/hoops-mobile (com.hoopsstats.coach)
+
+✔ Would you like to set up Push Notifications for your project? › No
+✔ Compressed project files 17s (746 MB)
+✔ Computed project fingerprint
+[SETUP_WORKINGDIR] Preparing workingdir /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74
+[START_BUILD] Starting build
+  "job": {
+    "type": "managed",
+    "platform": "ios",
+    "projectArchive": {
+      "type": "PATH",
+      "path": "/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-cli-nodejs/cad967c9-8809-436e-94ca-ecba4a27804d.tar.gz"
+    },
+    "projectRootDirectory": "artifacts/hoops-mobile",
+    "builderEnvironment": {
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "stecstats.com",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc3RlY3N0YXRzLnN0ZWNjby5vcmck",
+        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "appl_TTSbkcTluVOVtQXJqgLnFCOMFCe",
+        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+      }
+    },
+    "cache": {
+      "disabled": false,
+      "paths": [],
+      "clear": false
+    },
+    "updates": {
+      "channel": "production"
+    },
+    "scheme": "StecStats",
+    "username": "sstec",
+    "version": {
+      "buildNumber": "40"
+    },
+    "experimental": {},
+    "mode": "build",
+    "triggeredBy": "EAS_CLI",
+    "appId": "2115ac2f-b1d6-42f5-a109-9dd376d0121a",
+    "initiatingUserId": "7187090b-bb96-4998-be5c-b39171806660"
+  }
+Local build, skipping project archive refresh
+[PREPARE_PROJECT] .npmrc found at .npmrc
+[READ_EAS_JSON] Using eas.json:
+[READ_EAS_JSON] {
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "development",
+        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "stecstats.com",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc3RlY3N0YXRzLnN0ZWNjby5vcmck",
+        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "appl_TTSbkcTluVOVtQXJqgLnFCOMFCe",
+        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "stecleadership24@gmail.com",
+        "ascAppId": "6799710028",
+        "appleTeamId": "76529G6UKL"
+      }
+    }
+  }
+}
+
+[READ_PACKAGE_JSON] Using package.json:
+[READ_PACKAGE_JSON] {
+  "name": "@workspace/hoops-mobile",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=${EXPO_PUBLIC_DOMAIN:-$REPLIT_DEV_DOMAIN} EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN pnpm exec expo start --localhost --port $PORT",
+    "build": "node scripts/build.js",
+    "serve": "node server/serve.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "jest --config jest.config.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "release:staging": "eas update --channel preview --message \"${MESSAGE:-staging release}\"",
+    "release:prod": "eas update --channel production --message \"${MESSAGE:-production release}\"",
+    "rollback:prod": "eas update:republish --group $GROUP --destination-channel production"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@expo-google-fonts/inter": "^0.4.0",
+    "@expo/cli": "54.0.23",
+    "@expo/ngrok": "^4.1.0",
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@stardazed/streams-text-encoding": "^1.0.2",
+    "@tanstack/react-query": "^5.90.21",
+    "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "^29.5.14",
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11",
+    "@types/react-test-renderer": "~19.0.0",
+    "@ungap/structured-clone": "^1.3.0",
+    "@workspace/api-client-react": "file:./packages/api-client-react",
+    "@workspace/plan-copy": "file:./packages/plan-copy",
+    "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
+    "babel-preset-expo": "~54.0.12",
+    "expo": "~54.0.27",
+    "expo-blur": "~15.0.8",
+    "expo-constants": "~18.0.11",
+    "expo-font": "~14.0.10",
+    "expo-glass-effect": "~0.1.4",
+    "expo-haptics": "~15.0.8",
+    "expo-image": "~3.0.11",
+    "expo-image-picker": "~17.0.9",
+    "expo-linear-gradient": "~15.0.8",
+    "expo-linking": "~8.0.10",
+    "expo-location": "~19.0.8",
+    "expo-router": "~6.0.17",
+    "expo-splash-screen": "~31.0.12",
+    "expo-status-bar": "~3.0.9",
+    "expo-symbols": "~1.0.8",
+    "expo-system-ui": "~6.0.9",
+    "expo-web-browser": "~15.0.10",
+    "jest": "^29.7.0",
+    "jest-expo": "~54.0.17",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-keyboard-controller": "1.18.5",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "15.12.1",
+    "react-native-web": "^0.21.0",
+    "react-native-worklets": "0.5.1",
+    "react-test-renderer": "19.1.0",
+    "typescript": "~5.9.2",
+    "zod": "^3.25.76",
+    "zod-validation-error": "^3.4.0"
+  },
+  "dependencies": {
+    "@clerk/clerk-expo": "^2.19.31",
+    "@expo-google-fonts/teko": "^0.4.1",
+    "expo": "~54.0.36",
+    "expo-apple-authentication": "^8.0.8",
+    "expo-auth-session": "^7.0.11",
+    "expo-camera": "^17.0.10",
+    "expo-notifications": "^0.32.17",
+    "expo-secure-store": "^15.0.8",
+    "expo-updates": "~29.0.19",
+    "expo-video": "^3.0.16",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-purchases": "^10.6.0",
+    "react-native-webrtc": "^124.0.8"
+  }
+}
+[INSTALL_DEPENDENCIES] We detected that 'artifacts/hoops-mobile' is a pnpm workspace
+[INSTALL_DEPENDENCIES] Running "pnpm install --frozen-lockfile" in /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build directory
+[INSTALL_DEPENDENCIES] Scope: all 11 workspace projects
+[INSTALL_DEPENDENCIES] Lockfile is up to date, resolution step is skipped
+[INSTALL_DEPENDENCIES] Progress: resolved 1, reused 0, downloaded 0, added 0
+[INSTALL_DEPENDENCIES] Packages: +1607
+[INSTALL_DEPENDENCIES] ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 330
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 690
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 794
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1109
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1409
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1600
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1606
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1607, done
+[INSTALL_DEPENDENCIES] dependencies:
+[INSTALL_DEPENDENCIES] + @replit/connectors-sdk 0.4.1
+[INSTALL_DEPENDENCIES] + @replit/revenuecat-sdk 5.0.0
+[INSTALL_DEPENDENCIES] + stripe 22.3.0
+[INSTALL_DEPENDENCIES] + stripe-replit-sync 1.0.0
+[INSTALL_DEPENDENCIES] 
+[INSTALL_DEPENDENCIES] devDependencies:
+[INSTALL_DEPENDENCIES] + prettier 3.8.4
+[INSTALL_DEPENDENCIES] + typescript 5.9.3
+[INSTALL_DEPENDENCIES] . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+[INSTALL_DEPENDENCIES] . preinstall: Done
+[INSTALL_DEPENDENCIES] Done in 8.2s using pnpm v10.26.1
+The NODE_ENV environment variable is required but was not specified. Ensure the project is bundled with Expo CLI or NODE_ENV is set.
+Proceeding without mode-specific .env
+[READ_APP_CONFIG] Using app configuration:
+[READ_APP_CONFIG] {
+  "name": "StecStats",
+  "slug": "hoops-mobile",
+  "version": "1.0.0",
+  "orientation": "default",
+  "icon": "./assets/images/icon.png",
+  "scheme": "hoopsstats",
+  "userInterfaceStyle": "dark",
+  "newArchEnabled": true,
+  "splash": {
+    "image": "./assets/images/icon.png",
+    "resizeMode": "contain",
+    "backgroundColor": "#0C0A09"
+  },
+  "ios": {
+    "bundleIdentifier": "com.hoopsstats.coach",
+    "supportsTablet": false,
+    "infoPlist": {
+      "NSCameraUsageDescription": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
+      "NSMicrophoneUsageDescription": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
+      "LSApplicationQueriesSchemes": [
+        "itms-apps",
+        "itms-apps"
+      ],
+      "ITSAppUsesNonExemptEncryption": false
+    },
+    "buildNumber": "20260809"
+  },
+  "android": {
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/images/icon.png",
+      "backgroundColor": "#0C0A09"
+    },
+    "permissions": [
+      "android.permission.CAMERA",
+      "android.permission.RECORD_AUDIO",
+      "android.permission.ACCESS_NETWORK_STATE",
+      "android.permission.MODIFY_AUDIO_SETTINGS",
+      "android.permission.BLUETOOTH",
+      "android.permission.BLUETOOTH_CONNECT"
+    ],
+    "package": "com.hoopsstats.coach"
+  },
+  "web": {
+    "favicon": "./assets/images/icon.png"
+  },
+  "plugins": [
+    [
+      "expo-router",
+      {
+        "origin": "https://replit.com/"
+      }
+    ],
+    "expo-font",
+    "expo-web-browser",
+    [
+      "expo-camera",
+      {
+        "cameraPermission": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
+        "microphonePermission": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
+        "recordAudioAndroid": true
+      }
+    ],
+    [
+      "expo-image-picker",
+      {
+        "photosPermission": "StecStats uses your photo library to let you set profile photos for players on your roster. Selected photos are uploaded to your account and shown on player profile pages."
+      }
+    ],
+    [
+      "expo-video",
+      {
+        "supportsBackgroundPlayback": false,
+        "supportsPictureInPicture": true
+      }
+    ],
+    "./plugins/withSwiftConcurrencyFix",
+    "expo-apple-authentication",
+    [
+      "expo-notifications",
+      {
+        "icon": "./assets/images/icon.png",
+        "color": "#0C0A09",
+        "sounds": [],
+        "androidMode": "default"
+      }
+    ]
+  ],
+  "updates": {
+    "url": "https://u.expo.dev/2115ac2f-b1d6-42f5-a109-9dd376d0121a",
+    "enabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
+  },
+  "extra": {
+    "router": {
+      "origin": "https://replit.com/"
+    },
+    "eas": {
+      "projectId": "2115ac2f-b1d6-42f5-a109-9dd376d0121a"
+    }
+  },
+  "experiments": {
+    "typedRoutes": true,
+    "reactCompiler": true
+  },
+  "owner": "sstec",
+  "sdkVersion": "54.0.0",
+  "platforms": [
+    "ios",
+    "android",
+    "web"
+  ]
+}
+[RUN_EXPO_DOCTOR] Running "expo doctor"
+[RUN_EXPO_DOCTOR] Running 18 checks on your project...
+[RUN_EXPO_DOCTOR] 15/18 checks passed. 3 checks failed. Possible issues detected:
+[RUN_EXPO_DOCTOR] Use the --verbose flag to see more details about passed checks.
+[RUN_EXPO_DOCTOR] ✖ Check Expo config (app.json/ app.config.js) schema
+[RUN_EXPO_DOCTOR] Error validating fields in /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/app.json:
+[RUN_EXPO_DOCTOR]  Field: updates - should NOT have additional property 'runtimeVersion'.
+[RUN_EXPO_DOCTOR] Advice:
+[RUN_EXPO_DOCTOR] Resolve schema errors in your app config. Learn more: https://docs.expo.dev/workflow/configuration/
+[RUN_EXPO_DOCTOR] ✖ Validate packages against React Native Directory package metadata
+[RUN_EXPO_DOCTOR] The following issues were found when validating your dependencies against React Native Directory:
+[RUN_EXPO_DOCTOR]   Untested on New Architecture: react-native-webrtc
+[RUN_EXPO_DOCTOR]   No metadata available: @solana-mobile/mobile-wallet-adapter-protocol
+[RUN_EXPO_DOCTOR] Advice:
+[RUN_EXPO_DOCTOR] Use libraries that are actively maintained and support the New Architecture. Find alternative libraries with https://reactnative.directory.
+[RUN_EXPO_DOCTOR] Add packages to expo.doctor.reactNativeDirectoryCheck.exclude in package.json to selectively skip validations, if the warning is not relevant.
+[RUN_EXPO_DOCTOR] Update React Native Directory to include metadata for unknown packages. Alternatively, set expo.doctor.reactNativeDirectoryCheck.listUnknownPackages in package.json to false to skip warnings about packages with no metadata, if the warning is not relevant.
+[RUN_EXPO_DOCTOR] ✖ Check that packages match versions required by installed Expo SDK
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] ⚠️ Minor version mismatches
+[RUN_EXPO_DOCTOR] package           expected  found    
+[RUN_EXPO_DOCTOR] @types/react      ~19.1.10  19.2.17  
+[RUN_EXPO_DOCTOR] @types/react-dom  ~19.1.7   19.2.4   
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] 2 packages out of date.
+[RUN_EXPO_DOCTOR] Advice:
+[RUN_EXPO_DOCTOR] Use 'npx expo install --check' to review and upgrade your dependencies.
+[RUN_EXPO_DOCTOR] To ignore specific packages, add them to "expo.install.exclude" in package.json. Learn more: https://expo.fyi/dependency-validation
+[RUN_EXPO_DOCTOR] 3 checks failed, indicating possible issues with the project.
+[RUN_EXPO_DOCTOR] Command "expo doctor" failed.
+Error: npx -y expo-doctor exited with non-zero code: 1
+    at ChildProcess.completionListener (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:113:23)
+    at Object.onceWrapper (node:events:634:26)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess.emit (node:domain:489:12)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+    ...
+    at spawnAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:9:23)
+    at spawn (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/turtle-spawn/dist/index.js:16:47)
+    at runExpoDoctor (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:158:52)
+    at async /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:137:17
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:126:28)
+    at async setupAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:135:9)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:65:5)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+[PREPARE_CREDENTIALS] Preparing credentials
+[PREPARE_CREDENTIALS] Creating keychain
+[PREPARE_CREDENTIALS] Preparing credentials for target 'StecStats'
+[PREPARE_CREDENTIALS] Getting distribution certificate fingerprint and common name
+[PREPARE_CREDENTIALS] Fingerprint = "8AA665394086A0E2CD85B08EAFF569BB642F0999", common name = iPhone Distribution: STEVEN RAYMOND STEC (76529G6UKL)
+[PREPARE_CREDENTIALS] Writing distribution certificate to /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/d8255a0c-98c7-4ece-8926-3b48ffc77b89.p12
+[PREPARE_CREDENTIALS] Importing distribution certificate into the keychain
+[PREPARE_CREDENTIALS] Initializing provisioning profile
+[PREPARE_CREDENTIALS] Validating whether the distribution certificate has been imported successfully
+[PREPARE_CREDENTIALS] Verifying whether the distribution certificate and provisioning profile match
+[PREBUILD] - Creating native directory (./ios)
+[PREBUILD] ✔ Created native directory
+[PREBUILD] - Updating package.json
+[PREBUILD] ✔ Updated package.json | no changes
+[PREBUILD] - Running prebuild
+[PREBUILD] ✔ Finished prebuild
+[PREBUILD] We detected that 'artifacts/hoops-mobile' is a pnpm workspace
+[PREBUILD] Running "pnpm install --no-frozen-lockfile" in /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build directory
+[PREBUILD] Scope: all 11 workspace projects
+[PREBUILD] Progress: resolved 1, reused 0, downloaded 0, added 0
+[PREBUILD] artifacts/hoops-stats                    |  WARN  deprecated recharts@2.15.4
+[PREBUILD] artifacts/hoops-mobile                   |  WARN  deprecated @clerk/clerk-expo@2.19.31
+[PREBUILD] WARN  13 deprecated subdependencies found: @clerk/clerk-react@5.61.3, @clerk/types@4.101.20, abab@2.0.6, domexception@4.0.0, fstream@1.0.12, glob@10.5.0, glob@7.2.3, inflight@1.0.6, lodash.isequal@4.5.0, node-domexception@1.0.0, rimraf@2.7.1, rimraf@3.0.2, whatwg-encoding@2.0.0
+[PREBUILD] Progress: resolved 1612, reused 1606, downloaded 0, added 0
+[PREBUILD] Packages: +2
+[PREBUILD] ++
+[PREBUILD] Progress: resolved 1612, reused 1606, downloaded 0, added 2, done
+[PREBUILD] . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+[PREBUILD] . preinstall: Done
+[PREBUILD] WARN  Issues with peer dependencies found
+[PREBUILD] artifacts/hoops-mobile
+[PREBUILD] ├─┬ @testing-library/react-native 14.0.1
+[PREBUILD] │ └── ✕ missing peer test-renderer@^1.0.0
+[PREBUILD] └─┬ @clerk/clerk-expo 2.19.31
+[PREBUILD]   ├─┬ @clerk/clerk-js 5.127.1
+[PREBUILD]   │ ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]   │ ├── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]   │ ├─┬ @solana/wallet-adapter-base 0.9.27
+[PREBUILD]   │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ ├─┬ @solana/wallet-standard 1.1.4
+[PREBUILD]   │ │ └─┬ @solana/wallet-standard-wallet-adapter 1.1.5
+[PREBUILD]   │ │   ├─┬ @solana/wallet-standard-wallet-adapter-react 1.1.5
+[PREBUILD]   │ │   │ └─┬ @solana/wallet-standard-wallet-adapter-base 1.1.5
+[PREBUILD]   │ │   │   ├── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │   │   ├── ✕ missing peer bs58@^6.0.0
+[PREBUILD]   │ │   │   └─┬ @solana/wallet-adapter-base 0.9.27
+[PREBUILD]   │ │   │     └── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │   └─┬ @solana/wallet-standard-wallet-adapter-base 1.1.5
+[PREBUILD]   │ │     ├── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │     └── ✕ missing peer bs58@^6.0.0
+[PREBUILD]   │ ├─┬ @solana/wallet-adapter-react 0.15.39
+[PREBUILD]   │ │ ├── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │ ├─┬ @solana/wallet-adapter-base 0.9.27
+[PREBUILD]   │ │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │ ├─┬ @solana-mobile/wallet-adapter-mobile 2.2.9
+[PREBUILD]   │ │ │ ├── ✕ missing peer @solana/web3.js@^1.98.4
+[PREBUILD]   │ │ │ ├─┬ @solana/wallet-adapter-base 0.9.27
+[PREBUILD]   │ │ │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │ │ └─┬ @solana-mobile/mobile-wallet-adapter-protocol-web3js 2.2.9
+[PREBUILD]   │ │ │   └── ✕ missing peer @solana/web3.js@^1.98.4
+[PREBUILD]   │ │ └─┬ @solana/wallet-standard-wallet-adapter-react 1.1.5
+[PREBUILD]   │ │   ├── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │   └── ✕ missing peer bs58@^6.0.0
+[PREBUILD]   │ └─┬ @clerk/shared 3.47.8
+[PREBUILD]   │   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]   │   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]   └─┬ @clerk/clerk-react 5.61.3
+[PREBUILD]     ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]     └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] Peer dependencies that should be installed:
+[PREBUILD]   @solana/web3.js@">=1.98.4 <2.0.0-0"
+[PREBUILD]   bs58@">=6.0.0 <7.0.0-0"
+[PREBUILD]   test-renderer@^1.0.0
+[PREBUILD] 
+[PREBUILD] artifacts/hoops-stats
+[PREBUILD] ├─┬ @clerk/backend 3.11.6
+[PREBUILD] │ └─┬ @clerk/shared 4.25.4
+[PREBUILD] │   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] │   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] ├─┬ @clerk/react 6.11.3
+[PREBUILD] │ ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] │ ├── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] │ └─┬ @clerk/shared 4.23.0
+[PREBUILD] │   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] │   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] └─┬ @clerk/themes 2.4.57
+[PREBUILD]   └─┬ @clerk/shared 3.47.7
+[PREBUILD]     ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]     └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] 
+[PREBUILD] Done in 1.7s using pnpm v10.26.1
+[RESTORE_CACHE] Local builds do not support restoring cache
+[INSTALL_PODS] Using Expo modules
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ExpoModulesCore
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-RCTAppDelegate
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-RCTFabric
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReactAppDependencyProvider
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-Core
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReactCodegen
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCTRequired
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCTTypeSafety
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReactCommon
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-NativeModulesApple
+[INSTALL_PODS] [Expo] Enabling modular headers for pod Yoga
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-Fabric
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-graphics
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-utils
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-featureflags
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-debug
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-ImageManager
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-rendererdebug
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-jsi
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-renderercss
+[INSTALL_PODS] [Expo] Enabling modular headers for pod hermes-engine
+[INSTALL_PODS] [Expo] Enabling modular headers for pod glog
+[INSTALL_PODS] [Expo] Enabling modular headers for pod boost
+[INSTALL_PODS] [Expo] Enabling modular headers for pod DoubleConversion
+[INSTALL_PODS] [Expo] Enabling modular headers for pod fast_float
+[INSTALL_PODS] [Expo] Enabling modular headers for pod fmt
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCT-Folly
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SocketRocket
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ZXingObjC
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImage
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageAVIFCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageSVGCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageWebPCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod libavif
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RNScreens
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXStructuredHeaders
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXUpdatesInterface
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXManifests
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EASClient
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReachabilitySwift
+[INSTALL_PODS] Found 11 modules for target `StecStats`
+[INSTALL_PODS] link_native_modules! {ios_packages: [{configurations: [], name: "expo", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo", path: "../../../node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo/Expo.podspec", script_phases: []}, {configurations: [], name: "react-native-purchases", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases", path: "../../../node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases/RNPurchases.podspec", script_phases: []}, {configurations: [], name: "react-native-webrtc", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc", path: "../../../node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc/react-native-webrtc.podspec", script_phases: []}, {configurations: [], name: "@react-native-async-storage/async-storage", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage", path: "../../../node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage/RNCAsyncStorage.podspec", script_phases: []}, {configurations: [], name: "react-native-gesture-handler", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler", path: "../../../node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler/RNGestureHandler.podspec", script_phases: []}, {configurations: [], name: "react-native-keyboard-controller", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller", path: "../../../node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller/react-native-keyboard-controller.podspec", script_phases: []}, {configurations: [], name: "react-native-reanimated", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated", path: "../../../node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated/RNReanimated.podspec", script_phases: []}, {configurations: [], name: "react-native-safe-area-context", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context", path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec", script_phases: []}, {configurations: [], name: "react-native-screens", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens", path: "../../../node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens/RNScreens.podspec", script_phases: []}, {configurations: [], name: "react-native-svg", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg", path: "../../../node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg/RNSVG.podspec", script_phases: []}, {configurations: [], name: "react-native-worklets", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets", path: "../../../node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets/RNWorklets.podspec", script_phases: []}], ios_project_root_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios", react_native_path: "../../../node_modules/.pnpm/react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0/node_modules/react-native"}
+[INSTALL_PODS] Auto-linking React Native modules for target `StecStats`: RNCAsyncStorage, RNGestureHandler, RNPurchases, RNReanimated, RNSVG, RNScreens, RNWorklets, react-native-keyboard-controller, react-native-safe-area-context, and react-native-webrtc
+[INSTALL_PODS] Framework build type is static library
+[INSTALL_PODS] [ReactNativeDependencies] Setting up ReactNativeDependencies...
+[INSTALL_PODS] [ReactNativeDependencies] Building from source: false
+[INSTALL_PODS] [ReactNativeDependencies] Using release tarball
+[INSTALL_PODS] [ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz
+[INSTALL_PODS] % Total    % Received % Xferd  Average Speed   T
+[INSTALL_PODS] ime    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 33 18.3M   33 6231k    0     0  14.1M      0
+[INSTALL_PODS] 0:00:01 --:--:--  0:00:01 14.1M
+[INSTALL_PODS] 100 18.3M  100 18.3M    0     0  28.9M      0 --:--:-- --:-
+[INSTALL_PODS] -:-- --:--:-- 28.9M
+[INSTALL_PODS] % Total    % Received % Xferd  Average Speed   Time
+[INSTALL_PODS] Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 100  9.9M  100  9.9M    0     0  27.5M      0 --:--:-- --:--:-- -
+[INSTALL_PODS] -:--:-- 27.5M
+[INSTALL_PODS] [ReactNativeDependencies] Source: {http: "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz"}
+[INSTALL_PODS] [ReactNativeCore] Setting up ReactNativeCore...
+[INSTALL_PODS] [ReactNativeCore] Building from source: false
+[INSTALL_PODS] [ReactNativeCore] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz
+[INSTALL_PODS] % Total    % Received % Xferd  Average Speed
+[INSTALL_PODS] Time    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 4 78.5M    4 3297k    0     0  12.3M
+[INSTALL_PODS] 0  0:00:06 --:--:--  0:00:06 12.3M
+[INSTALL_PODS] 63 78.5M   63 50.0M    0     0  40.2M      0  0:00:01  0:00:01 --:--:-- 40.2M
+[INSTALL_PODS] 100 78.5M  100 78.5M    0     0  43.1M      0  0:00:01
+[INSTALL_PODS] 0:00:01 --:--:-- 43.1M
+[INSTALL_PODS] % Total    % Received % Xferd  Average Speed   Time
+[INSTALL_PODS] Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 35 26.3M   35 9493k    0     0  24.0M      0  0:00:01
+[INSTALL_PODS] --:--:--  0:00:01 24.0M
+[INSTALL_PODS] 100 26.3M  100 26.3M    0     0  39.2M      0 --:
+[INSTALL_PODS] --:-- --:--:-- --:--:-- 39.2M
+[INSTALL_PODS] [ReactNativeCore] Source: {http: "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz"}
+[INSTALL_PODS] Configuring the target with the New Architecture
+[INSTALL_PODS] [ReactNativeCore] Using React Native Core and React Native Dependencies prebuilt versions.
+[INSTALL_PODS] [Codegen] Analyzing /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/package.json
+[INSTALL_PODS] [Codegen] Searching for codegen-enabled libraries in the app.
+[INSTALL_PODS] [Codegen] The "codegenConfig" field is not defined in package.json. Assuming there is nothing to generate at the app level.
+[INSTALL_PODS] [Codegen] Searching for codegen-enabled libraries in react-native.config.js
+[INSTALL_PODS] [Codegen] Found @react-native-async-storage/async-storage
+[INSTALL_PODS] [Codegen] Found react-native-gesture-handler
+[INSTALL_PODS] [Codegen] Found react-native-keyboard-controller
+[INSTALL_PODS] [Codegen] Found react-native-reanimated
+[INSTALL_PODS] [Codegen] Found react-native-safe-area-context
+[INSTALL_PODS] [Codegen] Found react-native-screens
+[INSTALL_PODS] [Codegen] Found react-native-svg
+[INSTALL_PODS] [Codegen] Found react-native-worklets
+[INSTALL_PODS] [Codegen] Processing rnasyncstorage
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnasyncstorage
+[INSTALL_PODS] [Codegen] Processing rngesturehandler_codegen
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rngesturehandler_codegen
+[INSTALL_PODS] [Codegen] Processing reactnativekeyboardcontroller
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios for reactnativekeyboardcontroller
+[INSTALL_PODS] [Codegen] Processing rnreanimated
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnreanimated
+[INSTALL_PODS] [Codegen] Processing safeareacontext
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for safeareacontext
+[INSTALL_PODS] [Codegen] Processing rnscreens
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, tvos, visionos for rnscreens
+[INSTALL_PODS] [Codegen] Processing rnsvg
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnsvg
+[INSTALL_PODS] [Codegen] Processing rnworklets
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnworklets
+[INSTALL_PODS] [Codegen] Generating Native Code for rnasyncstorage - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rngesturehandler_codegen - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for reactnativekeyboardcontroller - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnreanimated - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for safeareacontext - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnscreens - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnsvg - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnworklets - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating RCTThirdPartyComponentsProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.h
+[INSTALL_PODS] [Codegen] Generating RCTThirdPartyComponentsProvider.mm
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.mm
+[INSTALL_PODS] [Codegen] Generating RCTModulesProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.h
+[INSTALL_PODS] [Codegen] Generating RCTModuleProviders.mm
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.mm
+[INSTALL_PODS] [Codegen] Generating RCTAppDependencyProvider
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.mm
+[INSTALL_PODS] [Codegen] Generated podspec: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios/ReactAppDependencyProvider.podspec
+[INSTALL_PODS] [Codegen] Generated podspec: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/build/generated/ios/ReactCodegen.podspec
+[INSTALL_PODS] [Codegen] Done.
+[INSTALL_PODS] [!] Invalid `Podfile` file: [!] Specifying multiple `post_install` hooks is unsupported..
+[INSTALL_PODS]  #  from /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/842b0be5-3775-47b4-acd4-6a1608166c74/build/artifacts/hoops-mobile/ios/Podfile:67
+[INSTALL_PODS]  #  -------------------------------------------
+[INSTALL_PODS]  #  # Third-party pods are not yet Swift 6 compliant; "minimal" restores pre-Xcode-26 behaviour.
+[INSTALL_PODS]  >  post_install do |installer|
+[INSTALL_PODS]  #    installer.pods_project.targets.each do |target|
+[INSTALL_PODS]  #  -------------------------------------------
+[INSTALL_PODS] 
+Error: pod install exited with non-zero code: 1
+    at ChildProcess.completionListener (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:113:23)
+    at Object.onceWrapper (node:events:634:26)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess.emit (node:domain:489:12)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+    ...
+    at spawnAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:9:23)
+    at spawn (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/turtle-spawn/dist/index.js:16:47)
+    at installPods (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/ios/pod.js:19:50)
+    at async runInstallPodsAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:293:42)
+    at async /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:105:13
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:126:28)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:104:9)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+[CLEAN_UP_CREDENTIALS] Destroying keychain - /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-1aac2014-a2d9-424b-8f1a-60099354d091.keychain
+[CLEAN_UP_CREDENTIALS] Removing provisioning profile
+
+Build failed
+Unknown error. See logs of the Install pods build phase for more information.
+Error: Unknown error. See logs of the Install pods build phase for more information.
+    at resolveBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/buildErrors/detectError.js:61:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async BuildContext.handleBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:193:28)
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:138:35)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:104:9)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+    at async buildIosAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/eas-cli-local-build-plugin/dist/ios.js:43:12)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/eas-cli-local-build-plugin/dist/build.js:58:29)
+
+Build context (for debugging this failed local build):
+  Platform: ios
+  Build profile: production
+  Workflow: managed
+  Distribution: store
+  Credentials source: remote
+  Project root directory: artifacts/hoops-mobile
+  Required package manager: pnpm
+  eas-cli version: 21.8.0
+  SDK version: 54.0.0
+  React Native version: 0.81.5
+  Expo package version: 54.0.36
+  App version: 1.0.0
+  Fingerprint hash: 933a08ce3f453b9f5aa85a0dbde5224d25d015ae
+  Git commit: 22b9ed402dfffd9977475bb87edf342035f9978b
+  Git working tree dirty: true
+  Build tracking ID: dd2d6a06-908f-43b3-a1fe-6e83bb2f7c57
+  Project ID: 2115ac2f-b1d6-42f5-a109-9dd376d0121a
+npx -y eas-cli-local-build-plugin@21.6.0 exited with non-zero code: 1
+    Error: build command failed.
+stevenstec@Mac hoops-mobile % >....                                             
+      '    end',
+      '  end',
+      '',
+    ].join('\n');
+
+    contents = contents.slice(0, insertAt) + fix + contents.slice(insertAt);
+    fs.writeFileSync(podfilePath, contents);
+
+    return modConfig;
+  };
+
+  return {
+    ...config,
+    mods: {
+      ...(config.mods || {}),
+      ios: {
+        ...((config.mods || {}).ios || {}),
+        dangerous: newMod,
+      },
+    },
+  };
+};
+EOF
+stevenstec@Mac hoops-mobile % cd ~/StecStats/artifacts/hoops-mobile
+eas build --local --platform ios --profile production
+★ eas-cli@22.0.0 is now available.
+To upgrade, run:
+npm install -g eas-cli
+Proceeding with outdated version.
+
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+Environment variables loaded from the "production" build profile "env" configuration: APP_ENV, EXPO_PUBLIC_DOMAIN, EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY, EXPO_PUBLIC_REVENUECAT_IOS_API_KEY, EXPO_PUBLIC_REVENUECAT_TEST_API_KEY.
+
+✔ Incremented buildNumber from 40 to 41.
+ios.buildNumber field in app config is ignored when version source is set to remote, but this value will still be in the manifest available via expo-constants. It's recommended to remove this value from app config.
+✔ Using remote iOS credentials (Expo server)
+
+If you provide your Apple account credentials we will be able to generate all necessary build credentials and fully validate them.
+This is optional, but without Apple account access you will need to provide all the missing values manually and we can only run minimal validation on them.
+✔ Do you want to log in to your Apple account? … yes
+
+› Log in to your Apple Developer account to continue
+✔ Apple ID: … stecleadership24@gmail.com
+› Restoring session /Users/stevenstec/.app-store/auth/stecleadership24@gmail.com/cookie
+› Team STEVEN RAYMOND STEC (76529G6UKL)
+› Provider STEVEN RAYMOND STEC (129253533)
+✔ Logged in Local session
+✔ Bundle identifier registered com.hoopsstats.coach
+✔ Synced capabilities: No updates
+✔ Synced capability identifiers: No updates
+✔ Fetched Apple distribution certificates
+✔ Fetched Apple provisioning profiles
+
+Project Credentials Configuration
+
+Project                   @sstec/hoops-mobile
+Bundle Identifier         com.hoopsstats.coach
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             540DC88B97752E805917038A3625C7C3
+Expiration Date           Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   12 days ago
+                          
+Provisioning Profile      
+Developer Portal ID       5W8NQD6M5V
+Status                    active
+Expiration                Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   33 minutes ago
+                          
+All credentials are ready to build @sstec/hoops-mobile (com.hoopsstats.coach)
+
+✔ Would you like to set up Push Notifications for your project? › No
+✔ Compressed project files 17s (746 MB)
+✔ Computed project fingerprint
+[SETUP_WORKINGDIR] Preparing workingdir /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f
+[START_BUILD] Starting build
+  "job": {
+    "type": "managed",
+    "platform": "ios",
+    "projectArchive": {
+      "type": "PATH",
+      "path": "/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-cli-nodejs/c4ec2178-3741-4ab6-8485-984b8b6ee93b.tar.gz"
+    },
+    "projectRootDirectory": "artifacts/hoops-mobile",
+    "builderEnvironment": {
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "stecstats.com",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc3RlY3N0YXRzLnN0ZWNjby5vcmck",
+        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "appl_TTSbkcTluVOVtQXJqgLnFCOMFCe",
+        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+      }
+    },
+    "cache": {
+      "disabled": false,
+      "paths": [],
+      "clear": false
+    },
+    "updates": {
+      "channel": "production"
+    },
+    "scheme": "StecStats",
+    "username": "sstec",
+    "version": {
+      "buildNumber": "41"
+    },
+    "experimental": {},
+    "mode": "build",
+    "triggeredBy": "EAS_CLI",
+    "appId": "2115ac2f-b1d6-42f5-a109-9dd376d0121a",
+    "initiatingUserId": "7187090b-bb96-4998-be5c-b39171806660"
+  }
+Local build, skipping project archive refresh
+[PREPARE_PROJECT] .npmrc found at .npmrc
+[READ_EAS_JSON] Using eas.json:
+[READ_EAS_JSON] {
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "development",
+        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_DOMAIN": "stecstats.com",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc3RlY3N0YXRzLnN0ZWNjby5vcmck",
+        "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "appl_TTSbkcTluVOVtQXJqgLnFCOMFCe",
+        "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "stecleadership24@gmail.com",
+        "ascAppId": "6799710028",
+        "appleTeamId": "76529G6UKL"
+      }
+    }
+  }
+}
+
+[READ_PACKAGE_JSON] Using package.json:
+[READ_PACKAGE_JSON] {
+  "name": "@workspace/hoops-mobile",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=${EXPO_PUBLIC_DOMAIN:-$REPLIT_DEV_DOMAIN} EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN pnpm exec expo start --localhost --port $PORT",
+    "build": "node scripts/build.js",
+    "serve": "node server/serve.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "jest --config jest.config.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "release:staging": "eas update --channel preview --message \"${MESSAGE:-staging release}\"",
+    "release:prod": "eas update --channel production --message \"${MESSAGE:-production release}\"",
+    "rollback:prod": "eas update:republish --group $GROUP --destination-channel production"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@expo-google-fonts/inter": "^0.4.0",
+    "@expo/cli": "54.0.23",
+    "@expo/ngrok": "^4.1.0",
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@stardazed/streams-text-encoding": "^1.0.2",
+    "@tanstack/react-query": "^5.90.21",
+    "@testing-library/react-native": "^14.0.1",
+    "@types/jest": "^29.5.14",
+    "@types/react": "19.1.17",
+    "@types/react-dom": "19.1.11",
+    "@types/react-test-renderer": "~19.0.0",
+    "@ungap/structured-clone": "^1.3.0",
+    "@workspace/api-client-react": "file:./packages/api-client-react",
+    "@workspace/plan-copy": "file:./packages/plan-copy",
+    "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
+    "babel-preset-expo": "~54.0.12",
+    "expo": "~54.0.27",
+    "expo-blur": "~15.0.8",
+    "expo-constants": "~18.0.11",
+    "expo-font": "~14.0.10",
+    "expo-glass-effect": "~0.1.4",
+    "expo-haptics": "~15.0.8",
+    "expo-image": "~3.0.11",
+    "expo-image-picker": "~17.0.9",
+    "expo-linear-gradient": "~15.0.8",
+    "expo-linking": "~8.0.10",
+    "expo-location": "~19.0.8",
+    "expo-router": "~6.0.17",
+    "expo-splash-screen": "~31.0.12",
+    "expo-status-bar": "~3.0.9",
+    "expo-symbols": "~1.0.8",
+    "expo-system-ui": "~6.0.9",
+    "expo-web-browser": "~15.0.10",
+    "jest": "^29.7.0",
+    "jest-expo": "~54.0.17",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-keyboard-controller": "1.18.5",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "15.12.1",
+    "react-native-web": "^0.21.0",
+    "react-native-worklets": "0.5.1",
+    "react-test-renderer": "19.1.0",
+    "typescript": "~5.9.2",
+    "zod": "^3.25.76",
+    "zod-validation-error": "^3.4.0"
+  },
+  "dependencies": {
+    "@clerk/clerk-expo": "^2.19.31",
+    "@expo-google-fonts/teko": "^0.4.1",
+    "expo": "~54.0.36",
+    "expo-apple-authentication": "^8.0.8",
+    "expo-auth-session": "^7.0.11",
+    "expo-camera": "^17.0.10",
+    "expo-notifications": "^0.32.17",
+    "expo-secure-store": "^15.0.8",
+    "expo-updates": "~29.0.19",
+    "expo-video": "^3.0.16",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-purchases": "^10.6.0",
+    "react-native-webrtc": "^124.0.8"
+  }
+}
+[INSTALL_DEPENDENCIES] We detected that 'artifacts/hoops-mobile' is a pnpm workspace
+[INSTALL_DEPENDENCIES] Running "pnpm install --frozen-lockfile" in /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build directory
+[INSTALL_DEPENDENCIES] Scope: all 11 workspace projects
+[INSTALL_DEPENDENCIES] Lockfile is up to date, resolution step is skipped
+[INSTALL_DEPENDENCIES] Progress: resolved 1, reused 0, downloaded 0, added 0
+[INSTALL_DEPENDENCIES] Packages: +1607
+[INSTALL_DEPENDENCIES] ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 243
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 648
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 791
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 847
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1284
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1565
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1606
+[INSTALL_DEPENDENCIES] Progress: resolved 1607, reused 1606, downloaded 0, added 1607, done
+[INSTALL_DEPENDENCIES] dependencies:
+[INSTALL_DEPENDENCIES] + @replit/connectors-sdk 0.4.1
+[INSTALL_DEPENDENCIES] + @replit/revenuecat-sdk 5.0.0
+[INSTALL_DEPENDENCIES] + stripe 22.3.0
+[INSTALL_DEPENDENCIES] + stripe-replit-sync 1.0.0
+[INSTALL_DEPENDENCIES] 
+[INSTALL_DEPENDENCIES] devDependencies:
+[INSTALL_DEPENDENCIES] + prettier 3.8.4
+[INSTALL_DEPENDENCIES] + typescript 5.9.3
+[INSTALL_DEPENDENCIES] . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+[INSTALL_DEPENDENCIES] . preinstall: Done
+[INSTALL_DEPENDENCIES] Done in 8.7s using pnpm v10.26.1
+The NODE_ENV environment variable is required but was not specified. Ensure the project is bundled with Expo CLI or NODE_ENV is set.
+Proceeding without mode-specific .env
+[READ_APP_CONFIG] Using app configuration:
+[READ_APP_CONFIG] {
+  "name": "StecStats",
+  "slug": "hoops-mobile",
+  "version": "1.0.0",
+  "orientation": "default",
+  "icon": "./assets/images/icon.png",
+  "scheme": "hoopsstats",
+  "userInterfaceStyle": "dark",
+  "newArchEnabled": true,
+  "splash": {
+    "image": "./assets/images/icon.png",
+    "resizeMode": "contain",
+    "backgroundColor": "#0C0A09"
+  },
+  "ios": {
+    "bundleIdentifier": "com.hoopsstats.coach",
+    "supportsTablet": false,
+    "infoPlist": {
+      "NSCameraUsageDescription": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
+      "NSMicrophoneUsageDescription": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
+      "LSApplicationQueriesSchemes": [
+        "itms-apps",
+        "itms-apps"
+      ],
+      "ITSAppUsesNonExemptEncryption": false
+    },
+    "buildNumber": "20260809"
+  },
+  "android": {
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/images/icon.png",
+      "backgroundColor": "#0C0A09"
+    },
+    "permissions": [
+      "android.permission.CAMERA",
+      "android.permission.RECORD_AUDIO",
+      "android.permission.ACCESS_NETWORK_STATE",
+      "android.permission.MODIFY_AUDIO_SETTINGS",
+      "android.permission.BLUETOOTH",
+      "android.permission.BLUETOOTH_CONNECT"
+    ],
+    "package": "com.hoopsstats.coach"
+  },
+  "web": {
+    "favicon": "./assets/images/icon.png"
+  },
+  "plugins": [
+    [
+      "expo-router",
+      {
+        "origin": "https://replit.com/"
+      }
+    ],
+    "expo-font",
+    "expo-web-browser",
+    [
+      "expo-camera",
+      {
+        "cameraPermission": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
+        "microphonePermission": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
+        "recordAudioAndroid": true
+      }
+    ],
+    [
+      "expo-image-picker",
+      {
+        "photosPermission": "StecStats uses your photo library to let you set profile photos for players on your roster. Selected photos are uploaded to your account and shown on player profile pages."
+      }
+    ],
+    [
+      "expo-video",
+      {
+        "supportsBackgroundPlayback": false,
+        "supportsPictureInPicture": true
+      }
+    ],
+    "./plugins/withSwiftConcurrencyFix",
+    "expo-apple-authentication",
+    [
+      "expo-notifications",
+      {
+        "icon": "./assets/images/icon.png",
+        "color": "#0C0A09",
+        "sounds": [],
+        "androidMode": "default"
+      }
+    ]
+  ],
+  "updates": {
+    "url": "https://u.expo.dev/2115ac2f-b1d6-42f5-a109-9dd376d0121a",
+    "enabled": true,
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
+  },
+  "extra": {
+    "router": {
+      "origin": "https://replit.com/"
+    },
+    "eas": {
+      "projectId": "2115ac2f-b1d6-42f5-a109-9dd376d0121a"
+    }
+  },
+  "experiments": {
+    "typedRoutes": true,
+    "reactCompiler": true
+  },
+  "owner": "sstec",
+  "sdkVersion": "54.0.0",
+  "platforms": [
+    "ios",
+    "android",
+    "web"
+  ]
+}
+[RUN_EXPO_DOCTOR] Running "expo doctor"
+[RUN_EXPO_DOCTOR] Running 18 checks on your project...
+[RUN_EXPO_DOCTOR] 15/18 checks passed. 3 checks failed. Possible issues detected:
+[RUN_EXPO_DOCTOR] Use the --verbose flag to see more details about passed checks.
+[RUN_EXPO_DOCTOR] ✖ Check Expo config (app.json/ app.config.js) schema
+[RUN_EXPO_DOCTOR] Error validating fields in /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/app.json:
+[RUN_EXPO_DOCTOR]  Field: updates - should NOT have additional property 'runtimeVersion'.
+[RUN_EXPO_DOCTOR] Advice:
+[RUN_EXPO_DOCTOR] Resolve schema errors in your app config. Learn more: https://docs.expo.dev/workflow/configuration/
+[RUN_EXPO_DOCTOR] ✖ Validate packages against React Native Directory package metadata
+[RUN_EXPO_DOCTOR] The following issues were found when validating your dependencies against React Native Directory:
+[RUN_EXPO_DOCTOR]   Untested on New Architecture: react-native-webrtc
+[RUN_EXPO_DOCTOR]   No metadata available: @solana-mobile/mobile-wallet-adapter-protocol
+[RUN_EXPO_DOCTOR] Advice:
+[RUN_EXPO_DOCTOR] Use libraries that are actively maintained and support the New Architecture. Find alternative libraries with https://reactnative.directory.
+[RUN_EXPO_DOCTOR] Add packages to expo.doctor.reactNativeDirectoryCheck.exclude in package.json to selectively skip validations, if the warning is not relevant.
+[RUN_EXPO_DOCTOR] Update React Native Directory to include metadata for unknown packages. Alternatively, set expo.doctor.reactNativeDirectoryCheck.listUnknownPackages in package.json to false to skip warnings about packages with no metadata, if the warning is not relevant.
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] ✖ Check that packages match versions required by installed Expo SDK
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] ⚠️ Minor version mismatches
+[RUN_EXPO_DOCTOR] package           expected  found    
+[RUN_EXPO_DOCTOR] @types/react      ~19.1.10  19.2.17  
+[RUN_EXPO_DOCTOR] @types/react-dom  ~19.1.7   19.2.4   
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] 
+[RUN_EXPO_DOCTOR] 2 packages out of date.
+[RUN_EXPO_DOCTOR] Advice:
+[RUN_EXPO_DOCTOR] Use 'npx expo install --check' to review and upgrade your dependencies.
+[RUN_EXPO_DOCTOR] To ignore specific packages, add them to "expo.install.exclude" in package.json. Learn more: https://expo.fyi/dependency-validation
+[RUN_EXPO_DOCTOR] 3 checks failed, indicating possible issues with the project.
+[RUN_EXPO_DOCTOR] Command "expo doctor" failed.
+Error: npx -y expo-doctor exited with non-zero code: 1
+    at ChildProcess.completionListener (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:113:23)
+    at Object.onceWrapper (node:events:634:26)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess.emit (node:domain:489:12)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+    ...
+    at spawnAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:9:23)
+    at spawn (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/turtle-spawn/dist/index.js:16:47)
+    at runExpoDoctor (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:158:52)
+    at async /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:137:17
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:126:28)
+    at async setupAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/common/setup.js:135:9)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:65:5)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+[PREPARE_CREDENTIALS] Preparing credentials
+[PREPARE_CREDENTIALS] Creating keychain
+[PREPARE_CREDENTIALS] Preparing credentials for target 'StecStats'
+[PREPARE_CREDENTIALS] Getting distribution certificate fingerprint and common name
+[PREPARE_CREDENTIALS] Fingerprint = "8AA665394086A0E2CD85B08EAFF569BB642F0999", common name = iPhone Distribution: STEVEN RAYMOND STEC (76529G6UKL)
+[PREPARE_CREDENTIALS] Writing distribution certificate to /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/fa103c42-291d-4e73-bd1e-1ec561b3badd.p12
+[PREPARE_CREDENTIALS] Importing distribution certificate into the keychain
+[PREPARE_CREDENTIALS] Initializing provisioning profile
+[PREPARE_CREDENTIALS] Validating whether the distribution certificate has been imported successfully
+[PREPARE_CREDENTIALS] Verifying whether the distribution certificate and provisioning profile match
+[PREBUILD] - Creating native directory (./ios)
+[PREBUILD] ✔ Created native directory
+[PREBUILD] - Updating package.json
+[PREBUILD] ✔ Updated package.json | no changes
+[PREBUILD] - Running prebuild
+[PREBUILD] ✔ Finished prebuild
+[PREBUILD] We detected that 'artifacts/hoops-mobile' is a pnpm workspace
+[PREBUILD] Running "pnpm install --no-frozen-lockfile" in /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build directory
+[PREBUILD] Scope: all 11 workspace projects
+[PREBUILD] Progress: resolved 1, reused 0, downloaded 0, added 0
+[PREBUILD] artifacts/hoops-stats                    |  WARN  deprecated recharts@2.15.4
+[PREBUILD] artifacts/hoops-mobile                   |  WARN  deprecated @clerk/clerk-expo@2.19.31
+[PREBUILD] Progress: resolved 397, reused 390, downloaded 0, added 0
+[PREBUILD] WARN  13 deprecated subdependencies found: @clerk/clerk-react@5.61.3, @clerk/types@4.101.20, abab@2.0.6, domexception@4.0.0, fstream@1.0.12, glob@10.5.0, glob@7.2.3, inflight@1.0.6, lodash.isequal@4.5.0, node-domexception@1.0.0, rimraf@2.7.1, rimraf@3.0.2, whatwg-encoding@2.0.0
+[PREBUILD] Packages: +2
+[PREBUILD] ++
+[PREBUILD] Progress: resolved 1612, reused 1606, downloaded 0, added 2, done
+[PREBUILD] . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+[PREBUILD] . preinstall: Done
+[PREBUILD] WARN  Issues with peer dependencies found
+[PREBUILD] artifacts/hoops-mobile
+[PREBUILD] ├─┬ @testing-library/react-native 14.0.1
+[PREBUILD] │ └── ✕ missing peer test-renderer@^1.0.0
+[PREBUILD] └─┬ @clerk/clerk-expo 2.19.31
+[PREBUILD]   ├─┬ @clerk/clerk-js 5.127.1
+[PREBUILD]   │ ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]   │ ├── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]   │ ├─┬ @solana/wallet-adapter-base 0.9.27
+[PREBUILD]   │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ ├─┬ @solana/wallet-standard 1.1.4
+[PREBUILD]   │ │ └─┬ @solana/wallet-standard-wallet-adapter 1.1.5
+[PREBUILD]   │ │   ├─┬ @solana/wallet-standard-wallet-adapter-react 1.1.5
+[PREBUILD]   │ │   │ └─┬ @solana/wallet-standard-wallet-adapter-base 1.1.5
+[PREBUILD]   │ │   │   ├── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │   │   ├── ✕ missing peer bs58@^6.0.0
+[PREBUILD]   │ │   │   └─┬ @solana/wallet-adapter-base 0.9.27
+[PREBUILD]   │ │   │     └── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │   └─┬ @solana/wallet-standard-wallet-adapter-base 1.1.5
+[PREBUILD]   │ │     ├── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │     └── ✕ missing peer bs58@^6.0.0
+[PREBUILD]   │ ├─┬ @solana/wallet-adapter-react 0.15.39
+[PREBUILD]   │ │ ├── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │ ├─┬ @solana/wallet-adapter-base 0.9.27
+[PREBUILD]   │ │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │ ├─┬ @solana-mobile/wallet-adapter-mobile 2.2.9
+[PREBUILD]   │ │ │ ├── ✕ missing peer @solana/web3.js@^1.98.4
+[PREBUILD]   │ │ │ ├─┬ @solana/wallet-adapter-base 0.9.27
+[PREBUILD]   │ │ │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │ │ └─┬ @solana-mobile/mobile-wallet-adapter-protocol-web3js 2.2.9
+[PREBUILD]   │ │ │   └── ✕ missing peer @solana/web3.js@^1.98.4
+[PREBUILD]   │ │ └─┬ @solana/wallet-standard-wallet-adapter-react 1.1.5
+[PREBUILD]   │ │   ├── ✕ missing peer @solana/web3.js@^1.98.0
+[PREBUILD]   │ │   └── ✕ missing peer bs58@^6.0.0
+[PREBUILD]   │ └─┬ @clerk/localizations 3.37.8
+[PREBUILD]   │   └─┬ @clerk/types 4.101.26
+[PREBUILD]   │     └─┬ @clerk/shared 3.47.8
+[PREBUILD]   │       ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]   │       └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]   └─┬ @clerk/clerk-react 5.61.3
+[PREBUILD]     ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]     └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] Peer dependencies that should be installed:
+[PREBUILD]   @solana/web3.js@">=1.98.4 <2.0.0-0"
+[PREBUILD]   bs58@">=6.0.0 <7.0.0-0"
+[PREBUILD]   test-renderer@^1.0.0
+[PREBUILD] 
+[PREBUILD] artifacts/hoops-stats
+[PREBUILD] ├─┬ @clerk/backend 3.11.6
+[PREBUILD] │ └─┬ @clerk/shared 4.25.4
+[PREBUILD] │   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] │   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] ├─┬ @clerk/react 6.11.3
+[PREBUILD] │ ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] │ ├── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] │ └─┬ @clerk/shared 4.23.0
+[PREBUILD] │   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] │   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] └─┬ @clerk/themes 2.4.57
+[PREBUILD]   └─┬ @clerk/shared 3.47.7
+[PREBUILD]     ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD]     └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+[PREBUILD] 
+[PREBUILD] Done in 2.9s using pnpm v10.26.1
+[RESTORE_CACHE] Local builds do not support restoring cache
+[INSTALL_PODS] Using Expo modules
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ExpoModulesCore
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-RCTAppDelegate
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-RCTFabric
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReactAppDependencyProvider
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-Core
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReactCodegen
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCTRequired
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCTTypeSafety
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReactCommon
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-NativeModulesApple
+[INSTALL_PODS] [Expo] Enabling modular headers for pod Yoga
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-Fabric
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-graphics
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-utils
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-featureflags
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-debug
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-ImageManager
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-rendererdebug
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-jsi
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-renderercss
+[INSTALL_PODS] [Expo] Enabling modular headers for pod hermes-engine
+[INSTALL_PODS] [Expo] Enabling modular headers for pod glog
+[INSTALL_PODS] [Expo] Enabling modular headers for pod boost
+[INSTALL_PODS] [Expo] Enabling modular headers for pod DoubleConversion
+[INSTALL_PODS] [Expo] Enabling modular headers for pod fast_float
+[INSTALL_PODS] [Expo] Enabling modular headers for pod fmt
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCT-Folly
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SocketRocket
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ZXingObjC
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImage
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageAVIFCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageSVGCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageWebPCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod libavif
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RNScreens
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXStructuredHeaders
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXUpdatesInterface
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXManifests
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EASClient
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReachabilitySwift
+[INSTALL_PODS] Found 11 modules for target `StecStats`
+[INSTALL_PODS] link_native_modules! {ios_packages: [{configurations: [], name: "expo", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo", path: "../../../node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo/Expo.podspec", script_phases: []}, {configurations: [], name: "react-native-purchases", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases", path: "../../../node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases/RNPurchases.podspec", script_phases: []}, {configurations: [], name: "react-native-webrtc", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc", path: "../../../node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc/react-native-webrtc.podspec", script_phases: []}, {configurations: [], name: "@react-native-async-storage/async-storage", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage", path: "../../../node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage/RNCAsyncStorage.podspec", script_phases: []}, {configurations: [], name: "react-native-gesture-handler", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler", path: "../../../node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler/RNGestureHandler.podspec", script_phases: []}, {configurations: [], name: "react-native-keyboard-controller", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller", path: "../../../node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller/react-native-keyboard-controller.podspec", script_phases: []}, {configurations: [], name: "react-native-reanimated", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated", path: "../../../node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated/RNReanimated.podspec", script_phases: []}, {configurations: [], name: "react-native-safe-area-context", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context", path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec", script_phases: []}, {configurations: [], name: "react-native-screens", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens", path: "../../../node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens/RNScreens.podspec", script_phases: []}, {configurations: [], name: "react-native-svg", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg", path: "../../../node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg/RNSVG.podspec", script_phases: []}, {configurations: [], name: "react-native-worklets", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets", path: "../../../node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets/RNWorklets.podspec", script_phases: []}], ios_project_root_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios", react_native_path: "../../../node_modules/.pnpm/react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0/node_modules/react-native"}
+[INSTALL_PODS] Auto-linking React Native modules for target `StecStats`: RNCAsyncStorage, RNGestureHandler, RNPurchases, RNReanimated, RNSVG, RNScreens, RNWorklets, react-native-keyboard-controller, react-native-safe-area-context, and react-native-webrtc
+[INSTALL_PODS] Framework build type is static library
+[INSTALL_PODS] [ReactNativeDependencies] Setting up ReactNativeDependencies...
+[INSTALL_PODS] [ReactNativeDependencies] Building from source: false
+[INSTALL_PODS] [ReactNativeDependencies] Using release tarball
+[INSTALL_PODS] [ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz
+[INSTALL_PODS] % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 100 18.3M  100 18.3M    0     0  23.4M      0 --:--:-- --:--:-- --:--:-- 23.4M
+[INSTALL_PODS] % Total    % Received % Xferd
+[INSTALL_PODS] Average Speed   Time    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 4  9.9M    4  411k    0     0  1468k      0  0:00:06 --:--:--  0:00:06 1468k
+[INSTALL_PODS] 100  9.9M  100  9.9M    0     0  16.8M
+[INSTALL_PODS] 0 --:--:-- --:--:-- --:--:-- 16.8M
+[INSTALL_PODS] [ReactNativeDependencies] Source: {http: "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz"}
+[INSTALL_PODS] [ReactNativeCore] Setting up ReactNativeCore...
+[INSTALL_PODS] [ReactNativeCore] Building from source: false
+[INSTALL_PODS] [ReactNativeCore] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz
+[INSTALL_PODS] % Total    % Received % Xferd
+[INSTALL_PODS] Average Speed   Time    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 13 78.5M   13 10.7M    0     0  21.5M      0  0:00:03 --:--:--  0:00:03 21.5M
+[INSTALL_PODS] 57 78.5M   57 45.4M    0     0  31.7M      0  0:00:02  0:00:01  0:00:01 31.7M
+[INSTALL_PODS] 100 78.5M  100 78.5M    0
+[INSTALL_PODS] 0  32.4M      0  0:00:02  0:00:02 --:--:-- 32.4M
+[INSTALL_PODS] % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+[INSTALL_PODS] Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 100 26.3M  100 26.3M    0     0  27.4M      0 --:--:-- --:--:-- --:--:-- 27.5M
+[INSTALL_PODS] [ReactNativeCore] Source: {http: "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz"}
+[INSTALL_PODS] Configuring the target with the New Architecture
+[INSTALL_PODS] [ReactNativeCore] Using React Native Core and React Native Dependencies prebuilt versions.
+[INSTALL_PODS] [Codegen] Analyzing /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/package.json
+[INSTALL_PODS] [Codegen] Searching for codegen-enabled libraries in the app.
+[INSTALL_PODS] [Codegen] The "codegenConfig" field is not defined in package.json. Assuming there is nothing to generate at the app level.
+[INSTALL_PODS] [Codegen] Searching for codegen-enabled libraries in react-native.config.js
+[INSTALL_PODS] [Codegen] Found @react-native-async-storage/async-storage
+[INSTALL_PODS] [Codegen] Found react-native-gesture-handler
+[INSTALL_PODS] [Codegen] Found react-native-keyboard-controller
+[INSTALL_PODS] [Codegen] Found react-native-reanimated
+[INSTALL_PODS] [Codegen] Found react-native-safe-area-context
+[INSTALL_PODS] [Codegen] Found react-native-screens
+[INSTALL_PODS] [Codegen] Found react-native-svg
+[INSTALL_PODS] [Codegen] Found react-native-worklets
+[INSTALL_PODS] [Codegen] Processing rnasyncstorage
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnasyncstorage
+[INSTALL_PODS] [Codegen] Processing rngesturehandler_codegen
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rngesturehandler_codegen
+[INSTALL_PODS] [Codegen] Processing reactnativekeyboardcontroller
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios for reactnativekeyboardcontroller
+[INSTALL_PODS] [Codegen] Processing rnreanimated
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnreanimated
+[INSTALL_PODS] [Codegen] Processing safeareacontext
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for safeareacontext
+[INSTALL_PODS] [Codegen] Processing rnscreens
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, tvos, visionos for rnscreens
+[INSTALL_PODS] [Codegen] Processing rnsvg
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnsvg
+[INSTALL_PODS] [Codegen] Processing rnworklets
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnworklets
+[INSTALL_PODS] [Codegen] Generating Native Code for rnasyncstorage - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rngesturehandler_codegen - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for reactnativekeyboardcontroller - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnreanimated - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for safeareacontext - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnscreens - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnsvg - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnworklets - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating RCTThirdPartyComponentsProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.h
+[INSTALL_PODS] [Codegen] Generating RCTThirdPartyComponentsProvider.mm
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.mm
+[INSTALL_PODS] [Codegen] Generating RCTModulesProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.h
+[INSTALL_PODS] [Codegen] Generating RCTModuleProviders.mm
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.mm
+[INSTALL_PODS] [Codegen] Generating RCTAppDependencyProvider
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.mm
+[INSTALL_PODS] [Codegen] Generated podspec: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios/ReactAppDependencyProvider.podspec
+[INSTALL_PODS] [Codegen] Generated podspec: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/build/generated/ios/ReactCodegen.podspec
+[INSTALL_PODS] [Codegen] Done.
+[INSTALL_PODS] [!] Invalid `Podfile` file: undefined local variable or method 'installer' for #<Pod::Podfile:0x000000012360fb98>.
+[INSTALL_PODS]  #  from /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/1f11e331-d4a9-4a5c-9ca8-af36d6f2272f/build/artifacts/hoops-mobile/ios/Podfile:65
+[INSTALL_PODS]  #  -------------------------------------------
+[INSTALL_PODS]  #    # Third-party pods are not yet Swift 6 compliant; "minimal" restores pre-Xcode-26 behaviour.
+[INSTALL_PODS]  >    installer.pods_project.targets.each do |target|
+[INSTALL_PODS]  #      target.build_configurations.each do |config|
+[INSTALL_PODS]  #  -------------------------------------------
+[INSTALL_PODS] 
+Error: pod install exited with non-zero code: 1
+    at ChildProcess.completionListener (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:113:23)
+    at Object.onceWrapper (node:events:634:26)
+    at ChildProcess.emit (node:events:519:28)
+    at ChildProcess.emit (node:domain:489:12)
+    at maybeClose (node:internal/child_process:1101:16)
+    at ChildProcess._handle.onexit (node:internal/child_process:304:5)
+    ...
+    at spawnAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/spawn-async/build/spawnAsync.js:9:23)
+    at spawn (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/turtle-spawn/dist/index.js:16:47)
+    at installPods (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/ios/pod.js:19:50)
+    at async runInstallPodsAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:293:42)
+    at async /Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:105:13
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:126:28)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:104:9)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+[CLEAN_UP_CREDENTIALS] Destroying keychain - /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-adb3b0db-0215-4b11-84d8-e69f469f76a5.keychain
+[CLEAN_UP_CREDENTIALS] Removing provisioning profile
+
+Build failed
+Unknown error. See logs of the Install pods build phase for more information.
+Error: Unknown error. See logs of the Install pods build phase for more information.
+    at resolveBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/buildErrors/detectError.js:61:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async BuildContext.handleBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:193:28)
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/context.js:138:35)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:104:9)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:55:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/common.js:12:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/@expo/build-tools/dist/builders/ios.js:40:16)
+    at async buildIosAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/eas-cli-local-build-plugin/dist/ios.js:43:12)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/36e7aa1ad536a557/node_modules/eas-cli-local-build-plugin/dist/build.js:58:29)
+
+Build context (for debugging this failed local build):
+  Platform: ios
+  Build profile: production
+  Workflow: managed
+  Distribution: store
+  Credentials source: remote
+  Project root directory: artifacts/hoops-mobile
+  Required package manager: pnpm
+  eas-cli version: 21.8.0
+  SDK version: 54.0.0
+  React Native version: 0.81.5
+  Expo package version: 54.0.36
+  App version: 1.0.0
+  Fingerprint hash: 476014405c8f4508761da1c1e0945d9325b394bf
+  Git commit: 22b9ed402dfffd9977475bb87edf342035f9978b
+  Git working tree dirty: true
+  Build tracking ID: f776e442-d1bd-4333-aa47-ccf87d869655
+  Project ID: 2115ac2f-b1d6-42f5-a109-9dd376d0121a
+npx -y eas-cli-local-build-plugin@21.6.0 exited with non-zero code: 1
+    Error: build command failed.
+stevenstec@Mac hoops-mobile % 

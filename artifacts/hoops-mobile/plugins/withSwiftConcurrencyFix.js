@@ -8,14 +8,15 @@
  * strict package isolation cannot block it from loading during `expo config`.
  * It replicates withDangerousMod's behaviour by directly setting config.mods.ios.dangerous.
  *
- * NOTE: CocoaPods does NOT allow multiple post_install blocks, so we inject our
- * code into the existing block rather than appending a second one.
+ * INSERTION STRATEGY
+ * CocoaPods forbids multiple post_install blocks. We inject our setting inside the
+ * existing one by finding the LAST bare "end" in the file — which is always the
+ * post_install block's closing line in every Expo-generated Podfile.
  */
 const fs = require('fs');
 const path = require('path');
 
 module.exports = function withSwiftConcurrencyFix(config) {
-  // Preserve any previously registered dangerous mod and chain ours after it.
   const prevMod = config.mods?.ios?.dangerous;
 
   const newMod = async (modConfig) => {
@@ -31,32 +32,27 @@ module.exports = function withSwiftConcurrencyFix(config) {
     let contents = fs.readFileSync(podfilePath, 'utf8');
 
     if (contents.includes('SWIFT_STRICT_CONCURRENCY')) {
-      return modConfig; // already applied, idempotent
-    }
-
-    // Locate the existing post_install block (Expo always generates exactly one).
-    const header = 'post_install do |installer|';
-    const blockStart = contents.indexOf(header);
-    if (blockStart === -1) {
-      console.warn('[withSwiftConcurrencyFix] Could not find post_install block — skipping');
+      console.log('[withSwiftConcurrencyFix] Already applied — skipping.');
       return modConfig;
     }
 
-    // Find the closing bare 'end' on its own line after the block header.
-    // In the Expo-generated Podfile the post_install body contains only
-    // react_native_post_install(...) and helper calls, none of which emit a
-    // bare 'end' at column 0, so the first one we hit is the block's own end.
-    const afterHeader = blockStart + header.length;
-    const remaining = contents.slice(afterHeader);
-    const endMatch = remaining.match(/\nend(\s*\n|$)/);
-
-    if (!endMatch) {
-      console.warn('[withSwiftConcurrencyFix] Could not find closing end of post_install block — skipping');
+    // Sanity-check: the post_install block must exist and use |installer|.
+    if (!contents.includes('post_install do |installer|')) {
+      console.warn('[withSwiftConcurrencyFix] Expected "post_install do |installer|" not found in Podfile — skipping.');
       return modConfig;
     }
 
-    // Insert just before the bare 'end' line (after the leading \n of that match).
-    const insertAt = afterHeader + endMatch.index + 1;
+    // The post_install block is always the LAST block in the Expo-generated Podfile.
+    // Its closing bare "end" is therefore the last "\nend" in the file.
+    const lastEndIdx = contents.lastIndexOf('\nend');
+    if (lastEndIdx === -1) {
+      console.warn('[withSwiftConcurrencyFix] Could not find closing end in Podfile — skipping.');
+      return modConfig;
+    }
+
+    // Insert just after the \n (i.e., before the word "end"), so the fix lines
+    // appear inside the post_install block directly above its closing end.
+    const insertAt = lastEndIdx + 1; // +1 skips the leading \n
     const fix = [
       '  # Xcode 26+ Swift 6 strict-concurrency fix',
       '  # Third-party pods are not yet Swift 6 compliant; "minimal" restores pre-Xcode-26 behaviour.',
@@ -71,6 +67,7 @@ module.exports = function withSwiftConcurrencyFix(config) {
     contents = contents.slice(0, insertAt) + fix + contents.slice(insertAt);
     fs.writeFileSync(podfilePath, contents);
 
+    console.log('[withSwiftConcurrencyFix] Injected SWIFT_STRICT_CONCURRENCY=minimal into post_install block.');
     return modConfig;
   };
 
