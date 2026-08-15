@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   saveDraft,
   clearDraft,
-  loadDraft,
+  resolveDraft,
   queueGame,
   checkConnectivity,
   generateClientId,
@@ -138,20 +138,16 @@ export default function ScorekeeperScreen() {
 
   // ── Draft recovery on mount ────────────────────────────────────────────────
   // If a previous session was interrupted (crash, force-quit), offer to restore.
+  // resolveDraft() is the single source of truth for match eligibility —
+  // it loads, checks teamId/opponent/date, and clears stale drafts internally.
   useEffect(() => {
     (async () => {
-      const draft = await loadDraft();
+      const draft = await resolveDraft(
+        Number(teamId),
+        opponent as string,
+        date as string,
+      );
       if (!draft) return;
-      // Only restore if the draft matches this game's team/opponent/date
-      if (
-        draft.teamId !== Number(teamId) ||
-        draft.opponent !== (opponent as string) ||
-        draft.date !== (date as string)
-      ) {
-        // Stale draft from a different game — silently discard
-        await clearDraft();
-        return;
-      }
       const { Alert: RNAlert } = await import('react-native');
       RNAlert.alert(
         'Resume Game?',

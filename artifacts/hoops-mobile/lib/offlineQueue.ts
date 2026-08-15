@@ -80,6 +80,45 @@ export async function clearDraft(): Promise<void> {
   }
 }
 
+/**
+ * Single source of truth for draft-recovery eligibility.
+ *
+ * Loads the autosaved draft and checks whether it belongs to the game
+ * currently being opened (matched on teamId, opponent, and date — the same
+ * three fields the scorekeeper embeds when it calls saveDraft).
+ *
+ * Returns the draft when it matches, so the caller can offer a "Resume?"
+ * prompt without re-reading AsyncStorage.
+ *
+ * Side-effects:
+ *  - If a draft exists but does NOT match (stale from a different game), it
+ *    is deleted from AsyncStorage before returning null, so it never reappears.
+ *  - If no draft exists, returns null immediately with no side-effects.
+ *
+ * Both scorekeeper.tsx and its unit tests call this helper so the matching
+ * predicate is never duplicated.
+ */
+export async function resolveDraft(
+  teamId: number,
+  opponent: string,
+  date: string,
+): Promise<ScorekeeperDraft | null> {
+  const draft = await loadDraft();
+  if (!draft) return null;
+
+  if (
+    draft.teamId   !== teamId   ||
+    draft.opponent !== opponent ||
+    draft.date     !== date
+  ) {
+    // Stale draft from a different game — silently discard
+    await clearDraft();
+    return null;
+  }
+
+  return draft;
+}
+
 // ── Offline game queue helpers ────────────────────────────────────────────────
 
 /**
