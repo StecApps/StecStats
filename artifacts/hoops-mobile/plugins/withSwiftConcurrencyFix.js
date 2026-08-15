@@ -1,10 +1,24 @@
 /**
- * DEBUG VERSION — prints Podfile context to help diagnose insertion placement.
- * Once the correct structure is confirmed this debug output can be removed.
+ * Xcode 26+ enforces Swift 6 strict concurrency by default.
+ * Third-party pods (expo-updates-interface, etc.) were not written for Swift 6
+ * and fail to compile with "SwiftCompile" errors. Setting SWIFT_STRICT_CONCURRENCY
+ * to "minimal" for all pods restores compatibility until upstream packages catch up.
+ *
+ * This plugin intentionally avoids importing @expo/config-plugins so that pnpm's
+ * strict package isolation cannot block it from loading during `expo config`.
+ * It replicates withDangerousMod's behaviour by directly setting config.mods.ios.dangerous.
+ *
+ * INSERTION STRATEGY
+ * In the Expo SDK 54 / RN 0.81 Podfile the post_install block sits INSIDE
+ * target 'StecStats' do...end, so its closing "end" is indented (2 spaces).
+ * A bare indexOf('\nend') skips it and hits the outer target's "end" instead.
+ * We use /\n[ \t]*end\b/ so we match "end" at ANY indentation level, which
+ * reliably lands on the post_install block's own closer first.
  */
 const fs = require('fs');
 const path = require('path');
 
+/** Walk forward from `start` tracking paren depth until it returns to 0. */
 function findClosingParen(text, start) {
   let depth = 0;
   for (let i = start; i < text.length; i++) {
@@ -37,65 +51,43 @@ module.exports = function withSwiftConcurrencyFix(config) {
       return modConfig;
     }
 
-    // ── DEBUG: dump full Podfile so we can see its structure ──────────────
-    const debugPath = '/tmp/podfile_pre_fix.txt';
-    fs.writeFileSync(debugPath, contents);
-    console.log('[withSwiftConcurrencyFix] Full Podfile written to', debugPath);
-    console.log('[withSwiftConcurrencyFix] Total length:', contents.length);
-    console.log('[withSwiftConcurrencyFix] Total lines:', contents.split('\n').length);
-
+    // Step 1 – locate the post_install block.
     const blockHeader = 'post_install do |installer|';
     const blockStart = contents.indexOf(blockHeader);
-    console.log('[withSwiftConcurrencyFix] blockHeader index:', blockStart);
-
     if (blockStart === -1) {
       console.warn('[withSwiftConcurrencyFix] post_install block not found — skipping.');
       return modConfig;
     }
 
-    // Show the last 20 lines of the Podfile so we can see what follows post_install
-    const lines = contents.split('\n');
-    console.log('[withSwiftConcurrencyFix] Last 25 lines of Podfile:');
-    lines.slice(-25).forEach((l, i) => {
-      console.log(`  [${lines.length - 25 + i + 1}] ${l}`);
-    });
-
+    // Step 2 – find react_native_post_install( inside that block.
     const callMarker = 'react_native_post_install(';
     const callStart = contents.indexOf(callMarker, blockStart);
-    console.log('[withSwiftConcurrencyFix] callStart index:', callStart);
-
     if (callStart === -1) {
       console.warn('[withSwiftConcurrencyFix] react_native_post_install call not found — skipping.');
       return modConfig;
     }
 
-    const openParen = callStart + callMarker.length - 1;
-    console.log('[withSwiftConcurrencyFix] openParen index:', openParen, '| char:', JSON.stringify(contents[openParen]));
-
+    // Step 3 – find its closing ) by tracking parens (handles multi-line args).
+    const openParen = callStart + callMarker.length - 1; // index of '('
     const closeParen = findClosingParen(contents, openParen);
-    console.log('[withSwiftConcurrencyFix] closeParen index:', closeParen, '| char:', closeParen >= 0 ? JSON.stringify(contents[closeParen]) : 'NOT FOUND');
-
     if (closeParen === -1) {
-      console.warn('[withSwiftConcurrencyFix] Could not find closing ) — skipping.');
+      console.warn('[withSwiftConcurrencyFix] Could not find closing ) for react_native_post_install — skipping.');
       return modConfig;
     }
 
+    // Step 4 – find the post_install block's closing "end".
+    // The post_install block lives INSIDE target 'StecStats' do...end, so its
+    // "end" is indented (2 spaces). We use /\n[ \t]*end\b/ to match "end" at
+    // any indentation, which reliably picks up the post_install closer first.
     const afterCall = contents.slice(closeParen + 1);
-    const endIdx = afterCall.indexOf('\nend');
-    console.log('[withSwiftConcurrencyFix] first \\nend after closeParen at afterCall index:', endIdx);
-    if (endIdx >= 0) {
-      console.log('[withSwiftConcurrencyFix] characters around that \\nend:', JSON.stringify(afterCall.slice(Math.max(0, endIdx - 10), endIdx + 15)));
-    }
-
-    if (endIdx === -1) {
+    const endMatch = afterCall.match(/\n[ \t]*end\b/);
+    if (!endMatch) {
       console.warn('[withSwiftConcurrencyFix] Could not find post_install closing end — skipping.');
       return modConfig;
     }
 
-    const insertAt = (closeParen + 1) + endIdx + 1;
-    console.log('[withSwiftConcurrencyFix] insertAt:', insertAt);
-    console.log('[withSwiftConcurrencyFix] 80 chars before insertAt:', JSON.stringify(contents.slice(Math.max(0, insertAt - 80), insertAt)));
-    console.log('[withSwiftConcurrencyFix] 30 chars at insertAt:    ', JSON.stringify(contents.slice(insertAt, insertAt + 30)));
+    // Insert just after the leading \n of the match (i.e. before the "end" line).
+    const insertAt = (closeParen + 1) + endMatch.index + 1;
 
     const fix = [
       '  # Xcode 26+ Swift 6 strict-concurrency fix',
