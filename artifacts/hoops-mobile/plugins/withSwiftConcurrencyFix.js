@@ -1,36 +1,39 @@
-const fs = require('fs');
-const path = require('path');
-
 /**
  * Xcode 26+ enforces Swift 6 strict concurrency by default.
  * Third-party pods (expo-updates-interface, etc.) were not written for Swift 6
  * and fail to compile with "SwiftCompile" errors. Setting SWIFT_STRICT_CONCURRENCY
  * to "minimal" for all pods restores compatibility until upstream packages catch up.
  *
- * We append a second post_install block rather than patching the existing one;
- * CocoaPods merges all post_install blocks so this is safe and regex-free.
+ * This plugin intentionally avoids importing @expo/config-plugins so that pnpm's
+ * strict package isolation cannot block it from loading during `expo config`.
+ * It replicates withDangerousMod's behaviour by directly setting config.mods.ios.dangerous.
  */
-function withSwiftConcurrencyFix(config) {
-  const { withDangerousMod } = require('@expo/config-plugins');
+const fs = require('fs');
+const path = require('path');
 
-  return withDangerousMod(config, [
-    'ios',
-    (config) => {
-      const podfilePath = path.join(
-        config.modRequest.platformProjectRoot,
-        'Podfile'
-      );
+module.exports = function withSwiftConcurrencyFix(config) {
+  // Preserve any previously registered dangerous mod and chain ours after it.
+  const prevMod = config.mods?.ios?.dangerous;
 
-      let contents = fs.readFileSync(podfilePath, 'utf8');
+  const newMod = async (modConfig) => {
+    if (prevMod) {
+      modConfig = await prevMod(modConfig);
+    }
 
-      if (contents.includes('SWIFT_STRICT_CONCURRENCY')) {
-        return config;
-      }
+    const podfilePath = path.join(
+      modConfig.modRequest.platformProjectRoot,
+      'Podfile'
+    );
 
+    let contents = fs.readFileSync(podfilePath, 'utf8');
+
+    if (!contents.includes('SWIFT_STRICT_CONCURRENCY')) {
+      // Append a second post_install block — CocoaPods merges all of them,
+      // so this is safe and requires no regex surgery on the existing block.
       contents +=
         '\n' +
         '# Xcode 26+ Swift 6 strict-concurrency fix\n' +
-        '# Third-party pods are not yet Swift 6 compliant; "minimal" restores Xcode 25 behaviour.\n' +
+        '# Third-party pods are not yet Swift 6 compliant; "minimal" restores pre-Xcode-26 behaviour.\n' +
         'post_install do |installer|\n' +
         '  installer.pods_project.targets.each do |target|\n' +
         '    target.build_configurations.each do |config|\n' +
@@ -40,9 +43,19 @@ function withSwiftConcurrencyFix(config) {
         'end\n';
 
       fs.writeFileSync(podfilePath, contents);
-      return config;
-    },
-  ]);
-}
+    }
 
-module.exports = withSwiftConcurrencyFix;
+    return modConfig;
+  };
+
+  return {
+    ...config,
+    mods: {
+      ...(config.mods || {}),
+      ios: {
+        ...((config.mods || {}).ios || {}),
+        dangerous: newMod,
+      },
+    },
+  };
+};
