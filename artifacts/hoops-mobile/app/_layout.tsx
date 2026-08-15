@@ -259,9 +259,9 @@ const PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
 // Route Clerk API calls through our own proxy so mobile auth works even if the
 // clerk.stecstats.stecco.org custom-domain DNS record is not yet propagated.
 // The proxy is already live at /api/__clerk on the API server.
-const CLERK_PROXY_URL = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api/__clerk`
-  : undefined;
+// Mobile connects directly to the Replit-managed Clerk FAPI
+// (immortal-swan-47.clerk.accounts.dev) — no proxy needed.
+const CLERK_PROXY_URL = undefined;
 
 export default function RootLayout() {
   useOTAUpdate();
