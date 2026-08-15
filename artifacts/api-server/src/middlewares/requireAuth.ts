@@ -32,10 +32,15 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   let clerkUserId = getAuth(req)?.userId ?? null;
 
   // Fallback: the primary clerkMiddleware() is configured for the live Clerk
-  // instance. Mobile Bearer tokens come from the Replit-managed test instance
-  // (EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY). When the live middleware rejects them,
-  // verify directly against the mobile instance's JWKS so no new app build is
-  // required to restore access.
+  // instance (stecstats.stecco.org / clerk.stecstats.com). Older TestFlight
+  // builds were compiled with the test key (immortal-swan-47.clerk.accounts.dev)
+  // and send tokens that clerkMiddleware() rejects.  This block verifies those
+  // tokens via the test instance's JWKS so that existing installs keep working
+  // while the user rolls out a new build compiled with pk_live_...
+  //
+  // REMOVE THIS BLOCK once the new TestFlight binary (compiled with
+  // pk_live_Y2xlcmsuc3RlY3N0YXRzLnN0ZWNjby5vcmck in eas.json) is live
+  // and you've confirmed sign-in works from a device running that build.
   if (!clerkUserId) {
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -51,16 +56,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         const iss = jwtBody.iss ?? "";
         const kid = header.kid ?? "";
 
-        // Only trust Clerk-hosted development instances (*.clerk.accounts.dev).
-        // The cryptographic signature check below is the real security gate;
-        // this host-pattern check is a defence-in-depth guard against fetching
-        // JWKS from an attacker-controlled URL in a crafted token.
-        if (!/^https:\/\/[a-z0-9-]+\.clerk\.accounts\.dev$/.test(iss)) {
+        // Only trust the specific legacy Replit-managed test instance that the
+        // old TestFlight binary was compiled against.  Do NOT widen this to a
+        // pattern like *.clerk.accounts.dev — any Clerk developer can create
+        // their own dev instance under that domain and forge access.
+        const LEGACY_ISS = "https://immortal-swan-47.clerk.accounts.dev";
+        if (iss !== LEGACY_ISS) {
           throw new Error(`Untrusted iss: ${iss}`);
         }
 
-        // Fetch JWKS from the token's own Clerk instance.
-        const jwksRes = await fetch(`${iss}/.well-known/jwks.json`);
+        // Fetch JWKS from the pinned legacy instance only.
+        const jwksRes = await fetch(`${LEGACY_ISS}/.well-known/jwks.json`);
         if (!jwksRes.ok) throw new Error(`JWKS fetch failed: ${jwksRes.status}`);
         const jwks = await jwksRes.json() as { keys: Record<string, unknown>[] };
         const jwk = jwks.keys.find((k) => k["kid"] === kid);

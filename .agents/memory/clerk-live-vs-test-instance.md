@@ -1,32 +1,24 @@
 ---
 name: Replit Clerk live vs test instance — mobile auth
-description: Mobile tokens use immortal-swan-47 (test instance); live Clerk middleware rejects them. Fallback verifyToken in requireAuth is REQUIRED — do not remove it until the mobile app is rebuilt with a live-instance key.
+description: Live Clerk key is now in eas.json. A narrowly-scoped fallback remains for the old TestFlight build (immortal-swan-47 only). Remove it after the new build is confirmed.
 ---
 
-## The Problem
+## The root cause
 
-**Replit auto-swaps `CLERK_PUBLISHABLE_KEY` to a live Clerk instance key on publish.** The server's `clerkMiddleware()` uses the live JWKS and expects `iss: <live-instance>`. The EAS production binary was built with the test key (`pk_test_...`, `immortal-swan-47.clerk.accounts.dev`) baked in — mobile tokens carry `iss: https://immortal-swan-47.clerk.accounts.dev` → rejected by live-instance JWKS.
+Replit auto-swaps `CLERK_PUBLISHABLE_KEY` to a live instance key on publish. The old EAS production binary was compiled with the Replit-managed **test** key (`immortal-swan-47.clerk.accounts.dev`) baked in, so mobile tokens carried `iss: https://immortal-swan-47.clerk.accounts.dev` → rejected by the live-instance JWKS used by `clerkMiddleware()`.
 
-## The Fallback (MUST stay in requireAuth.ts)
+## Current state
 
-`requireAuth.ts` has a fallback using `verifyToken(token, { publishableKey: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY })`. When `clerkMiddleware()` rejects a Bearer token, this verifies it directly against the mobile/test Clerk instance.
+`eas.json` production env now carries `pk_live_Y2xlcmsuc3RlY3N0YXRzLnN0ZWNjby5vcmck`. The next TestFlight build will send live-instance tokens that `clerkMiddleware()` accepts directly.
 
-**Do NOT remove this fallback** until the mobile app is rebuilt with a live-instance publishable key. Task agents have removed it twice already — each time broke all mobile authentication on the next production deploy.
+## The fallback (still in requireAuth.ts)
 
-**Why it keeps getting removed:** task agents see "dual Clerk instance workaround" and treat it as cleanup. It is NOT safe to remove until step 4 of the permanent fix below is complete.
+A JWKS fallback block keeps the **old** TestFlight binary working during the transition. It is pinned to exactly `https://immortal-swan-47.clerk.accounts.dev` — no wildcard, to prevent other Clerk dev instances from forging access.
 
-## Diagnostic signature
+**Do NOT remove until** a new TestFlight binary (built with the live key) is confirmed working on device. The block is labelled "REMOVE THIS BLOCK once..." in the source.
 
-- All mobile API calls return 401 at ~200–450ms (Clerk fetches JWKS, validates, fails)
-- Web sessions work fine (cookies, no iss check)
-- Production logs show no `requireAuth: mobile token verified` lines → fallback is missing or `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` is unset
+**Why it kept getting removed:** agents treated it as cleanup. It is not safe to remove until coaches are running the new binary.
 
-## Permanent fix (requires a new app build)
+## Cleanup criterion
 
-1. **Publish via Replit** (already done) — auto-provisions the Clerk Production instance
-2. Open `dashboard.clerk.com` → switch to **Production** instance → **API Keys** → copy the `pk_live_...` publishable key
-3. Replace `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` in `artifacts/hoops-mobile/eas.json` production env block
-4. Run `eas build --platform ios --profile production` and confirm sign-in works on device
-5. Only after confirming step 4: remove the fallback block from `requireAuth.ts`
-
-**Why the live key is not derivable from env:** the live Clerk instance domain differs from `immortal-swan-47.clerk.accounts.dev` and is only known after Clerk provisions it on first publish.
+Remove the `if (!clerkUserId)` fallback block from `requireAuth.ts` once sign-in from a device running the new build is confirmed (log shows `clerkMiddleware set userId`, no JWKS fallback lines).
