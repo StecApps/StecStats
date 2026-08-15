@@ -43,7 +43,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       const mobilePubKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
       if (mobilePubKey) {
         try {
-          const payload = await verifyToken(token, { publishableKey: mobilePubKey });
+          const payload = await verifyToken(token, { publishableKey: mobilePubKey } as any);
           clerkUserId = payload.sub ?? null;
           if (clerkUserId) {
             req.log?.info(
