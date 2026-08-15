@@ -48,14 +48,22 @@ async function fetchStreamUrl(
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Could not get stream token');
-  const { token: streamToken, proxyReady, proxySkipped, proxyType } = await res.json();
+  const { token: streamToken, proxyReady, proxySkipped, proxyType, streamUrl } = await res.json();
 
   // proxyType==='hls' → long game served as an HLS playlist backed by proxy
   // chunks; AVPlayer on iOS handles M3U8 natively.  Use the playlist URL
   // directly instead of the single-file stream endpoint.
+  //
+  // For non-HLS streams the server returns a pre-generated `streamUrl` (a
+  // 5 h GCS signed URL).  Passing it directly to expo-video means ALL seeks
+  // — including HTTP Range requests — go to GCS without touching the server.
+  // This avoids relying on AVPlayer retaining the 302 redirect target across
+  // Range seeks (unspecified behaviour), and means the 4 h stream token is
+  // irrelevant for playback: the GCS URL stays valid for 1 h after the token
+  // expires so the coach can seek freely throughout a long review session.
   const url = proxyType === 'hls'
     ? `${API_BASE}/api/games/${gameId}/hls/playlist.m3u8?t=${streamToken}`
-    : `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`;
+    : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
 
   return {
     url,

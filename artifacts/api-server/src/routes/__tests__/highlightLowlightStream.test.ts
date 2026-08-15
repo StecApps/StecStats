@@ -1,33 +1,51 @@
 /**
- * Highlight / lowlight streaming proxy fix — regression test
+ * Highlight / lowlight streaming — redirect-ALL design regression test
  *
- * Before the fix the /games/:gameId/stream/:type endpoint piped the full
- * video file through the Replit proxy, which kills large responses after
- * ~1–2 s.  The fix makes the endpoint redirect full-file requests (no
- * Range header) to a short-lived GCS signed URL so the player downloads
- * directly from GCS.  Range requests (seeking) still go through
- * createReadStream.
+ * The /games/:gameId/stream/:type endpoint redirects ALL requests — both
+ * full-file loads and Range seeks — to a 3600 s GCS signed URL.  This
+ * bypasses the Replit reverse proxy entirely: piping bytes through the proxy
+ * kills playback after ~1–2 s, whereas GCS handles Range requests natively so
+ * the player can seek freely without any further server involvement.
+ *
+ * Seek-after-token-expiry design guarantee:
+ *   The /stream-token/:type endpoint pre-generates a 5 h GCS signed URL and
+ *   returns it as `streamUrl` in the JSON response.  The mobile client passes
+ *   this URL directly to expo-video/AVPlayer so ALL seeks (including Range
+ *   requests) go to GCS without the player contacting the server again.
+ *
+ *   The stream token (4 h TTL) is only consulted for fresh /stream-token
+ *   requests (background refresh, player restart).  Because the GCS URL TTL
+ *   (5 h) > token TTL (4 h), the URL stays valid for 1 h after the token
+ *   expires — the coach can seek freely for that entire window.
+ *
+ *   If the subscription lapses, the entitlement re-check (5 min interval)
+ *   will block NEW /stream-token requests with 403, but it cannot revoke a
+ *   GCS URL already in the player's hands.
  *
  * This suite verifies:
  *
- *   A. FULL-FILE → 302 signed-URL redirect (highlight + lowlight)
- *      No Range header in the request must yield a 302 redirect whose
- *      Location is the pre-generated GCS signed URL, not a streamed body.
+ *   A. FULL-FILE AND RANGE → 302 signed-URL redirect (highlight + lowlight)
+ *      Every request (with or without a Range header) must yield a 302 whose
+ *      Location is the GCS signed URL with a 3600 s TTL.
  *
- *   B. RANGE REQUEST → 206 partial content (highlight + lowlight)
- *      A Range header must yield a 206 with the correct Content-Range
- *      header, served via createReadStream (not a redirect).
+ *   B. RANGE SEEKS → same 302 redirect (not a 206 partial-content response)
+ *      Seeking is handled entirely by GCS; the server never pipes bytes.
  *
  *   C. YouTube URL returned when highlight is ready
  *      GET /games/:gameId/highlight must include a youtubeUrl field so the
  *      mobile client can show the Upload to YouTube button.
+ *
+ *   D. SEEK AFTER TOKEN EXPIRY / ENTITLEMENT LAPSE
+ *      Confirms the seek-after-token-expiry guarantee described above:
+ *      the server correctly blocks new requests after token/entitlement
+ *      expiry, but the already-issued GCS URL (3600 s TTL) is unaffected.
  *
  * No real GCS bucket, database, or camera access is required — all I/O
  * layers are replaced with in-memory mocks following the pattern in
  * streamTokenSecurity.test.ts.
  */
 
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import express from "express";
 import { createServer, type Server } from "http";
 import type { AddressInfo } from "net";
@@ -45,6 +63,11 @@ const {
   reelMode,
   /** The fake signed URL the mock returns. */
   SIGNED_URL,
+  /**
+   * Controls the return value of the `isPro` mock.  Default true (subscribed).
+   * Set to false in entitlement-lapse tests to simulate a cancelled subscription.
+   */
+  isProResult,
 } = vi.hoisted(() => {
   const COACH_A = { id: 1, clerkUserId: "clerk_coach_a", email: "coach@example.com" };
   const GAME_ID = 42;
@@ -53,7 +76,8 @@ const {
   const currentUser = { value: COACH_A as typeof COACH_A };
   const reelMode = { value: "highlight" as "highlight" | "lowlight" | "no-reel" };
   const SIGNED_URL = "https://storage.googleapis.com/bucket/highlight-42.mp4?X-Goog-Signature=abc";
-  return { COACH_A, GAME_ID, PATH_HIGHLIGHT, PATH_LOWLIGHT, currentUser, reelMode, SIGNED_URL };
+  const isProResult = { value: true };
+  return { COACH_A, GAME_ID, PATH_HIGHLIGHT, PATH_LOWLIGHT, currentUser, reelMode, SIGNED_URL, isProResult };
 });
 
 // ---------------------------------------------------------------------------
@@ -254,7 +278,8 @@ vi.mock("../../lib/objectAcl", () => ({
 vi.mock("../../lib/entitlements", () => ({
   getEntitlementsForUser: vi.fn().mockResolvedValue({ plan: "premium" }),
   getEntitlements: vi.fn().mockResolvedValue({ plan: "premium" }),
-  isPro: vi.fn().mockReturnValue(true),
+  // Controlled by `isProResult` so individual tests can simulate a lapse.
+  isPro: vi.fn().mockImplementation(() => isProResult.value),
 }));
 
 vi.mock("../../lib/videoDuration", () => ({
@@ -348,6 +373,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 beforeEach(() => {
@@ -356,6 +382,12 @@ beforeEach(() => {
   streamCalls.createReadStream = 0;
   streamCalls.getSignedURL = 0;
   signedUrlCalls.length = 0;
+  isProResult.value = true;
+  vi.useRealTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 // ---------------------------------------------------------------------------
@@ -365,8 +397,19 @@ beforeEach(() => {
 async function mintToken(gameId: number, type: string): Promise<string> {
   const res = await fetch(`${baseUrl}/api/games/${gameId}/stream-token/${type}`);
   if (!res.ok) throw new Error(`stream-token returned ${res.status}: ${await res.text()}`);
-  const body = (await res.json()) as { token: string };
+  const body = (await res.json()) as { token: string; streamUrl?: string };
   return body.token;
+}
+
+/**
+ * Like mintToken but returns the full response body so tests can inspect
+ * `streamUrl` — the pre-generated GCS URL that the mobile client passes
+ * directly to expo-video/AVPlayer.
+ */
+async function mintTokenFull(gameId: number, type: string) {
+  const res = await fetch(`${baseUrl}/api/games/${gameId}/stream-token/${type}`);
+  if (!res.ok) throw new Error(`stream-token returned ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<{ token: string; streamUrl?: string; proxyReady: boolean; proxySkipped?: boolean }>;
 }
 
 /**
@@ -379,6 +422,11 @@ async function streamNoRange(gameId: number, type: string, token: string) {
   });
 }
 
+/**
+ * Issue a Range-seek request.  The endpoint now redirects ALL requests
+ * (including Range seeks) to the GCS signed URL, so we use redirect:"manual"
+ * to capture the 302 without following it to a real GCS bucket.
+ */
 async function streamWithRange(
   gameId: number,
   type: string,
@@ -388,6 +436,7 @@ async function streamWithRange(
 ) {
   return fetch(`${baseUrl}/api/games/${gameId}/stream/${type}?t=${token}`, {
     headers: { Range: `bytes=${start}-${end}` },
+    redirect: "manual",
   });
 }
 
@@ -426,82 +475,129 @@ describe("Full-file request (no Range header) → 302 redirect to GCS signed URL
     expect(streamCalls.createReadStream).toBe(0);
   });
 
-  it("signs the highlight object path (not a generic path) with a TTL ≤ 120 s", async () => {
+  it("stream-token response includes the pre-generated GCS URL (streamUrl)", async () => {
+    /**
+     * The /stream-token endpoint now returns `streamUrl` — a 5 h GCS signed
+     * URL — alongside the auth token.  The mobile client uses this URL
+     * directly as the expo-video source so all Range seeks go to GCS without
+     * touching the server.  This is the core fix for post-expiry seeking:
+     * no 302 redirect-caching ambiguity in AVPlayer.
+     */
+    reelMode.value = "highlight";
+    const body = await mintTokenFull(GAME_ID, "highlight");
+
+    // Must return a streamUrl pointing to the GCS bucket.
+    expect(body.streamUrl).toBeDefined();
+    expect(body.streamUrl).toBe(SIGNED_URL);
+  });
+
+  it("returns 403 and never signs a URL when the requester is not subscribed", async () => {
+    /**
+     * Security regression guard: /stream-token/:type issues a 5 h GCS signed
+     * URL that cannot be revoked once sent.  A non-Pro owner must be rejected
+     * at mint time — before any signing call is made — so the URL is never
+     * placed in their hands.  The entitlement re-check on /stream/:type would
+     * catch a *lapse* during an active session, but cannot protect against
+     * initial issuance to a non-subscriber.
+     */
+    reelMode.value = "highlight";
+    isProResult.value = false; // simulate non-Pro owner
+
+    const res = await fetch(`${baseUrl}/api/games/${GAME_ID}/stream-token/highlight`);
+    expect(res.status).toBe(403);
+
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/subscription/i);
+
+    // GCS signing must not have been invoked: no URL should leave the server.
+    expect(signedUrlCalls).toHaveLength(0);
+    expect(streamCalls.getSignedURL).toBe(0);
+  });
+
+  it("signs the highlight object path (not a generic path) with a 5 h (18 000 s) TTL", async () => {
+    /**
+     * The GCS URL is generated at /stream-token time (not /stream time) so
+     * the mobile client receives it in the initial authenticated response.
+     * mintToken() calls /stream-token, which triggers getObjectEntitySignedURL.
+     * The subsequent streamNoRange() call to /stream/:type reuses the stored
+     * URL — no second signing call is made.
+     */
     reelMode.value = "highlight";
     const token = await mintToken(GAME_ID, "highlight");
     await streamNoRange(GAME_ID, "highlight", token);
 
+    // Exactly one signing call: happens at /stream-token time.
     expect(signedUrlCalls).toHaveLength(1);
     // Must sign the highlight's actual GCS object path, not a generic one.
     expect(signedUrlCalls[0].path).toBe(PATH_HIGHLIGHT);
-    // TTL must be short so a captured redirect URL can't be replayed after buffering.
-    expect(signedUrlCalls[0].ttl).toBeGreaterThan(0);
-    expect(signedUrlCalls[0].ttl).toBeLessThanOrEqual(120);
+    // TTL must be 18 000 s (5 h) — intentionally longer than the stream token
+    // TTL (4 h) so the player can seek via the cached GCS URL for 1 full hour
+    // after the token has expired, without contacting the server.
+    expect(signedUrlCalls[0].ttl).toBe(18_000);
   });
 
-  it("signs the lowlight object path with a TTL ≤ 120 s", async () => {
+  it("signs the lowlight object path with a 5 h (18 000 s) TTL", async () => {
     reelMode.value = "lowlight";
     const token = await mintToken(GAME_ID, "lowlight");
     await streamNoRange(GAME_ID, "lowlight", token);
 
     expect(signedUrlCalls).toHaveLength(1);
     expect(signedUrlCalls[0].path).toBe(PATH_LOWLIGHT);
-    expect(signedUrlCalls[0].ttl).toBeGreaterThan(0);
-    expect(signedUrlCalls[0].ttl).toBeLessThanOrEqual(120);
+    expect(signedUrlCalls[0].ttl).toBe(18_000);
   });
 });
 
 // ---------------------------------------------------------------------------
-// B — Range requests (seeking) served via createReadStream (206 partial)
+// B — Range seeks are also redirected to the GCS signed URL
 // ---------------------------------------------------------------------------
+//
+// The endpoint redirects ALL requests — with or without a Range header —
+// to the same GCS signed URL.  GCS natively supports Range requests, so the
+// player can seek freely once it has the URL without contacting the server
+// again.  This is the mechanism that allows seeking to keep working after
+// the server-side stream token has expired: the token is only needed to
+// obtain the initial GCS URL, not for subsequent seek requests.
 
-describe("Range request (seeking) → 206 partial content via createReadStream", () => {
-  it("returns 206 with correct Content-Range for a highlight seek", async () => {
+describe("Range seek request → 302 redirect to GCS signed URL (not 206)", () => {
+  it("redirects a highlight seek (Range header) to the GCS URL", async () => {
     reelMode.value = "highlight";
     const token = await mintToken(GAME_ID, "highlight");
 
     const res = await streamWithRange(GAME_ID, "highlight", token, 0, 1023);
 
-    expect(res.status).toBe(206);
-    expect(res.headers.get("content-range")).toBe("bytes 0-1023/5000000");
+    // Must redirect — the server never pipes bytes for seeks.
+    // GCS handles the Range request directly once the player has this URL.
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(SIGNED_URL);
 
-    // createReadStream was used (not a signed-URL redirect).
-    expect(streamCalls.createReadStream).toBe(1);
-    expect(streamCalls.getSignedURL).toBe(0);
+    // getObjectEntitySignedURL was called (not createReadStream).
+    expect(streamCalls.getSignedURL).toBe(1);
+    expect(streamCalls.createReadStream).toBe(0);
   });
 
-  it("returns 206 with correct Content-Range for a lowlight seek", async () => {
+  it("redirects a lowlight seek (Range header) to the GCS URL", async () => {
     reelMode.value = "lowlight";
     const token = await mintToken(GAME_ID, "lowlight");
 
     const res = await streamWithRange(GAME_ID, "lowlight", token, 1024, 2047);
 
-    expect(res.status).toBe(206);
-    expect(res.headers.get("content-range")).toBe("bytes 1024-2047/5000000");
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(SIGNED_URL);
 
-    expect(streamCalls.createReadStream).toBe(1);
-    expect(streamCalls.getSignedURL).toBe(0);
+    expect(streamCalls.getSignedURL).toBe(1);
+    expect(streamCalls.createReadStream).toBe(0);
   });
 
-  it("advertises Accept-Ranges: bytes so the player knows seeking is supported", async () => {
+  it("redirects a mid-file seek to the same GCS URL as a full-file request", async () => {
+    // Any Range offset — not just byte 0 — produces the same redirect.
+    // GCS resolves the Range against the full file on its end.
     reelMode.value = "highlight";
     const token = await mintToken(GAME_ID, "highlight");
 
-    const res = await streamWithRange(GAME_ID, "highlight", token, 0, 99);
+    const res = await streamWithRange(GAME_ID, "highlight", token, 2_500_000, 2_500_999);
 
-    expect(res.headers.get("accept-ranges")).toBe("bytes");
-  });
-
-  it("serves mid-file range correctly (not just byte 0)", async () => {
-    reelMode.value = "highlight";
-    const token = await mintToken(GAME_ID, "highlight");
-
-    const midStart = 2_500_000;
-    const midEnd   = 2_500_999;
-    const res = await streamWithRange(GAME_ID, "highlight", token, midStart, midEnd);
-
-    expect(res.status).toBe(206);
-    expect(res.headers.get("content-range")).toBe(`bytes ${midStart}-${midEnd}/5000000`);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(SIGNED_URL);
   });
 });
 
@@ -526,5 +622,195 @@ describe("GET /api/games/:gameId/highlight — youtubeUrl included in response",
 
     // youtubeUrl must be present so the mobile client renders the button.
     expect(body.youtubeUrl).toBe("https://youtu.be/example123");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D — Seeking after stream token expiry / entitlement lapse
+// ---------------------------------------------------------------------------
+//
+// Design guarantee (see file header for full rationale):
+//
+//   The stream token (4 h TTL) is the auth gate for ISSUING a GCS URL.
+//   Once the player has the URL it seeks directly against GCS for up to
+//   18 000 s (5 h).  The server cannot revoke an already-issued signed URL;
+//   it can only block future calls to /stream/:type.
+//
+//   Token TTL (14 400 s / 4 h) < GCS URL TTL (18 000 s / 5 h) — this ordering
+//   is the key invariant.  After the token expires the player's cached GCS URL
+//   is still valid for 1 more hour, so seeking continues uninterrupted.
+//
+//   Consequences tested here:
+//     1. After the 4 h stream token expires the server returns 401 for any
+//        new /stream/:type request, but the GCS URL issued before expiry is
+//        still valid (18 000 s − 14 400 s = 3 600 s remaining) so seeking
+//        continues for another hour.
+//     2. After the 5-min entitlement re-check window elapses and the
+//        subscription has lapsed, the server returns 403 for new requests —
+//        but the GCS URL already in the player's hands is still valid for the
+//        remainder of its 5 h window.
+
+describe("Seeking after stream token expiry / entitlement lapse", () => {
+  it("GCS URL TTL (18 000 s / 5 h) outlasts stream token TTL (4 h) — proves seeks work after token expiry", async () => {
+    /**
+     * Core seek-after-expiry guarantee:
+     *   Token TTL = 4 h = 14 400 s.  GCS URL TTL = 5 h = 18 000 s.
+     *
+     * Flow:
+     *   t=0:      /stream-token returns { token, streamUrl }.  Mobile client
+     *             passes streamUrl directly to expo-video/AVPlayer.  All seeks
+     *             (Range requests) go to GCS without contacting the server.
+     *   t=14400s: Stream token expires → server returns 401 for NEW requests.
+     *   t=14400–18000s: GCS URL is still valid → seeks continue uninterrupted.
+     *
+     * We verify this by:
+     *   1. Calling mintTokenFull() — getting { token, streamUrl } from
+     *      /stream-token at t=0.
+     *   2. Confirming streamUrl is the GCS signed URL and its TTL is 18 000 s.
+     *   3. Advancing to t=4h+1ms (token expired) and confirming 401 from server.
+     *   4. Computing remaining GCS URL validity and asserting it is > 0.
+     *      AVPlayer sends Range requests to streamUrl directly; server 401 is
+     *      irrelevant for those requests.
+     */
+    vi.useFakeTimers({ toFake: ["Date"] });
+
+    reelMode.value = "highlight";
+    const mintedAt = Date.now();
+
+    // t=0: /stream-token pre-generates the GCS URL and returns it directly.
+    const tokenBody = await mintTokenFull(GAME_ID, "highlight");
+    expect(tokenBody.streamUrl).toBe(SIGNED_URL);
+
+    // The GCS URL was signed with a 5 h = 18 000 s TTL.
+    expect(signedUrlCalls).toHaveLength(1);
+    const gcsTtlSeconds = signedUrlCalls[0].ttl;
+    expect(gcsTtlSeconds).toBe(18_000);
+
+    // Mobile client passes tokenBody.streamUrl to expo-video — no /stream
+    // request needed.  The player seeks via GCS directly from this point on.
+
+    // Advance to just after the 4-hour stream token TTL.
+    const TOKEN_TTL_MS = 4 * 60 * 60 * 1000; // 14 400 s
+    vi.setSystemTime(mintedAt + TOKEN_TTL_MS + 1);
+
+    // Server must reject NEW /stream-token or /stream requests (token expired).
+    const expiredRes = await streamNoRange(GAME_ID, "highlight", tokenBody.token);
+    expect(expiredRes.status).toBe(401);
+    const body = (await expiredRes.json()) as { error: string };
+    expect(body.error).toMatch(/expired|invalid/i);
+
+    // The GCS URL returned at t=0 is still within its validity window.
+    // Elapsed: ~14 400 s.  Remaining: 18 000 − 14 400 = 3 600 s = 1 hour.
+    const elapsedSeconds = (TOKEN_TTL_MS + 1) / 1000;
+    const remainingGcsSeconds = gcsTtlSeconds - elapsedSeconds;
+    expect(remainingGcsSeconds).toBeGreaterThan(0);
+    // Any Range seek expo-video sends to tokenBody.streamUrl within those
+    // 3 600 s succeeds — GCS authorizes it via the signed URL, no server hop.
+  });
+
+  it("returns 401 on a seek (Range request) once the stream token has expired", async () => {
+    /**
+     * If the player's cached GCS URL is somehow lost and it falls back to the
+     * server endpoint (e.g. on a full player restart after token expiry), it
+     * gets 401.  This ensures expired tokens are not silently promoted — the
+     * coach must re-open the reel to mint a new token.
+     * Normal seeking within the 5 h GCS window via the cached URL is unaffected.
+     */
+    vi.useFakeTimers({ toFake: ["Date"] });
+
+    reelMode.value = "highlight";
+    const token = await mintToken(GAME_ID, "highlight");
+
+    // Advance past the 4-hour stream token TTL.
+    vi.setSystemTime(Date.now() + 4 * 60 * 60 * 1000 + 1);
+
+    // A Range seek that returns to the server after token expiry → 401.
+    const res = await streamWithRange(GAME_ID, "highlight", token, 0, 1023);
+    expect(res.status).toBe(401);
+
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/expired|invalid/i);
+  });
+
+  it("returns 302 while the token is still live — well within 4 h token TTL", async () => {
+    /**
+     * Confirms the server issues a fresh 302 to the GCS URL during the valid
+     * token window (first 4 hours).  The player caches this URL and uses it
+     * for all seeks during the 5 h GCS validity window.
+     */
+    reelMode.value = "highlight";
+    const token = await mintToken(GAME_ID, "highlight");
+
+    // Advance 30 minutes — well inside the 4 h token TTL and the 5 h GCS TTL.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 30 * 60 * 1000);
+
+    const res = await streamNoRange(GAME_ID, "highlight", token);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(SIGNED_URL);
+  });
+
+  it("returns 403 after the 5-min entitlement re-check window elapses and subscription lapses", async () => {
+    /**
+     * Subscription-lapse detection: every /stream/:type request that arrives
+     * after the 5-minute entitlement re-check window triggers a fresh DB +
+     * Stripe lookup.  If isPro() returns false the token is deleted and the
+     * request is rejected with 403.
+     *
+     * Crucially, this 403 only blocks NEW /stream/:type requests.  The GCS
+     * signed URL already in the player's hands (18 000 s TTL) is unrevoked —
+     * it was issued by GCS and the server has no way to invalidate it.
+     *
+     * The re-check window (5 min) is well within the token TTL (4 h) so the
+     * re-check fires many times within the token's lifetime.
+     */
+    vi.useFakeTimers({ toFake: ["Date"] });
+
+    reelMode.value = "highlight";
+    // Mint a token while subscribed.
+    const token = await mintToken(GAME_ID, "highlight");
+
+    // Advance past the 5-minute entitlement re-check window but stay well
+    // within the 4-hour token TTL so the 401 expiry gate doesn't fire first.
+    vi.setSystemTime(Date.now() + 5 * 60 * 1000 + 1);
+
+    // Simulate subscription lapse after the re-check window.
+    isProResult.value = false;
+
+    const res = await streamNoRange(GAME_ID, "highlight", token);
+    expect(res.status).toBe(403);
+
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/subscription/i);
+  });
+
+  it("continues to return 302 within the entitlement re-check window even when subscription lapses", async () => {
+    /**
+     * The server only calls getEntitlements() once per 5-minute window.
+     * If the subscription lapses 1 minute after the token is minted, the
+     * /stream/:type endpoint still returns 302 for another 4 minutes
+     * (until the next re-check fires) because entitlementOkUntil has not
+     * elapsed yet.  This is intentional: the server avoids a DB round-trip
+     * on every seek request.
+     *
+     * This also means an already-issued GCS URL (18 000 s TTL) is not
+     * revoked — the coach retains playback for the remainder of the GCS
+     * window regardless of any server-side entitlement change.
+     */
+    vi.useFakeTimers({ toFake: ["Date"] });
+
+    reelMode.value = "highlight";
+    const token = await mintToken(GAME_ID, "highlight");
+
+    // Advance 1 minute — still inside the 5-min re-check window.
+    vi.setSystemTime(Date.now() + 60 * 1000);
+
+    // Even though isPro is now false, the re-check has not fired yet.
+    isProResult.value = false;
+
+    const res = await streamNoRange(GAME_ID, "highlight", token);
+    // Still a valid redirect — cached entitlement window has not expired.
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(SIGNED_URL);
   });
 });

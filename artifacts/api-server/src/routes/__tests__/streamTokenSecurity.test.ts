@@ -30,25 +30,35 @@ const {
   COACH_A,
   GAME_A_ID,
   GAME_B_ID,
+  HLS_GAME_ID,
   PATH_A_HIGHLIGHT,
   PATH_B_VIDEO,
   currentUser,
   /**
    * Controls what db.query.gamesTable.findFirst returns.
-   * "game-a" → returns a game row for game A owned by Coach A (highlight ready, video present).
-   * "game-b" → returns a game row for game B owned by Coach A (video present, highlight not ready).
+   * "game-a"    → game A: highlight ready, short video (no HLS path).
+   * "game-b"    → game B: video present, highlight not ready.
+   * "hls-game"  → long game (2 h video, no proxy) that triggers the HLS path.
    * "not-found" → returns undefined.
    */
   gameFinderMode,
+  /** Controls getReadyProxyChunkCount return value for HLS tests. */
+  hlsChunkCount,
+  /** Controls readHlsSentinel return value for HLS playlist tests. */
+  hlsSentinel,
 } = vi.hoisted(() => {
   const COACH_A = { id: 1, clerkUserId: "clerk_coach_a", email: "coach-a@example.com" };
   const GAME_A_ID = 10;
   const GAME_B_ID = 20;
+  const HLS_GAME_ID = 30;
   const PATH_A_HIGHLIGHT = "/objects/private/game-a-highlight.mp4";
   const PATH_B_VIDEO     = "/objects/private/game-b-video.mp4";
   const currentUser      = { value: COACH_A as typeof COACH_A };
-  const gameFinderMode   = { value: "game-a" as "game-a" | "game-b" | "not-found" };
-  return { COACH_A, GAME_A_ID, GAME_B_ID, PATH_A_HIGHLIGHT, PATH_B_VIDEO, currentUser, gameFinderMode };
+  const gameFinderMode   = { value: "game-a" as "game-a" | "game-b" | "hls-game" | "not-found" };
+  const hlsChunkCount    = { value: -1 };
+  const hlsSentinel      = { value: null as null | { chunkCount: number; segmentDurationsSec: number[] } };
+  return { COACH_A, GAME_A_ID, GAME_B_ID, HLS_GAME_ID, PATH_A_HIGHLIGHT, PATH_B_VIDEO,
+           currentUser, gameFinderMode, hlsChunkCount, hlsSentinel };
 });
 
 // ---------------------------------------------------------------------------
@@ -105,6 +115,36 @@ vi.mock("@workspace/db", () => ({
               videoHalf2StartMs: null,
               videoHalftimeGapMs: null,
               videoProxyObjectPath: null,
+              videoProxyVersion: null,
+              highlightObjectPath: null,
+              highlightStatus: null,
+              highlightError: null,
+              highlightStartedAt: null,
+              lowlightObjectPath: null,
+              lowlightStatus: null,
+              lowlightError: null,
+              lowlightStartedAt: null,
+              shareToken: null,
+              createdAt: new Date(),
+            };
+          }
+          if (gameFinderMode.value === "hls-game") {
+            // 2-hour game with no proxy — takes the HLS path in /stream-token/video.
+            return {
+              id: HLS_GAME_ID,
+              ownerId: COACH_A.id,
+              teamId: 1,
+              opponent: "Long Rivals",
+              date: "2024-03-01",
+              result: "W",
+              teamScore: 90,
+              opponentScore: 80,
+              videoObjectPath: "/objects/private/hls-game-video.mp4",
+              videoOffsetMs: null,
+              videoDurationMs: 7_200_000, // 2 hours → isLongGame = true
+              videoHalf2StartMs: null,
+              videoHalftimeGapMs: null,
+              videoProxyObjectPath: null, // no valid proxy
               videoProxyVersion: null,
               highlightObjectPath: null,
               highlightStatus: null,
@@ -177,8 +217,16 @@ vi.mock("@workspace/db", () => ({
     createdAt: "created_at",
     shareToken: "share_token",
   },
-  teamsTable:  { id: "id", ownerId: "owner_id", name: "name" },
-  playersTable: { id: "id", ownerId: "owner_id", name: "name" },
+  teamsTable:   { id: "id", ownerId: "owner_id", name: "name" },
+  playersTable:  { id: "id", ownerId: "owner_id", name: "name" },
+  // Required by revalidateHlsEntitlement: it calls eq(usersTable.id, ...) as a
+  // schema reference which is evaluated before the mocked findFirst is invoked.
+  usersTable: {
+    id: "id",
+    stripeCustomerId: "stripe_customer_id",
+    email: "email",
+    revenueCatEntitlement: "revenue_cat_entitlement",
+  },
   playerGameStatsTable: {
     gameId: "game_id", playerId: "player_id",
     ftMade: "ft_made", ftAttempted: "ft_attempted",
@@ -276,8 +324,8 @@ vi.mock("../../lib/highlightGenerator", () => ({
   makeProxyChunkGcsPath: vi.fn().mockImplementation(
     (_ownerId: number, _gameId: number, i: number) => `/chunks/${i}`,
   ),
-  getReadyProxyChunkCount: vi.fn().mockResolvedValue(-1),
-  readHlsSentinel: vi.fn().mockResolvedValue(null),
+  getReadyProxyChunkCount: vi.fn().mockImplementation(() => Promise.resolve(hlsChunkCount.value)),
+  readHlsSentinel: vi.fn().mockImplementation(() => Promise.resolve(hlsSentinel.value)),
   ensureAllProxyChunksInBackground: vi.fn(),
   acquireProxyChunkLocally: vi.fn(),
 }));
@@ -349,6 +397,8 @@ beforeEach(() => {
   currentUser.value = COACH_A;
   gameFinderMode.value = "game-a";
   lastObjectPathRequested.value = "";
+  hlsChunkCount.value = -1;
+  hlsSentinel.value = null;
   vi.useRealTimers();
 });
 
@@ -369,13 +419,18 @@ async function mintToken(gameId: number, type: string): Promise<string> {
   return body.token;
 }
 
-/** Issue a stream request using the given token against the given gameId/type. */
+/**
+ * Issue a stream request using the given token against the given gameId/type.
+ *
+ * The /stream/:type endpoint now redirects ALL requests (including Range seeks)
+ * to a 3600 s GCS signed URL so the player downloads directly from GCS without
+ * the Replit proxy in the way.  We use `redirect: "manual"` so we can inspect
+ * the 302 status and Location header instead of following the redirect to a
+ * real GCS URL that would fail in the test environment.
+ */
 async function streamRequest(gameId: number, type: string, token: string) {
-  // Include a Range header so the server takes the partial-content (206) path
-  // rather than redirecting to a signed GCS URL (302).  The redirect would
-  // follow to a real GCS URL which returns an unexpected status in tests.
   return fetch(`${baseUrl}/api/games/${gameId}/stream/${type}?t=${token}`, {
-    headers: { Range: "bytes=0-1023" },
+    redirect: "manual",
   });
 }
 
@@ -384,12 +439,16 @@ async function streamRequest(gameId: number, type: string, token: string) {
 // ---------------------------------------------------------------------------
 
 describe("GET /api/games/:gameId/stream/:type — expired token is rejected", () => {
-  it("returns 206 for a freshly minted token (Range request → partial content)", async () => {
+  it("returns 302 redirect to GCS URL for a freshly minted token", async () => {
+    // The /stream/:type endpoint redirects ALL requests (full-file and Range
+    // seeks alike) to a 3600 s GCS signed URL so the player talks directly to
+    // GCS.  A freshly minted, valid token must always produce a 302 redirect.
     gameFinderMode.value = "game-a";
     const token = await mintToken(GAME_A_ID, "highlight");
 
     const res = await streamRequest(GAME_A_ID, "highlight", token);
-    expect(res.status).toBe(206);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toMatch(/^https:\/\//);
   });
 
   it("returns 401 after the token's TTL has elapsed", async () => {
@@ -400,7 +459,9 @@ describe("GET /api/games/:gameId/stream/:type — expired token is rejected", ()
     gameFinderMode.value = "game-a";
     const token = await mintToken(GAME_A_ID, "highlight");
 
-    // Jump Date.now() past the 4-hour TTL.
+    // Jump Date.now() past the 4-hour stream token TTL.
+    // (The GCS URL has a 5 h TTL so seeks via the already-issued URL remain
+    // valid for another 1 h — only new server requests are rejected here.)
     vi.setSystemTime(Date.now() + 4 * 60 * 60 * 1000 + 1);
 
     // fetch() still works because setTimeout is real.
@@ -490,5 +551,67 @@ describe("GET /api/games/:gameId/stream/:type — token is scoped to its object 
 
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/expired|invalid/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests — HLS token expiry (long-game path)
+// ---------------------------------------------------------------------------
+
+describe("HLS playlist — post-expiry seek window matches GCS URL TTL (5 h)", () => {
+  it("HLS token TTL is 5 h: playlist accessible at 4 h + 1 ms but rejected at 5 h + 1 ms", async () => {
+    /**
+     * Long games use `proxyType: "hls"` — each HLS segment endpoint validates
+     * the same stream token.  The HLS token must therefore outlast the session,
+     * and its TTL must match the GCS signed-URL TTL (5 h = STREAM_SIGNED_URL_TTL_S).
+     *
+     * This gives HLS the same post-expiry seek window as highlight/lowlight:
+     *   Non-HLS: stream token 4 h, GCS URL 5 h → seek works 1 h after token expires.
+     *   HLS:     token TTL 5 h → playlist/segments remain accessible 1 h past the
+     *            non-HLS stream-token window.
+     *
+     * Test procedure:
+     *   1. Mint an HLS token via /stream-token/video for a 2-hour game.
+     *   2. Verify /hls/playlist.m3u8 returns 200 at t = 4 h + 1 ms (not 401).
+     *   3. Verify it returns 401 at t = 5 h + 1 ms (token truly expired).
+     */
+    vi.useFakeTimers({ toFake: ["Date"] });
+
+    gameFinderMode.value = "hls-game";
+    // Make getReadyProxyChunkCount return 2 so the HLS token is issued.
+    hlsChunkCount.value = 2;
+    // Provide a valid sentinel so the playlist endpoint returns 200.
+    hlsSentinel.value = { chunkCount: 2, segmentDurationsSec: [360, 360] };
+
+    const mintedAt = Date.now();
+    const tokenRes = await fetch(`${baseUrl}/api/games/${HLS_GAME_ID}/stream-token/video`);
+    expect(tokenRes.status).toBe(200);
+    const tokenBody = (await tokenRes.json()) as { token: string; proxyType: string };
+    expect(tokenBody.proxyType).toBe("hls");
+    const hlsToken = tokenBody.token;
+
+    // At t = 4h + 1ms the non-HLS stream-token TTL would have expired,
+    // but the HLS token TTL is 5 h — the playlist must still return 200.
+    vi.setSystemTime(mintedAt + 4 * 60 * 60 * 1000 + 1);
+
+    const liveRes = await fetch(
+      `${baseUrl}/api/games/${HLS_GAME_ID}/hls/playlist.m3u8?t=${hlsToken}`,
+    );
+    // Token still valid — not 401 and not 403 (subscription fine).
+    expect(liveRes.status).not.toBe(401);
+    expect(liveRes.status).not.toBe(403);
+    // Playlist content must be a proper M3U8 (200 OK).
+    expect(liveRes.status).toBe(200);
+    const m3u8 = await liveRes.text();
+    expect(m3u8).toContain("#EXTM3U");
+    expect(m3u8).toContain(`segment/0?t=${hlsToken}`);
+
+    // At t = 5h + 1ms the HLS token itself expires → 401.
+    vi.setSystemTime(mintedAt + 5 * 60 * 60 * 1000 + 1);
+
+    const expiredRes = await fetch(
+      `${baseUrl}/api/games/${HLS_GAME_ID}/hls/playlist.m3u8?t=${hlsToken}`,
+    );
+    expect(expiredRes.status).toBe(401);
   });
 });

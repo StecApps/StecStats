@@ -1913,23 +1913,53 @@ interface StreamTokenEntry {
    * routes serve proxy chunks directly from GCS rather than a single object.
    */
   isHls?: boolean;
+  /**
+   * Pre-generated GCS signed URL returned alongside the token so the mobile
+   * client can pass it directly to expo-video/AVPlayer without going through
+   * the /stream/:type redirect.
+   *
+   * Rationale: relying on AVPlayer to retain the 302 redirect target for all
+   * subsequent Range seeks is unspecified behaviour.  Giving the client the
+   * GCS URL explicitly means every seek goes to GCS directly — the server-side
+   * stream token is never consulted again after the initial fetch.
+   *
+   * TTL: STREAM_SIGNED_URL_TTL_S (5 h) — intentionally > STREAM_TOKEN_TTL_MS
+   * (4 h) so the URL stays valid for 1 hour after the token has expired.
+   */
+  streamUrl?: string;
 }
 
 const streamTokens = new Map<string, StreamTokenEntry>();
 
-// Token TTL: 4 hours.  expo-video issues new HTTP Range requests whenever the
-// coach seeks — the same URL must remain valid for the entire playback session.
-// A full game recording can exceed 2 hours, so 5 minutes is far too short.
-// 4 hours covers any realistic single-session viewing without the complexity of
-// proactive client-side token refresh (which would require pausing and resuming
-// the player at the current position).
+// Token TTL: 4 hours.
+//
+// The /stream/:type endpoint redirects ALL requests (full-file and Range seeks)
+// to a GCS signed URL.  HLS segment endpoints (long-game iOS playback) also
+// validate this same token for every segment fetch, so the token must remain
+// valid for the entire viewing session — up to 4 hours for a full game review.
 const STREAM_TOKEN_TTL_MS = 4 * 60 * 60_000; // 4 h
 
 // Entitlement re-check interval: after this window elapses the stream endpoint
 // calls getEntitlements() once and refreshes entitlementOkUntil (or rejects
 // the request if the subscription has lapsed).  5 minutes is short enough to
 // detect a lapse quickly while avoiding a DB round-trip on every Range request.
+// Must be shorter than STREAM_TOKEN_TTL_MS so the re-check fires at least once
+// within the token's lifetime.
 const STREAM_ENTITLEMENT_RECHECK_MS = 5 * 60_000; // 5 min
+
+// GCS signed URL TTL for the stream redirect.
+//
+// Design guarantee — seek-after-token-expiry:
+//   STREAM_SIGNED_URL_TTL_S (5 h) > STREAM_TOKEN_TTL_MS (4 h).
+//   After the stream token expires at t = 4 h, the GCS signed URL issued at
+//   t = 0 is still valid for another 1 hour.  Any Range seek the player sends
+//   directly to the GCS URL within that window succeeds without contacting the
+//   server — the expired token is irrelevant for direct GCS requests.
+//
+// Note: the server CANNOT revoke an already-issued GCS signed URL.  The stream
+// token gate only applies to NEW requests to /stream/:type; it has no effect
+// on URLs already in the player's hands.
+const STREAM_SIGNED_URL_TTL_S = 5 * 60 * 60; // 5 h = 18 000 s
 
 // Prune expired tokens every 30 minutes so the map doesn't grow unbounded.
 setInterval(() => {
@@ -1942,9 +1972,18 @@ setInterval(() => {
 /**
  * GET /games/:gameId/stream-token/:type
  * Requires Bearer auth.  Validates ownership, resolves the object path
- * (preferring the proxy MP4 for "video"), mints a 5-minute streaming token
- * and returns it.  The companion /stream/:type endpoint accepts the token as
- * ?t=<token> and serves seekable Range responses.
+ * (preferring the proxy MP4 for "video"), mints a streaming token, and
+ * pre-generates a 5 h GCS signed URL returned as `streamUrl`.
+ *
+ * The mobile client passes `streamUrl` directly to expo-video/AVPlayer so all
+ * seeks (including Range requests) go to GCS without touching the server —
+ * the stream token is not consulted again after this response.  This avoids
+ * relying on AVPlayer retaining the 302 redirect target for Range seeks, which
+ * is unspecified behaviour across iOS versions and expo-video releases.
+ *
+ * The companion /stream/:type endpoint accepts the token as ?t=<token> and
+ * serves a 302 redirect to the same GCS URL for any client that cannot use
+ * the `streamUrl` field directly (e.g. older app versions).
  */
 router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) => {
   const gameId = Number(req.params.gameId);
@@ -1961,6 +2000,16 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
   });
   if (!game) return void res.status(404).json({ error: "Game not found" });
 
+  // Validate Pro entitlement BEFORE generating any signed URL or minting any
+  // token.  The signed URL (5 h GCS) is issued directly to the client and
+  // cannot be revoked once sent, so the auth gate must be at issuance time.
+  // A subscription lapse during an active session is handled by the subsequent
+  // entitlement re-check in /stream/:type and revalidateHlsEntitlement.
+  const entitlements = await getEntitlementsForUser(req.appUser!);
+  if (!isPro(entitlements)) {
+    return void res.status(403).json({ error: "Pro subscription required to stream game media" });
+  }
+
   let objectPath: string | null = null;
   if (type === "video") {
     if (!game.videoObjectPath) return void res.status(404).json({ error: "No video available" });
@@ -1975,10 +2024,14 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
       const chunkCount = await getReadyProxyChunkCount(gameId, ownerId, game.videoDurationMs);
       if (chunkCount > 0) {
         // All proxy chunks are ready — issue an HLS token and return the playlist URL.
+        // TTL matches STREAM_SIGNED_URL_TTL_S (5 h) so the HLS token outlasts
+        // the non-HLS stream token (4 h).  This gives HLS the same
+        // post-token-expiry seek window: segment requests remain valid for 1 h
+        // after the stream-token TTL (STREAM_TOKEN_TTL_MS) would have expired.
         const hlsToken = randomUUID();
         streamTokens.set(hlsToken, {
           objectPath: "",
-          expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
+          expiresAt: Date.now() + STREAM_SIGNED_URL_TTL_S * 1000,
           ownerId,
           entitlementOkUntil: Date.now() + STREAM_ENTITLEMENT_RECHECK_MS,
           gameId,
@@ -2012,6 +2065,24 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
 
   if (!objectPath) return void res.status(404).json({ error: "No video available" });
 
+  // Pre-generate the GCS signed URL and return it as `streamUrl` so the mobile
+  // client can give it directly to expo-video/AVPlayer.  This means all seeks
+  // (including Range requests) go to GCS without the player ever contacting the
+  // server again — no 302 redirect-caching ambiguity in AVPlayer.
+  //
+  // TTL: STREAM_SIGNED_URL_TTL_S (5 h) > STREAM_TOKEN_TTL_MS (4 h) so the
+  // URL stays valid for 1 hour after the token expires, preserving the seek
+  // window the task requires.
+  //
+  // Failure is intentionally NOT silent: if the GCS signing fails the token
+  // request fails with 500 so the client gets a clear error instead of a
+  // token without `streamUrl` (which would silently fall back to redirect-
+  // dependent behaviour and break post-expiry seeking).
+  const streamUrl = await objectStorageService.getObjectEntitySignedURL(
+    objectPath,
+    STREAM_SIGNED_URL_TTL_S,
+  );
+
   const token = randomUUID();
   streamTokens.set(token, {
     objectPath,
@@ -2024,6 +2095,9 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     // a leaked token cannot be replayed against a different game or type.
     gameId,
     streamType: type,
+    // Cache the signed URL so /stream/:type can reuse it without a second
+    // GCS signing call.
+    streamUrl,
   });
 
   // proxyReady: true  → URL is an H.264 proxy MP4 (safe on all platforms)
@@ -2036,7 +2110,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
   const MAX_PROXY_BUILD_DURATION_SEC = 900; // must match highlightGenerator.ts
   const durSec = (game.videoDurationMs ?? null) !== null ? (game.videoDurationMs! / 1000) : null;
   const proxySkipped = type === "video" && !proxyReady && durSec !== null && durSec > MAX_PROXY_BUILD_DURATION_SEC;
-  res.json({ token, proxyReady, proxySkipped });
+  res.json({ token, streamUrl, proxyReady, proxySkipped });
 });
 
 /**
@@ -2102,11 +2176,14 @@ router.get("/games/:gameId/stream/:type", async (req, res) => {
     // GCS signed URLs natively support Range requests, so the player can seek
     // freely without any server involvement once it has the URL.
     //
-    // TTL: 3600 s (1 hour) matches the session length of a typical game
-    // highlight/lowlight session.  The token issued by /stream-token/:type is
-    // still the auth gate — this URL is only returned after token validation and
-    // entitlement re-check above.
-    const signedUrl = await objectStorageService.getObjectEntitySignedURL(entry.objectPath, 3600);
+    // Reuse the signed URL that was pre-generated at token-mint time so every
+    // call to this endpoint returns the exact same GCS URL.  This keeps the
+    // URL the mobile client received in the /stream-token response consistent
+    // with any fallback redirect issued here.
+    // Falls back to generating a fresh URL only if the token was minted before
+    // this field was introduced (e.g. during a rolling deploy).
+    const signedUrl = entry.streamUrl
+      ?? await objectStorageService.getObjectEntitySignedURL(entry.objectPath, STREAM_SIGNED_URL_TTL_S);
     res.redirect(302, signedUrl);
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
