@@ -1,0 +1,269 @@
+CLERK_PROXY_URL ? { proxyUrl: CLERK_PROXY_URL } : {})}>'
+);
+fs.writeFileSync(p, c);
+console.log('done');
+"
+done
+stevenstec@Mac hoops-mobile % cd ~/StecStats/artifacts/hoops-mobile
+eas update --channel production --message "fix email sign-in via Clerk proxy"
+✔ Configured runtimeVersion for Android and iOS with "{"policy":"appVersion"}"
+
+All builds of your app going forward will be eligible to receive updates published with EAS Update.
+
+[expo-cli] React Compiler enabled
+[expo-cli] Starting Metro Bundler
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓░░░░░░░░░░░ 36.9% (393/647)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓░░░░░░░░░░░ 37.1% (384/638)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 74.4% (1165/1351)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 69.8% (1092/1307)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 93.1% (1757/1821)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 93.1% (1781/1846)
+[expo-cli] Android Bundling failed 12170ms node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js (1898 modules)
+[expo-cli] SyntaxError: SyntaxError: /Users/stevenstec/StecStats/artifacts/hoops-mobile/app/_layout.tsx: Identifier 'CLERK_PROXY_URL' has already been declared. (262:6)
+[expo-cli] 
+[expo-cli]   260 |   ? 'https://' + process.env.EXPO_PUBLIC_DOMAIN + '/api/__clerk'
+[expo-cli]   261 |   : undefined;
+[expo-cli] > 262 | const CLERK_PROXY_URL = process.env.EXPO_PUBLIC_DOMAIN
+[expo-cli]       |       ^
+[expo-cli]   263 |   ? 'https://' + process.env.EXPO_PUBLIC_DOMAIN + '/api/__clerk'
+[expo-cli]   264 |   : undefined;
+[expo-cli]   265 |
+✖ Export failed
+/Users/stevenstec/StecStats/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo/bin/cli export --output-dir dist --source-maps --dump-assetmap --platform ios --platform android exited with non-zero code: 1
+    Error: update command failed.
+stevenstec@Mac hoops-mobile % node -e "
+const fs = require('fs');
+const p = require('os').homedir() + '/StecStats/artifacts/hoops-mobile/app/_layout.tsx';
+let c = fs.readFileSync(p, 'utf8');
+// Remove the duplicate second declaration
+const marker = \"const CLERK_PROXY_URL = process.env.EXPO_PUBLIC_DOMAIN\";
+const first = c.indexOf(marker);
+const second = c.indexOf(marker, first + 1);
+if (second !== -1) {
+  // Find end of the second declaration (next semicolon line)
+  const end = c.indexOf(': undefined;', second) + ': undefined;'.length;
+  c = c.slice(0, second).trimEnd() + c.slice(end);
+  fs.writeFileSync(p, c);
+  console.log('duplicate removed');
+} else {
+  console.log('no duplicate found');
+}
+"
+duplicate removed
+stevenstec@Mac hoops-mobile % cd ~/StecStats/artifacts/hoops-mobile
+eas update --channel production --message "fix email sign-in via Clerk proxy"
+[expo-cli] React Compiler enabled
+[expo-cli] Starting Metro Bundler
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2122/2123)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.8% (2124/2126)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2123/2123)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2126/2126)
+[expo-cli] iOS Bundled 12415ms node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js (2126 modules)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2123/2123)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2126/2126)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2123/2123)
+[expo-cli] Android Bundled 16102ms node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js (2123 modules)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2123/2123)
+[expo-cli] Creating asset map
+[expo-cli] 
+[expo-cli] › Assets (75):
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/100Thin_Italic/Inter_100Thin_Italic.ttf (347 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/100Thin/Inter_100Thin.ttf (343 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/200ExtraLight_Italic/Inter_200ExtraLight_Italic.ttf (347 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/200ExtraLight/Inter_200ExtraLight.ttf (343 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/300Light_Italic/Inter_300Light_Italic.ttf (347 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/300Light/Inter_300Light.ttf (343 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/400Regular_Italic/Inter_400Regular_Italic.ttf (346 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf (342 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/500Medium_Italic/Inter_500Medium_Italic.ttf (346 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf (343 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/600SemiBold_Italic/Inter_600SemiBold_Italic.ttf (347 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf (344 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/700Bold_Italic/Inter_700Bold_Italic.ttf (348 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf (344 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/800ExtraBold_Italic/Inter_800ExtraBold_Italic.ttf (349 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/800ExtraBold/Inter_800ExtraBold.ttf (345 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/900Black_Italic/Inter_900Black_Italic.ttf (349 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf (345 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/300Light/Teko_300Light.ttf (154 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/400Regular/Teko_400Regular.ttf (155 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/500Medium/Teko_500Medium.ttf (155 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/600SemiBold/Teko_600SemiBold.ttf (155 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/700Bold/Teko_700Bold.ttf (155 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.ttf (130 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Entypo.ttf (66.2 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/EvilIcons.ttf (13.5 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf (55.6 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.ttf (166 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf (134 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf (33.7 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf (203 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Brands.ttf (209 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Regular.ttf (68 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Solid.ttf (424 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Fontisto.ttf (314 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Foundation.ttf (57 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf (390 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf (1.31 MB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf (357 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Octicons.ttf (69.4 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/SimpleLineIcons.ttf (54.1 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Zocial.ttf (25.8 kB)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/back-icon-mask.png (653 B)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/back-icon.png (8 variations | 359 B)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/clear-icon.png (4 variations | 425 B)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/close-icon.png (4 variations | 235 B)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/search-icon.png (7 variations | 592 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/arrow_down.png (9.46 kB)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/error.png (469 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/file.png (138 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/forward.png (188 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/pkg.png (364 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/sitemap.png (465 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/unmatched.png (4.75 kB)
+[expo-cli] assets/images/logo-banner.png (40.2 kB)
+[expo-cli] assets/images/logo.png (87.2 kB)
+[expo-cli] 
+[expo-cli] › ios bundles (2):
+[expo-cli] _expo/static/js/ios/entry-cce03348e00ad4a5b4301a35b02bea41.hbc (5.03 MB)
+[expo-cli] _expo/static/js/ios/entry-cce03348e00ad4a5b4301a35b02bea41.hbc.map (14 MB)
+[expo-cli] 
+[expo-cli] › android bundles (2):
+[expo-cli] _expo/static/js/android/entry-4b410605c9e6e12af2e32151621af747.hbc (5.03 MB)
+[expo-cli] _expo/static/js/android/entry-4b410605c9e6e12af2e32151621af747.hbc.map (14 MB)
+[expo-cli] 
+[expo-cli] › Files (2):
+[expo-cli] assetmap.json (52.2 kB)
+[expo-cli] metadata.json (9.06 kB)
+[expo-cli] 
+[expo-cli] Exported: dist
+✔ Exported bundle(s)
+✔ Uploaded assetmap.json 
+✔ Uploaded 2 app bundles
+✔ Uploaded 2 assets (reused 75 assets)
+ℹ 71 iOS assets, 71 Android assets (maximum: 2000 total per update). Learn more about asset limits: https://expo.fyi/eas-update-asset-limits
+✔ Computed project fingerprints
+✔ Published!
+Branch             production
+Runtime version    1.0.0
+Platform           android, ios
+Update group ID    08917a31-3792-4629-a8d0-f117d9defa1e
+Android update ID  01a0043a-4d93-78dd-9a70-75cc6d827136
+iOS update ID      01a0043a-4d93-7811-9156-79d839c1e4b6
+Message            fix email sign-in via Clerk proxy
+Commit             22b9ed402dfffd9977475bb87edf342035f9978b*
+EAS Dashboard      https://expo.dev/accounts/sstec/projects/hoops-mobile/updates/08917a31-3792-4629-a8d0-f117d9defa1e
+
+stevenstec@Mac hoops-mobile % cd ~/StecStats/artifacts/hoops-mobile
+eas update --channel production --message "fix email sign-in via Clerk proxy"
+[expo-cli] React Compiler enabled
+[expo-cli] Starting Metro Bundler
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓░░░░░░░░░░░ 34.0% (193/452)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓░░░░░░░░░░░░ 29.0% (408/793)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 63.8% (1118/1400)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 66.9% (1372/1709)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 89.4% (1876/1984)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 93.6% (1968/2034)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2123/2123)
+[expo-cli] iOS node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 93.6% (1968/2034)
+[expo-cli] iOS Bundled 15212ms node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js (2034 modules)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2123/2123)
+[expo-cli] Android Bundled 19037ms node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js (2123 modules)
+[expo-cli] Android node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.9% (2123/2123)
+[expo-cli] Creating asset map
+[expo-cli] 
+[expo-cli] › Assets (75):
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/100Thin_Italic/Inter_100Thin_Italic.ttf (347 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/100Thin/Inter_100Thin.ttf (343 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/200ExtraLight_Italic/Inter_200ExtraLight_Italic.ttf (347 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/200ExtraLight/Inter_200ExtraLight.ttf (343 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/300Light_Italic/Inter_300Light_Italic.ttf (347 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/300Light/Inter_300Light.ttf (343 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/400Regular_Italic/Inter_400Regular_Italic.ttf (346 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf (342 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/500Medium_Italic/Inter_500Medium_Italic.ttf (346 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf (343 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/600SemiBold_Italic/Inter_600SemiBold_Italic.ttf (347 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf (344 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/700Bold_Italic/Inter_700Bold_Italic.ttf (348 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf (344 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/800ExtraBold_Italic/Inter_800ExtraBold_Italic.ttf (349 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/800ExtraBold/Inter_800ExtraBold.ttf (345 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/900Black_Italic/Inter_900Black_Italic.ttf (349 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+inter@0.4.2/node_modules/@expo-google-fonts/inter/900Black/Inter_900Black.ttf (345 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/300Light/Teko_300Light.ttf (154 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/400Regular/Teko_400Regular.ttf (155 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/500Medium/Teko_500Medium.ttf (155 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/600SemiBold/Teko_600SemiBold.ttf (155 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo-google-fonts+teko@0.4.1/node_modules/@expo-google-fonts/teko/700Bold/Teko_700Bold.ttf (155 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.ttf (130 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Entypo.ttf (66.2 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/EvilIcons.ttf (13.5 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf (55.6 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.ttf (166 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf (134 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf (33.7 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf (203 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Brands.ttf (209 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Regular.ttf (68 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Solid.ttf (424 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Fontisto.ttf (314 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Foundation.ttf (57 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf (390 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf (1.31 MB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf (357 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Octicons.ttf (69.4 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/SimpleLineIcons.ttf (54.1 kB)
+[expo-cli] ../../node_modules/.pnpm/@expo+vector-icons@15.1.1_expo-font@14.0.12_expo@54.0.36_react-native@0.81.5_@babel+cor_d266f39aad7c1c5e364b87ad89158ff6/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Zocial.ttf (25.8 kB)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/back-icon-mask.png (653 B)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/back-icon.png (8 variations | 359 B)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/clear-icon.png (4 variations | 425 B)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/close-icon.png (4 variations | 235 B)
+[expo-cli] ../../node_modules/.pnpm/@react-navigation+elements@2.9.36_@react-navigation+native@7.3.14_react-native@0.81.5_@_da86912383bc2f270de2c14c65ac3a19/node_modules/@react-navigation/elements/lib/module/assets/search-icon.png (7 variations | 592 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/arrow_down.png (9.46 kB)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/error.png (469 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/file.png (138 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/forward.png (188 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/pkg.png (364 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/sitemap.png (465 B)
+[expo-cli] ../../node_modules/.pnpm/expo-router@6.0.24_5e19a61bb9144e65cab8d794dfb70a63/node_modules/expo-router/assets/unmatched.png (4.75 kB)
+[expo-cli] assets/images/logo-banner.png (40.2 kB)
+[expo-cli] assets/images/logo.png (87.2 kB)
+[expo-cli] 
+[expo-cli] › ios bundles (2):
+[expo-cli] _expo/static/js/ios/entry-cce03348e00ad4a5b4301a35b02bea41.hbc (5.03 MB)
+[expo-cli] _expo/static/js/ios/entry-cce03348e00ad4a5b4301a35b02bea41.hbc.map (14 MB)
+[expo-cli] 
+[expo-cli] › android bundles (2):
+[expo-cli] _expo/static/js/android/entry-4b410605c9e6e12af2e32151621af747.hbc (5.03 MB)
+[expo-cli] _expo/static/js/android/entry-4b410605c9e6e12af2e32151621af747.hbc.map (14 MB)
+[expo-cli] 
+[expo-cli] › Files (2):
+[expo-cli] assetmap.json (52.2 kB)
+[expo-cli] metadata.json (9.06 kB)
+[expo-cli] 
+[expo-cli] Exported: dist
+✔ Exported bundle(s)
+✔ Uploaded assetmap.json 
+✔ Uploaded 2 app bundles
+✔ Uploading assets skipped - no new assets found
+ℹ 71 iOS assets, 71 Android assets (maximum: 2000 total per update). Learn more about asset limits: https://expo.fyi/eas-update-asset-limits
+✔ Computed project fingerprints
+✔ Published!
+Branch             production
+Runtime version    1.0.0
+Platform           android, ios
+Update group ID    62c46d08-752b-4d16-8a6e-65959ea68b43
+Android update ID  01a0043c-17c1-7378-9809-c57301e92f8e
+iOS update ID      01a0043c-17c1-7153-a4e2-f3f279b7ad02
+Message            fix email sign-in via Clerk proxy
+Commit             22b9ed402dfffd9977475bb87edf342035f9978b*
+EAS Dashboard      https://expo.dev/accounts/sstec/projects/hoops-mobile/updates/62c46d08-752b-4d16-8a6e-65959ea68b43
+
+stevenstec@Mac hoops-mobile % 
