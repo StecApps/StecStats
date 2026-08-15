@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
-import { getAuth, clerkClient, verifyToken } from "@clerk/express";
-import { createPublicKey } from "crypto";
+import { getAuth, clerkClient } from "@clerk/express";
+import { createPublicKey, createVerify } from "crypto";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
 
@@ -66,12 +66,21 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         const jwk = jwks.keys.find((k) => k["kid"] === kid);
         if (!jwk) throw new Error(`No JWK found for kid=${kid}`);
 
-        // Convert JWK → PEM so verifyToken can use it as jwtKey.
-        const pem = createPublicKey({ key: jwk as any, format: "jwk" })
-          .export({ type: "spki", format: "pem" }) as string;
+        // Manual RS256 signature verification — bypass Clerk's verifyToken
+        // entirely so its iss-check against CLERK_PUBLISHABLE_KEY (the live
+        // instance) can't interfere with tokens from immortal-swan-47.
+        const publicKey = createPublicKey({ key: jwk as any, format: "jwk" });
+        const signerInput = `${parts[0]}.${parts[1]}`;
+        const sigBuffer = Buffer.from(parts[2]!, "base64url");
+        const verifier = createVerify("SHA256");
+        verifier.update(signerInput);
+        const signatureValid = verifier.verify(publicKey, sigBuffer);
+        if (!signatureValid) throw new Error("Invalid signature");
 
-        const payload = await verifyToken(token, { jwtKey: pem });
-        clerkUserId = payload.sub ?? null;
+        // Validate standard claims manually.
+        if ((jwtBody.exp ?? 0) < Date.now() / 1000) throw new Error("Token expired");
+
+        clerkUserId = typeof jwtBody.sub === "string" ? jwtBody.sub : null;
         if (clerkUserId) {
           req.log?.info(
             { clerkUserId: clerkUserId.slice(0, 14) + "…", iss },
