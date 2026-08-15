@@ -31,6 +31,7 @@ import { gte } from "drizzle-orm";
 import {
   countEligibleMomentsForTeam,
   generateTeamHighlight,
+  maybeSendTeamHighlightNotification,
   GENERATOR_VERSION,
   PROXY_VERSION,
   MAX_PROXY_BUILD_DURATION_SEC,
@@ -439,6 +440,14 @@ router.get("/teams/:teamId/highlight", requireAuth, async (req, res) => {
         highlightStartedAt: null,
       })
       .where(eq(teamsTable.id, teamId));
+  }
+
+  // Post-restart recovery: reel finished but server died before the flag write.
+  // Fire the notification now so coaches aren't silently skipped.
+  // maybeSendTeamHighlightNotification is idempotent (checks the flag itself),
+  // so calling it here is safe even if the flag was already set.
+  if (highlightStatus === "ready" && !team.highlightNotificationSent) {
+    void maybeSendTeamHighlightNotification(team);
   }
 
   const eligibleMoments = await countEligibleMomentsForTeam(teamId);

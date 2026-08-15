@@ -4,7 +4,7 @@ import { pipeline } from "stream/promises";
 import { randomUUID } from "crypto";
 import os from "os";
 import path from "path";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   db,
   gamesTable,
@@ -2957,12 +2957,21 @@ export async function maybeSendGameLowlightNotification(
 
 /**
  * Send a "highlights ready" push notification to the team owner — but only if
- * the notification has not already been sent for the current reel
- * (`highlightNotificationSent` is false/null). Marks the flag true after
- * sending so repeated calls are idempotent.
+ * the notification has not already been sent for the current reel.
+ *
+ * Uses an atomic DB claim (UPDATE … WHERE highlightNotificationSent = false
+ * RETURNING id) so concurrent callers (e.g. parallel GET /highlight polls after
+ * a server restart) never both send the notification: exactly one claimant sees
+ * a non-empty RETURNING set and proceeds; all others exit immediately.
+ *
+ * Delivery policy: at-most-once. If sendExpoPush throws after a successful
+ * claim the flag stays true and the coach does not receive a second attempt.
+ * This is intentional — a duplicate notification is worse than a missed one
+ * for this use-case.
  *
  * Exported for unit testing. Called by generateTeamHighlight after the reel
- * has been successfully written to storage.
+ * has been successfully written to storage, and by GET /teams/:teamId/highlight
+ * as post-restart recovery when the reel is ready but the flag was never set.
  */
 export async function maybeSendTeamHighlightNotification(
   team: Pick<
@@ -2970,8 +2979,27 @@ export async function maybeSendTeamHighlightNotification(
     "id" | "name" | "ownerId" | "highlightNotificationSent"
   >,
 ): Promise<void> {
+  // Fast path: avoid a DB round-trip when the in-memory snapshot already
+  // shows the flag is set (covers the common steady-state case).
   if (team.highlightNotificationSent || team.ownerId == null) return;
   try {
+    // Atomic claim: flip the flag only when it is still false/null in the DB.
+    // The column is nullable (legacy rows may have NULL rather than false), so
+    // the predicate covers both: `flag = false OR flag IS NULL`.
+    // Concurrent callers both read highlightNotificationSent=false/null but
+    // only the one whose UPDATE matches the row proceeds; the rest get 0 rows.
+    const claimed = await db
+      .update(teamsTable)
+      .set({ highlightNotificationSent: true })
+      .where(
+        and(
+          eq(teamsTable.id, team.id),
+          or(eq(teamsTable.highlightNotificationSent, false), isNull(teamsTable.highlightNotificationSent)),
+        ),
+      )
+      .returning({ id: teamsTable.id });
+    if (claimed.length === 0) return; // another caller already claimed it
+
     const userRow = await db.query.usersTable.findFirst({
       where: eq(usersTable.id, team.ownerId),
     });
@@ -2983,10 +3011,6 @@ export async function maybeSendTeamHighlightNotification(
         channelId: "highlights",
       });
     }
-    await db
-      .update(teamsTable)
-      .set({ highlightNotificationSent: true })
-      .where(eq(teamsTable.id, team.id));
   } catch (notifyErr) {
     logger.warn({ err: notifyErr, teamId: team.id }, "Failed to send highlight push notification");
   }
