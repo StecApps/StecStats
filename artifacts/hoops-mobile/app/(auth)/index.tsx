@@ -71,9 +71,11 @@ export default function AuthScreen() {
       if (!credential.identityToken) throw new Error('No identity token returned from Apple');
 
       // Attempt sign-in for returning users
+      // nonce must be forwarded to Clerk so it can verify SHA256(nonce) in Apple's identity token
       const signInResult = await signIn!.create({
         strategy: 'oauth_token_apple',
         token: credential.identityToken,
+        nonce,
       } as any);
 
       const isTransferable = signInResult.firstFactorVerification?.status === 'transferable';
