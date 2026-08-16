@@ -1,0 +1,85 @@
+stevenstec@Mac StecStats % cd ~/StecStats
+pnpm install
+eas build --platform ios --profile production --local
+Scope: all 11 workspace projects
+artifacts/hoops-stats                    |  WARN  deprecated recharts@2.15.4
+artifacts/hoops-mobile                   |  WARN  deprecated @clerk/clerk-expo@2.19.31
+ WARN  13 deprecated subdependencies found: @clerk/clerk-react@5.61.3, @clerk/types@4.101.20, abab@2.0.6, domexception@4.0.0, fstream@1.0.12, glob@10.5.0, glob@7.2.3, inflight@1.0.6, lodash.isequal@4.5.0, node-domexception@1.0.0, rimraf@2.7.1, rimraf@3.0.2, whatwg-encoding@2.0.0
+Packages: +19 -4
++++++++++++++++++++----
+Progress: resolved 1612, reused 1606, downloaded 0, added 19, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 18ms
+ WARN  Issues with peer dependencies found
+artifacts/hoops-mobile
+├─┬ @testing-library/react-native 14.0.1
+│ └── ✕ missing peer test-renderer@^1.0.0
+└─┬ @clerk/clerk-expo 2.19.31
+  ├─┬ @clerk/clerk-js 5.127.1
+  │ ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+  │ ├── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+  │ ├─┬ @solana/wallet-adapter-base 0.9.27
+  │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+  │ ├─┬ @solana/wallet-standard 1.1.4
+  │ │ └─┬ @solana/wallet-standard-wallet-adapter 1.1.5
+  │ │   ├─┬ @solana/wallet-standard-wallet-adapter-react 1.1.5
+  │ │   │ └─┬ @solana/wallet-standard-wallet-adapter-base 1.1.5
+  │ │   │   ├── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │   │   ├── ✕ missing peer bs58@^6.0.0
+  │ │   │   └─┬ @solana/wallet-adapter-base 0.9.27
+  │ │   │     └── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │   └─┬ @solana/wallet-standard-wallet-adapter-base 1.1.5
+  │ │     ├── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │     └── ✕ missing peer bs58@^6.0.0
+  │ ├─┬ @solana/wallet-adapter-react 0.15.39
+  │ │ ├── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │ ├─┬ @solana/wallet-adapter-base 0.9.27
+  │ │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │ ├─┬ @solana-mobile/wallet-adapter-mobile 2.2.9
+  │ │ │ ├── ✕ missing peer @solana/web3.js@^1.98.4
+  │ │ │ ├─┬ @solana/wallet-adapter-base 0.9.27
+  │ │ │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │ │ └─┬ @solana-mobile/mobile-wallet-adapter-protocol-web3js 2.2.9
+  │ │ │   └── ✕ missing peer @solana/web3.js@^1.98.4
+  │ │ └─┬ @solana/wallet-standard-wallet-adapter-react 1.1.5
+  │ │   ├── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │   └── ✕ missing peer bs58@^6.0.0
+  │ └─┬ @clerk/localizations 3.37.8
+  │   └─┬ @clerk/types 4.101.26
+  │     └─┬ @clerk/shared 3.47.8
+  │       ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+  │       └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+  └─┬ @clerk/clerk-react 5.61.3
+    ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+    └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+Peer dependencies that should be installed:
+  @solana/web3.js@">=1.98.4 <2.0.0-0"  test-renderer@^1.0.0                 
+  bs58@">=6.0.0 <7.0.0-0"
+
+artifacts/hoops-stats
+├─┬ @clerk/backend 3.11.6
+│ └─┬ @clerk/shared 4.25.4
+│   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+│   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+├─┬ @clerk/react 6.11.3
+│ ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+│ ├── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+│ └─┬ @clerk/shared 4.23.0
+│   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+│   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+└─┬ @clerk/themes 2.4.57
+  └─┬ @clerk/shared 3.47.7
+    ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+    └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+Done in 2.3s using pnpm v10.26.1
+
+⚠️ Detected that your app uses Expo Go for development, this is not recommended when building production apps.
+Learn more: https://expo.fyi/why-not-build-expo-go-for-production
+To suppress this warning, set EAS_BUILD_NO_EXPO_GO_WARNING=true.
+
+Resolved "production" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+No environment variables with visibility "Plain text" and "Sensitive" found for the "production" environment on EAS.
+
+Failed to resolve iOS entitlements from Expo config using the bundled config fallback: Cannot find 'expo-modules-autolinking' package in your project, make sure that you have 'expo' package installed
+    Error: build command failed.
+stevenstec@Mac StecStats % 
