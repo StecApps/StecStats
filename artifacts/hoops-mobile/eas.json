@@ -39,6 +39,7 @@
         "APP_ENV": "production",
         "EXPO_PUBLIC_DOMAIN": "stecstats.com",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuc3RlY3N0YXRzLnN0ZWNjby5vcmck",
+        "EXPO_PUBLIC_CLERK_PROXY_URL": "https://stecstats.com/api/__clerk",
         "EXPO_PUBLIC_REVENUECAT_IOS_API_KEY": "appl_TTSbkcTluVOVtQXJqgLnFCOMFCe",
         "EXPO_PUBLIC_REVENUECAT_TEST_API_KEY": "test_NZPfECrhWMDtLkTfETBTxCaLznB"
       }
