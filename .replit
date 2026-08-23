@@ -48,11 +48,3 @@ STRIPE_WEBHOOK_BASE_URL = "https://stecstats.com"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-f1eb7a0b-6a3e-447a-8144-8ac17c074ecd"
-
-[[ports]]
-localPort = 8080
-externalPort = 8080
-
-[[ports]]
-localPort = 20095
-externalPort = 3000
