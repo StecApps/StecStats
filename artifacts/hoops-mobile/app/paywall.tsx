@@ -32,7 +32,6 @@ export default function PaywallScreen() {
   const { offerings, purchase, restore, isPurchasing, isRestoring, isPro, isPremium, configured, isLoading } =
     useSubscription();
 
-  const [selectedPkg, setSelectedPkg] = useState<any | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('annual');
   const [isVerifying, setIsVerifying] = useState(false);
 
@@ -42,9 +41,11 @@ export default function PaywallScreen() {
   const currentOffering = offerings?.current;
   const packages = currentOffering?.availablePackages ?? [];
 
-  // Separate monthly / annual packages from RevenueCat
-  const monthlyPkg = packages.find((p: any) => p.packageType === '$rc_monthly') ?? packages[0] ?? null;
-  const annualPkg  = packages.find((p: any) => p.packageType === '$rc_annual') ?? null;
+  // Separate monthly / annual packages from RevenueCat.
+  // Use `identifier` (e.g. '$rc_monthly') not `packageType` (e.g. 'MONTHLY') — the SDK
+  // uses the enum string for packageType, not the identifier string.
+  const monthlyPkg = packages.find((p: any) => p.identifier === '$rc_monthly') ?? packages[0] ?? null;
+  const annualPkg  = packages.find((p: any) => p.identifier === '$rc_annual') ?? null;
   const hasAnnual  = !!annualPkg;
 
   // Pick active package based on toggle; default to annual when available
@@ -68,16 +69,11 @@ export default function PaywallScreen() {
     return saved > 0 ? `Save ${saved}%` : null;
   })();
 
-  // Pre-select on load; re-select when period changes
-  useEffect(() => {
-    if (activePkg) setSelectedPkg(activePkg);
-  }, [billingPeriod, packages.length]);
-
   async function handlePurchase() {
-    if (!selectedPkg) return;
+    if (!activePkg) return;
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await purchase(selectedPkg);
+      await purchase(activePkg);
       // Invalidate the server-side billing status in parallel.
       queryClient.invalidateQueries({ queryKey: getGetBillingStatusQueryKey() });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
