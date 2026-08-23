@@ -29,7 +29,7 @@ export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { offerings, purchase, restore, isPurchasing, isRestoring, isPro, isPremium, configured } =
+  const { offerings, purchase, restore, isPurchasing, isRestoring, isPro, isPremium, configured, isLoading } =
     useSubscription();
 
   const [selectedPkg, setSelectedPkg] = useState<any | null>(null);
@@ -234,20 +234,22 @@ export default function PaywallScreen() {
               <Text style={[styles.tierName, { color: colors.primary }]}>PRO</Text>
             </View>
             {configured ? (
-              billingPeriod === 'annual' && annualMonthlyEquiv ? (
+              isLoading ? (
+                <ActivityIndicator size="small" color={colors.foreground} />
+              ) : billingPeriod === 'annual' && annualMonthlyEquiv ? (
                 <Text style={[styles.tierPriceSub, { color: colors.mutedForeground, textAlign: 'right' }]}>
                   <Text style={[styles.tierPrice, { color: colors.foreground }]}>{annualMonthlyEquiv}</Text>
                   {' / mo\n'}
                   <Text style={{ fontSize: 12 }}>{proPrice} billed annually</Text>
                 </Text>
-              ) : (
+              ) : activePkg ? (
                 <Text style={[styles.tierPrice, { color: colors.foreground }]}>
                   {proPrice}{' '}
                   <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>
                     / month
                   </Text>
                 </Text>
-              )
+              ) : null
             ) : (
               <Text style={[styles.tierPrice, { color: colors.foreground }]}>
                 $9.99 <Text style={[styles.tierPriceSub, { color: colors.mutedForeground }]}>/ month</Text>
@@ -263,18 +265,35 @@ export default function PaywallScreen() {
           ))}
 
           {configured ? (
-            <TouchableOpacity
-              onPress={handlePurchase}
-              disabled={isPurchasing}
-              activeOpacity={0.8}
-              style={[styles.proCta, { backgroundColor: colors.primary, opacity: isPurchasing ? 0.7 : 1 }]}
-            >
-              {isPurchasing ? (
+            isLoading ? (
+              <View style={[styles.proCta, { backgroundColor: colors.primary, opacity: 0.7 }]}>
                 <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.proCtaText}>Start Free Trial</Text>
-              )}
-            </TouchableOpacity>
+              </View>
+            ) : activePkg ? (
+              <TouchableOpacity
+                onPress={handlePurchase}
+                disabled={isPurchasing}
+                activeOpacity={0.8}
+                style={[styles.proCta, { backgroundColor: colors.primary, opacity: isPurchasing ? 0.7 : 1 }]}
+              >
+                {isPurchasing ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.proCtaText}>Start Free Trial</Text>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={{ gap: 4 }}>
+                <View style={[styles.proCta, { backgroundColor: colors.muted, opacity: 0.8 }]}>
+                  <Text style={[styles.proCtaText, { color: colors.mutedForeground }]}>
+                    Subscriptions Unavailable
+                  </Text>
+                </View>
+                <Text style={[styles.unconfiguredNote, { color: colors.mutedForeground }]}>
+                  In-app purchases are not available right now. Please try again later or contact support.
+                </Text>
+              </View>
+            )
           ) : (
             <View style={{ gap: 4 }}>
               <View style={[styles.proCta, { backgroundColor: colors.muted, opacity: 0.8 }]}>
