@@ -489,7 +489,19 @@ export default function ProfileScreen() {
       <ProfileRow
         icon="shield-checkmark-outline"
         label="Privacy Policy"
-        onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/privacy`)}
+        onPress={() => {
+          const domain = process.env.EXPO_PUBLIC_DOMAIN ?? 'stecstats.com';
+          WebBrowser.openBrowserAsync(`https://${domain}/privacy`);
+        }}
+        colors={colors}
+      />
+      <ProfileRow
+        icon="document-text-outline"
+        label="Terms of Use"
+        onPress={() => {
+          const domain = process.env.EXPO_PUBLIC_DOMAIN ?? 'stecstats.com';
+          WebBrowser.openBrowserAsync(`https://${domain}/terms`);
+        }}
         colors={colors}
       />
 
