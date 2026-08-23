@@ -1,0 +1,496 @@
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCTRequired
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCTTypeSafety
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReactCommon
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-NativeModulesApple
+[INSTALL_PODS] [Expo] Enabling modular headers for pod Yoga
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-Fabric
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-graphics
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-utils
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-featureflags
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-debug
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-ImageManager
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-rendererdebug
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-jsi
+[INSTALL_PODS] [Expo] Enabling modular headers for pod React-renderercss
+[INSTALL_PODS] [Expo] Enabling modular headers for pod hermes-engine
+[INSTALL_PODS] [Expo] Enabling modular headers for pod glog
+[INSTALL_PODS] [Expo] Enabling modular headers for pod boost
+[INSTALL_PODS] [Expo] Enabling modular headers for pod DoubleConversion
+[INSTALL_PODS] [Expo] Enabling modular headers for pod fast_float
+[INSTALL_PODS] [Expo] Enabling modular headers for pod fmt
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RCT-Folly
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SocketRocket
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ZXingObjC
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImage
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageAVIFCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageSVGCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod SDWebImageWebPCoder
+[INSTALL_PODS] [Expo] Enabling modular headers for pod libavif
+[INSTALL_PODS] [Expo] Enabling modular headers for pod RNScreens
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXStructuredHeaders
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXUpdatesInterface
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EXManifests
+[INSTALL_PODS] [Expo] Enabling modular headers for pod EASClient
+[INSTALL_PODS] [Expo] Enabling modular headers for pod ReachabilitySwift
+[INSTALL_PODS] Found 11 modules for target `StecStats`
+[INSTALL_PODS] link_native_modules! {ios_packages: [{configurations: [], name: "expo", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo", path: "../../../node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo/Expo.podspec", script_phases: []}, {configurations: [], name: "react-native-purchases", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases", path: "../../../node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases/RNPurchases.podspec", script_phases: []}, {configurations: [], name: "react-native-webrtc", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc", path: "../../../node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc/react-native-webrtc.podspec", script_phases: []}, {configurations: [], name: "@react-native-async-storage/async-storage", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage", path: "../../../node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage/RNCAsyncStorage.podspec", script_phases: []}, {configurations: [], name: "react-native-gesture-handler", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler", path: "../../../node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler/RNGestureHandler.podspec", script_phases: []}, {configurations: [], name: "react-native-keyboard-controller", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller", path: "../../../node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller/react-native-keyboard-controller.podspec", script_phases: []}, {configurations: [], name: "react-native-reanimated", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated", path: "../../../node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated/RNReanimated.podspec", script_phases: []}, {configurations: [], name: "react-native-safe-area-context", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context", path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec", script_phases: []}, {configurations: [], name: "react-native-screens", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens", path: "../../../node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens/RNScreens.podspec", script_phases: []}, {configurations: [], name: "react-native-svg", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg", path: "../../../node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg/RNSVG.podspec", script_phases: []}, {configurations: [], name: "react-native-worklets", root: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets", path: "../../../node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets", podspec_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets/RNWorklets.podspec", script_phases: []}], ios_project_root_path: "/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios", react_native_path: "../../../node_modules/.pnpm/react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0/node_modules/react-native"}
+[INSTALL_PODS] Auto-linking React Native modules for target `StecStats`: RNCAsyncStorage, RNGestureHandler, RNPurchases, RNReanimated, RNSVG, RNScreens, RNWorklets, react-native-keyboard-controller, react-native-safe-area-context, and react-native-webrtc
+[INSTALL_PODS] Framework build type is static library
+[INSTALL_PODS] [ReactNativeDependencies] Setting up ReactNativeDependencies...
+[INSTALL_PODS] [ReactNativeDependencies] Building from source: false
+[INSTALL_PODS] [ReactNativeDependencies] Using release tarball
+[INSTALL_PODS] [ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz
+[INSTALL_PODS] % Total    % Received % Xferd  Average Speed   Ti
+[INSTALL_PODS] me    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 48 18.3M   48 9091k    0     0  23.1M      0 --:--:--
+[INSTALL_PODS] --:--:-- --:--:-- 23.1M
+[INSTALL_PODS] 100 18.3M  100 18.3M    0     0  36.3M      0 --:
+[INSTALL_PODS] --:-- --:--:-- --:--:-- 36.4M
+[INSTALL_PODS] % Total    % Received % Xferd  Averag
+[INSTALL_PODS] e Speed   Time    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 100  9.9M  100  9.9M
+[INSTALL_PODS] 0     0  25.0M      0 --:--:-- --:--:-- --:--:-- 25.0M
+[INSTALL_PODS] [ReactNativeDependencies] Source: {http: "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz"}
+[INSTALL_PODS] [ReactNativeCore] Setting up ReactNativeCore...
+[INSTALL_PODS] [ReactNativeCore] Building from source: false
+[INSTALL_PODS] [ReactNativeCore] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz
+[INSTALL_PODS] % Total    % Received % Xfer
+[INSTALL_PODS] d  Average Speed   Time    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 6 78.5M    6 5466k    0     0  16.5M
+[INSTALL_PODS] 0  0:00:04 --:--:--  0:00:04 16.5M
+[INSTALL_PODS] 63 78.5M   63 49.9M    0     0  38.0M      0  0:00:02  0
+[INSTALL_PODS] :00:01  0:00:01 38.0M
+[INSTALL_PODS] 100 78.5M  100 78.5M    0     0  40.9M      0  0:00:01
+[INSTALL_PODS] 0:00:01 --:--:-- 40.9M
+[INSTALL_PODS] % Total    % Received % Xferd  Average
+[INSTALL_PODS] Speed   Time    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 35 26.3M   35 9534k    0     0  25.8M      0
+[INSTALL_PODS] 0:00:01 --:--:--  0:00:01 25.7M
+[INSTALL_PODS] 100 26.3M  100 26.3M    0     0  44.8M      0
+[INSTALL_PODS] --:--:-- --:--:-- --:--:-- 44.8M
+[INSTALL_PODS] [ReactNativeCore] Source: {http: "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz"}
+[INSTALL_PODS] Configuring the target with the New Architecture
+[INSTALL_PODS] [ReactNativeCore] Using React Native Core and React Native Dependencies prebuilt versions.
+[INSTALL_PODS] [Codegen] Analyzing /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/package.json
+[INSTALL_PODS] [Codegen] Searching for codegen-enabled libraries in the app.
+[INSTALL_PODS] [Codegen] The "codegenConfig" field is not defined in package.json. Assuming there is nothing to generate at the app level.
+[INSTALL_PODS] [Codegen] Searching for codegen-enabled libraries in react-native.config.js
+[INSTALL_PODS] [Codegen] Found @react-native-async-storage/async-storage
+[INSTALL_PODS] [Codegen] Found react-native-gesture-handler
+[INSTALL_PODS] [Codegen] Found react-native-keyboard-controller
+[INSTALL_PODS] [Codegen] Found react-native-reanimated
+[INSTALL_PODS] [Codegen] Found react-native-safe-area-context
+[INSTALL_PODS] [Codegen] Found react-native-screens
+[INSTALL_PODS] [Codegen] Found react-native-svg
+[INSTALL_PODS] [Codegen] Found react-native-worklets
+[INSTALL_PODS] [Codegen] Processing rnasyncstorage
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnasyncstorage
+[INSTALL_PODS] [Codegen] Processing rngesturehandler_codegen
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rngesturehandler_codegen
+[INSTALL_PODS] [Codegen] Processing reactnativekeyboardcontroller
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios for reactnativekeyboardcontroller
+[INSTALL_PODS] [Codegen] Processing rnreanimated
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnreanimated
+[INSTALL_PODS] [Codegen] Processing safeareacontext
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for safeareacontext
+[INSTALL_PODS] [Codegen] Processing rnscreens
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, tvos, visionos for rnscreens
+[INSTALL_PODS] [Codegen] Processing rnsvg
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnsvg
+[INSTALL_PODS] [Codegen] Processing rnworklets
+[INSTALL_PODS] [Codegen] Searching for podspec in the project dependencies.
+[INSTALL_PODS] [Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnworklets
+[INSTALL_PODS] [Codegen] Generating Native Code for rnasyncstorage - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rngesturehandler_codegen - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for reactnativekeyboardcontroller - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnreanimated - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for safeareacontext - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnscreens - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnsvg - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating Native Code for rnworklets - ios
+[INSTALL_PODS] [Codegen] Generated artifacts: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios
+[INSTALL_PODS] [Codegen] Generating RCTThirdPartyComponentsProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.h
+[INSTALL_PODS] [Codegen] Generating RCTThirdPartyComponentsProvider.mm
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.mm
+[INSTALL_PODS] [Codegen] Generating RCTModulesProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.h
+[INSTALL_PODS] [Codegen] Generating RCTModuleProviders.mm
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.mm
+[INSTALL_PODS] [Codegen] Generating RCTAppDependencyProvider
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.h
+[INSTALL_PODS] [Codegen] Generated artifact: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.mm
+[INSTALL_PODS] [Codegen] Generated podspec: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios/ReactAppDependencyProvider.podspec
+[INSTALL_PODS] [Codegen] Generated podspec: /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/build/generated/ios/ReactCodegen.podspec
+[INSTALL_PODS] [Codegen] Done.
+[INSTALL_PODS] Analyzing dependencies
+[INSTALL_PODS] Fetching podspec for `React-Core-prebuilt` from `../../../node_modules/.pnpm/react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0/node_modules/react-native/React-Core-prebuilt.podspec`
+[INSTALL_PODS] [ReactNativeCore] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz
+[INSTALL_PODS] Fetching podspec for `ReactNativeDependencies` from `../../../node_modules/.pnpm/react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0/node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`
+[INSTALL_PODS] [ReactNativeDependencies] Using release tarball
+[INSTALL_PODS] [ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz
+[INSTALL_PODS] Fetching podspec for `hermes-engine` from `../../../node_modules/.pnpm/react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0/node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`
+[INSTALL_PODS] [Hermes] Using release tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-hermes-ios-debug.tar.gz
+[INSTALL_PODS] % Total    % Received % Xferd
+[INSTALL_PODS] Average Speed   Time    Time     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 64 29.0M   64 18
+[INSTALL_PODS] .7M    0     0  38.0M      0 --:--:-- --:--:-- --:--:-- 38.0M
+[INSTALL_PODS] 100 29.0M  100 29.0M    0     0  44.8M      0 --:--:-- --:--:
+[INSTALL_PODS] -- --:--:-- 44.8M
+[INSTALL_PODS] % Total    % Received % Xferd  Average Speed   Time    T
+[INSTALL_PODS] ime     Time  Current
+[INSTALL_PODS]                                  Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+[INSTALL_PODS] 100 20.3M  100 20.3M    0     0  35.7M
+[INSTALL_PODS] 0 --:--:-- --:--:-- --:--:-- 35.8M
+[INSTALL_PODS] Downloading dependencies
+[INSTALL_PODS] Installing EASClient (1.0.8)
+[INSTALL_PODS] Installing EXApplication (7.0.8)
+[INSTALL_PODS] Installing EXConstants (18.0.13)
+[INSTALL_PODS] Installing EXImageLoader (6.0.0)
+[INSTALL_PODS] Installing EXJSONUtils (0.15.0)
+[INSTALL_PODS] Installing EXManifests (1.0.11)
+[INSTALL_PODS] Installing EXNotifications (0.32.17)
+[INSTALL_PODS] Installing EXStructuredHeaders (5.0.0)
+[INSTALL_PODS] Installing EXUpdates (29.0.19)
+[INSTALL_PODS] Installing EXUpdatesInterface (2.0.0)
+[INSTALL_PODS] Installing Expo (54.0.36)
+[INSTALL_PODS] Installing ExpoAppleAuthentication (8.0.8)
+[INSTALL_PODS] Installing ExpoAsset (12.0.13)
+[INSTALL_PODS] Installing ExpoBlur (15.0.8)
+[INSTALL_PODS] Installing ExpoCamera (17.0.10)
+[INSTALL_PODS] Installing ExpoCrypto (15.0.9)
+[INSTALL_PODS] Installing ExpoFileSystem (19.0.23)
+[INSTALL_PODS] Installing ExpoFont (14.0.12)
+[INSTALL_PODS] Installing ExpoGlassEffect (0.1.10)
+[INSTALL_PODS] Installing ExpoHaptics (15.0.8)
+[INSTALL_PODS] Installing ExpoHead (6.0.24)
+[INSTALL_PODS] Installing ExpoImage (3.0.11)
+[INSTALL_PODS] Installing ExpoImagePicker (17.0.11)
+[INSTALL_PODS] Installing ExpoKeepAwake (15.0.8)
+[INSTALL_PODS] Installing ExpoLinearGradient (15.0.8)
+[INSTALL_PODS] Installing ExpoLinking (8.0.12)
+[INSTALL_PODS] Installing ExpoLocation (19.0.8)
+[INSTALL_PODS] Installing ExpoModulesCore (3.0.30)
+[INSTALL_PODS] Installing ExpoSecureStore (15.0.8)
+[INSTALL_PODS] Installing ExpoSplashScreen (31.0.13)
+[INSTALL_PODS] Installing ExpoSymbols (1.0.8)
+[INSTALL_PODS] Installing ExpoSystemUI (6.0.9)
+[INSTALL_PODS] Installing ExpoVideo (3.0.16)
+[INSTALL_PODS] Installing ExpoWebBrowser (15.0.11)
+[INSTALL_PODS] Installing FBLazyVector (0.81.5)
+[INSTALL_PODS] Installing JitsiWebRTC (124.0.2)
+[INSTALL_PODS] Installing PurchasesHybridCommon (18.28.0)
+[INSTALL_PODS] Installing RCTDeprecation (0.81.5)
+[INSTALL_PODS] Installing RCTRequired (0.81.5)
+[INSTALL_PODS] Installing RCTTypeSafety (0.81.5)
+[INSTALL_PODS] Installing RNCAsyncStorage (2.2.0)
+[INSTALL_PODS] Installing RNGestureHandler (2.28.0)
+[INSTALL_PODS] Installing RNPurchases (10.6.0)
+[INSTALL_PODS] Installing RNReanimated (4.1.7)
+[INSTALL_PODS] Installing RNSVG (15.12.1)
+[INSTALL_PODS] Installing RNScreens (4.16.0)
+[INSTALL_PODS] Installing RNWorklets (0.5.1)
+[INSTALL_PODS] Installing ReachabilitySwift (5.2.4)
+[INSTALL_PODS] Installing React (0.81.5)
+[INSTALL_PODS] Installing React-Core (0.81.5)
+[INSTALL_PODS] Installing React-Core-prebuilt (0.81.5)
+[INSTALL_PODS] Installing React-CoreModules (0.81.5)
+[INSTALL_PODS] Installing React-Fabric (0.81.5)
+[INSTALL_PODS] Installing React-FabricComponents (0.81.5)
+[INSTALL_PODS] Installing React-FabricImage (0.81.5)
+[INSTALL_PODS] Installing React-ImageManager (0.81.5)
+[INSTALL_PODS] Installing React-Mapbuffer (0.81.5)
+[INSTALL_PODS] Installing React-NativeModulesApple (0.81.5)
+[INSTALL_PODS] Installing React-RCTActionSheet (0.81.5)
+[INSTALL_PODS] Installing React-RCTAnimation (0.81.5)
+[INSTALL_PODS] Installing React-RCTAppDelegate (0.81.5)
+[INSTALL_PODS] Installing React-RCTBlob (0.81.5)
+[INSTALL_PODS] Installing React-RCTFBReactNativeSpec (0.81.5)
+[INSTALL_PODS] Installing React-RCTFabric (0.81.5)
+[INSTALL_PODS] Installing React-RCTImage (0.81.5)
+[INSTALL_PODS] Installing React-RCTLinking (0.81.5)
+[INSTALL_PODS] Installing React-RCTNetwork (0.81.5)
+[INSTALL_PODS] Installing React-RCTRuntime (0.81.5)
+[INSTALL_PODS] Installing React-RCTSettings (0.81.5)
+[INSTALL_PODS] Installing React-RCTText (0.81.5)
+[INSTALL_PODS] Installing React-RCTVibration (0.81.5)
+[INSTALL_PODS] Installing React-RuntimeApple (0.81.5)
+[INSTALL_PODS] Installing React-RuntimeCore (0.81.5)
+[INSTALL_PODS] Installing React-RuntimeHermes (0.81.5)
+[INSTALL_PODS] Installing React-callinvoker (0.81.5)
+[INSTALL_PODS] Installing React-cxxreact (0.81.5)
+[INSTALL_PODS] Installing React-debug (0.81.5)
+[INSTALL_PODS] Installing React-defaultsnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-domnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-featureflags (0.81.5)
+[INSTALL_PODS] Installing React-featureflagsnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-graphics (0.81.5)
+[INSTALL_PODS] Installing React-hermes (0.81.5)
+[INSTALL_PODS] Installing React-idlecallbacksnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-jserrorhandler (0.81.5)
+[INSTALL_PODS] Installing React-jsi (0.81.5)
+[INSTALL_PODS] Installing React-jsiexecutor (0.81.5)
+[INSTALL_PODS] Installing React-jsinspector (0.81.5)
+[INSTALL_PODS] Installing React-jsinspectorcdp (0.81.5)
+[INSTALL_PODS] Installing React-jsinspectornetwork (0.81.5)
+[INSTALL_PODS] Installing React-jsinspectortracing (0.81.5)
+[INSTALL_PODS] Installing React-jsitooling (0.81.5)
+[INSTALL_PODS] Installing React-jsitracing (0.81.5)
+[INSTALL_PODS] Installing React-logger (0.81.5)
+[INSTALL_PODS] Installing React-microtasksnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-oscompat (0.81.5)
+[INSTALL_PODS] Installing React-perflogger (0.81.5)
+[INSTALL_PODS] Installing React-performancetimeline (0.81.5)
+[INSTALL_PODS] Installing React-rendererconsistency (0.81.5)
+[INSTALL_PODS] Installing React-renderercss (0.81.5)
+[INSTALL_PODS] Installing React-rendererdebug (0.81.5)
+[INSTALL_PODS] Installing React-runtimeexecutor (0.81.5)
+[INSTALL_PODS] Installing React-runtimescheduler (0.81.5)
+[INSTALL_PODS] Installing React-timing (0.81.5)
+[INSTALL_PODS] Installing React-utils (0.81.5)
+[INSTALL_PODS] Installing ReactAppDependencyProvider (0.81.5)
+[INSTALL_PODS] Installing ReactCodegen (0.81.5)
+[INSTALL_PODS] Installing ReactCommon (0.81.5)
+[INSTALL_PODS] Installing ReactNativeDependencies (0.81.5)
+[INSTALL_PODS] Installing RevenueCat (5.83.0)
+[INSTALL_PODS] Installing SDWebImage (5.21.7)
+[INSTALL_PODS] Installing SDWebImageAVIFCoder (0.11.1)
+[INSTALL_PODS] Installing SDWebImageSVGCoder (1.7.0)
+[INSTALL_PODS] Installing SDWebImageWebPCoder (0.14.6)
+[INSTALL_PODS] Installing Yoga (0.0.0)
+[INSTALL_PODS] Installing ZXingObjC (3.6.9)
+[INSTALL_PODS] Installing hermes-engine (0.81.5)
+[INSTALL_PODS] Installing libavif (1.0.0)
+[INSTALL_PODS] Installing libdav1d (1.2.0)
+[INSTALL_PODS] Installing libwebp (1.6.0)
+[INSTALL_PODS] Installing react-native-keyboard-controller (1.18.5)
+[INSTALL_PODS] Installing react-native-safe-area-context (5.6.2)
+[INSTALL_PODS] Installing react-native-webrtc (124.0.8)
+[INSTALL_PODS] Generating Pods project
+[INSTALL_PODS] Setting USE_HERMES build settings
+[INSTALL_PODS] Setting REACT_NATIVE_PATH build settings
+[INSTALL_PODS] Setting SWIFT_ACTIVE_COMPILATION_CONDITIONS build settings
+[INSTALL_PODS] [Ccache]: Removing Ccache from CC, LD, CXX & LDPLUSPLUS build settings
+[INSTALL_PODS] Setting SWIFT_ENABLE_EXPLICIT_MODULES build settings
+[INSTALL_PODS] [SPM] Cleaning old SPM dependencies from Pods project
+[INSTALL_PODS] [SPM] Adding SPM dependencies to Pods project
+[INSTALL_PODS] [Privacy Manifest Aggregation] No existing PrivacyInfo.xcprivacy file found, creating a new one.
+[INSTALL_PODS] [Privacy Manifest Aggregation] Reading .xcprivacy files to aggregate all used Required Reason APIs.
+[INSTALL_PODS] file_root: StecStats
+[INSTALL_PODS] Setting CLANG_CXX_LANGUAGE_STANDARD to c++20 on /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/StecStats.xcodeproj
+[INSTALL_PODS] ==================== DEPRECATION NOTICE =====================
+[INSTALL_PODS] Calling `pod install` directly is deprecated in React Native
+[INSTALL_PODS] because we are moving away from Cocoapods toward alternative
+[INSTALL_PODS] solutions to build the project.
+[INSTALL_PODS] * If you are using Expo, please run:
+[INSTALL_PODS] `npx expo run:ios`
+[INSTALL_PODS] * If you are using the Community CLI, please run:
+[INSTALL_PODS] `yarn ios`
+[INSTALL_PODS] =============================================================
+[INSTALL_PODS] Pod install took 22 [s] to run
+[INSTALL_PODS] Integrating client project
+[INSTALL_PODS] [!] Please close any current Xcode sessions and use `StecStats.xcworkspace` for this project from now on.
+[INSTALL_PODS] [Expo] Installing the build script for target StecStats
+[INSTALL_PODS] Pod installation complete! There are 112 dependencies from the Podfile and 123 total pods installed.
+[INSTALL_PODS] [Expo] Adding '[Expo Autolinking] Run Codegen with autolinking' build phase to ReactCodegen
+[INSTALL_PODS] [!] React-Core-prebuilt has added 1 script phase. Please inspect before executing a build. See `https://guides.cocoapods.org/syntax/podspec.html#script_phases` for more information.
+[INSTALL_PODS] [!] ReactNativeDependencies has added 1 script phase. Please inspect before executing a build. See `https://guides.cocoapods.org/syntax/podspec.html#script_phases` for more information.
+[INSTALL_PODS] [!] hermes-engine has added 1 script phase. Please inspect before executing a build. See `https://guides.cocoapods.org/syntax/podspec.html#script_phases` for more information.
+[CALCULATE_EXPO_UPDATES_RUNTIME_VERSION] Resolved runtime version: 1.0.0
+[CONFIGURE_XCODE_PROJECT] Configuring Xcode project
+[CONFIGURE_XCODE_PROJECT] Assigning provisioning profile '*[expo] com.hoopsstats.coach AppStore 2026-08-09T14:57:45.540Z' (Apple Team ID: 76529G6UKL) to target 'StecStats'
+[CONFIGURE_XCODE_PROJECT] Updating versions in /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/StecStats/Info.plist
+[CONFIGURE_EXPO_UPDATES] Setting the update request headers in 'Expo.plist' to '{"expo-channel-name":"production"}'
+[EAGER_BUNDLE] React Compiler enabled
+[EAGER_BUNDLE] Starting Metro Bundler
+[EAGER_BUNDLE] iOS node_modules/.pnpm/expo-router@6.0.24_85e9afa0e8cf55d7f6965cb33bc6cff3/node_modules/expo-router/entry.js ▓▓░░░░░░░░░░░░░░ 16.0% (4/7)
+[EAGER_BUNDLE] iOS node_modules/.pnpm/expo-router@6.0.24_85e9afa0e8cf55d7f6965cb33bc6cff3/node_modules/expo-router/entry.js ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 75.6% (1222/1405)
+[EAGER_BUNDLE] iOS Bundled 7076ms node_modules/.pnpm/expo-router@6.0.24_85e9afa0e8cf55d7f6965cb33bc6cff3/node_modules/expo-router/entry.js (2107 modules)
+[EAGER_BUNDLE] Writing bundle output to: /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/r5nqrlgco8p/main.jsbundle
+[EAGER_BUNDLE] Copying 66 asset files
+[EAGER_BUNDLE] Done writing bundle output
+[RUN_FASTLANE] Creating Gymfile
+[RUN_FASTLANE] Gymfile created
+[RUN_FASTLANE] Successfully loaded '/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/build/artifacts/hoops-mobile/ios/Gymfile' 📄
+[RUN_FASTLANE] 
+[RUN_FASTLANE] +--------------------------------------------------------------+
+[RUN_FASTLANE] |               Detected Values from './Gymfile'               |
+[RUN_FASTLANE] +-----------------------+--------------------------------------+
+[RUN_FASTLANE] | suppress_xcode_output | true                                 |
+[RUN_FASTLANE] | clean                 | false                                |
+[RUN_FASTLANE] | scheme                | StecStats                            |
+[RUN_FASTLANE] | configuration         | Release                              |
+[RUN_FASTLANE] | export_options        | {method: "app-store",                |
+[RUN_FASTLANE] |                       | provisioningProfiles:                |
+[RUN_FASTLANE] |                       | {"com.hoopsstats.coach" =>           |
+[RUN_FASTLANE] |                       | "a87e2d44-7d72-4039-b998-98ee657e9e  |
+[RUN_FASTLANE] |                       | f4"}}                                |
+[RUN_FASTLANE] | export_xcargs         | OTHER_CODE_SIGN_FLAGS="--keychain    |
+[RUN_FASTLANE] |                       | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                       | frqdm0000gn/T/eas-build-78f655e2-eb  |
+[RUN_FASTLANE] |                       | 30-4911-bd87-eb6549af53de.keychain"  |
+[RUN_FASTLANE] | disable_xcpretty      | true                                 |
+[RUN_FASTLANE] | buildlog_path         | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                       | frqdm0000gn/T/eas-build-local-nodej  |
+[RUN_FASTLANE] |                       | s/34387315-1bd1-4aeb-b4ea-d6227d3b0  |
+[RUN_FASTLANE] |                       | 525/logs                             |
+[RUN_FASTLANE] | derived_data_path     | ./build                              |
+[RUN_FASTLANE] | result_bundle         | true                                 |
+[RUN_FASTLANE] | result_bundle_path    | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                       | frqdm0000gn/T/result-bundle-1787493  |
+[RUN_FASTLANE] |                       | 364974.xcresult                      |
+[RUN_FASTLANE] | output_directory      | ./build                              |
+[RUN_FASTLANE] +-----------------------+--------------------------------------+
+[RUN_FASTLANE] Resolving Swift Package Manager dependencies...
+[RUN_FASTLANE] $ xcodebuild -resolvePackageDependencies -workspace ./StecStats.xcworkspace -scheme StecStats -configuration Release -derivedDataPath ./build
+[RUN_FASTLANE] ▸ Command line invocation:
+[RUN_FASTLANE] ▸     /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -resolvePackageDependencies -workspace ./StecStats.xcworkspace -scheme StecStats -configuration Release -derivedDataPath ./build
+[RUN_FASTLANE] ▸ resolved source packages:
+[RUN_FASTLANE] $ xcodebuild -showBuildSettings -workspace ./StecStats.xcworkspace -scheme StecStats -configuration Release -derivedDataPath ./build 2>&1
+[RUN_FASTLANE] Detected provisioning profile mapping: {"com.hoopsstats.coach": "a87e2d44-7d72-4039-b998-98ee657e9ef4"}
+[RUN_FASTLANE] 
+[RUN_FASTLANE] +-----------------------------------------------------------------------------+
+[RUN_FASTLANE] |                           Summary for gym 2.237.0                           |
+[RUN_FASTLANE] +--------------------------------------+--------------------------------------+
+[RUN_FASTLANE] | workspace                            | ./StecStats.xcworkspace              |
+[RUN_FASTLANE] | scheme                               | StecStats                            |
+[RUN_FASTLANE] | clean                                | false                                |
+[RUN_FASTLANE] | output_directory                     | ./build                              |
+[RUN_FASTLANE] | output_name                          | StecStats                            |
+[RUN_FASTLANE] | configuration                        | Release                              |
+[RUN_FASTLANE] | silent                               | false                                |
+[RUN_FASTLANE] | skip_package_ipa                     | false                                |
+[RUN_FASTLANE] | skip_package_pkg                     | false                                |
+[RUN_FASTLANE] | export_options.method                | app-store                            |
+[RUN_FASTLANE] | export_options.provisioningProfiles  | a87e2d44-7d72-4039-b998-98ee657e9ef  |
+[RUN_FASTLANE] | .com.hoopsstats.coach                | 4                                    |
+[RUN_FASTLANE] | export_xcargs                        | OTHER_CODE_SIGN_FLAGS="--keychain    |
+[RUN_FASTLANE] |                                      | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                                      | frqdm0000gn/T/eas-build-78f655e2-eb  |
+[RUN_FASTLANE] |                                      | 30-4911-bd87-eb6549af53de.keychain"  |
+[RUN_FASTLANE] | build_path                           | /Users/stevenstec/Library/Developer  |
+[RUN_FASTLANE] |                                      | /Xcode/Archives/2026-08-23           |
+[RUN_FASTLANE] | derived_data_path                    | ./build                              |
+[RUN_FASTLANE] | result_bundle                        | true                                 |
+[RUN_FASTLANE] | result_bundle_path                   | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                                      | frqdm0000gn/T/result-bundle-1787493  |
+[RUN_FASTLANE] |                                      | 364974.xcresult                      |
+[RUN_FASTLANE] | buildlog_path                        | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                                      | frqdm0000gn/T/eas-build-local-nodej  |
+[RUN_FASTLANE] |                                      | s/34387315-1bd1-4aeb-b4ea-d6227d3b0  |
+[RUN_FASTLANE] |                                      | 525/logs                             |
+[RUN_FASTLANE] | destination                          | generic/platform=iOS                 |
+[RUN_FASTLANE] | suppress_xcode_output                | true                                 |
+[RUN_FASTLANE] | xcodebuild_formatter                 | xcpretty                             |
+[RUN_FASTLANE] | build_timing_summary                 | false                                |
+[RUN_FASTLANE] | disable_xcpretty                     | true                                 |
+[RUN_FASTLANE] | skip_profile_detection               | false                                |
+[RUN_FASTLANE] | xcodebuild_command                   | xcodebuild                           |
+[RUN_FASTLANE] | skip_package_dependencies_resolutio  | false                                |
+[RUN_FASTLANE] | n                                    |                                      |
+[RUN_FASTLANE] | disable_package_automatic_updates    | false                                |
+[RUN_FASTLANE] | skip_package_repository_fetches      | false                                |
+[RUN_FASTLANE] | use_system_scm                       | false                                |
+[RUN_FASTLANE] | generate_appstore_info               | false                                |
+[RUN_FASTLANE] | xcode_path                           | /Applications/Xcode.app              |
+[RUN_FASTLANE] +--------------------------------------+--------------------------------------+
+[RUN_FASTLANE] $ set -o pipefail && xcodebuild -workspace ./StecStats.xcworkspace -scheme StecStats -configuration Release -derivedDataPath ./build -destination 'generic/platform=iOS' -archivePath /Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats\ 2026-08-23\ 09.56.09.xcarchive -resultBundlePath '/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/result-bundle-1787493364974.xcresult' archive | tee /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/34387315-1bd1-4aeb-b4ea-d6227d3b0525/logs/StecStats-StecStats.log > /dev/null
+[RUN_FASTLANE] ⚠️  Pods/SDWebImage-SDWebImage: iOS@9.0 deployment version mismatch, expected >= 2.0 <= 26.5.99
+[RUN_FASTLANE] 
+❌  Provisioning profile "*[expo] com.hoopsstats.coach AppStore 2026-08-09T14:57:45.540Z" doesn't include signing certificate "Apple Distribution: STEVEN RAYMOND STEC (76529G6UKL)". (in target 'StecStats' from project 'StecStats')
+
+
+[RUN_FASTLANE] ▸ ** ARCHIVE FAILED **
+[RUN_FASTLANE] ▸ The following build commands failed:
+[RUN_FASTLANE] ▸ 	Archiving workspace StecStats with scheme StecStats
+[RUN_FASTLANE] ▸ (1 failure)
+[RUN_FASTLANE] Exit status: 65
+[RUN_FASTLANE] 
+[RUN_FASTLANE] +---------------------------------------+
+[RUN_FASTLANE] |           Build environment           |
+[RUN_FASTLANE] +-------------+-------------------------+
+[RUN_FASTLANE] | xcode_path  | /Applications/Xcode.app |
+[RUN_FASTLANE] | gym_version | 2.237.0                 |
+[RUN_FASTLANE] | sdk         | iPhoneOS26.5.sdk        |
+[RUN_FASTLANE] +-------------+-------------------------+
+[RUN_FASTLANE] Looks like fastlane ran into a build/archive error with your project
+[RUN_FASTLANE] It's hard to tell what's causing the error, so we wrote some guides on how
+[RUN_FASTLANE] to troubleshoot build and signing issues: https://docs.fastlane.tools/codesigning/getting-started/
+[RUN_FASTLANE] Before submitting an issue on GitHub, please follow the guide above and make
+[RUN_FASTLANE] sure your project is set up correctly.
+[RUN_FASTLANE] fastlane uses `xcodebuild` commands to generate your binary, you can see the
+[RUN_FASTLANE] the full commands printed out in yellow in the above log.
+[RUN_FASTLANE] Make sure to inspect the output above, as usually you'll find more error information there
+[RUN_FASTLANE] 
+[RUN_FASTLANE] [!] Error building the application - see the log above
+[RUN_FASTLANE] Error: The "Run fastlane" step failed because of an error in the Xcode build process. We automatically detected following errors in your Xcode build logs:
+- Provisioning profile "*[expo] com.hoopsstats.coach AppStore 2026-08-09T14:57:45.540Z" doesn't include signing certificate "Apple Distribution: STEVEN RAYMOND STEC (76529G6UKL)". (in target 'StecStats' from project 'StecStats')
+Refer to "Xcode Logs" below for additional, more detailed logs.
+[CLEAN_UP_CREDENTIALS] Destroying keychain - /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-78f655e2-eb30-4911-bd87-eb6549af53de.keychain
+[CLEAN_UP_CREDENTIALS] Removing provisioning profile
+
+Build failed
+The "Run fastlane" step failed because of an error in the Xcode build process. We automatically detected following errors in your Xcode build logs:
+- Provisioning profile "*[expo] com.hoopsstats.coach AppStore 2026-08-09T14:57:45.540Z" doesn't include signing certificate "Apple Distribution: STEVEN RAYMOND STEC (76529G6UKL)". (in target 'StecStats' from project 'StecStats')
+Refer to "Xcode Logs" below for additional, more detailed logs.
+Error: The "Run fastlane" step failed because of an error in the Xcode build process. We automatically detected following errors in your Xcode build logs:
+- Provisioning profile "*[expo] com.hoopsstats.coach AppStore 2026-08-09T14:57:45.540Z" doesn't include signing certificate "Apple Distribution: STEVEN RAYMOND STEC (76529G6UKL)". (in target 'StecStats' from project 'StecStats')
+Refer to "Xcode Logs" below for additional, more detailed logs.
+    at resolveBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/buildErrors/detectError.js:61:12)
+    at async BuildContext.handleBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/context.js:193:28)
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/context.js:138:35)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/builders/ios.js:152:26)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/builders/ios.js:56:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/builders/common.js:13:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/builders/ios.js:41:16)
+    at async buildIosAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/eas-cli-local-build-plugin/dist/ios.js:43:12)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/eas-cli-local-build-plugin/dist/build.js:58:29)
+    at async main (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/eas-cli-local-build-plugin/dist/main.js:16:9)
+
+Build context (for debugging this failed local build):
+  Platform: ios
+  Build profile: production
+  Workflow: managed
+  Distribution: store
+  Credentials source: remote
+  Project root directory: artifacts/hoops-mobile
+  Required package manager: pnpm
+  eas-cli version: 22.0.0
+  SDK version: 54.0.0
+  Runtime version: 1.0.0
+  React Native version: 0.81.5
+  Expo package version: 54.0.36
+  App version: 1.0.0
+  Fingerprint hash: 4b7a33ae1f7b4804ce3292ed55b6185f153a9f27
+  Git commit: 22b9ed402dfffd9977475bb87edf342035f9978b
+  Git working tree dirty: true
+  Build tracking ID: 67b423df-a237-42b9-9bee-cbeece6c848e
+  Project ID: 2115ac2f-b1d6-42f5-a109-9dd376d0121a
+npx -y eas-cli-local-build-plugin@22.0.0 exited with non-zero code: 1
+    Error: build command failed.
+stevenstec@MacBook-Pro-4 hoops-mobile % 
