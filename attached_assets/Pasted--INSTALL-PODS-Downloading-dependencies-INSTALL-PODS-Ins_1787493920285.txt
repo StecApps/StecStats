@@ -1,0 +1,327 @@
+[INSTALL_PODS] Downloading dependencies
+[INSTALL_PODS] Installing EASClient (1.0.8)
+[INSTALL_PODS] Installing EXApplication (7.0.8)
+[INSTALL_PODS] Installing EXConstants (18.0.13)
+[INSTALL_PODS] Installing EXImageLoader (6.0.0)
+[INSTALL_PODS] Installing EXJSONUtils (0.15.0)
+[INSTALL_PODS] Installing EXManifests (1.0.11)
+[INSTALL_PODS] Installing EXNotifications (0.32.17)
+[INSTALL_PODS] Installing EXStructuredHeaders (5.0.0)
+[INSTALL_PODS] Installing EXUpdates (29.0.19)
+[INSTALL_PODS] Installing EXUpdatesInterface (2.0.0)
+[INSTALL_PODS] Installing Expo (54.0.36)
+[INSTALL_PODS] Installing ExpoAppleAuthentication (8.0.8)
+[INSTALL_PODS] Installing ExpoAsset (12.0.13)
+[INSTALL_PODS] Installing ExpoBlur (15.0.8)
+[INSTALL_PODS] Installing ExpoCamera (17.0.10)
+[INSTALL_PODS] Installing ExpoCrypto (15.0.9)
+[INSTALL_PODS] Installing ExpoFileSystem (19.0.23)
+[INSTALL_PODS] Installing ExpoFont (14.0.12)
+[INSTALL_PODS] Installing ExpoGlassEffect (0.1.10)
+[INSTALL_PODS] Installing ExpoHaptics (15.0.8)
+[INSTALL_PODS] Installing ExpoHead (6.0.24)
+[INSTALL_PODS] Installing ExpoImage (3.0.11)
+[INSTALL_PODS] Installing ExpoImagePicker (17.0.11)
+[INSTALL_PODS] Installing ExpoKeepAwake (15.0.8)
+[INSTALL_PODS] Installing ExpoLinearGradient (15.0.8)
+[INSTALL_PODS] Installing ExpoLinking (8.0.12)
+[INSTALL_PODS] Installing ExpoLocation (19.0.8)
+[INSTALL_PODS] Installing ExpoModulesCore (3.0.30)
+[INSTALL_PODS] Installing ExpoSecureStore (15.0.8)
+[INSTALL_PODS] Installing ExpoSplashScreen (31.0.13)
+[INSTALL_PODS] Installing ExpoSymbols (1.0.8)
+[INSTALL_PODS] Installing ExpoSystemUI (6.0.9)
+[INSTALL_PODS] Installing ExpoVideo (3.0.16)
+[INSTALL_PODS] Installing ExpoWebBrowser (15.0.11)
+[INSTALL_PODS] Installing FBLazyVector (0.81.5)
+[INSTALL_PODS] Installing JitsiWebRTC (124.0.2)
+[INSTALL_PODS] Installing PurchasesHybridCommon (18.28.0)
+[INSTALL_PODS] Installing RCTDeprecation (0.81.5)
+[INSTALL_PODS] Installing RCTRequired (0.81.5)
+[INSTALL_PODS] Installing RCTTypeSafety (0.81.5)
+[INSTALL_PODS] Installing RNCAsyncStorage (2.2.0)
+[INSTALL_PODS] Installing RNGestureHandler (2.28.0)
+[INSTALL_PODS] Installing RNPurchases (10.6.0)
+[INSTALL_PODS] Installing RNReanimated (4.1.7)
+[INSTALL_PODS] Installing RNSVG (15.12.1)
+[INSTALL_PODS] Installing RNScreens (4.16.0)
+[INSTALL_PODS] Installing RNWorklets (0.5.1)
+[INSTALL_PODS] Installing ReachabilitySwift (5.2.4)
+[INSTALL_PODS] Installing React (0.81.5)
+[INSTALL_PODS] Installing React-Core (0.81.5)
+[INSTALL_PODS] Installing React-Core-prebuilt (0.81.5)
+[INSTALL_PODS] Installing React-CoreModules (0.81.5)
+[INSTALL_PODS] Installing React-Fabric (0.81.5)
+[INSTALL_PODS] Installing React-FabricComponents (0.81.5)
+[INSTALL_PODS] Installing React-FabricImage (0.81.5)
+[INSTALL_PODS] Installing React-ImageManager (0.81.5)
+[INSTALL_PODS] Installing React-Mapbuffer (0.81.5)
+[INSTALL_PODS] Installing React-NativeModulesApple (0.81.5)
+[INSTALL_PODS] Installing React-RCTActionSheet (0.81.5)
+[INSTALL_PODS] Installing React-RCTAnimation (0.81.5)
+[INSTALL_PODS] Installing React-RCTAppDelegate (0.81.5)
+[INSTALL_PODS] Installing React-RCTBlob (0.81.5)
+[INSTALL_PODS] Installing React-RCTFBReactNativeSpec (0.81.5)
+[INSTALL_PODS] Installing React-RCTFabric (0.81.5)
+[INSTALL_PODS] Installing React-RCTImage (0.81.5)
+[INSTALL_PODS] Installing React-RCTLinking (0.81.5)
+[INSTALL_PODS] Installing React-RCTNetwork (0.81.5)
+[INSTALL_PODS] Installing React-RCTRuntime (0.81.5)
+[INSTALL_PODS] Installing React-RCTSettings (0.81.5)
+[INSTALL_PODS] Installing React-RCTText (0.81.5)
+[INSTALL_PODS] Installing React-RCTVibration (0.81.5)
+[INSTALL_PODS] Installing React-RuntimeApple (0.81.5)
+[INSTALL_PODS] Installing React-RuntimeCore (0.81.5)
+[INSTALL_PODS] Installing React-RuntimeHermes (0.81.5)
+[INSTALL_PODS] Installing React-callinvoker (0.81.5)
+[INSTALL_PODS] Installing React-cxxreact (0.81.5)
+[INSTALL_PODS] Installing React-debug (0.81.5)
+[INSTALL_PODS] Installing React-defaultsnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-domnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-featureflags (0.81.5)
+[INSTALL_PODS] Installing React-featureflagsnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-graphics (0.81.5)
+[INSTALL_PODS] Installing React-hermes (0.81.5)
+[INSTALL_PODS] Installing React-idlecallbacksnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-jserrorhandler (0.81.5)
+[INSTALL_PODS] Installing React-jsi (0.81.5)
+[INSTALL_PODS] Installing React-jsiexecutor (0.81.5)
+[INSTALL_PODS] Installing React-jsinspector (0.81.5)
+[INSTALL_PODS] Installing React-jsinspectorcdp (0.81.5)
+[INSTALL_PODS] Installing React-jsinspectornetwork (0.81.5)
+[INSTALL_PODS] Installing React-jsinspectortracing (0.81.5)
+[INSTALL_PODS] Installing React-jsitooling (0.81.5)
+[INSTALL_PODS] Installing React-jsitracing (0.81.5)
+[INSTALL_PODS] Installing React-logger (0.81.5)
+[INSTALL_PODS] Installing React-microtasksnativemodule (0.81.5)
+[INSTALL_PODS] Installing React-oscompat (0.81.5)
+[INSTALL_PODS] Installing React-perflogger (0.81.5)
+[INSTALL_PODS] Installing React-performancetimeline (0.81.5)
+[INSTALL_PODS] Installing React-rendererconsistency (0.81.5)
+[INSTALL_PODS] Installing React-renderercss (0.81.5)
+[INSTALL_PODS] Installing React-rendererdebug (0.81.5)
+[INSTALL_PODS] Installing React-runtimeexecutor (0.81.5)
+[INSTALL_PODS] Installing React-runtimescheduler (0.81.5)
+[INSTALL_PODS] Installing React-timing (0.81.5)
+[INSTALL_PODS] Installing React-utils (0.81.5)
+[INSTALL_PODS] Installing ReactAppDependencyProvider (0.81.5)
+[INSTALL_PODS] Installing ReactCodegen (0.81.5)
+[INSTALL_PODS] Installing ReactCommon (0.81.5)
+[INSTALL_PODS] Installing ReactNativeDependencies (0.81.5)
+[INSTALL_PODS] Installing RevenueCat (5.83.0)
+[INSTALL_PODS] Installing SDWebImage (5.21.7)
+[INSTALL_PODS] Installing SDWebImageAVIFCoder (0.11.1)
+[INSTALL_PODS] Installing SDWebImageSVGCoder (1.7.0)
+[INSTALL_PODS] Installing SDWebImageWebPCoder (0.14.6)
+[INSTALL_PODS] Installing Yoga (0.0.0)
+[INSTALL_PODS] Installing ZXingObjC (3.6.9)
+[INSTALL_PODS] Installing hermes-engine (0.81.5)
+[INSTALL_PODS] Installing libavif (1.0.0)
+[INSTALL_PODS] Installing libdav1d (1.2.0)
+[INSTALL_PODS] Installing libwebp (1.6.0)
+[INSTALL_PODS] Installing react-native-keyboard-controller (1.18.5)
+[INSTALL_PODS] Installing react-native-safe-area-context (5.6.2)
+[INSTALL_PODS] Installing react-native-webrtc (124.0.8)
+[INSTALL_PODS] Generating Pods project
+[INSTALL_PODS] Setting USE_HERMES build settings
+[INSTALL_PODS] Setting REACT_NATIVE_PATH build settings
+[INSTALL_PODS] Setting SWIFT_ACTIVE_COMPILATION_CONDITIONS build settings
+[INSTALL_PODS] [Ccache]: Removing Ccache from CC, LD, CXX & LDPLUSPLUS build settings
+[INSTALL_PODS] Setting SWIFT_ENABLE_EXPLICIT_MODULES build settings
+[INSTALL_PODS] [SPM] Cleaning old SPM dependencies from Pods project
+[INSTALL_PODS] [SPM] Adding SPM dependencies to Pods project
+[INSTALL_PODS] [Privacy Manifest Aggregation] No existing PrivacyInfo.xcprivacy file found, creating a new one.
+[INSTALL_PODS] [Privacy Manifest Aggregation] Reading .xcprivacy files to aggregate all used Required Reason APIs.
+[INSTALL_PODS] file_root: StecStats
+[INSTALL_PODS] Setting CLANG_CXX_LANGUAGE_STANDARD to c++20 on /private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/fa762c8c-48da-4a54-b945-b655d822cbdb/build/artifacts/hoops-mobile/ios/StecStats.xcodeproj
+[INSTALL_PODS] ==================== DEPRECATION NOTICE =====================
+[INSTALL_PODS] Calling `pod install` directly is deprecated in React Native
+[INSTALL_PODS] because we are moving away from Cocoapods toward alternative
+[INSTALL_PODS] solutions to build the project.
+[INSTALL_PODS] * If you are using Expo, please run:
+[INSTALL_PODS] `npx expo run:ios`
+[INSTALL_PODS] * If you are using the Community CLI, please run:
+[INSTALL_PODS] `yarn ios`
+[INSTALL_PODS] =============================================================
+[INSTALL_PODS] Pod install took 21 [s] to run
+[INSTALL_PODS] Integrating client project
+[INSTALL_PODS] [!] Please close any current Xcode sessions and use `StecStats.xcworkspace` for this project from now on.
+[INSTALL_PODS] [Expo] Installing the build script for target StecStats
+[INSTALL_PODS] Pod installation complete! There are 112 dependencies from the Podfile and 123 total pods installed.
+[INSTALL_PODS] [Expo] Adding '[Expo Autolinking] Run Codegen with autolinking' build phase to ReactCodegen
+[INSTALL_PODS] [!] React-Core-prebuilt has added 1 script phase. Please inspect before executing a build. See `https://guides.cocoapods.org/syntax/podspec.html#script_phases` for more information.
+[INSTALL_PODS] [!] ReactNativeDependencies has added 1 script phase. Please inspect before executing a build. See `https://guides.cocoapods.org/syntax/podspec.html#script_phases` for more information.
+[INSTALL_PODS] [!] hermes-engine has added 1 script phase. Please inspect before executing a build. See `https://guides.cocoapods.org/syntax/podspec.html#script_phases` for more information.
+[CALCULATE_EXPO_UPDATES_RUNTIME_VERSION] Resolved runtime version: 1.0.0
+[CONFIGURE_XCODE_PROJECT] Configuring Xcode project
+[CONFIGURE_XCODE_PROJECT] Assigning provisioning profile '*[expo] com.hoopsstats.coach AppStore 2026-08-23T14:00:50.240Z' (Apple Team ID: 76529G6UKL) to target 'StecStats'
+[CONFIGURE_XCODE_PROJECT] Updating versions in /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/fa762c8c-48da-4a54-b945-b655d822cbdb/build/artifacts/hoops-mobile/ios/StecStats/Info.plist
+[CONFIGURE_EXPO_UPDATES] Setting the update request headers in 'Expo.plist' to '{"expo-channel-name":"production"}'
+[EAGER_BUNDLE] React Compiler enabled
+[EAGER_BUNDLE] Starting Metro Bundler
+[EAGER_BUNDLE] iOS node_modules/.pnpm/expo-router@6.0.24_85e9afa0e8cf55d7f6965cb33bc6cff3/node_modules/expo-router/entry.js ▓▓▓▓▓░░░░░░░░░░░ 33.0% (270/470)
+[EAGER_BUNDLE] iOS Bundled 1160ms node_modules/.pnpm/expo-router@6.0.24_85e9afa0e8cf55d7f6965cb33bc6cff3/node_modules/expo-router/entry.js (2107 modules)
+[EAGER_BUNDLE] Writing bundle output to: /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/wj25v5li0l/main.jsbundle
+[EAGER_BUNDLE] Copying 66 asset files
+[EAGER_BUNDLE] Done writing bundle output
+[RUN_FASTLANE] Creating Gymfile
+[RUN_FASTLANE] Gymfile created
+[RUN_FASTLANE] Successfully loaded '/private/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/fa762c8c-48da-4a54-b945-b655d822cbdb/build/artifacts/hoops-mobile/ios/Gymfile' 📄
+[RUN_FASTLANE] 
+[RUN_FASTLANE] +--------------------------------------------------------------+
+[RUN_FASTLANE] |               Detected Values from './Gymfile'               |
+[RUN_FASTLANE] +-----------------------+--------------------------------------+
+[RUN_FASTLANE] | suppress_xcode_output | true                                 |
+[RUN_FASTLANE] | clean                 | false                                |
+[RUN_FASTLANE] | scheme                | StecStats                            |
+[RUN_FASTLANE] | configuration         | Release                              |
+[RUN_FASTLANE] | export_options        | {method: "app-store",                |
+[RUN_FASTLANE] |                       | provisioningProfiles:                |
+[RUN_FASTLANE] |                       | {"com.hoopsstats.coach" =>           |
+[RUN_FASTLANE] |                       | "b32e8bdc-ff48-4b72-bc8d-6f9a46b5fd  |
+[RUN_FASTLANE] |                       | 40"}}                                |
+[RUN_FASTLANE] | export_xcargs         | OTHER_CODE_SIGN_FLAGS="--keychain    |
+[RUN_FASTLANE] |                       | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                       | frqdm0000gn/T/eas-build-448f2396-89  |
+[RUN_FASTLANE] |                       | e0-465b-8c75-556970f66903.keychain"  |
+[RUN_FASTLANE] | disable_xcpretty      | true                                 |
+[RUN_FASTLANE] | buildlog_path         | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                       | frqdm0000gn/T/eas-build-local-nodej  |
+[RUN_FASTLANE] |                       | s/fa762c8c-48da-4a54-b945-b655d822c  |
+[RUN_FASTLANE] |                       | bdb/logs                             |
+[RUN_FASTLANE] | derived_data_path     | ./build                              |
+[RUN_FASTLANE] | result_bundle         | true                                 |
+[RUN_FASTLANE] | result_bundle_path    | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                       | frqdm0000gn/T/result-bundle-1787493  |
+[RUN_FASTLANE] |                       | 889125.xcresult                      |
+[RUN_FASTLANE] | output_directory      | ./build                              |
+[RUN_FASTLANE] +-----------------------+--------------------------------------+
+[RUN_FASTLANE] Resolving Swift Package Manager dependencies...
+[RUN_FASTLANE] $ xcodebuild -resolvePackageDependencies -workspace ./StecStats.xcworkspace -scheme StecStats -configuration Release -derivedDataPath ./build
+[RUN_FASTLANE] ▸ Command line invocation:
+[RUN_FASTLANE] ▸     /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -resolvePackageDependencies -workspace ./StecStats.xcworkspace -scheme StecStats -configuration Release -derivedDataPath ./build
+[RUN_FASTLANE] ▸ resolved source packages:
+[RUN_FASTLANE] $ xcodebuild -showBuildSettings -workspace ./StecStats.xcworkspace -scheme StecStats -configuration Release -derivedDataPath ./build 2>&1
+[RUN_FASTLANE] Detected provisioning profile mapping: {"com.hoopsstats.coach": "b32e8bdc-ff48-4b72-bc8d-6f9a46b5fd40"}
+[RUN_FASTLANE] 
+[RUN_FASTLANE] +-----------------------------------------------------------------------------+
+[RUN_FASTLANE] |                           Summary for gym 2.237.0                           |
+[RUN_FASTLANE] +--------------------------------------+--------------------------------------+
+[RUN_FASTLANE] | workspace                            | ./StecStats.xcworkspace              |
+[RUN_FASTLANE] | scheme                               | StecStats                            |
+[RUN_FASTLANE] | clean                                | false                                |
+[RUN_FASTLANE] | output_directory                     | ./build                              |
+[RUN_FASTLANE] | output_name                          | StecStats                            |
+[RUN_FASTLANE] | configuration                        | Release                              |
+[RUN_FASTLANE] | silent                               | false                                |
+[RUN_FASTLANE] | skip_package_ipa                     | false                                |
+[RUN_FASTLANE] | skip_package_pkg                     | false                                |
+[RUN_FASTLANE] | export_options.method                | app-store                            |
+[RUN_FASTLANE] | export_options.provisioningProfiles  | b32e8bdc-ff48-4b72-bc8d-6f9a46b5fd4  |
+[RUN_FASTLANE] | .com.hoopsstats.coach                | 0                                    |
+[RUN_FASTLANE] | export_xcargs                        | OTHER_CODE_SIGN_FLAGS="--keychain    |
+[RUN_FASTLANE] |                                      | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                                      | frqdm0000gn/T/eas-build-448f2396-89  |
+[RUN_FASTLANE] |                                      | e0-465b-8c75-556970f66903.keychain"  |
+[RUN_FASTLANE] | build_path                           | /Users/stevenstec/Library/Developer  |
+[RUN_FASTLANE] |                                      | /Xcode/Archives/2026-08-23           |
+[RUN_FASTLANE] | derived_data_path                    | ./build                              |
+[RUN_FASTLANE] | result_bundle                        | true                                 |
+[RUN_FASTLANE] | result_bundle_path                   | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                                      | frqdm0000gn/T/result-bundle-1787493  |
+[RUN_FASTLANE] |                                      | 889125.xcresult                      |
+[RUN_FASTLANE] | buildlog_path                        | /var/folders/rd/hjc6zjys46x3h6psb0f  |
+[RUN_FASTLANE] |                                      | frqdm0000gn/T/eas-build-local-nodej  |
+[RUN_FASTLANE] |                                      | s/fa762c8c-48da-4a54-b945-b655d822c  |
+[RUN_FASTLANE] |                                      | bdb/logs                             |
+[RUN_FASTLANE] | destination                          | generic/platform=iOS                 |
+[RUN_FASTLANE] | suppress_xcode_output                | true                                 |
+[RUN_FASTLANE] | xcodebuild_formatter                 | xcpretty                             |
+[RUN_FASTLANE] | build_timing_summary                 | false                                |
+[RUN_FASTLANE] | disable_xcpretty                     | true                                 |
+[RUN_FASTLANE] | skip_profile_detection               | false                                |
+[RUN_FASTLANE] | xcodebuild_command                   | xcodebuild                           |
+[RUN_FASTLANE] | skip_package_dependencies_resolutio  | false                                |
+[RUN_FASTLANE] | n                                    |                                      |
+[RUN_FASTLANE] | disable_package_automatic_updates    | false                                |
+[RUN_FASTLANE] | skip_package_repository_fetches      | false                                |
+[RUN_FASTLANE] | use_system_scm                       | false                                |
+[RUN_FASTLANE] | generate_appstore_info               | false                                |
+[RUN_FASTLANE] | xcode_path                           | /Applications/Xcode.app              |
+[RUN_FASTLANE] +--------------------------------------+--------------------------------------+
+[RUN_FASTLANE] $ set -o pipefail && xcodebuild -workspace ./StecStats.xcworkspace -scheme StecStats -configuration Release -derivedDataPath ./build -destination 'generic/platform=iOS' -archivePath /Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats\ 2026-08-23\ 10.04.53.xcarchive -resultBundlePath '/var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/result-bundle-1787493889125.xcresult' archive | tee /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-local-nodejs/fa762c8c-48da-4a54-b945-b655d822cbdb/logs/StecStats-StecStats.log > /dev/null
+[RUN_FASTLANE] ⚠️  Pods/SDWebImage-SDWebImage: iOS@9.0 deployment version mismatch, expected >= 2.0 <= 26.5.99
+[RUN_FASTLANE] 
+❌  Provisioning profile "*[expo] com.hoopsstats.coach AppStore 2026-08-23T14:00:50.240Z" doesn't include signing certificate "Apple Distribution: STEVEN RAYMOND STEC (76529G6UKL)". (in target 'StecStats' from project 'StecStats')
+
+
+[RUN_FASTLANE] ▸ ** ARCHIVE FAILED **
+[RUN_FASTLANE] ▸ The following build commands failed:
+[RUN_FASTLANE] ▸ 	Archiving workspace StecStats with scheme StecStats
+[RUN_FASTLANE] ▸ (1 failure)
+[RUN_FASTLANE] Exit status: 65
+[RUN_FASTLANE] 
+[RUN_FASTLANE] +---------------------------------------+
+[RUN_FASTLANE] |           Build environment           |
+[RUN_FASTLANE] +-------------+-------------------------+
+[RUN_FASTLANE] | xcode_path  | /Applications/Xcode.app |
+[RUN_FASTLANE] | gym_version | 2.237.0                 |
+[RUN_FASTLANE] | sdk         | iPhoneOS26.5.sdk        |
+[RUN_FASTLANE] +-------------+-------------------------+
+[RUN_FASTLANE] 
+[RUN_FASTLANE] 
+[RUN_FASTLANE] Looks like fastlane ran into a build/archive error with your project
+[RUN_FASTLANE] It's hard to tell what's causing the error, so we wrote some guides on how
+[RUN_FASTLANE] to troubleshoot build and signing issues: https://docs.fastlane.tools/codesigning/getting-started/
+[RUN_FASTLANE] Before submitting an issue on GitHub, please follow the guide above and make
+[RUN_FASTLANE] sure your project is set up correctly.
+[RUN_FASTLANE] fastlane uses `xcodebuild` commands to generate your binary, you can see the
+[RUN_FASTLANE] the full commands printed out in yellow in the above log.
+[RUN_FASTLANE] Make sure to inspect the output above, as usually you'll find more error information there
+[RUN_FASTLANE] [!] Error building the application - see the log above
+[RUN_FASTLANE] Error: The "Run fastlane" step failed because of an error in the Xcode build process. We automatically detected following errors in your Xcode build logs:
+- Provisioning profile "*[expo] com.hoopsstats.coach AppStore 2026-08-23T14:00:50.240Z" doesn't include signing certificate "Apple Distribution: STEVEN RAYMOND STEC (76529G6UKL)". (in target 'StecStats' from project 'StecStats')
+Refer to "Xcode Logs" below for additional, more detailed logs.
+[CLEAN_UP_CREDENTIALS] Destroying keychain - /var/folders/rd/hjc6zjys46x3h6psb0ffrqdm0000gn/T/eas-build-448f2396-89e0-465b-8c75-556970f66903.keychain
+[CLEAN_UP_CREDENTIALS] Removing provisioning profile
+
+Build failed
+The "Run fastlane" step failed because of an error in the Xcode build process. We automatically detected following errors in your Xcode build logs:
+- Provisioning profile "*[expo] com.hoopsstats.coach AppStore 2026-08-23T14:00:50.240Z" doesn't include signing certificate "Apple Distribution: STEVEN RAYMOND STEC (76529G6UKL)". (in target 'StecStats' from project 'StecStats')
+Refer to "Xcode Logs" below for additional, more detailed logs.
+Error: The "Run fastlane" step failed because of an error in the Xcode build process. We automatically detected following errors in your Xcode build logs:
+- Provisioning profile "*[expo] com.hoopsstats.coach AppStore 2026-08-23T14:00:50.240Z" doesn't include signing certificate "Apple Distribution: STEVEN RAYMOND STEC (76529G6UKL)". (in target 'StecStats' from project 'StecStats')
+Refer to "Xcode Logs" below for additional, more detailed logs.
+    at resolveBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/buildErrors/detectError.js:61:12)
+    at async BuildContext.handleBuildPhaseErrorAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/context.js:193:28)
+    at async BuildContext.runBuildPhase (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/context.js:138:35)
+    at async buildInnerAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/builders/ios.js:152:26)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/builders/ios.js:56:9)
+    at async runBuilderWithHooksAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/builders/common.js:13:13)
+    at async Object.iosBuilder (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/@expo/build-tools/dist/builders/ios.js:41:16)
+    at async buildIosAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/eas-cli-local-build-plugin/dist/ios.js:43:12)
+    at async buildAsync (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/eas-cli-local-build-plugin/dist/build.js:58:29)
+    at async main (/Users/stevenstec/.npm/_npx/cec30832843bb978/node_modules/eas-cli-local-build-plugin/dist/main.js:16:9)
+
+Build context (for debugging this failed local build):
+  Platform: ios
+  Build profile: production
+  Workflow: managed
+  Distribution: store
+  Credentials source: remote
+  Project root directory: artifacts/hoops-mobile
+  Required package manager: pnpm
+  eas-cli version: 22.0.0
+  SDK version: 54.0.0
+  Runtime version: 1.0.0
+  React Native version: 0.81.5
+  Expo package version: 54.0.36
+  App version: 1.0.0
+  Fingerprint hash: 4b7a33ae1f7b4804ce3292ed55b6185f153a9f27
+  Git commit: 22b9ed402dfffd9977475bb87edf342035f9978b
+  Git working tree dirty: true
+  Build tracking ID: 669d0ef3-a2b3-410e-9c68-58b2f2db284c
+  Project ID: 2115ac2f-b1d6-42f5-a109-9dd376d0121a
+npx -y eas-cli-local-build-plugin@22.0.0 exited with non-zero code: 1
+    Error: build command failed.
+stevenstec@MacBook-Pro-4 hoops-mobile % 
