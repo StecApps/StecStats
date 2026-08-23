@@ -360,7 +360,7 @@ export default function PaywallScreen() {
               WebBrowser.openBrowserAsync(`https://${domain}/terms`);
             }}
           >
-            <Text style={[styles.legalLink, { color: colors.mutedForeground }]}>Terms of Use</Text>
+            <Text style={[styles.legalLink, { color: colors.mutedForeground }]}>Terms of Service</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
