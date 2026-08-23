@@ -108,6 +108,30 @@ app.use(express.urlencoded({ extended: true }));
 // that is independent of how this middleware verifies incoming tokens.
 app.use(clerkMiddleware());
 
+// TEMPORARY — remove after reviewer account is created
+app.get("/api/admin/create-reviewer", async (req, res) => {
+  if (req.query.token !== "stecstats-setup-2026") {
+    return res.status(403).json({ error: "forbidden" });
+  }
+  const clerkKey = process.env.CLERK_SECRET_KEY;
+  if (!clerkKey) return res.status(500).json({ error: "no CLERK_SECRET_KEY" });
+  const response = await fetch("https://api.clerk.com/v1/users", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${clerkKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email_address: ["reviewer@stecstats.com"],
+      password: "StecStatsReview123",
+      skip_password_checks: true,
+    }),
+  });
+  const body = await response.json() as any;
+  if (response.ok) {
+    return res.json({ ok: true, userId: body.id, email: body.email_addresses?.[0]?.email_address });
+  }
+  return res.status(400).json({ ok: false, error: body });
+});
+// END TEMPORARY
+
 app.use("/api", router);
 
 export default app;
