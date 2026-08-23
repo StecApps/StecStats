@@ -26,6 +26,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 import * as Updates from 'expo-updates';
+import { getManageBillingLabel, openStoreSubscriptions, openBillingPortal } from '@/lib/manageBilling';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -385,72 +386,12 @@ export default function ProfileScreen() {
           />
           <ProfileRow
             icon="card-outline"
-            label={rcPlan ? (Platform.OS === 'android' ? 'Manage in Google Play' : 'Manage in App Store') : 'Manage Billing'}
-            onPress={async () => {
-              if (rcPlan) {
-                // RC subscriber must cancel through the OS store, not the web portal.
-                // itms-apps:// is the correct deep-link scheme for the App Store on iOS;
-                // it must be declared in LSApplicationQueriesSchemes (app.json) so that
-                // Linking.canOpenURL returns true on iOS 9+.
-                const url = Platform.OS === 'android'
-                  ? 'https://play.google.com/store/account/subscriptions'
-                  : 'itms-apps://apps.apple.com/account/subscriptions';
-                const supported = await Linking.canOpenURL(url);
-                if (supported) {
-                  Linking.openURL(url).catch(() => {
-                    Alert.alert(
-                      'Store Unavailable',
-                      Platform.OS === 'android'
-                        ? 'Unable to open Google Play. Please manage your subscription from the Play Store app.'
-                        : 'Unable to open the App Store. Please manage your subscription from the App Store app.',
-                    );
-                  });
-                } else {
-                  // Fallback: open the https equivalent in Safari so the user still
-                  // reaches their subscription management page.
-                  const fallback = Platform.OS === 'android'
-                    ? 'https://play.google.com/store/account/subscriptions'
-                    : 'https://apps.apple.com/account/subscriptions';
-                  Linking.openURL(fallback).catch(() => {
-                    Alert.alert(
-                      'Store Unavailable',
-                      Platform.OS === 'android'
-                        ? 'Unable to open Google Play. Please manage your subscription from the Play Store app.'
-                        : 'Unable to open the App Store. Please manage your subscription from the App Store app.',
-                    );
-                  });
-                }
-              } else {
-                // Stripe / web subscription — open billing portal
-                const domain = process.env.EXPO_PUBLIC_DOMAIN;
-                if (!domain) {
-                  console.warn('[Profile] EXPO_PUBLIC_DOMAIN is not set — cannot open billing portal');
-                  Alert.alert(
-                    'Billing Unavailable',
-                    'Unable to open billing management right now. Please try again later or visit the website.',
-                  );
-                  return;
-                }
-                const billingUrl = `https://${domain}/billing`;
-                try {
-                  const canOpen = await Linking.canOpenURL(billingUrl);
-                  if (!canOpen) {
-                    Alert.alert(
-                      'Billing Unavailable',
-                      'Your device was unable to open the billing page. Please visit the website to manage your subscription.',
-                    );
-                    return;
-                  }
-                  await Linking.openURL(billingUrl);
-                } catch (err) {
-                  console.warn('[Profile] Failed to open billing portal:', err);
-                  Alert.alert(
-                    'Billing Unavailable',
-                    'Something went wrong opening billing management. Please try again later.',
-                  );
-                }
-              }
-            }}
+            label={getManageBillingLabel(rcPlan)}
+            onPress={() =>
+              rcPlan
+                ? openStoreSubscriptions()
+                : openBillingPortal(process.env.EXPO_PUBLIC_DOMAIN)
+            }
             colors={colors}
           />
         </>
