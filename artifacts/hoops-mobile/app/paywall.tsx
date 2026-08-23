@@ -29,7 +29,7 @@ export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { offerings, purchase, restore, isPurchasing, isRestoring, isPro, isPremium, configured, isLoading } =
+  const { offerings, offeringsRefetch, purchase, restore, isPurchasing, isRestoring, isPro, isPremium, configured, isLoading } =
     useSubscription();
 
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('annual');
@@ -279,26 +279,30 @@ export default function PaywallScreen() {
                 )}
               </TouchableOpacity>
             ) : (
-              <View style={{ gap: 4 }}>
-                <View style={[styles.proCta, { backgroundColor: colors.muted, opacity: 0.8 }]}>
+              <View style={{ gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => offeringsRefetch()}
+                  style={[styles.proCta, { backgroundColor: colors.muted, opacity: 0.9 }]}
+                  activeOpacity={0.7}
+                >
                   <Text style={[styles.proCtaText, { color: colors.mutedForeground }]}>
-                    Subscriptions Unavailable
+                    Tap to Retry
                   </Text>
-                </View>
+                </TouchableOpacity>
                 <Text style={[styles.unconfiguredNote, { color: colors.mutedForeground }]}>
-                  In-app purchases are not available right now. Please try again later or contact support.
+                  No subscription packages loaded (found {packages.length}). Make sure you are signed in with a Sandbox Apple ID and the products are configured in App Store Connect.
                 </Text>
               </View>
             )
           ) : (
-            <View style={{ gap: 4 }}>
+            <View style={{ gap: 6 }}>
               <View style={[styles.proCta, { backgroundColor: colors.muted, opacity: 0.8 }]}>
                 <Text style={[styles.proCtaText, { color: colors.mutedForeground }]}>
                   Subscriptions Unavailable
                 </Text>
               </View>
               <Text style={[styles.unconfiguredNote, { color: colors.mutedForeground }]}>
-                In-app purchases are not configured for this build. Please contact support.
+                RevenueCat is not configured in this build (no API key).
               </Text>
             </View>
           )}

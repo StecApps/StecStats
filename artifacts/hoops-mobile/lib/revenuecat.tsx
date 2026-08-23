@@ -141,6 +141,7 @@ function useSubscriptionContext() {
   return {
     customerInfo: customerInfoQuery.data,
     offerings: offeringsQuery.data,
+    offeringsRefetch: offeringsQuery.refetch,
     isPro,
     isPremium,
     isSubscribed: isPro,
