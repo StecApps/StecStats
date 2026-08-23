@@ -1,8 +1,9 @@
 # App Store Review Reply — Guideline 3.1.1 (Billing Link)
 
 > **How to use:** Copy the text under "Reply Text" verbatim into the App Store Connect
-> review reply field. Verify that the demo-account credentials in `review-notes.md` are
-> current before submitting.
+> review reply field. Before submitting, run through every step in
+> [`SUBMISSION-CHECKLIST.md`](SUBMISSION-CHECKLIST.md) — especially verifying that the
+> demo-account credentials in `review-notes.md` are current and tested.
 
 ---
 
