@@ -24,6 +24,7 @@ import RecordGame from "@/pages/record";
 import ImportData from "@/pages/import";
 import Billing from "@/pages/billing";
 import PrivacyPolicy from "@/pages/privacy";
+import TermsOfService from "@/pages/terms";
 import WatchStream from "@/pages/watch";
 import GamePublic from "@/pages/game-public";
 import AdminFeedback from "@/pages/admin";
@@ -702,6 +703,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/game/:shareToken" component={GamePublic} />
             <Route path="/highlight/:shareToken" component={HighlightPublic} />
             <Route path="/privacy" component={PrivacyPolicy} />
+            <Route path="/terms" component={TermsOfService} />
             <Route path="/pricing" component={Pricing} />
             <Route path="/print-cards" component={PrintCards} />
             <Route path="/card-render" component={CardRender} />

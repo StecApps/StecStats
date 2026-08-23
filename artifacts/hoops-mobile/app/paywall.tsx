@@ -8,7 +8,9 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Linking,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -315,9 +317,33 @@ export default function PaywallScreen() {
           </View>
         </View>
 
+        {/* Required Apple subscription disclosure */}
         <Text style={[styles.legal, { color: colors.mutedForeground }]}>
-          No credit card surprises — cancel anytime from your billing page. Prices in USD.
+          Payment charged to your Apple ID at purchase confirmation. Subscription auto-renews
+          unless cancelled at least 24 hours before the end of the current period. Manage or
+          cancel in your Apple ID Account Settings.
         </Text>
+
+        {/* Privacy Policy + Terms links */}
+        <View style={styles.legalLinks}>
+          <TouchableOpacity
+            onPress={() => {
+              const domain = process.env.EXPO_PUBLIC_DOMAIN ?? 'stecstats.com';
+              WebBrowser.openBrowserAsync(`https://${domain}/privacy`);
+            }}
+          >
+            <Text style={[styles.legalLink, { color: colors.mutedForeground }]}>Privacy Policy</Text>
+          </TouchableOpacity>
+          <Text style={[styles.legalLinkSep, { color: colors.mutedForeground }]}>·</Text>
+          <TouchableOpacity
+            onPress={() => {
+              const domain = process.env.EXPO_PUBLIC_DOMAIN ?? 'stecstats.com';
+              WebBrowser.openBrowserAsync(`https://${domain}/terms`);
+            }}
+          >
+            <Text style={[styles.legalLink, { color: colors.mutedForeground }]}>Terms of Use</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
       {/* Restore */}
@@ -524,5 +550,21 @@ function makeStyles(colors: any, insets: any) {
       borderRadius: 6,
     },
     savingsBadgeText: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#fff' },
+    legalLinks: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 2,
+    },
+    legalLink: {
+      fontSize: 12,
+      fontFamily: 'Inter_400Regular',
+      textDecorationLine: 'underline',
+    },
+    legalLinkSep: {
+      fontSize: 12,
+      fontFamily: 'Inter_400Regular',
+    },
   });
 }

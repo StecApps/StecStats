@@ -1,0 +1,115 @@
+Guideline 2.1 - Information Needed - New App Submission
+
+
+We need additional information to continue the review of this new app. To help us fully understand the app and conduct a complete review, app submissions should include relevant details in the App Review Information section in App Store Connect.
+
+Next Steps
+
+Reply in App Store Connect with all of the following information:
+
+1. A screen recording captured on a physical device, running the latest operating system, demonstrating the app's functionality. The recording must begin with launching the app and show the typical user flow through its core features. If the app has any of the following, include them in the recording:
+
+- Account registration, login, and account deletion flows
+- Accessing paid content or features within the app, including any purchase or subscription flows
+- User-generated content, including content reporting and blocking mechanisms
+- Any prompts requesting access to sensitive data or device capabilities (for example, location, contacts, camera, or App Tracking Transparency)
+
+2. A list of the device models and operating systems the app was tested on before submitting for review
+3. A description of the app's functions and target audience, including the problem it solves and the value it provides
+4. Instructions for setting up and accessing the app's main features, including any required login credentials or sample files
+5. A list of the external services, tools, or platforms the app uses to deliver its core functionality (for example, data providers, authentication services, payment processors, or AI services)
+6. Describe any regional differences in the app’s features or content, or confirm that the app functions consistently across all regions
+7. If the app operates in a highly regulated industry or includes protected third-party material, provide any relevant documentation or credentials to demonstrate you are authorized to provide these services or protected material
+
+Include this information in the Notes field of the App Review Information section in App Store Connect for future submissions.
+
+
+How to Prevent Common Issues
+
+- Guideline 2.1 - Bugs and crashes: Apps are reviewed on physical devices to mirror real-world conditions. Test the app on each supported device platform before submitting. Use TestFlight to distribute builds for beta testing on real devices. 
+- Guideline 2.1 - Accessing the app: If the app includes account-based features, provide up-to-date login credentials for a demo account in App Store Connect. If the app has multiple account types, provide credentials for each type in the Notes field.
+- Guideline 2.3.3 - Screenshots: App screenshots on the App Store are an opportunity to highlight the app's core concept and help users understand the app’s value. Screenshots must show the actual app in use, and not merely the title art, login page, or splash screen. 
+- Guideline 3.1.2 - Subscription information: Apps that offer auto-renewable subscriptions must clearly display the title, length, and price of each subscription, as well as links to the Terms of Use and privacy policy. 
+- Guideline 5.1.1 - Purpose strings: Each purpose string, also called a usage description string, must clearly and completely describe why the app needs access to the requested data or capability, and in most cases provide an example of how the data will be used. 
+
+Read more tips for a smooth review experience. Watch a video with more tips for preventing common rejections.
+iOS App 1.0App Version
+Rejection Reasons:
+2.1.0 Performance: App Completeness
+
+
+Apple2026-08-18 9:06 PM
+Hello,
+
+Thank you for your efforts to follow our guidelines. There are some outstanding issues that still need your attention.
+
+If you have any questions, we are here to help. Reply to this message in App Store Connect and let us know.
+
+Review Environment
+Submission ID: 8490ffa3-4a0e-4af6-86f6-0bbc1935c6d9
+Review date: August 19, 2026
+Review Device: iPhone 17 Pro Max and iPad Air 11-inch (M4)
+Version reviewed: 1.0 (80)
+
+Guideline 3.1.1 - Business - Payments - In-App Purchase
+
+Issue Description
+
+We noticed that the app includes or accesses paid digital content, services, or functionality by means other than In-App Purchase, which is not appropriate for the App Store. Specifically: 
+
+- The subscription can be purchased in the app using payment mechanisms other than In-App Purchase. 
+
+- The app accesses digital content purchased outside the app, such as subscription, but that content isn't available to purchase using In-App Purchase. 
+
+Apps on the United States storefront may link out to the default browser, using buttons, external links, or other calls to action, for payment mechanisms other than in-app purchase. To learn more, see the News post on Apple Developer. For storefronts where there are not alternative options for qualifying apps, the app must use in-app purchase.
+
+Next Steps
+
+The paid digital content, services, or subscriptions included in or accessed by the app must be available for purchase in the app using In-App Purchase. 
+
+Apps that offer paid digital services and content across multiple platforms may allow customers to access the content they acquired outside the app as long as it is also available for purchase using In-App Purchase. See guideline 3.1.3(b) for more information. 
+
+If you have any additional information to provide regarding the digital content and services in the app and how the guidelines apply to them, please reply to this message in App Store Connect and let us know. If there is information you'd like us to consider in our review of future submissions, please feel free to include it in the App Review Information section of App Store Connect. 
+
+Resources
+
+- See how to implement In-App Purchase with the StoreKit framework.
+- Review step-by-step instructions for creating In-App Purchases in App Store Connect. 
+- Learn more about business requirements in guideline 3.1.1.
+- Learn more about submitting In-App Purchases and subscriptions to App Review.
+Guideline 3.1.2(c) - Business - Payments - Subscriptions
+Issue Description
+
+The submission did not include all the required information for apps offering auto-renewable subscriptions.
+
+The following information needs to be included within the app: title of publication or service, length of subscription (time period and content or services provided during each subscription period), price of subscription (and price per unit if appropriate), a functional link to the Terms of Use (EULA), and a functional link to the privacy policy.
+
+You can use SubscriptionStoreView to easily include all of the required information in the app's purchase flow.
+
+The following information needs to be included in the App Store metadata: a functional link to the Terms of Use (EULA) (if you are using the standard Apple Terms of Use (EULA), include a link in the App Description, and if you are using a custom EULA, add it in App Store Connect).
+
+Next Steps
+
+Update the app and App Store metadata to include the information specified above.
+
+Once the app and metadata includes all of the required information, or if they already do, reply to this message with a screen recording to confirm. Include this information in the Notes field of the App Review Information section in App Store Connect for future submissions.
+
+Resources
+
+Apps offering auto-renewable subscriptions must include all of the following required information in the app itself:
+
+- Title of auto-renewing subscription (this may be the same as the In-App Purchase product name)
+- Length of subscription
+- Price of subscription, and price per unit if appropriate
+- Functional links to the privacy policy and Terms of Use (EULA)
+
+The app metadata must also include functional links to the privacy policy in the Privacy Policy field in App Store Connect and the Terms of Use (EULA) in the App Description or EULA field in App Store Connect.
+
+Review Schedule 2 of the Apple Developer Program License Agreement to learn more.
+Support
+- Reply to this message in your preferred language if you need assistance. If you need additional support, use the Contact Us module.
+- Consult with fellow developers and Apple engineers on the Apple Developer Forums.
+- Provide feedback on this message and your review experience by completing a short survey.
+
+Test on the latest betas
+Betas of iOS 27, iPadOS 27, macOS 27, tvOS 27 and visionOS 27 are now available. Download the latest betas to prepare your app for upcoming software releases. Learn more about installing and using Apple beta software.
