@@ -27,6 +27,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 import * as Updates from 'expo-updates';
 import { getManageBillingLabel, openStoreSubscriptions, openBillingPortal } from '@/lib/manageBilling';
+import { openContactSupport } from '@/lib/supportConfig';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -424,7 +425,7 @@ export default function ProfileScreen() {
       <ProfileRow
         icon="mail-outline"
         label="Contact Support"
-        onPress={() => Linking.openURL('mailto:sstec@stecstats.com')}
+        onPress={openContactSupport}
         colors={colors}
       />
       <ProfileRow
