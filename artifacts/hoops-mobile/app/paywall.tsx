@@ -70,22 +70,7 @@ export default function PaywallScreen() {
   })();
 
   async function handlePurchase() {
-    // Diagnostic alert — remove before final release.
-    Alert.alert(
-      'DEBUG: Tap registered',
-      activePkg
-        ? `pkg: ${activePkg.identifier}\nproduct: ${activePkg.product?.productIdentifier ?? 'NULL'}\nprice: ${activePkg.product?.priceString ?? 'NULL'}`
-        : 'activePkg is NULL — package not loaded',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Continue Purchase', onPress: () => _doPurchase() },
-      ],
-    );
-  }
-
-  async function _doPurchase() {
     if (!activePkg) return;
-    console.log('[Paywall] _doPurchase — package:', activePkg?.identifier, 'product:', activePkg?.product?.productIdentifier, 'price:', activePkg?.product?.priceString);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await purchase(activePkg);
@@ -180,10 +165,6 @@ export default function PaywallScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
           <Ionicons name="close" size={22} color={colors.mutedForeground} />
         </TouchableOpacity>
-        {/* DEBUG stamp — remove before release */}
-        <Text style={{ color: 'red', fontSize: 10, textAlign: 'center', fontFamily: 'Inter_400Regular' }}>
-          {'DEBUG BUILD v5 — pkgs: ' + packages.length + (configured ? ' configured' : ' NOT configured')}
-        </Text>
 
         {/* Hero */}
         <View style={styles.hero}>
