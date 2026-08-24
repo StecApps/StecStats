@@ -98,17 +98,20 @@ export default function PaywallScreen() {
       router.back();
     } catch (err: any) {
       console.log('[Paywall] purchase error:', JSON.stringify(err));
-      // Show all errors — including ones RevenueCat tags as userCancelled —
-      // so we can diagnose store/sandbox account issues.
       const code = err?.code ?? err?.readableErrorCode ?? '';
-      const msg  = err?.message ?? err?.localizedDescription ?? 'Unknown error';
+      const msg  = err?.message ?? err?.localizedDescription ?? '';
       if (err?.userCancelled && !code) {
-        // Genuine user tap on Cancel — no alert needed.
+        // This fires when a real Apple ID tries to purchase in the TestFlight
+        // sandbox — iOS silently rejects without showing the payment sheet.
+        Alert.alert(
+          'Sign in Required',
+          'In-app purchases require a Sandbox Apple ID when testing via TestFlight.\n\n1. Go to Settings → App Store → sign out of your Apple ID\n2. Re-open the app and tap Start Free Trial\n3. When iOS prompts for a store sign-in, use your Sandbox tester account',
+        );
         return;
       }
       Alert.alert(
         'Purchase failed',
-        code ? `${code}\n\n${msg}` : msg,
+        code ? `${code}\n\n${msg}` : (msg || 'Please try again'),
       );
     } finally {
       setIsVerifying(false);
