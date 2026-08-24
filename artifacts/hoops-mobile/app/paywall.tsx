@@ -71,6 +71,7 @@ export default function PaywallScreen() {
 
   async function handlePurchase() {
     if (!activePkg) return;
+    console.log('[Paywall] handlePurchase — package:', activePkg?.identifier, 'product:', activePkg?.product?.productIdentifier, 'price:', activePkg?.product?.priceString);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await purchase(activePkg);
@@ -96,9 +97,19 @@ export default function PaywallScreen() {
 
       router.back();
     } catch (err: any) {
-      if (!err?.userCancelled) {
-        Alert.alert('Purchase failed', err?.message ?? 'Please try again');
+      console.log('[Paywall] purchase error:', JSON.stringify(err));
+      // Show all errors — including ones RevenueCat tags as userCancelled —
+      // so we can diagnose store/sandbox account issues.
+      const code = err?.code ?? err?.readableErrorCode ?? '';
+      const msg  = err?.message ?? err?.localizedDescription ?? 'Unknown error';
+      if (err?.userCancelled && !code) {
+        // Genuine user tap on Cancel — no alert needed.
+        return;
       }
+      Alert.alert(
+        'Purchase failed',
+        code ? `${code}\n\n${msg}` : msg,
+      );
     } finally {
       setIsVerifying(false);
     }
