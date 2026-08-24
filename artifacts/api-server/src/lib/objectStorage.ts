@@ -331,6 +331,32 @@ export class ObjectStorageService {
       throw err;
     }
   }
+
+  /**
+   * Remove every object in an account's private upload namespace. Account
+   * deletion uses this in addition to removing paths referenced by database
+   * rows, so abandoned uploads and intermediate video chunks are not retained.
+   */
+  async deleteOwnerUploadNamespace(ownerId: number): Promise<void> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const { bucketName, objectName: privatePrefix } = parseObjectPath(privateObjectDir);
+    const prefixBase = privatePrefix.replace(/\/+$/, "");
+    const prefix = `${prefixBase}/uploads/${ownerId}/`;
+    const bucket = objectStorageClient.bucket(bucketName);
+    const [files] = await bucket.getFiles({ prefix });
+
+    await Promise.all(
+      files.map(async (file) => {
+        try {
+          await file.delete();
+        } catch (err: any) {
+          // A concurrent cleanup may already have removed the file.
+          if (err?.code === 404 || err?.message?.includes("No such object")) return;
+          throw err;
+        }
+      }),
+    );
+  }
 }
 
 function parseObjectPath(path: string): {

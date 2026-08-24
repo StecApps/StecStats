@@ -54,6 +54,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserProfile"
+    delete:
+      operationId: deleteMyAccount
+      tags: [users]
+      summary: Permanently delete the current user's account and stored application data
+      description: Does not cancel active StoreKit or Stripe subscriptions.
+      responses:
+        "204":
+          description: Account deleted
 
   /healthz:
     get:

@@ -222,6 +222,77 @@ export const useUpdateMe = <TError = ErrorType<unknown>,
       return useMutation(getUpdateMeMutationOptions(options));
     }
 
+export const getDeleteMyAccountUrl = () => {
+
+
+
+
+  return `/api/users/me`
+}
+
+/**
+ * Does not cancel active StoreKit or Stripe subscriptions.
+ * @summary Permanently delete the current user's account and stored application data
+ */
+export const deleteMyAccount = async ( options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteMyAccountUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteMyAccountMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMyAccount>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMyAccount>>, TError,void, TContext> => {
+
+const mutationKey = ['deleteMyAccount'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMyAccount>>, void> = () => {
+
+
+          return  deleteMyAccount(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMyAccountMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMyAccount>>>
+
+    export type DeleteMyAccountMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Permanently delete the current user's account and stored application data
+ */
+export const useDeleteMyAccount = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMyAccount>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMyAccount>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteMyAccountMutationOptions(options));
+    }
+
 export const getHealthCheckUrl = () => {
 
 

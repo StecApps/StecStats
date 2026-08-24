@@ -19,7 +19,7 @@ import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
-import { useGetBillingStatus, useListTeams, useListPlayers, useGetMe, useUpdateMe } from '@workspace/api-client-react';
+import { useDeleteMyAccount, useGetBillingStatus, useListTeams, useListPlayers, useGetMe, useUpdateMe } from '@workspace/api-client-react';
 import { useSubscription } from '@/lib/revenuecat';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
@@ -142,6 +142,7 @@ export default function ProfileScreen() {
   // Stored display name — overrides Clerk's unwritable firstName/lastName
   const { data: meData, refetch: refetchMe } = useGetMe();
   const updateMe = useUpdateMe();
+  const deleteMyAccount = useDeleteMyAccount();
 
   // Edit name state
   const [editNameVisible, setEditNameVisible] = useState(false);
@@ -290,6 +291,54 @@ export default function ProfileScreen() {
   async function handleSignOut() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await signOut();
+  }
+
+  function handleDeleteAccount() {
+    if (deleteMyAccount.isPending) return;
+
+    Alert.alert(
+      'Delete your account?',
+      'This permanently removes your teams, players, games, recordings, highlights, and profile from StecStats.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Delete permanently?',
+              'This cannot be undone. Deleting your StecStats account does not cancel an Apple or web subscription. Cancel any subscription first in Apple Account Settings or Manage Billing.',
+              [
+                { text: 'Keep Account', style: 'cancel' },
+                {
+                  text: 'Delete Account',
+                  style: 'destructive',
+                  onPress: () => {
+                    deleteMyAccount.mutate(undefined, {
+                      onSuccess: async () => {
+                        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        try {
+                          await signOut();
+                        } catch {
+                          // The server has already removed the Clerk identity,
+                          // so a local sign-out failure must not hide success.
+                        }
+                      },
+                      onError: () => {
+                        Alert.alert(
+                          'Could not delete account',
+                          'Your account is still available. Please try again or contact support if the problem continues.',
+                        );
+                      },
+                    });
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
   }
 
   const styles = makeStyles(colors, insets);
@@ -487,6 +536,13 @@ export default function ProfileScreen() {
 
       {/* Account */}
       <Text style={styles.sectionTitle}>Account</Text>
+      <ProfileRow
+        icon="trash-outline"
+        label={deleteMyAccount.isPending ? 'Deleting Account…' : 'Delete Account'}
+        onPress={deleteMyAccount.isPending ? undefined : handleDeleteAccount}
+        destructive
+        colors={colors}
+      />
       <ProfileRow
         icon="log-out-outline"
         label="Sign Out"

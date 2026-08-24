@@ -32,6 +32,13 @@ export const UpdateMeResponse = zod.object({
 
 
 /**
+ * Does not cancel active StoreKit or Stripe subscriptions.
+ * @summary Permanently delete the current user's account and stored application data
+ */
+export const DeleteMyAccountResponse = zod.void()
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -512,6 +519,7 @@ export const CreateGameResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -578,6 +586,7 @@ export const GetGameResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -730,6 +739,7 @@ export const UpdateGameResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
@@ -938,6 +948,7 @@ export const MergeGamesResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),

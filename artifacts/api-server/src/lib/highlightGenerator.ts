@@ -26,6 +26,35 @@ const objectStorageService = new ObjectStorageService();
 const highlightAbortControllers = new Map<number, AbortController>();
 const lowlightAbortControllers = new Map<number, AbortController>();
 const proxyBuildAbortControllers = new Map<number, AbortController>();
+const ownersWithDeletionInProgress = new Set<number>();
+
+/**
+ * Prevent background media workers from writing new objects while an account is
+ * being removed. Existing jobs are cancelled by the caller using the returned
+ * game ids; this guard also closes the race between cancellation and upload.
+ */
+export function beginOwnerMediaDeletion(ownerId: number): void {
+  ownersWithDeletionInProgress.add(ownerId);
+}
+
+export function cancelOwnerMediaDeletion(ownerId: number, gameIds: number[]): void {
+  beginOwnerMediaDeletion(ownerId);
+  for (const gameId of gameIds) {
+    cancelHighlightGeneration(gameId);
+    cancelProxyBuild(gameId);
+  }
+}
+
+export function resumeOwnerMediaWrites(ownerId: number): void {
+  ownersWithDeletionInProgress.delete(ownerId);
+}
+
+function assertOwnerMediaWritesAllowed(ownerId: number): void {
+  if (ownersWithDeletionInProgress.has(ownerId)) {
+    throw new Error("Account deletion is in progress; media upload cancelled");
+  }
+}
+
 export function cancelHighlightJob(gameId: number): void {
   highlightAbortControllers.get(gameId)?.abort();
 }
@@ -794,6 +823,7 @@ async function encodeChunksToGcs(
         }
         if (!existFlags[chunkIdx]) {
           if (signal?.aborted) throw new HighlightError("Cancelled");
+          assertOwnerMediaWritesAllowed(ownerId);
           logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: uploading to GCS");
           await objectStorageService.uploadLocalFileToObjectPath(
             localPath, gcsChunkPath(chunkIdx), "video/mp4",
@@ -2496,6 +2526,7 @@ export async function mixMusicIntoReel(
 }
 
 async function uploadHighlight(outPath: string, ownerId: number): Promise<string> {
+  assertOwnerMediaWritesAllowed(ownerId);
   // Use GCS SDK streaming upload (pipeline → createWriteStream) instead of
   // reading the whole file into a Buffer and POSTing to a signed URL.
   // The signed-URL path dropped the connection ("other side closed") on large

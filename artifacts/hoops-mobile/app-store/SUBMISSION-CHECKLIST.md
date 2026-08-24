@@ -1,65 +1,71 @@
 # App Store Submission Checklist
 
-Run through every item below before submitting a new build to App Store Connect.
-Check off each step manually — do not skip credential verification even for minor version bumps.
+Complete every item on a **new TestFlight/App Store build** before submitting.
+The current source code cannot confirm App Store Connect product status or test
+a real StoreKit payment sheet, so those checks are intentionally manual.
 
 ---
 
-## 1 — Update credentials in `review-notes.md`
+## 1 — Build and sign-in
 
-- [ ] Open `artifacts/hoops-mobile/app-store/review-notes.md`.
-- [ ] Replace **Demo Account → Email** `[FILL IN]` with the current reviewer email.
-- [ ] Replace **Demo Account → Password** `[FILL IN]` with the current password.
-- [ ] Replace **Sandbox Apple ID** `[FILL IN]` with the current sandbox tester email (from App Store Connect → Users and Access → Sandbox Testers).
-- [ ] Replace **Sandbox Apple ID → Password** `[FILL IN]` with the current sandbox password.
-- [ ] Commit the updated `review-notes.md` so the credentials are version-controlled with the build.
+- [ ] Increment the iOS build number and upload a new binary.
+- [ ] On a physical iPhone or iPad, confirm **Sign in with Apple** is visible
+  on the opening screen and completes successfully.
+- [ ] Sign in with Apple using a fresh account. Confirm the Profile screen
+  shows **Unlock Pro Features**, not **Manage Billing**.
+- [ ] Do not give App Review a Stripe-subscribed demo account or instructions
+  that route them through a web billing portal.
 
----
+## 2 — In-app purchase products
 
-## 2 — Verify the demo account works end-to-end
+- [ ] In App Store Connect, verify both products are attached to this app
+  version and submitted with the build:
+  - `com.stecapps.stecstats.pro.monthly`
+  - `com.stecapps.stecstats.pro.annualDeal`
+- [ ] Each product has completed pricing, localization, tax/category details,
+  and the required App Review screenshot.
+- [ ] Confirm the subscription group, 14-day trial configuration, and
+  availability are active for the intended storefront.
+- [ ] In RevenueCat, confirm `$rc_monthly` points to the monthly product and
+  `$rc_annual` points to the annual product in the current offering.
+- [ ] On a physical TestFlight device with a Sandbox Apple ID, open
+  **Profile → Unlock Pro Features**.
+- [ ] Confirm the Monthly/Annual selector appears, each price comes from
+  StoreKit, and **Start Free Trial** opens Apple’s payment sheet.
+- [ ] Complete a Sandbox purchase and confirm Profile changes to
+  **Manage in App Store**.
+- [ ] Confirm **Restore purchases** restores an existing sandbox entitlement.
 
-- [ ] Launch the app on a physical device (or simulator).
-- [ ] Sign in with the demo account credentials from step 1.
-- [ ] Confirm the **Profile** tab shows **"Manage Billing"** (indicating a Stripe/web subscription is active).
-- [ ] Sign out and sign back in to confirm the credentials are accepted without error.
+## 3 — Account deletion
 
----
+- [ ] Sign in with a throwaway account that has a player, game, and uploaded
+  photo or recording.
+- [ ] Go to **Profile → Delete Account**, confirm both destructive prompts,
+  and verify the app signs out.
+- [ ] Confirm that signing in again creates a fresh, empty account.
+- [ ] Record this physical-device flow from sign-in through the final
+  confirmation. Add the recording to App Review Information as requested by
+  guideline 5.1.1.
+- [ ] Confirm the deletion copy makes clear that account deletion does not
+  cancel an Apple or web subscription.
 
-## 3 — Verify the Sandbox IAP flow
+## 4 — Permissions and privacy
 
-- [ ] On a device signed into a **Sandbox Apple ID** (Settings → App Store → Sandbox Account), open the app.
-- [ ] Create a fresh account (or sign in with a sandbox-linked account).
-- [ ] Navigate to **Profile → Unlock Pro Features**.
-- [ ] Confirm the paywall opens and lists Pro / Premium tiers with App Store prices.
-- [ ] Tap **Start Pro** (or **Start Premium**) and confirm the StoreKit payment sheet appears — no credit-card form, no external link.
-- [ ] Complete the Sandbox purchase and confirm the Profile screen switches to **"Manage in App Store"**.
+- [ ] On a clean physical install, request camera, microphone, and photo
+  library access. Confirm every native iOS prompt uses the current specific
+  explanation—not an old build’s wording.
+- [ ] Verify the App Store privacy nutrition label matches the data actually
+  collected by the app and linked services.
+- [ ] Verify the Privacy Policy and Terms links resolve from both Profile and
+  the paywall.
 
----
+## 5 — App Review Information
 
-## 4 — Paste review notes into App Store Connect
-
-- [ ] Copy the full content of the **"Notes (paste into App Store Connect)"** section from `review-notes.md`.
-- [ ] In App Store Connect, open the submission → **App Review Information → Notes**.
-- [ ] Paste and save.
-- [ ] Verify the notes display correctly (no raw Markdown artifacts).
-
----
-
-## 5 — Paste the review reply (if responding to a prior rejection)
-
-- [ ] If this submission is a response to a guideline rejection, open `review-reply-3.1.1.md`.
-- [ ] Copy the **Reply Text** verbatim.
-- [ ] Paste it into the App Store Connect review reply field before re-submitting.
-
----
-
-## 6 — Final checks before submitting
-
-- [ ] Build version and build number are incremented.
-- [ ] All `[FILL IN]` placeholders in `review-notes.md` have been replaced — search the file for `[FILL IN]` to confirm zero matches.
-- [ ] Contact email in `review-notes.md` (`sstec@stecstats.com`) is current and monitored.
-- [ ] Submit the build.
-
----
-
-*Keep this checklist and `review-notes.md` up to date after every password rotation or sandbox tester change.*
+- [ ] Paste the current **Notes (paste into App Store Connect)** content from
+  `review-notes.md`.
+- [ ] Confirm the notes direct reviewers to **Sign in with Apple** and then
+  the free-account IAP flow.
+- [ ] Confirm no passwords, Sandbox Apple credentials, or source-control
+  placeholders appear in the notes.
+- [ ] Select the newly uploaded build, submit both IAP products for review,
+  and then submit the app version.
