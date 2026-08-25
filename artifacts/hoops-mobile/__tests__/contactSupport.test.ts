@@ -13,14 +13,16 @@
 // ── Mocks (hoisted before imports) ───────────────────────────────────────────
 
 jest.mock('react-native', () => ({
+  Alert: { alert: jest.fn() },
   Linking: { openURL: jest.fn() },
 }));
 
 // ── Imports (after mock hoisting) ─────────────────────────────────────────────
 
-import { Linking } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import { CONTACT_SUPPORT_URL, openContactSupport } from '../lib/supportConfig';
 
+const alertSpy = Alert.alert as jest.Mock;
 const mockOpenURL = Linking.openURL as jest.Mock;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -66,5 +68,16 @@ describe('Contact Support link', () => {
 
   test('does not open a browser URL (no https://)', () => {
     expect(CONTACT_SUPPORT_URL).not.toMatch(/^https?:\/\//);
+  });
+
+  test('shows an alert when the device cannot open the email client', async () => {
+    mockOpenURL.mockRejectedValueOnce(new Error('No email app installed'));
+
+    await openContactSupport();
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      'Contact Support',
+      'Unable to open your email app. Please email sstec@stecstats.com directly.',
+    );
   });
 });

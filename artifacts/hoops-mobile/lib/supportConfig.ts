@@ -6,11 +6,18 @@
  * function that profile.tsx binds to the onPress — a change to the address
  * or the Linking call breaks the test immediately.
  */
-import { Linking } from 'react-native';
+import { Alert, Linking } from 'react-native';
 
 export const CONTACT_SUPPORT_URL = 'mailto:sstec@stecstats.com';
 
 /** Opens the device email client addressed to the support inbox. */
-export function openContactSupport(): void {
-  Linking.openURL(CONTACT_SUPPORT_URL);
+export async function openContactSupport(): Promise<void> {
+  try {
+    await Linking.openURL(CONTACT_SUPPORT_URL);
+  } catch {
+    Alert.alert(
+      'Contact Support',
+      `Unable to open your email app. Please email ${CONTACT_SUPPORT_URL.replace('mailto:', '')} directly.`,
+    );
+  }
 }
