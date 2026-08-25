@@ -138,7 +138,7 @@ export default function ProfileScreen() {
   const { data: billing } = useGetBillingStatus();
   const { data: teams } = useListTeams();
   const { data: players } = useListPlayers();
-  const { isPremium, isPro } = useSubscription();
+  const { isPremium, isPro, isLoading: isSubscriptionLoading } = useSubscription();
 
   // Stored display name — overrides Clerk's unwritable firstName/lastName
   const { data: meData, refetch: refetchMe } = useGetMe();
@@ -453,16 +453,18 @@ export default function ProfileScreen() {
               : undefined}
             colors={colors}
           />
-          <ProfileRow
-            icon="card-outline"
-            label={getManageBillingLabel(rcPlan)}
-            onPress={() =>
-              rcPlan
-                ? openStoreSubscriptions()
-                : openBillingPortal(process.env.EXPO_PUBLIC_DOMAIN)
-            }
-            colors={colors}
-          />
+          {!isSubscriptionLoading && (
+            <ProfileRow
+              icon="card-outline"
+              label={getManageBillingLabel(rcPlan)}
+              onPress={() =>
+                rcPlan
+                  ? openStoreSubscriptions()
+                  : openBillingPortal(process.env.EXPO_PUBLIC_DOMAIN)
+              }
+              colors={colors}
+            />
+          )}
         </>
       )}
 
