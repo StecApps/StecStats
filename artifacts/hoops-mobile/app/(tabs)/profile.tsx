@@ -26,9 +26,8 @@ import * as WebBrowser from 'expo-web-browser';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 import * as Updates from 'expo-updates';
-import { getManageBillingLabel, openStoreSubscriptions, openBillingPortal } from '@/lib/manageBilling';
+import { openStoreSubscriptions } from '@/lib/manageBilling';
 import { openContactSupport } from '@/lib/supportConfig';
-import { clearDeletedAccountLocalData } from '@/lib/accountDeletionCleanup';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -138,7 +137,7 @@ export default function ProfileScreen() {
   const { data: billing } = useGetBillingStatus();
   const { data: teams } = useListTeams();
   const { data: players } = useListPlayers();
-  const { isPremium, isPro, isLoading: isSubscriptionLoading } = useSubscription();
+  const { isPremium, isPro } = useSubscription();
 
   // Stored display name — overrides Clerk's unwritable firstName/lastName
   const { data: meData, refetch: refetchMe } = useGetMe();
@@ -308,33 +307,15 @@ export default function ProfileScreen() {
           onPress: () => {
             Alert.alert(
               'Delete permanently?',
-              'This cannot be undone. Deleting your StecStats account does not cancel an Apple or web subscription. Cancel any subscription first in Apple Account Settings or Manage Billing.',
+              'This cannot be undone. Deleting your StecStats account does not cancel an Apple subscription. Manage or cancel subscriptions in Apple Account Settings.',
               [
                 { text: 'Keep Account', style: 'cancel' },
-                ...(Platform.OS === 'ios'
-                  ? [{ text: 'Manage in App Store', onPress: () => { void openStoreSubscriptions(); } }]
-                  : []),
                 {
                   text: 'Delete Account',
                   style: 'destructive',
                   onPress: () => {
                     deleteMyAccount.mutate(undefined, {
-                      onSuccess: async (result) => {
-                        if (result && result.status === 'pending') {
-                          Alert.alert(
-                            'Deletion Needs One Final Step',
-                            'For your privacy, we must wait 15 minutes for any already-issued upload links to expire. Keep this account signed in, then choose Delete Account again to finish permanently.',
-                          );
-                          return;
-                        }
-                        try {
-                          await clearDeletedAccountLocalData(user?.id);
-                        } catch {
-                          Alert.alert(
-                            'Account Deleted',
-                            'Your account was deleted, but this device could not clear its saved recovery data. Close and reopen the app before using another account.',
-                          );
-                        }
+                      onSuccess: async () => {
                         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                         try {
                           await signOut();
@@ -346,7 +327,7 @@ export default function ProfileScreen() {
                       onError: () => {
                         Alert.alert(
                           'Could not delete account',
-                          'Your account is still available. Please try again or contact support if the problem continues.',
+                          'We could not finish deleting your account. Please sign in again and retry. Your account data may already have been removed.',
                         );
                       },
                     });
@@ -453,18 +434,12 @@ export default function ProfileScreen() {
               : undefined}
             colors={colors}
           />
-          {!isSubscriptionLoading && (
-            <ProfileRow
-              icon="card-outline"
-              label={getManageBillingLabel(rcPlan)}
-              onPress={() =>
-                rcPlan
-                  ? openStoreSubscriptions()
-                  : openBillingPortal(process.env.EXPO_PUBLIC_DOMAIN)
-              }
-              colors={colors}
-            />
-          )}
+          <ProfileRow
+            icon="card-outline"
+              label="Manage in App Store"
+              onPress={openStoreSubscriptions}
+            colors={colors}
+          />
         </>
       )}
 

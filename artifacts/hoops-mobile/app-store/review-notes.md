@@ -8,41 +8,63 @@
 
 ## Notes (paste into App Store Connect)
 
+
+### Review sign-in
+
+No paid account is required.
+
+**Preferred path:** Open StecStats and choose **Sign in with Apple**. Complete
+the native Apple sign-in sheet to create a new, free StecStats account.
+
+**Free reviewer account:** If using the supplied reviewer account instead:
+
+- **Email:** [ENTER IN APP STORE CONNECT ONLY]
+- **Sign-in method:** Enter the email address, tap **Continue**, then enter
+  the 6-digit verification code sent to that inbox. No app password is used.
+- **Account type:** Free (no subscription is pre-activated).
+- **Email-code delivery:** [ENTER IN APP STORE CONNECT ONLY — provide a
+  reviewer-accessible way to receive fresh codes throughout review].
+
 ### Review the in-app purchase
 
-No demo account is required. Please use **Sign in with Apple** on the opening
-screen:
-
-1. Open StecStats and choose **Sign in with Apple**.
-2. Complete the native Apple sign-in sheet. A new, free StecStats account is
-   created automatically.
-3. Open **Profile** and tap **Unlock Pro Features**.
-4. The paywall shows the Pro subscription with Monthly and Annual options.
-5. Tap **Start Free Trial**. The standard StoreKit purchase sheet is presented;
-   StecStats does not open a web checkout or ask for credit-card details.
-6. After purchase, return to Profile. The subscription-management action opens
-   Apple Account subscription settings.
-7. **Restore purchases** is available at the bottom of the paywall.
-
-The submitted In-App Purchase products are:
-
-- `com.stecapps.stecstats.pro.monthly`
-- `com.stecapps.stecstats.pro.annualDeal`
+1. Install the current build on a **physical iOS device**.
+2. Sign in with Apple, or sign in with the free reviewer account using its
+   6-digit email code.
+3. Tap the **Profile** tab.
+4. Tap **Unlock Pro Features**.
+5. The paywall lists the Pro Monthly and Pro Annual products above.
+6. Choose Monthly or Annual, then tap **Start Free Trial**. StoreKit presents
+   Apple’s standard payment sheet; StecStats does not open a web checkout or
+   ask for credit-card details.
+7. Complete the purchase with the Sandbox Apple ID. The Pro subscription
+   activates via RevenueCat.
+8. Return to **Profile** and confirm the Pro plan is active.
+9. Open **Profile → Unlock Pro Features** again and tap **Restore purchases**.
+   Confirm the restore result is shown.
 
 ### Account deletion
 
-The app supports permanent account deletion:
+The app supports direct, permanent in-app account deletion:
 
-1. Sign in, then open **Profile**.
-2. Scroll to **Account** and tap **Delete Account**.
-3. Confirm **Continue**, then confirm **Delete Account**.
-4. The app permanently deletes the StecStats profile, teams, players, games,
-   recordings, generated reels, saved media, linked YouTube credential, and
-   sign-in identity.
+1. Sign in, then open **Profile → Delete Account**.
+2. Confirm **Continue**, then **Delete Account** in the final confirmation.
+3. The app permanently deletes the StecStats profile, teams, players, games,
+   recordings, highlights, saved media, and matching sign-in identity, then
+   returns to the welcome screen.
 
-Deleting a StecStats account does not cancel an Apple subscription. The
-confirmation dialog directs users to Apple Account Settings (or Manage Billing
-for a web subscription) to cancel first when needed.
+Deleting a StecStats account does not cancel an Apple subscription. The final
+confirmation directs users to Apple Account Settings to manage or cancel it.
+
+
+### Required physical-device recording
+
+Attach a current physical-device screen recording to App Review Information
+(or provide a review-accessible link) before submitting. It must show:
+
+1. Sign in with Apple or email-code sign-in with the free reviewer account.
+2. Opening **Profile → Delete Account**.
+3. Tapping **Continue**, then **Delete Account** in the final confirmation.
+4. The app returning to the welcome screen after deletion.
 
 ### Contact
 
@@ -59,3 +81,16 @@ business day.
 6. Tap **Delete Permanently** in the final confirmation. The app signs out and returns to the sign-in screen.
 
 ---
+
+### Current submitted IAP products
+
+The submitted iOS build includes these Pro subscriptions in the default
+StoreKit / RevenueCat offering:
+
+| Product | App Store product ID | Duration | Price | Introductory offer |
+|---|---|---|---|---|
+| Pro Monthly | `com.stecapps.stecstats.pro.monthly` | 1 month | $9.99/month | 14-day free trial |
+| Pro Annual | `com.stecapps.stecstats.pro.annualDeal` | 1 year | $59.99/year | 14-day free trial |
+
+Premium is displayed as **Coming Soon** and is not a purchasable product in
+this submission.

@@ -3,6 +3,8 @@ import { Readable, pipeline as streamPipeline } from "stream";
 import { createReadStream } from "fs";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
+import { and, eq } from "drizzle-orm";
+import { db, usersTable } from "@workspace/db";
 
 import {
   ObjectAclPolicy,
@@ -15,6 +17,7 @@ import {
 const pipeline = promisify(streamPipeline);
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+const DIRECT_UPLOAD_URL_TTL_SEC = 30;
 
 export const objectStorageClient = new Storage({
   credentials: {
@@ -44,6 +47,22 @@ export class ObjectNotFoundError extends Error {
 
 export class ObjectStorageService {
   constructor() {}
+
+  /**
+   * Last-line write barrier for all private account upload paths. Route-level
+   * auth stops new requests, but an in-flight encoder can reach this method
+   * after deletion begins, so the durable owner state is checked immediately
+   * before creating the GCS write stream.
+   */
+  private async assertOwnerUploadWritable(ownerId: number): Promise<void> {
+    const owner = await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, ownerId),
+      columns: { deletionStatus: true },
+    });
+    if (!owner || owner.deletionStatus !== "active") {
+      throw new Error("Account deletion is in progress; object upload cancelled");
+    }
+  }
 
   getPublicObjectSearchPaths(): Array<string> {
     const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
@@ -112,6 +131,23 @@ export class ObjectStorageService {
   }
 
   async getObjectEntityUploadURL(ownerId: number): Promise<string> {
+    // This is the single authoritative expiry for both the database
+    // reservation and the signed URL. If issuance stalls past this moment,
+    // the client receives an expired capability rather than one that could
+    // outlive account deletion's final namespace sweep.
+    const expiresAt = new Date(Date.now() + DIRECT_UPLOAD_URL_TTL_SEC * 1000);
+    // Reserving the short-lived upload capability with an active-status
+    // condition closes the race with account deletion. Once deletion marks the
+    // row as deleting, no new capability can be issued; deletion then waits
+    // for this recorded capability to expire before its namespace sweep.
+    const [reserved] = await db
+      .update(usersTable)
+      .set({ pendingUploadExpiresAt: expiresAt })
+      .where(and(eq(usersTable.id, ownerId), eq(usersTable.deletionStatus, "active")))
+      .returning({ id: usersTable.id });
+    if (!reserved) {
+      throw new Error("Account deletion is in progress; object upload cancelled");
+    }
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -138,20 +174,29 @@ export class ObjectStorageService {
     // client uploads the real file, so GET /storage/objects/* also uses a
     // path-based ownership check (see storage.ts) as a complementary guard
     // that requires no live metadata.
-    await file.save(Buffer.alloc(0), {
-      metadata: { contentType: "application/octet-stream" },
-      resumable: false,
-    });
-    await setObjectAclPolicy(file, {
-      owner: String(ownerId),
-      visibility: "private",
-    });
+    try {
+      await file.save(Buffer.alloc(0), {
+        metadata: { contentType: "application/octet-stream" },
+        resumable: false,
+      });
+      await setObjectAclPolicy(file, {
+        owner: String(ownerId),
+        visibility: "private",
+      });
+      // Deletion may have begun while the placeholder was being created. Do
+      // not return a signed PUT capability in that case; remove the temporary
+      // object even if the deletion sweep has already passed this namespace.
+      await this.assertOwnerUploadWritable(ownerId);
+    } catch (err) {
+      await file.delete().catch(() => {});
+      throw err;
+    }
 
     return signObjectURL({
       bucketName,
       objectName,
       method: "PUT",
-      ttlSec: 900,
+      expiresAt,
     });
   }
 
@@ -208,7 +253,7 @@ export class ObjectStorageService {
       bucketName: objectFile.bucket.name,
       objectName: objectFile.name,
       method: "GET",
-      ttlSec,
+      expiresAt: new Date(Date.now() + ttlSec * 1000),
     });
   }
 
@@ -252,6 +297,7 @@ export class ObjectStorageService {
     ownerId: number,
     contentType: string,
   ): Promise<string> {
+    await this.assertOwnerUploadWritable(ownerId);
     const privateObjectDir = this.getPrivateObjectDir();
     const objectId = randomUUID();
     const fullPath = `${privateObjectDir}/uploads/${ownerId}/${objectId}`;
@@ -282,10 +328,7 @@ export class ObjectStorageService {
   }
 
   /**
-   * Upload a local file to a deterministic /objects/... path (instead of a
-   * random UUID). Used for restart-resilient chunk uploads so a known path
-   * can be checked on the next boot.
-   *
+   * Upload a local file to the requested object-storage entity.
    * objectEntityPath must be of the form /objects/uploads/{ownerId}/{name}.
    */
   async uploadLocalFileToObjectPath(
@@ -297,6 +340,10 @@ export class ObjectStorageService {
       throw new Error(`uploadLocalFileToObjectPath: path must start with /objects/, got ${objectEntityPath}`);
     }
     const entityId = objectEntityPath.slice("/objects/".length);
+    const ownerMatch = entityId.match(/^uploads\/(\d+)\//);
+    if (ownerMatch) {
+      await this.assertOwnerUploadWritable(Number(ownerMatch[1]));
+    }
     let entityDir = this.getPrivateObjectDir();
     if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
     const fullPath = `${entityDir}${entityId}`;
@@ -357,6 +404,32 @@ export class ObjectStorageService {
       }),
     );
   }
+
+  /**
+   * Delete every object below a private /objects/... prefix. Used when an
+   * account is permanently deleted to remove abandoned uploads as well as the
+   * media paths still referenced by database rows.
+   */
+  async deleteObjectEntityPrefix(objectPrefix: string): Promise<void> {
+    if (!objectPrefix.startsWith("/objects/")) return;
+    const entityId = objectPrefix.slice("/objects/".length);
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
+    const fullPath = `${entityDir}${entityId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const [files] = await bucket.getFiles({ prefix: objectName });
+
+    for (const file of files) {
+      try {
+        await file.delete();
+      } catch (err: any) {
+        if (err?.code !== 404 && !err?.message?.includes("No such object")) {
+          throw err;
+        }
+      }
+    }
+  }
 }
 
 function parseObjectPath(path: string): {
@@ -384,18 +457,18 @@ async function signObjectURL({
   bucketName,
   objectName,
   method,
-  ttlSec,
+  expiresAt,
 }: {
   bucketName: string;
   objectName: string;
   method: "GET" | "PUT" | "DELETE" | "HEAD";
-  ttlSec: number;
+  expiresAt: Date;
 }): Promise<string> {
   const request = {
     bucket_name: bucketName,
     object_name: objectName,
     method,
-    expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
+    expires_at: expiresAt.toISOString(),
   };
   const response = await fetch(
     `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,

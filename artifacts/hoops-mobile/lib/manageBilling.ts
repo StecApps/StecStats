@@ -12,13 +12,10 @@ import { Alert, Linking, Platform } from 'react-native';
  *
  * - RevenueCat (App Store / Google Play) subscriber → "Manage in App Store"
  *   or "Manage in Google Play" depending on platform.
- * - Stripe / web subscriber (rcPlan === null) → "Manage Billing".
  */
 export function getManageBillingLabel(rcPlan: string | null): string {
-  if (rcPlan) {
-    return Platform.OS === 'android' ? 'Manage in Google Play' : 'Manage in App Store';
-  }
-  return 'Manage Billing';
+  void rcPlan;
+  return Platform.OS === 'android' ? 'Manage in Google Play' : 'Manage in App Store';
 }
 
 /**
@@ -48,42 +45,5 @@ export async function openStoreSubscriptions(): Promise<void> {
     await Linking.openURL(urlToOpen);
   } catch {
     Alert.alert('Store Unavailable', storeUnavailableMsg);
-  }
-}
-
-/**
- * Opens the Stripe billing portal for web/Stripe subscribers.
- *
- * Shows an Alert and returns early when:
- *   - EXPO_PUBLIC_DOMAIN is not set.
- *   - Linking.canOpenURL returns false for the billing URL.
- *   - Linking.openURL throws.
- */
-export async function openBillingPortal(domain: string | undefined): Promise<void> {
-  if (!domain) {
-    console.warn('[Profile] EXPO_PUBLIC_DOMAIN is not set — cannot open billing portal');
-    Alert.alert(
-      'Billing Unavailable',
-      'Unable to open billing management right now. Please try again later or visit the website.',
-    );
-    return;
-  }
-  const billingUrl = `https://${domain}/billing`;
-  try {
-    const canOpen = await Linking.canOpenURL(billingUrl);
-    if (!canOpen) {
-      Alert.alert(
-        'Billing Unavailable',
-        'Your device was unable to open the billing page. Please visit the website to manage your subscription.',
-      );
-      return;
-    }
-    await Linking.openURL(billingUrl);
-  } catch (err) {
-    console.warn('[Profile] Failed to open billing portal:', err);
-    Alert.alert(
-      'Billing Unavailable',
-      'Something went wrong opening billing management. Please try again later.',
-    );
   }
 }

@@ -32,7 +32,9 @@ const { testUserState } = vi.hoisted(() => {
     firstName: null as string | null,
     lastName: null as string | null,
     pushToken: null as string | null,
-    deletionPending: null as Date | null,
+    deletionStatus: "active",
+    deletionStartedAt: null as Date | null,
+    pendingUploadExpiresAt: null as Date | null,
     createdAt: new Date(),
   };
   return { testUserState };

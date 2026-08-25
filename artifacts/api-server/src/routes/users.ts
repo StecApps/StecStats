@@ -15,13 +15,10 @@ import { decryptToken } from "../lib/tokenEncryption";
 import { revokeToken } from "../lib/youtubeClient";
 import {
   cancelOwnerMediaDeletion,
-  resumeOwnerMediaWrites,
 } from "../lib/highlightGenerator";
-import { eq, inArray, or } from "drizzle-orm";
-import { cancelAndWaitForGameProcessing } from "../lib/highlightGenerator";
+import { eq } from "drizzle-orm";
 
 const EXPO_PUSH_TOKEN_RE = /^ExponentPushToken\[.+\]$/;
-const DIRECT_UPLOAD_URL_TTL_MS = 15 * 60 * 1000;
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -49,11 +46,7 @@ async function syncNameToClerk(
 
 // GET /api/users/me — return the stored first/last name for the current user
 router.get("/users/me", requireAuth, async (req, res) => {
-  const persistedUser = await db.query.usersTable.findFirst({
-    where: eq(usersTable.id, req.appUser!.id),
-    columns: { firstName: true, lastName: true },
-  });
-  const user = persistedUser ?? req.appUser!;
+  const user = req.appUser!;
   // Prevent Express from returning 304 "Not Modified" for this route.
   // A 304 carries no body — our customFetch returns null for it — so React
   // Query stores null and the greeting falls back to Clerk's stale name.
@@ -116,6 +109,8 @@ router.patch("/users/me", requireAuth, async (req, res) => {
     .where(eq(usersTable.id, req.appUser!.id))
     .returning();
 
+  const appUser = req.appUser!;
+
   res.json({
     firstName: updated.firstName ?? null,
     lastName: updated.lastName ?? null,
@@ -132,20 +127,39 @@ router.patch("/users/me", requireAuth, async (req, res) => {
 /**
  * DELETE /api/users/me — permanently remove the caller's account and data.
  *
- * A subscription is not cancelled here: StoreKit subscriptions must be managed
- * in Apple Account Settings, and web subscribers can cancel in the Stripe
- * portal before deleting their account. Deleting the account only removes the
- * application's data and sign-in identity.
+ * A subscription is not cancelled here: StoreKit subscriptions are managed in
+ * Apple Account Settings. Deleting the account removes the application's data
+ * and sign-in identity.
  */
 router.delete("/users/me", requireAuth, async (req, res) => {
   const user = req.appUser!;
+  const authenticatedClerkUserId = req.authenticatedClerkUserId;
+
+  if (!authenticatedClerkUserId || authenticatedClerkUserId !== user.clerkUserId) {
+    res.status(409).json({
+      error: "This account is linked to a different sign-in identity. Sign in with the original identity to delete it.",
+    });
+    return;
+  }
+
   let deletionMarked = false;
 
   try {
+    // Persist the write barrier before looking up media. A failed prefix sweep
+    // can delete some objects, so the account must be quarantined rather than
+    // resumed as an otherwise active account with missing recordings.
+    if (user.deletionStatus !== "deleting") {
+      await db
+        .update(usersTable)
+        .set({ deletionStatus: "deleting", deletionStartedAt: new Date() })
+        .where(eq(usersTable.id, user.id));
+    }
+    deletionMarked = true;
+
     // Capture all known media paths before removing the database records. The
     // upload namespace sweep below also catches abandoned uploads and encoding
     // chunks that were never linked to a completed game.
-    const [games, players, teams, account] = await Promise.all([
+    const [games, account] = await Promise.all([
       db.query.gamesTable.findMany({
         where: eq(gamesTable.ownerId, user.id),
         columns: {
@@ -156,76 +170,38 @@ router.delete("/users/me", requireAuth, async (req, res) => {
           videoProxyObjectPath: true,
         },
       }),
-      db.query.playersTable.findMany({
-        where: eq(playersTable.ownerId, user.id),
-        columns: { photoObjectPath: true },
-      }),
-      db.query.teamsTable.findMany({
-        where: eq(teamsTable.ownerId, user.id),
-        columns: { highlightObjectPath: true },
-      }),
       db.query.usersTable.findFirst({
         where: eq(usersTable.id, user.id),
-        columns: { youtubeRefreshToken: true, deletionPending: true },
+        columns: { youtubeRefreshToken: true, pendingUploadExpiresAt: true },
       }),
     ]);
-
-    const deletionStartedAt = account?.deletionPending ?? new Date();
-    if (!account?.deletionPending) {
-      await db
-        .update(usersTable)
-        .set({ deletionPending: deletionStartedAt })
-        .where(eq(usersTable.id, user.id));
-    }
-    deletionMarked = true;
 
     // Stop background encodes before deleting their objects. The upload guard
     // closes the cancellation race so a reel/proxy cannot recreate media after
     // the namespace sweep.
     cancelOwnerMediaDeletion(user.id, games.map((game) => game.id));
-    await cancelAndWaitForGameProcessing(games.map((game) => game.id), user.id);
 
-    // Revoke the separate Google authorization before removing its encrypted
-    // token. revokeToken intentionally treats an already-revoked token as a
-    // successful no-op.
-    if (account?.youtubeRefreshToken) {
-      try {
-        await revokeToken(decryptToken(account.youtubeRefreshToken));
-      } catch (err) {
-        req.log?.warn({ err, userId: user.id }, "Could not revoke YouTube authorization");
-      }
-      await db
-        .update(usersTable)
-        .set({ youtubeRefreshToken: null })
-        .where(eq(usersTable.id, user.id));
+    // A direct GCS PUT URL cannot be revoked after it is issued. The upload
+    // route reserves each URL in the user row for only 30 seconds, so wait out
+    // the latest capability before the final sweep. The durable deleting state
+    // prevents any replacement URL from being issued during this window.
+    const pendingUploadDelayMs = Math.max(
+      0,
+      (account?.pendingUploadExpiresAt?.getTime() ?? 0) - Date.now(),
+    );
+    if (pendingUploadDelayMs > 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, pendingUploadDelayMs));
     }
 
-    const mediaPaths = new Set<string>();
-    for (const game of games) {
-      for (const path of [
-        game.videoObjectPath,
-        game.highlightObjectPath,
-        game.lowlightObjectPath,
-        game.videoProxyObjectPath,
-      ]) {
-        if (path) mediaPaths.add(path);
-      }
-    }
-    for (const player of players) {
-      if (player.photoObjectPath) mediaPaths.add(player.photoObjectPath);
-    }
-    for (const team of teams) {
-      if (team.highlightObjectPath) mediaPaths.add(team.highlightObjectPath);
-    }
+    // A single namespace sweep catches both linked and orphaned media. It is
+    // idempotent but not atomic, so failures intentionally leave the durable
+    // deletion barrier in place; retrying this endpoint sweeps the namespace
+    // again without exposing a partially-cleaned account.
+    await objectStorageService.deleteObjectEntityPrefix(`/objects/uploads/${user.id}/`);
 
-    // Delete storage before database rows. If storage cannot be removed, the
-    // account remains available so the caller can retry instead of us silently
-    // dropping the references and retaining private media.
-    await Promise.all([
-      ...Array.from(mediaPaths, (path) => objectStorageService.deleteObjectEntity(path)),
-      objectStorageService.deleteOwnerUploadNamespace(user.id),
-    ]);
-
+    // Complete the local transaction before removing the Clerk identity. A
+    // database failure must leave the caller's sign-in identity intact so they
+    // can retry; deleting Clerk first would strand inaccessible retained data.
     await db.transaction(async (tx) => {
       // Account-level feedback and purchase-event records contain the user's
       // identity, so delete rather than orphaning them.
@@ -237,8 +213,9 @@ router.delete("/users/me", requireAuth, async (req, res) => {
       await tx.delete(gamesTable).where(eq(gamesTable.ownerId, user.id));
       await tx.delete(playersTable).where(eq(playersTable.ownerId, user.id));
       await tx.delete(teamsTable).where(eq(teamsTable.ownerId, user.id));
-      // Keep a scrubbed tombstone until Clerk deletion succeeds. This makes a
-      // post-purge Clerk failure retryable without retaining account PII.
+      // Keep a scrubbed tombstone until Clerk removal succeeds. It prevents
+      // requireAuth from provisioning a new writable account if the identity
+      // service is temporarily unavailable after local cleanup.
       await tx
         .update(usersTable)
         .set({
@@ -249,46 +226,45 @@ router.delete("/users/me", requireAuth, async (req, res) => {
           firstName: null,
           lastName: null,
           pushToken: null,
+          pendingUploadExpiresAt: null,
+          deletionStatus: "deleting",
         })
         .where(eq(usersTable.id, user.id));
     });
 
-    // GCS signed PUTs cannot be revoked. A URL obtained immediately before
-    // deletion remains valid for 15 minutes, so this first pass intentionally
-    // stays pending. A later retry does the final sweep only after every
-    // previously issued direct-upload grant has expired.
-    if (Date.now() - deletionStartedAt.getTime() < DIRECT_UPLOAD_URL_TTL_MS) {
-      res.status(202).json({ status: "pending" });
-      return;
+    // Revoke the separate Google authorization only after local cleanup has
+    // committed. If storage or the transaction fails, the retained account
+    // keeps its YouTube connection unchanged and can safely retry deletion.
+    // A revoke failure is non-fatal: the local token is already gone and the
+    // user must not be stranded after their account data has been deleted.
+    if (account?.youtubeRefreshToken) {
+      try {
+        await revokeToken(decryptToken(account.youtubeRefreshToken));
+      } catch (err) {
+        req.log?.warn({ err, userId: user.id }, "Could not revoke YouTube authorization");
+      }
     }
 
-    // Sweep once more after the direct-upload window. This removes any object
-    // that a pre-issued signed PUT created after the first cleanup pass.
-    await objectStorageService.deleteOwnerUploadNamespace(user.id);
     try {
       await clerkClient.users.deleteUser(user.clerkUserId);
     } catch (err: any) {
       if (err?.status === 404 || err?.statusCode === 404) {
-        // An already-deleted identity means this retry can finish locally.
+        // The account was already removed from Clerk; the scrubbed local
+        // tombstone is harmless and prevents stale jobs from writing media.
       } else {
-        req.log?.error({ err, userId: user.id }, "Clerk deletion pending retry");
-        res.status(202).json({ status: "pending" });
-        return;
+        throw err;
       }
     }
-
-    await db.delete(usersTable).where(eq(usersTable.id, user.id));
 
     res.status(204).send();
   } catch (err) {
     req.log?.error({ err, userId: user.id }, "Account deletion failed");
     if (deletionMarked) {
-      // A retry can resume from the durable tombstone. Do not let background
-      // media workers write to this account while it is pending deletion.
-      res.status(202).json({ status: "pending" });
+      res.status(503).json({
+        error: "Account deletion is still being finalized. Please retry shortly; your account remains unavailable while cleanup completes.",
+      });
       return;
     }
-    resumeOwnerMediaWrites(user.id);
     res.status(500).json({ error: "Could not delete your account. Please try again." });
   }
 });

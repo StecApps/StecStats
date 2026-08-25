@@ -355,8 +355,8 @@ importers:
         specifier: ^1.3.0
         version: 1.3.3
       '@workspace/api-client-react':
-        specifier: file:./packages/api-client-react
-        version: file:artifacts/hoops-mobile/packages/api-client-react(react@19.1.0)
+        specifier: workspace:*
+        version: link:../../lib/api-client-react
       '@workspace/plan-copy':
         specifier: file:./packages/plan-copy
         version: file:artifacts/hoops-mobile/packages/plan-copy
@@ -3746,11 +3746,6 @@ packages:
   '@wallet-standard/wallet@1.1.1':
     resolution: {integrity: sha512-8WiRPaKk/wNNRZhB2eVhpR/JW7/aqTCMoZhgVUCujuzDmxxmGvsosMxdCG4NAdYkoyozAHCX8/xLtlWUn5mNdQ==}
     engines: {node: '>=22'}
-
-  '@workspace/api-client-react@file:artifacts/hoops-mobile/packages/api-client-react':
-    resolution: {directory: artifacts/hoops-mobile/packages/api-client-react, type: directory}
-    peerDependencies:
-      react: '>=18'
 
   '@workspace/plan-copy@file:artifacts/hoops-mobile/packages/plan-copy':
     resolution: {directory: artifacts/hoops-mobile/packages/plan-copy, type: directory}
@@ -12326,11 +12321,6 @@ snapshots:
   '@wallet-standard/wallet@1.1.1':
     dependencies:
       '@wallet-standard/base': 1.1.1
-
-  '@workspace/api-client-react@file:artifacts/hoops-mobile/packages/api-client-react(react@19.1.0)':
-    dependencies:
-      '@tanstack/react-query': 5.101.0(react@19.1.0)
-      react: 19.1.0
 
   '@workspace/plan-copy@file:artifacts/hoops-mobile/packages/plan-copy': {}
 

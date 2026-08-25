@@ -51,8 +51,15 @@ export function resumeOwnerMediaWrites(ownerId: number): void {
   ownersWithDeletionInProgress.delete(ownerId);
 }
 
-function assertOwnerMediaWritesAllowed(ownerId: number): void {
+async function assertOwnerMediaWritesAllowed(ownerId: number): Promise<void> {
   if (ownersWithDeletionInProgress.has(ownerId)) {
+    throw new Error("Account deletion is in progress; media upload cancelled");
+  }
+  const owner = await db.query.usersTable.findFirst({
+    where: eq(usersTable.id, ownerId),
+    columns: { deletionStatus: true },
+  });
+  if (!owner || owner.deletionStatus !== "active") {
     throw new Error("Account deletion is in progress; media upload cancelled");
   }
 }
@@ -850,7 +857,7 @@ async function encodeChunksToGcs(
         }
         if (!existFlags[chunkIdx]) {
           if (signal?.aborted) throw new HighlightError("Cancelled");
-          assertOwnerMediaWritesAllowed(ownerId);
+          await assertOwnerMediaWritesAllowed(ownerId);
           logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: uploading to GCS");
           await objectStorageService.uploadLocalFileToObjectPath(
             localPath, gcsChunkPath(chunkIdx), "video/mp4",
@@ -2553,7 +2560,7 @@ export async function mixMusicIntoReel(
 }
 
 async function uploadHighlight(outPath: string, ownerId: number): Promise<string> {
-  assertOwnerMediaWritesAllowed(ownerId);
+  await assertOwnerMediaWritesAllowed(ownerId);
   // Use GCS SDK streaming upload (pipeline → createWriteStream) instead of
   // reading the whole file into a Buffer and POSTing to a signed URL.
   // The signed-URL path dropped the connection ("other side closed") on large
@@ -2565,6 +2572,7 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
+      await assertOwnerMediaWritesAllowed(ownerId);
       await objectStorageService.uploadLocalFileToObjectPath(outPath, objectPath, "video/mp4");
       await objectStorageService
         .trySetObjectEntityAclPolicy(objectPath, {
@@ -3326,7 +3334,7 @@ export function ensureAllProxyChunksInBackground(
       // Write the sentinel AFTER all chunks are safely in GCS.  The sentinel
       // is the only signal getReadyProxyChunkCount trusts, so it must not be
       // written until the encode is complete and uploaded.
-      assertOwnerMediaWritesAllowed(ownerId);
+      await assertOwnerMediaWritesAllowed(ownerId);
       await writeHlsSentinel(ownerId, gameId, actualNumChunks, allDurations);
       logger.info({ gameId, actualNumChunks }, "HLS chunk build: complete — sentinel written");
     } finally {
@@ -3387,17 +3395,18 @@ export interface HlsSentinel {
  * pass PROXY_CHUNK_DURATION_SEC as the approximation — only newly encoded
  * chunks have exact ffprobe measurements.
  */
-async function writeHlsSentinel(
+export async function writeHlsSentinel(
   ownerId: number,
   gameId: number,
   chunkCount: number,
   segmentDurationsSec: number[],
 ): Promise<void> {
-  assertOwnerMediaWritesAllowed(ownerId);
+  await assertOwnerMediaWritesAllowed(ownerId);
   const sentinel: HlsSentinel = { chunkCount, segmentDurationsSec };
   const tmpFile = path.join(os.tmpdir(), `hls_sentinel_${gameId}_${Date.now()}.json`);
   await fs.writeFile(tmpFile, JSON.stringify(sentinel));
   try {
+    await assertOwnerMediaWritesAllowed(ownerId);
     await objectStorageService.uploadLocalFileToObjectPath(
       tmpFile,
       makeHlsSentinelGcsPath(ownerId, gameId),

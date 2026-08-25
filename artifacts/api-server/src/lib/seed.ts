@@ -116,7 +116,9 @@ export async function applySchemaAdditions(): Promise<void> {
   // Added for push notifications — stores the coach's Expo push token so the
   // server can notify them when their highlight reel is ready.
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token text`);
-  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_pending timestamptz`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_status text NOT NULL DEFAULT 'active'`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_started_at timestamp`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_upload_expires_at timestamp`);
   // Added for push notifications — guards against duplicate highlight-ready
   // notifications when the server re-processes the same reel.
   await db.execute(sql`ALTER TABLE teams ADD COLUMN IF NOT EXISTS highlight_notification_sent boolean DEFAULT false`);
@@ -127,5 +129,5 @@ export async function applySchemaAdditions(): Promise<void> {
   // when the coach's lowlight reel is ready. Reset to false when a new lowlight
   // job starts so the notification fires again if the reel is regenerated.
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_notification_sent boolean DEFAULT false`);
-  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id, push_token, highlight_notification_sent for teams+games, lowlight_notification_sent for games)");
+  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id, push_token, deletion lifecycle, highlight_notification_sent for teams+games, lowlight_notification_sent for games)");
 }

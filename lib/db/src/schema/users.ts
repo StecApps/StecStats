@@ -36,7 +36,13 @@ export const usersTable = pgTable("users", {
   // notification permission yet or hasn't opened the app since the feature
   // was added.
   pushToken: text("push_token"),
-  deletionPending: timestamp("deletion_pending"),
+  // A deleting row is a scrubbed tombstone that permits a safe retry after a
+  // transient storage or identity-provider failure without allowing new work.
+  deletionStatus: text("deletion_status").notNull().default("active"),
+  deletionStartedAt: timestamp("deletion_started_at"),
+  // Latest direct-upload capability issued for this account. Deletion waits
+  // for it to expire before the final namespace sweep.
+  pendingUploadExpiresAt: timestamp("pending_upload_expires_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -1,5 +1,5 @@
 /**
- * GET /api/users/me + PATCH /api/users/me — profile name round-trip test
+ * GET/PATCH/DELETE /api/users/me — profile and account-deletion route tests
  *
  * Confirms the PATCH /api/users/me flow works end-to-end after the
  * first_name / last_name columns were added to the users table:
@@ -20,9 +20,10 @@ import type { AddressInfo } from "net";
 // ---------------------------------------------------------------------------
 // In-memory store
 // ---------------------------------------------------------------------------
-const { currentUser, store } = vi.hoisted(() => {
+const { currentUser, authenticatedClerkUserId, store } = vi.hoisted(() => {
   const COACH = { id: 1, clerkUserId: "clerk_coach_a", email: "coach@example.com" };
   const currentUser = { value: COACH as typeof COACH };
+  const authenticatedClerkUserId = { value: COACH.clerkUserId };
 
   const store = {
     users: [
@@ -35,17 +36,28 @@ const { currentUser, store } = vi.hoisted(() => {
         stripeCustomerId: null,
         youtubeRefreshToken: null,
         revenueCatEntitlement: null,
+        deletionStatus: "active",
+        deletionStartedAt: null,
+        pendingUploadExpiresAt: null,
         createdAt: new Date("2024-01-01"),
       },
     ] as any[],
     resetUsers() {
       this.users[0].firstName = null;
       this.users[0].lastName = null;
+      this.users[0].deletionStatus = "active";
+      this.users[0].deletionStartedAt = null;
+      this.users[0].pendingUploadExpiresAt = null;
     },
   };
 
-  return { currentUser, store };
+  return { currentUser, authenticatedClerkUserId, store };
 });
+
+const { mockDeleteClerkUser, mockDeleteObjectPrefix } = vi.hoisted(() => ({
+  mockDeleteClerkUser: vi.fn(),
+  mockDeleteObjectPrefix: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -53,7 +65,8 @@ const { currentUser, store } = vi.hoisted(() => {
 
 vi.mock("../../middlewares/requireAuth", () => ({
   requireAuth: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    req.appUser = { ...currentUser.value } as any;
+    req.appUser = { ...store.users[0] } as any;
+    req.authenticatedClerkUserId = authenticatedClerkUserId.value;
     next();
   },
 }));
@@ -65,8 +78,36 @@ vi.mock("../../lib/logger", () => ({
   },
 }));
 
+vi.mock("@clerk/express", () => ({
+  clerkClient: {
+    users: {
+      updateUser: vi.fn(),
+      deleteUser: mockDeleteClerkUser,
+    },
+  },
+}));
+
+vi.mock("../../lib/objectStorage", () => ({
+  ObjectStorageService: class {
+    deleteObjectEntity = vi.fn();
+    deleteObjectEntityPrefix = mockDeleteObjectPrefix;
+  },
+}));
+
 vi.mock("@workspace/db", () => {
   const USERS_T = "usersTable";
+  const TEAMS_T = "teamsTable";
+  const PLAYERS_T = "playersTable";
+  const GAMES_T = "gamesTable";
+  const FEEDBACK_T = "feedbackTable";
+  const PURCHASE_EVENTS_T = "purchaseEventsTable";
+  const whereResult = vi.fn().mockResolvedValue(undefined);
+  const tx = {
+    delete: vi.fn(() => ({ where: whereResult })),
+    update: vi.fn(() => ({
+      set: vi.fn(() => ({ where: whereResult })),
+    })),
+  };
 
   const db = {
     query: {
@@ -75,6 +116,9 @@ vi.mock("@workspace/db", () => {
           store.users[0],
         ),
       },
+      gamesTable: { findMany: vi.fn().mockResolvedValue([]) },
+      playersTable: { findMany: vi.fn().mockResolvedValue([]) },
+      teamsTable: { findMany: vi.fn().mockResolvedValue([]) },
     },
     update: vi.fn().mockImplementation((_table: string) => ({
       set: vi.fn().mockImplementation((vals: any) => ({
@@ -87,11 +131,25 @@ vi.mock("@workspace/db", () => {
         }),
       })),
     })),
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn().mockResolvedValue([]),
+      })),
+    })),
+    delete: vi.fn(() => ({ where: whereResult })),
+    transaction: vi.fn(async (callback: (transaction: typeof tx) => Promise<void>) =>
+      callback(tx),
+    ),
   };
 
   return {
     db,
     usersTable: USERS_T,
+    teamsTable: TEAMS_T,
+    playersTable: PLAYERS_T,
+    gamesTable: GAMES_T,
+    feedbackTable: FEEDBACK_T,
+    purchaseEventsTable: PURCHASE_EVENTS_T,
   };
 });
 
@@ -123,6 +181,9 @@ afterAll(async () => {
 
 beforeEach(() => {
   store.resetUsers();
+  authenticatedClerkUserId.value = currentUser.value.clerkUserId;
+  mockDeleteClerkUser.mockReset();
+  mockDeleteObjectPrefix.mockReset();
 });
 
 // ---------------------------------------------------------------------------
@@ -139,6 +200,10 @@ async function patchMe(body: object) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+async function deleteMe() {
+  return fetch(`${baseUrl}/api/users/me`, { method: "DELETE" });
 }
 
 // ---------------------------------------------------------------------------
@@ -293,5 +358,25 @@ describe("PATCH /api/users/me — validation", () => {
     const body = await getRes.json() as any;
     expect(body.firstName).toBe("Original");
     expect(body.lastName).toBe("Name");
+  });
+});
+
+describe("DELETE /api/users/me — account deletion", () => {
+  it("removes local account data, its upload namespace, and the Clerk identity", async () => {
+    const res = await deleteMe();
+
+    expect(res.status).toBe(204);
+    expect(mockDeleteObjectPrefix).toHaveBeenCalledWith("/objects/uploads/1/");
+    expect(mockDeleteClerkUser).toHaveBeenCalledWith("clerk_coach_a");
+  });
+
+  it("uses the authenticated subject carried by requireAuth and rejects a secondary identity before deleting data", async () => {
+    authenticatedClerkUserId.value = "clerk_secondary_identity";
+
+    const res = await deleteMe();
+
+    expect(res.status).toBe(409);
+    expect(mockDeleteObjectPrefix).not.toHaveBeenCalled();
+    expect(mockDeleteClerkUser).not.toHaveBeenCalled();
   });
 });

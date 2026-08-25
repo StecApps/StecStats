@@ -29,8 +29,6 @@ export const UpdateMeResponse = zod.object({
   "firstName": zod.string().nullable(),
   "lastName": zod.string().nullable()
 })
-
-
 /**
  * Does not cancel active StoreKit or Stripe subscriptions.
  * @summary Permanently delete the current user's account and stored application data
@@ -65,7 +63,6 @@ export const ListPlayersResponse = zod.array(ListPlayersResponseItem)
 /**
  * @summary Create a player
  */
-
 
 
 export const CreatePlayerBody = zod.object({
@@ -103,8 +100,6 @@ export const GetPlayerResponse = zod.object({
 export const UpdatePlayerParams = zod.object({
   "playerId": zod.coerce.number()
 })
-
-
 
 
 export const UpdatePlayerBody = zod.object({
@@ -247,8 +242,6 @@ export const UpdateTeamParams = zod.object({
 })
 
 
-
-
 export const UpdateTeamBody = zod.object({
   "name": zod.string().min(1).optional(),
   "sport": zod.enum(['basketball', 'soccer']).optional()
@@ -288,7 +281,6 @@ export const listTeamGamesResponseStatsItemSavesDefault = 0;
 export const listTeamGamesResponseStatsItemYellowCardsDefault = 0;
 export const listTeamGamesResponseStatsItemRedCardsDefault = 0;
 export const listTeamGamesResponseEventsItemVideoTimestampMsMin = 0;
-
 
 
 export const ListTeamGamesResponseItem = zod.object({
@@ -352,7 +344,6 @@ export const listAllGamesResponseStatsItemSavesDefault = 0;
 export const listAllGamesResponseStatsItemYellowCardsDefault = 0;
 export const listAllGamesResponseStatsItemRedCardsDefault = 0;
 export const listAllGamesResponseEventsItemVideoTimestampMsMin = 0;
-
 
 
 export const ListAllGamesResponseItem = zod.object({
@@ -457,7 +448,6 @@ export const createGameBodyStatsItemRedCardsMin = 0;
 export const createGameBodyEventsItemVideoTimestampMsMin = 0;
 
 
-
 export const CreateGameBody = zod.object({
   "teamId": zod.number(),
   "opponent": zod.string().min(1),
@@ -501,7 +491,6 @@ export const createGameResponseStatsItemSavesDefault = 0;
 export const createGameResponseStatsItemYellowCardsDefault = 0;
 export const createGameResponseStatsItemRedCardsDefault = 0;
 export const createGameResponseEventsItemVideoTimestampMsMin = 0;
-
 
 
 export const CreateGameResponse = zod.object({
@@ -568,7 +557,6 @@ export const getGameResponseStatsItemSavesDefault = 0;
 export const getGameResponseStatsItemYellowCardsDefault = 0;
 export const getGameResponseStatsItemRedCardsDefault = 0;
 export const getGameResponseEventsItemVideoTimestampMsMin = 0;
-
 
 
 export const GetGameResponse = zod.object({
@@ -676,7 +664,6 @@ export const updateGameBodyStatsItemRedCardsMin = 0;
 export const updateGameBodyEventsItemVideoTimestampMsMin = 0;
 
 
-
 export const UpdateGameBody = zod.object({
   "teamId": zod.number(),
   "opponent": zod.string().min(1),
@@ -721,7 +708,6 @@ export const updateGameResponseStatsItemSavesDefault = 0;
 export const updateGameResponseStatsItemYellowCardsDefault = 0;
 export const updateGameResponseStatsItemRedCardsDefault = 0;
 export const updateGameResponseEventsItemVideoTimestampMsMin = 0;
-
 
 
 export const UpdateGameResponse = zod.object({
@@ -917,7 +903,6 @@ export const GenerateGameLowlightResponse = zod.object({
 export const mergeGamesBodySecondaryGameIdsMax = 9;
 
 
-
 export const MergeGamesBody = zod.object({
   "primaryGameId": zod.number().describe('The game that will absorb all others and keep its date\/opponent.'),
   "secondaryGameIds": zod.array(zod.number()).min(1).max(mergeGamesBodySecondaryGameIdsMax).describe('Games to merge into the primary (hidden after merge, not deleted).')
@@ -930,7 +915,6 @@ export const mergeGamesResponseStatsItemSavesDefault = 0;
 export const mergeGamesResponseStatsItemYellowCardsDefault = 0;
 export const mergeGamesResponseStatsItemRedCardsDefault = 0;
 export const mergeGamesResponseEventsItemVideoTimestampMsMin = 0;
-
 
 
 export const MergeGamesResponse = zod.object({
@@ -1060,18 +1044,11 @@ export const CreateBillingPortalSessionResponse = zod.object({
  */
 
 
-
-
-
 export const RequestUploadUrlBody = zod.object({
   "name": zod.string().min(1).describe('Original file name.'),
   "size": zod.number().min(1).describe('File size in bytes.'),
   "contentType": zod.string().min(1).describe('MIME type of the file (e.g. `video\/webm`).')
 })
-
-
-
-
 
 
 export const RequestUploadUrlResponse = zod.object({
@@ -1107,5 +1084,3 @@ export const GetStorageObjectParams = zod.object({
 })
 
 export const GetStorageObjectResponse = zod.unknown()
-
-

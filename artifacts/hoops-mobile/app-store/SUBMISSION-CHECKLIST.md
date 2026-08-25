@@ -6,15 +6,20 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
 
 ---
 
-## 1 — Build and sign-in
+## 1 — Build and reviewer sign-in
 
 - [ ] Increment the iOS build number and upload a new binary.
 - [ ] On a physical iPhone or iPad, confirm **Sign in with Apple** is visible
   on the opening screen and completes successfully.
-- [ ] Sign in with Apple using a fresh account. Confirm the Profile screen
-  shows **Unlock Pro Features**, not **Manage Billing**.
-- [ ] Do not give App Review a Stripe-subscribed demo account or instructions
-  that route them through a web billing portal.
+- [ ] Confirm the resulting Profile screen shows **Unlock Pro Features**, not
+  an external billing portal.
+- [ ] In App Store Connect, provide a free reviewer email account and a
+  reviewer-accessible way to receive its fresh 6-digit email codes throughout
+  review. This account must not have an active subscription.
+- [ ] In App Store Connect only, provide the current Sandbox Apple ID for the
+  StoreKit payment sheet. It is not an app sign-in credential.
+- [ ] Do **not** put reviewer-inbox or Sandbox Apple ID passwords in Git or
+  another source-controlled file.
 
 ## 2 — In-app purchase products
 
@@ -28,26 +33,28 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
   availability are active for the intended storefront.
 - [ ] In RevenueCat, confirm `$rc_monthly` points to the monthly product and
   `$rc_annual` points to the annual product in the current offering.
-- [ ] On a physical TestFlight device with a Sandbox Apple ID, open
+- [ ] On a physical TestFlight device with a Sandbox Apple ID, sign in using
+  **Sign in with Apple** or the free email-code reviewer account, then open
   **Profile → Unlock Pro Features**.
 - [ ] Confirm the Monthly/Annual selector appears, each price comes from
   StoreKit, and **Start Free Trial** opens Apple’s payment sheet.
-- [ ] Complete a Sandbox purchase and confirm Profile changes to
-  **Manage in App Store**.
+- [ ] Complete a Sandbox purchase and confirm Profile shows the active Pro
+  plan.
 - [ ] Confirm **Restore purchases** restores an existing sandbox entitlement.
+- [ ] Confirm Premium is marked **Coming Soon**, not offered for purchase.
 
 ## 3 — Account deletion
 
 - [ ] Sign in with a throwaway account that has a player, game, and uploaded
   photo or recording.
 - [ ] Go to **Profile → Delete Account**, confirm both destructive prompts,
-  and verify the app signs out.
+  and verify the app returns to the welcome screen.
+- [ ] Confirm the deletion copy makes clear that deleting the app account does
+  not cancel an Apple subscription.
 - [ ] Confirm that signing in again creates a fresh, empty account.
 - [ ] Record this physical-device flow from sign-in through the final
   confirmation. Add the recording to App Review Information as requested by
   guideline 5.1.1.
-- [ ] Confirm the deletion copy makes clear that account deletion does not
-  cancel an Apple or web subscription.
 
 ## 4 — Permissions and privacy
 
@@ -61,11 +68,29 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
 
 ## 5 — App Review Information
 
-- [ ] Paste the current **Notes (paste into App Store Connect)** content from
+- [ ] Copy the **Notes (paste into App Store Connect)** section from
   `review-notes.md`.
-- [ ] Confirm the notes direct reviewers to **Sign in with Apple** and then
-  the free-account IAP flow.
-- [ ] Confirm no passwords, Sandbox Apple credentials, or source-control
-  placeholders appear in the notes.
+- [ ] In App Store Connect only, replace the reviewer-email and Sandbox
+  credential placeholders with the current review-accessible details. Do not
+  commit those secrets to this repository.
+- [ ] Confirm the notes direct reviewers to **Sign in with Apple** or the free
+  email-code account, then **Profile → Unlock Pro Features → Start Free Trial**.
+- [ ] Confirm the notes identify both submitted IAP product IDs and have no
+  Stripe, web billing portal, or password-based app-sign-in path.
+- [ ] Attach the required physical-device account-deletion recording (or a
+  review-accessible link) to App Review Information.
 - [ ] Select the newly uploaded build, submit both IAP products for review,
   and then submit the app version.
+
+## 6 — Review reply and final checks
+
+- [ ] If responding to a prior rejection, paste the current review reply in
+  App Store Connect before re-submitting.
+- [ ] Confirm the account-deletion recording, Sign in with Apple check, and
+  Restore purchases check were performed on a physical iOS device.
+- [ ] Submit the build.
+
+---
+
+*Keep this checklist and the App Review note template current after every
+reviewer-account, sandbox-tester, or product change.*

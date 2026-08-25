@@ -61,3 +61,68 @@
 - [Token refresh race — getToken() null during active refresh](token-refresh-race.md) — await getToken() before resetQueries() or re-fetches go out with no Authorization header during the ~600ms Clerk token refresh window.
 - [Replit Clerk live vs test instance — mobile auth](clerk-live-vs-test-instance.md) — EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY isn't auto-swapped on publish; server uses live JWKS, mobile tokens use test instance → requireAuth fallback verifyToken needed.
 - [Account deletion tombstones](account-deletion-tombstones.md) — cross-service deletion must retain a scrubbed, write-blocked local tombstone until Clerk removal succeeds, so retries are safe.
+- [Clerk mobile JWT 401 — publishableKeyFromHost](clerk-mobile-jwt-401.md) — dynamic key resolution returns undefined for plain hostnames; use clerkMiddleware() with no args instead.
+- [TS segment absolute timestamps](ts-segment-timestamps.md) — fast-seek keeps source PTS; add `-reset_timestamps 1` to every mpegts encode or iOS Safari won't play the concat MP4.
+- [Orval params naming collision](orval-params-collision.md) — mixing a path param + query param in one operation can cause a TS2308 name collision between generators.
+- [Frontend API routing convention](api-routing-convention.md) — hoops-stats/monorepo apps call `/api/...` as root-relative paths directly, not prefixed by artifact BASE_URL.
+- [Testing camera/media features](testing-camera-media.md) — test sandbox has no camera; design a graceful getUserMedia error path and verify via DB/API, not camera E2E.
+- [Live streaming via custom WebRTC signaling](live-streaming-webrtc.md) — in-memory `ws` signaling relay on api-server, now with Metered.ca TURN relay and DB-backed session metadata.
+- [Metered.ca TURN credential-scoped API key](metered-turn-api-key.md) — turn/credentials endpoint needs the credential-scoped apiKey, not the account secret/project key.
+- [Arena scoreboard theme](arena-theme.md) — app is dark-mode-only via `<html class="dark">`; never leave text uncolored on `bg-secondary` (flips white-on-white).
+- [monday.com stats xlsx import](monday-stats-import.md) — Stec stat exports have stacked season sections + summary rows + two result formats (W/L text and ✅/❌); parse to /api/import (idempotent).
+- [Phone-landscape CSS targeting](phone-landscape-css.md) — target phone landscape by short viewport HEIGHT + pointer:coarse, not `max-md` width; landscape phones are wider than 768px.
+- [Dev vs prod database are separate](dev-vs-prod-db.md) — imports into dev don't reach the published site; POST payload to the production /api/import URL to backfill live data.
+- [Canvas camera pipeline](camera-canvas-pipeline.md) — recording draws camera into an offscreen canvas for iOS digital zoom + camera switch; hardware gimbals (DJI) can't be integrated.
+- [Live stream restart resilience](live-stream-restart-resilience.md) — persisted session codes + client auto-reconnect let a broadcast survive an api-server restart mid-game.
+- [broadcaster-left vs stream-ended are different signals](broadcaster-left-vs-stream-ended.md) — WS drop should reconnect; intentional stop shows final score; conflating them kicks viewers.
+- [Drizzle schema not pushed in sandbox](drizzle-schema-not-pushed.md) — fresh env may reference tables never pushed; run `drizzle-kit push` before assuming a query bug.
+- [Stripe connector credential field names](stripe-connector-credentials.md) — Replit's Stripe connection API returns `settings.secret` (string key itself), not `settings.secret_key` as generic templates show.
+- [@workspace/db is a composite emitDeclarationOnly project](db-composite-declarations.md) — after a schema change, consumers read stale `lib/db/dist/*.d.ts`; rebuild with `tsc -b lib/db --force`, not just deleting tsbuildinfo.
+- [Highlight reel pipeline](highlight-reel.md) — fire-and-forget MP4 of good plays; `processing` must be timeout-recoverable and a game edit must invalidate the stored reel.
+- [Reel generation on RAM-backed /tmp](highlight-oom-loop.md) — never build the full local proxy; extract from GCS chunks (≤2 local), or tmpfs OOM SIGKILL loops the server; <10KB GCS chunks are stubs, treat as missing.
+- [ffprobe probesize is a literal RAM allocation](ffprobe-probesize-oom.md) — probesize=2147483647 allocates 2 GB buffer; use ≤500 MB; fMP4 from iOS may need 5-stage duration cascade + empirical packet scan.
+- [Express sub-router auth blackhole](express-subrouter-auth-blackhole.md) — `router.use(requireAuth)` with no path prefix silently blocks sibling routers' public routes mounted later; apply auth per-route instead.
+- [Multi-tenant ownerId scoping patterns](multi-tenant-ownerid-scoping.md) — designated-owner legacy claim (not first-signup), FK-from-body validation, unscoped-join leaks, and object-storage ACL hijack guards.
+- [stripe-replit-sync migration race on first boot](stripe-sync-migration-race.md) — first automatic boot can log "relation stripe.accounts does not exist" even though migrations succeed; confirm tables then just restart.
+- [stripe-replit-sync bundling & backfill pitfalls](stripe-sync-bundling-pitfalls.md) — esbuild drops the lib's migrations dir; no-arg syncBackfill() syncs NOTHING.
+- [Flaky e2e failure from mid-test workflow restart](flaky-e2e-workflow-restart.md) — api-server can auto-restart during an e2e run, causing a spurious network failure; re-run the test before assuming a real app bug.
+- [Paywall gating must cover every response field/section, not just limits](paywall-full-surface-gating.md) — Pro-only fields need explicit server-side filtering, not just create-limits.
+- [Premium tier via stripe product name join](premium-tier-entitlements.md) — entitlement and checkout both key off the Stripe product NAME containing "Premium"; renaming the product breaks both.
+- [MediaPipe auto-follow in draw loop](mediapipe-autofollow.md) — 3fps identity tracker only sets a desired target; 60fps draw loop owns all pan/zoom easing, so bad samples nudge, never snap.
+- [requireAuth in-memory user must be updated after email backfill](requireauth-email-backfill.md) — after `db.update(email)` do `user = {...user, email}` or req.appUser.email stays null and owner/premium checks fail.
+- [runTest needs testClerkAuth flag](clerk-testclerkauth-flag-required.md) — `[Clerk Auth]` test steps without `testClerkAuth: true` hit real Clerk UI and get Cloudflare-blocked, looking like an app bug.
+- [iOS camera always reports portrait dimensions](ios-camera-portrait-quirk.md) — videoWidth/Height are sensor-portrait even in landscape; don't force aspectRatio CSS on video elements.
+- [Pose-based shot-detection false positives](pose-shot-detection-heuristic.md) — raised-arm heuristic needs per-landmark visibility + torso-upright gates or it fires on clutter.
+- [Fixed mobile bottom nav clips page content](mobile-bottom-nav-clipping.md) — long/scrollable pages need `pb-20 md:pb-0` on their own root div, or the last item is hidden/unclickable under the fixed nav bar.
+- [Orval date-time fields typed Date but arrive as string](orval-datetime-runtime-string.md) — generated client types say `Date`, but customFetch never coerces it; always `new Date(value)` before use.
+- [Live-stream viewer orientation mismatch](viewer-orientation-mismatch.md) — split matchMedia queries (orientation vs pointer) so desktop viewers aren't told to "rotate their phone".
+- [IndexedDB flushing for long MediaRecorder sessions](indexeddb-recorder-chunk-flush.md) — flush chunks to IndexedDB by seq instead of an in-memory array to bound heap growth on long recordings and prevent OOM crashes.
+- [Debounced localStorage autosave + recovery draft](autosave-recovery-draft.md) — snapshot lightweight form/stats state (not blobs) on change, show a resume/discard dialog on mount before autosave can overwrite it; e2e-testable without camera access.
+- [Recording save race condition](recording-save-race.md) — stopRecording() sets isRecording=false sync but onstop fires async; handleSave must await blobAssemblyPromiseRef if recordedBlob is null or game saves with no video.
+- [Centering a letter in a small box on iOS](svg-text-centering.md) — CSS flex/lineHeight tricks fail on iOS Safari; use inline SVG with dominantBaseline/textAnchor middle; pill badges: equal padding + lineHeight:1.
+- [iOS MP4 multi-half recording concat](ios-mp4-multi-half-concat.md) — raw Blob([half1,half2]) is invalid MP4; upload halves individually, merge server-side via POST /api/storage/concat-segments (ffmpeg -f concat -c copy); WebM raw-concat is fine.
+- [GCS signed-URL range requests unreliable in production](gcs-signed-url-range-requests.md) — mid-file Range reads via fetch+signedUrl return garbage bytes in prod; use file.createReadStream({start,end}) from GCS SDK instead.
+- [Cueless WebM clip extraction from GCS](cueless-webm-extraction.md) — live-recorded WebM has no duration/Cues; never proxy-transcode or remote-seek — event-derived pseudo-duration + one linear `-c copy` pass with windowed outputs.
+- [Highlight/lowlight must use local file, not signed URL](highlight-local-file.md) — download the source before ffmpeg; signed URLs fail Range reads and cueless WebM can't seek.
+- [Proxy chunk keyframe drift strips lead-in](highlight-chunk-drift.md) — no -force_key_frames → default 8s GOP → n×8s drift on skipped chunks eats PRE_SECONDS; always use -force_key_frames "expr:gte(t,n_forced*2)".
+- [Background upload resilience pattern](bg-upload-resilience.md) — never delete the IndexedDB session until the save succeeds; persist a pending-upload marker so recovery can retry on next load.
+- [GCS signed URLs reject appended params](gcs-signed-url-unsigned-params.md) — appending response-content-type/-disposition after signing always 403s; patch object metadata + bare URL instead.
+- [Playwright Chromium can't decode H.264/AAC](playwright-chromium-no-h264.md) — MP4 playback e2e always fails in the sandbox (canPlayType=""); verify via in-page Range fetch instead.
+- [Generator version stamping](generator-version-stamping.md) — stamp a version on ready reels/proxies and reset stale-version rows on read; publishing code never fixes already-generated media.
+- [Split/pause segment loss must be loud](split-recording-silent-loss.md) — half-flush failures were silently dropped (lost a real game's 2nd half); toast destructively + keep the IndexedDB session on failure.
+- [WebM split detector chunk overlap bug](webm-split-detector-overlap.md) — chunk overlap must equal the verify window, not the pattern length; log candidatesFound to tell "no magic" from "verify failed".
+- [openapi.yaml is the only codegen source of truth](openapi-spec-source-of-truth.md) — codegen deletes fields hand-added to generated files; port parallel-task fields into the spec first.
+- [Halftime-gap timeline mapping](halftime-gap-timeline-mapping.md) — every timestamp→video-time conversion (server AND FilmRoom) must subtract the removed halftime gap on repaired games.
+- [Chunked encodes must complete on actual output](chunked-encode-actual-output.md) — never gate a chunked-encode loop on an estimated chunk count; cueless WebM bitrate fallback can be 4x off and hang the build forever.
+- [Boot-time data fixes must be conditional](boot-data-fix-conditional.md) — seed-style prod data fixes must only apply when the column is still NULL, or every deploy clobbers the user's manual UI adjustments.
+- [Adaptive live-stream quality](adaptive-live-quality.md) — "maintain-resolution" caused the freeze; adapt with a maintain-framerate ladder; iOS Safari lacks qualityLimitationReason so rely on viewer loss/RTT.
+- [Chunk-boundary lead-in clipping](chunk-boundary-leadin-clipping.md) — when seg.start (t−PRE_SECONDS) falls in chunk N-1, clamp to 0 drops ~12s of footage; use prev+this concat-demuxer path instead.
+- [Clerk proxy JWT iss mismatch](clerk-proxy-jwt-iss-mismatch.md) — clerkProxyMiddleware permanently sets proxy URL as JWT iss for ALL tokens; clerkMiddleware() needs proxyUrl option + CLERK_PROXY_URL prod env var.
+- [Two Clerk instances — mobile vs server mismatch](clerk-two-instance-mismatch.md) — eas.json had a user-created live key (stecco.org); server uses Replit-managed key (immortal-swan-47); cross-instance tokens always 401.
+- [pnpm unusable after prod build cleanup](pnpm-unusable-after-prod-build-cleanup.md) — prod build removes pnpm cache; artifact run commands must use `node <script>` directly, not `pnpm --filter`.
+- [Mobile 401 diagnosis — two patterns](mobile-401-diagnosis.md) — 1–3ms=no token (loading-window race, fixed by queryClient.clear()); 70ms=TokenExpired (stale SecureStore JWT, self-resolves once race is fixed).
+- [Token refresh race — getToken() null during active refresh](token-refresh-race.md) — await getToken() before resetQueries() or re-fetches go out with no Authorization header during the ~600ms Clerk token refresh window.
+- [Replit Clerk live vs test instance — mobile auth](clerk-live-vs-test-instance.md) — EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY isn't auto-swapped on publish; server uses live JWKS, mobile tokens use test instance → requireAuth fallback verifyToken needed.
+- [Destructive Clerk routes](destructive-clerk-routes.md) — preserve requireAuth's verified subject before same-email mapping; re-calling getAuth misses legacy JWKS sessions.
+- [Account deletion side-effect ordering](account-deletion-side-effect-ordering.md) — external revocations and identity deletion must never precede a retryable local-data failure boundary.
+- [Signed upload deletion boundary](signed-upload-deletion-boundary.md) — deletion must wait through the exact expiry of any issued direct-upload capability before its final media sweep.

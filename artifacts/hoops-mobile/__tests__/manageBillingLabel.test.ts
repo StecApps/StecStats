@@ -8,8 +8,8 @@
  *   1. Label is "Manage in App Store" when rcPlan is set and platform is iOS.
  *   2. Label is "Manage in App Store" for "premium" rcPlan on iOS.
  *   3. Label is "Manage in Google Play" when rcPlan is set and platform is Android.
- *   4. Label is "Manage Billing" when rcPlan is null on iOS (Stripe subscriber).
- *   5. Label is "Manage Billing" when rcPlan is null on Android (Stripe subscriber).
+ *   4. Label remains Store-only when subscription state is still loading.
+ *   5. Android uses the Google Play label when subscription state is loading.
  *   6. iOS handler opens itms-apps:// deep-link when canOpenURL returns true.
  *   7. iOS handler falls back to https://apps.apple.com/... when itms-apps:// unsupported.
  *   8. iOS handler shows Store Unavailable alert when openURL rejects.
@@ -58,14 +58,14 @@ describe('getManageBillingLabel', () => {
     expect(getManageBillingLabel('pro')).toBe('Manage in Google Play');
   });
 
-  test('returns "Manage Billing" when rcPlan is null on iOS (Stripe subscriber)', () => {
+  test('returns "Manage in App Store" when subscription state is still loading on iOS', () => {
     Object.defineProperty(Platform, 'OS', { get: () => 'ios', configurable: true });
-    expect(getManageBillingLabel(null)).toBe('Manage Billing');
+    expect(getManageBillingLabel(null)).toBe('Manage in App Store');
   });
 
-  test('returns "Manage Billing" when rcPlan is null on Android (Stripe subscriber)', () => {
+  test('returns "Manage in Google Play" when subscription state is still loading on Android', () => {
     Object.defineProperty(Platform, 'OS', { get: () => 'android', configurable: true });
-    expect(getManageBillingLabel(null)).toBe('Manage Billing');
+    expect(getManageBillingLabel(null)).toBe('Manage in Google Play');
   });
 });
 

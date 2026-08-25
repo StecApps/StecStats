@@ -14,14 +14,12 @@ const {
   transactionMock,
   transactionDeleteMock,
   transactionUpdateMock,
-  deleteUserRowMock,
   updateMock,
   updateSetMock,
   updateWhereMock,
   deleteClerkUserMock,
   cancelOwnerMediaDeletionMock,
   resumeOwnerMediaWritesMock,
-  cancelAndWaitForGameProcessingMock,
   revokeTokenMock,
   decryptTokenMock,
 } = vi.hoisted(() => {
@@ -36,7 +34,6 @@ const {
   const deleteOwnerUploadNamespaceMock = vi.fn();
   const transactionDeleteMock = vi.fn();
   const transactionUpdateMock = vi.fn();
-  const deleteUserRowMock = vi.fn();
   const transactionMock = vi.fn();
   const updateWhereMock = vi.fn();
   const updateSetMock = vi.fn();
@@ -44,7 +41,6 @@ const {
   const deleteClerkUserMock = vi.fn();
   const cancelOwnerMediaDeletionMock = vi.fn();
   const resumeOwnerMediaWritesMock = vi.fn();
-  const cancelAndWaitForGameProcessingMock = vi.fn();
   const revokeTokenMock = vi.fn();
   const decryptTokenMock = vi.fn((token: string) => token);
   return {
@@ -58,14 +54,12 @@ const {
     transactionMock,
     transactionDeleteMock,
     transactionUpdateMock,
-    deleteUserRowMock,
     deleteClerkUserMock,
     updateMock,
     updateSetMock,
     updateWhereMock,
     cancelOwnerMediaDeletionMock,
     resumeOwnerMediaWritesMock,
-    cancelAndWaitForGameProcessingMock,
     revokeTokenMock,
     decryptTokenMock,
   };
@@ -74,6 +68,7 @@ const {
 vi.mock("../../middlewares/requireAuth", () => ({
   requireAuth: (req: express.Request, _res: express.Response, next: express.NextFunction) => {
     req.appUser = { ...currentUser.value } as any;
+    req.authenticatedClerkUserId = currentUser.value.clerkUserId;
     next();
   },
 }));
@@ -85,14 +80,13 @@ vi.mock("@clerk/express", () => ({
 vi.mock("../../lib/objectStorage", () => ({
   ObjectStorageService: class {
     deleteObjectEntity = deleteObjectEntityMock;
-    deleteOwnerUploadNamespace = deleteOwnerUploadNamespaceMock;
+    deleteObjectEntityPrefix = deleteOwnerUploadNamespaceMock;
   },
 }));
 
 vi.mock("../../lib/highlightGenerator", () => ({
   cancelOwnerMediaDeletion: cancelOwnerMediaDeletionMock,
   resumeOwnerMediaWrites: resumeOwnerMediaWritesMock,
-  cancelAndWaitForGameProcessing: cancelAndWaitForGameProcessingMock,
 }));
 
 vi.mock("../../lib/youtubeClient", () => ({
@@ -113,9 +107,8 @@ vi.mock("@workspace/db", () => ({
     },
     transaction: transactionMock,
     update: updateMock,
-    delete: deleteUserRowMock,
   },
-  usersTable: { id: "id" },
+  usersTable: { id: "id", deletionStatus: "deletion_status" },
   gamesTable: { ownerId: "owner_id" },
   playersTable: { ownerId: "owner_id" },
   teamsTable: { ownerId: "owner_id" },
@@ -155,23 +148,18 @@ beforeEach(() => {
   ]);
   findPlayersMock.mockResolvedValue([{ photoObjectPath: "/objects/uploads/41/player.jpg" }]);
   findTeamsMock.mockResolvedValue([{ highlightObjectPath: "/objects/uploads/41/season.mp4" }]);
-  findUserMock.mockResolvedValue({
-    youtubeRefreshToken: "encrypted-youtube-token",
-    deletionPending: new Date(Date.now() - 16 * 60 * 1000),
-  });
+  findUserMock.mockResolvedValue({ youtubeRefreshToken: "encrypted-youtube-token" });
   deleteObjectEntityMock.mockReset().mockResolvedValue(undefined);
   deleteOwnerUploadNamespaceMock.mockReset().mockResolvedValue(undefined);
   deleteClerkUserMock.mockReset().mockResolvedValue(undefined);
   cancelOwnerMediaDeletionMock.mockReset();
   resumeOwnerMediaWritesMock.mockReset();
-  cancelAndWaitForGameProcessingMock.mockReset().mockResolvedValue(undefined);
   revokeTokenMock.mockReset().mockResolvedValue(undefined);
   decryptTokenMock.mockClear();
   transactionDeleteMock.mockReset().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
   transactionUpdateMock.mockReset().mockReturnValue({
     set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
   });
-  deleteUserRowMock.mockReset().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
   transactionMock.mockReset().mockImplementation(async (callback) =>
     callback({ delete: transactionDeleteMock, update: transactionUpdateMock }),
   );
@@ -185,60 +173,43 @@ describe("DELETE /users/me", () => {
     const response = await fetch(`${baseUrl}/api/users/me`, { method: "DELETE" });
 
     expect(response.status).toBe(204);
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/41/source.mp4");
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/41/highlight.mp4");
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/41/proxy.mp4");
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/41/player.jpg");
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/41/season.mp4");
-    expect(deleteOwnerUploadNamespaceMock).toHaveBeenCalledWith(41);
+    expect(deleteOwnerUploadNamespaceMock).toHaveBeenCalledWith("/objects/uploads/41/");
     expect(cancelOwnerMediaDeletionMock).toHaveBeenCalledWith(41, [77]);
-    expect(cancelAndWaitForGameProcessingMock).toHaveBeenCalledWith([77], 41);
     expect(revokeTokenMock).toHaveBeenCalledWith("encrypted-youtube-token");
     expect(transactionDeleteMock).toHaveBeenCalledTimes(5);
     expect(transactionUpdateMock).toHaveBeenCalledTimes(1);
     expect(deleteClerkUserMock).toHaveBeenCalledWith("clerk-delete-test");
   });
 
-  it("keeps the account records intact when media cleanup fails", async () => {
+  it("quarantines the account when a media sweep partially fails", async () => {
     deleteOwnerUploadNamespaceMock.mockRejectedValueOnce(new Error("Storage unavailable"));
 
     const response = await fetch(`${baseUrl}/api/users/me`, { method: "DELETE" });
 
-    expect(response.status).toBe(202);
+    expect(response.status).toBe(503);
     expect(transactionMock).not.toHaveBeenCalled();
     expect(deleteClerkUserMock).not.toHaveBeenCalled();
+    expect(revokeTokenMock).not.toHaveBeenCalled();
+    expect(resumeOwnerMediaWritesMock).not.toHaveBeenCalled();
   });
 
-  it("keeps local data and allows a retry when Clerk deletion fails", async () => {
+  it("leaves a retryable sign-in identity when Clerk deletion fails after local cleanup", async () => {
     deleteClerkUserMock.mockRejectedValueOnce(new Error("Clerk unavailable"));
 
     const response = await fetch(`${baseUrl}/api/users/me`, { method: "DELETE" });
 
-    expect(response.status).toBe(202);
+    expect(response.status).toBe(503);
     expect(transactionMock).toHaveBeenCalledTimes(1);
     expect(resumeOwnerMediaWritesMock).not.toHaveBeenCalled();
   });
 
-  it("keeps deletion pending when the local purge transaction fails", async () => {
+  it("keeps the write barrier when local database cleanup fails", async () => {
     transactionMock.mockRejectedValueOnce(new Error("Database unavailable"));
 
     const response = await fetch(`${baseUrl}/api/users/me`, { method: "DELETE" });
 
-    expect(response.status).toBe(202);
+    expect(response.status).toBe(503);
     expect(deleteClerkUserMock).not.toHaveBeenCalled();
     expect(resumeOwnerMediaWritesMock).not.toHaveBeenCalled();
-  });
-
-  it("does not report final deletion while a pre-issued upload URL could still write", async () => {
-    findUserMock.mockResolvedValue({
-      youtubeRefreshToken: null,
-      deletionPending: new Date(),
-    });
-
-    const response = await fetch(`${baseUrl}/api/users/me`, { method: "DELETE" });
-
-    expect(response.status).toBe(202);
-    expect(deleteClerkUserMock).not.toHaveBeenCalled();
-    expect(deleteOwnerUploadNamespaceMock).toHaveBeenCalledTimes(1);
   });
 });

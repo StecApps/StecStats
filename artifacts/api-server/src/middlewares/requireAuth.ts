@@ -8,6 +8,8 @@ declare global {
   namespace Express {
     interface Request {
       appUser?: User;
+      /** Clerk subject authenticated by requireAuth, including JWKS fallback. */
+      authenticatedClerkUserId?: string;
     }
   }
 }
@@ -144,7 +146,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     // A durable account-deletion tombstone may only be accessed by the retry
     // endpoint. This prevents a partially completed deletion from accepting
     // profile, roster, recording, or upload writes that would recreate data.
-    if (user?.deletionPending) {
+    if (user?.deletionStatus === "deleting") {
       if (req.method === "DELETE" && req.path === "/users/me") {
         req.appUser = user;
         next();
@@ -265,6 +267,19 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return;
     }
 
+    // The deletion endpoint itself remains available so a transient storage or
+    // Clerk failure can be retried. Every other route is blocked once durable
+    // deletion begins, which prevents an account with a partial media sweep
+    // from continuing to create or mutate data.
+    const isDeletionRetry = req.method === "DELETE" && req.path === "/users/me";
+    if (user.deletionStatus && user.deletionStatus !== "active" && !isDeletionRetry) {
+      res.status(410).json({
+        error: "Account deletion is in progress. Retry account deletion to finish cleanup.",
+      });
+      return;
+    }
+
+    req.authenticatedClerkUserId = clerkUserId;
     req.appUser = user;
     next();
   } catch (error) {
