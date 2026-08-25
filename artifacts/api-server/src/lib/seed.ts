@@ -116,6 +116,7 @@ export async function applySchemaAdditions(): Promise<void> {
   // Added for push notifications — stores the coach's Expo push token so the
   // server can notify them when their highlight reel is ready.
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token text`);
+  await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS deletion_pending timestamptz`);
   // Added for push notifications — guards against duplicate highlight-ready
   // notifications when the server re-processes the same reel.
   await db.execute(sql`ALTER TABLE teams ADD COLUMN IF NOT EXISTS highlight_notification_sent boolean DEFAULT false`);

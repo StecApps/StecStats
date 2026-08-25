@@ -17,6 +17,16 @@ export interface UserProfileUpdate {
   lastName?: string;
 }
 
+export const AccountDeletionPendingStatus = {
+  pending: 'pending',
+} as const;
+
+export type AccountDeletionPendingStatus = typeof AccountDeletionPendingStatus[keyof typeof AccountDeletionPendingStatus];
+
+export interface AccountDeletionPending {
+  status: AccountDeletionPendingStatus;
+}
+
 export interface HealthStatus {
   status: string;
 }

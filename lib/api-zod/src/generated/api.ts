@@ -35,7 +35,9 @@ export const UpdateMeResponse = zod.object({
  * Does not cancel active StoreKit or Stripe subscriptions.
  * @summary Permanently delete the current user's account and stored application data
  */
-export const DeleteMyAccountResponse = zod.void()
+export const DeleteMyAccountResponse = zod.object({
+  "status": zod.enum(['pending'])
+})
 
 
 /**

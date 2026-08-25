@@ -48,3 +48,14 @@ for a web subscription) to cancel first when needed.
 
 For review support, contact **sstec@stecstats.com**. We respond within one
 business day.
+
+### Step-by-Step: Account Deletion (Guideline 5.1.1)
+
+1. Sign in with Apple (or create a new account).
+2. Tap the **Profile** tab (bottom-right).
+3. Scroll to the **Account** section and tap **Delete Account**.
+4. The first confirmation explains that teams, players, game stats, saved videos, highlights, photos, YouTube connection, and the sign-in identity will be permanently deleted. It also explains that deleting the account does **not** cancel an Apple subscription.
+5. If a subscription needs to be cancelled, tap **Manage in App Store** on that confirmation; otherwise tap **Continue**.
+6. Tap **Delete Permanently** in the final confirmation. The app signs out and returns to the sign-in screen.
+
+---

@@ -28,6 +28,7 @@ import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 import * as Updates from 'expo-updates';
 import { getManageBillingLabel, openStoreSubscriptions, openBillingPortal } from '@/lib/manageBilling';
 import { openContactSupport } from '@/lib/supportConfig';
+import { clearDeletedAccountLocalData } from '@/lib/accountDeletionCleanup';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -310,12 +311,30 @@ export default function ProfileScreen() {
               'This cannot be undone. Deleting your StecStats account does not cancel an Apple or web subscription. Cancel any subscription first in Apple Account Settings or Manage Billing.',
               [
                 { text: 'Keep Account', style: 'cancel' },
+                ...(Platform.OS === 'ios'
+                  ? [{ text: 'Manage in App Store', onPress: () => { void openStoreSubscriptions(); } }]
+                  : []),
                 {
                   text: 'Delete Account',
                   style: 'destructive',
                   onPress: () => {
                     deleteMyAccount.mutate(undefined, {
-                      onSuccess: async () => {
+                      onSuccess: async (result) => {
+                        if (result && result.status === 'pending') {
+                          Alert.alert(
+                            'Deletion Needs One Final Step',
+                            'For your privacy, we must wait 15 minutes for any already-issued upload links to expire. Keep this account signed in, then choose Delete Account again to finish permanently.',
+                          );
+                          return;
+                        }
+                        try {
+                          await clearDeletedAccountLocalData(user?.id);
+                        } catch {
+                          Alert.alert(
+                            'Account Deleted',
+                            'Your account was deleted, but this device could not clear its saved recovery data. Close and reopen the app before using another account.',
+                          );
+                        }
                         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                         try {
                           await signOut();

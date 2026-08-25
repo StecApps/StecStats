@@ -62,6 +62,12 @@ paths:
       responses:
         "204":
           description: Account deleted
+        "202":
+          description: Deletion is pending and will continue when the coach retries while signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountDeletionPending"
 
   /healthz:
     get:
@@ -751,6 +757,14 @@ components:
       properties:
         firstName: { type: string }
         lastName: { type: string }
+
+    AccountDeletionPending:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending]
 
     HealthStatus:
       type: object

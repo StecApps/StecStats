@@ -60,3 +60,4 @@
 - [Mobile 401 diagnosis — two patterns](mobile-401-diagnosis.md) — 1–3ms=no token (loading-window race, fixed by queryClient.clear()); 70ms=TokenExpired (stale SecureStore JWT, self-resolves once race is fixed).
 - [Token refresh race — getToken() null during active refresh](token-refresh-race.md) — await getToken() before resetQueries() or re-fetches go out with no Authorization header during the ~600ms Clerk token refresh window.
 - [Replit Clerk live vs test instance — mobile auth](clerk-live-vs-test-instance.md) — EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY isn't auto-swapped on publish; server uses live JWKS, mobile tokens use test instance → requireAuth fallback verifyToken needed.
+- [Account deletion tombstones](account-deletion-tombstones.md) — cross-service deletion must retain a scrubbed, write-blocked local tombstone until Clerk removal succeeds, so retries are safe.

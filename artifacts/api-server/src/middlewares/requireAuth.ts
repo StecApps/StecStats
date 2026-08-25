@@ -141,6 +141,19 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     let email: string | null = user?.email ?? null;
 
+    // A durable account-deletion tombstone may only be accessed by the retry
+    // endpoint. This prevents a partially completed deletion from accepting
+    // profile, roster, recording, or upload writes that would recreate data.
+    if (user?.deletionPending) {
+      if (req.method === "DELETE" && req.path === "/users/me") {
+        req.appUser = user;
+        next();
+        return;
+      }
+      res.status(409).json({ error: "Account deletion is in progress" });
+      return;
+    }
+
     // Look up the account's email from Clerk when we don't already have it
     // locally (brand-new user, or an existing row predating the email
     // column) so we can identify whether this is the designated project

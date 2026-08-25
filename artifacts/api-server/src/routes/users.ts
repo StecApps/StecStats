@@ -8,7 +8,6 @@ import {
   teamsTable,
   usersTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
 import { clerkClient } from "@clerk/express";
 import { ObjectStorageService } from "../lib/objectStorage";
@@ -18,8 +17,11 @@ import {
   cancelOwnerMediaDeletion,
   resumeOwnerMediaWrites,
 } from "../lib/highlightGenerator";
+import { eq, inArray, or } from "drizzle-orm";
+import { cancelAndWaitForGameProcessing } from "../lib/highlightGenerator";
 
 const EXPO_PUSH_TOKEN_RE = /^ExponentPushToken\[.+\]$/;
+const DIRECT_UPLOAD_URL_TTL_MS = 15 * 60 * 1000;
 
 const router = Router();
 const objectStorageService = new ObjectStorageService();
@@ -47,9 +49,11 @@ async function syncNameToClerk(
 
 // GET /api/users/me — return the stored first/last name for the current user
 router.get("/users/me", requireAuth, async (req, res) => {
-  const user = await db.query.usersTable.findFirst({
+  const persistedUser = await db.query.usersTable.findFirst({
     where: eq(usersTable.id, req.appUser!.id),
+    columns: { firstName: true, lastName: true },
   });
+  const user = persistedUser ?? req.appUser!;
   // Prevent Express from returning 304 "Not Modified" for this route.
   // A 304 carries no body — our customFetch returns null for it — so React
   // Query stores null and the greeting falls back to Clerk's stale name.
@@ -135,7 +139,7 @@ router.patch("/users/me", requireAuth, async (req, res) => {
  */
 router.delete("/users/me", requireAuth, async (req, res) => {
   const user = req.appUser!;
-  let clerkIdentityDeleted = false;
+  let deletionMarked = false;
 
   try {
     // Capture all known media paths before removing the database records. The
@@ -162,14 +166,24 @@ router.delete("/users/me", requireAuth, async (req, res) => {
       }),
       db.query.usersTable.findFirst({
         where: eq(usersTable.id, user.id),
-        columns: { youtubeRefreshToken: true },
+        columns: { youtubeRefreshToken: true, deletionPending: true },
       }),
     ]);
+
+    const deletionStartedAt = account?.deletionPending ?? new Date();
+    if (!account?.deletionPending) {
+      await db
+        .update(usersTable)
+        .set({ deletionPending: deletionStartedAt })
+        .where(eq(usersTable.id, user.id));
+    }
+    deletionMarked = true;
 
     // Stop background encodes before deleting their objects. The upload guard
     // closes the cancellation race so a reel/proxy cannot recreate media after
     // the namespace sweep.
     cancelOwnerMediaDeletion(user.id, games.map((game) => game.id));
+    await cancelAndWaitForGameProcessing(games.map((game) => game.id), user.id);
 
     // Revoke the separate Google authorization before removing its encrypted
     // token. revokeToken intentionally treats an already-revoked token as a
@@ -212,21 +226,6 @@ router.delete("/users/me", requireAuth, async (req, res) => {
       objectStorageService.deleteOwnerUploadNamespace(user.id),
     ]);
 
-    // Delete the Clerk identity before local records. If Clerk is unavailable,
-    // local records remain in place and the signed-in caller can retry. This
-    // avoids the former path where the app reported a failed deletion after it
-    // had already discarded all local data.
-    try {
-      await clerkClient.users.deleteUser(user.clerkUserId);
-      clerkIdentityDeleted = true;
-    } catch (err: any) {
-      if (err?.status === 404 || err?.statusCode === 404) {
-        clerkIdentityDeleted = true;
-      } else {
-        throw err;
-      }
-    }
-
     await db.transaction(async (tx) => {
       // Account-level feedback and purchase-event records contain the user's
       // identity, so delete rather than orphaning them.
@@ -238,13 +237,58 @@ router.delete("/users/me", requireAuth, async (req, res) => {
       await tx.delete(gamesTable).where(eq(gamesTable.ownerId, user.id));
       await tx.delete(playersTable).where(eq(playersTable.ownerId, user.id));
       await tx.delete(teamsTable).where(eq(teamsTable.ownerId, user.id));
-      await tx.delete(usersTable).where(eq(usersTable.id, user.id));
+      // Keep a scrubbed tombstone until Clerk deletion succeeds. This makes a
+      // post-purge Clerk failure retryable without retaining account PII.
+      await tx
+        .update(usersTable)
+        .set({
+          email: null,
+          stripeCustomerId: null,
+          youtubeRefreshToken: null,
+          revenueCatEntitlement: null,
+          firstName: null,
+          lastName: null,
+          pushToken: null,
+        })
+        .where(eq(usersTable.id, user.id));
     });
+
+    // GCS signed PUTs cannot be revoked. A URL obtained immediately before
+    // deletion remains valid for 15 minutes, so this first pass intentionally
+    // stays pending. A later retry does the final sweep only after every
+    // previously issued direct-upload grant has expired.
+    if (Date.now() - deletionStartedAt.getTime() < DIRECT_UPLOAD_URL_TTL_MS) {
+      res.status(202).json({ status: "pending" });
+      return;
+    }
+
+    // Sweep once more after the direct-upload window. This removes any object
+    // that a pre-issued signed PUT created after the first cleanup pass.
+    await objectStorageService.deleteOwnerUploadNamespace(user.id);
+    try {
+      await clerkClient.users.deleteUser(user.clerkUserId);
+    } catch (err: any) {
+      if (err?.status === 404 || err?.statusCode === 404) {
+        // An already-deleted identity means this retry can finish locally.
+      } else {
+        req.log?.error({ err, userId: user.id }, "Clerk deletion pending retry");
+        res.status(202).json({ status: "pending" });
+        return;
+      }
+    }
+
+    await db.delete(usersTable).where(eq(usersTable.id, user.id));
 
     res.status(204).send();
   } catch (err) {
     req.log?.error({ err, userId: user.id }, "Account deletion failed");
-    if (!clerkIdentityDeleted) resumeOwnerMediaWrites(user.id);
+    if (deletionMarked) {
+      // A retry can resume from the durable tombstone. Do not let background
+      // media workers write to this account while it is pending deletion.
+      res.status(202).json({ status: "pending" });
+      return;
+    }
+    resumeOwnerMediaWrites(user.id);
     res.status(500).json({ error: "Could not delete your account. Please try again." });
   }
 });

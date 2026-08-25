@@ -36,6 +36,7 @@ export const usersTable = pgTable("users", {
   // notification permission yet or hasn't opened the app since the feature
   // was added.
   pushToken: text("push_token"),
+  deletionPending: timestamp("deletion_pending"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

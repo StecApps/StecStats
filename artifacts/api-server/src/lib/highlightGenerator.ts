@@ -26,6 +26,8 @@ const objectStorageService = new ObjectStorageService();
 const highlightAbortControllers = new Map<number, AbortController>();
 const lowlightAbortControllers = new Map<number, AbortController>();
 const proxyBuildAbortControllers = new Map<number, AbortController>();
+const hlsBuildAbortControllers = new Map<number, AbortController>();
+const teamHighlightOwners = new Map<number, number>();
 const ownersWithDeletionInProgress = new Set<number>();
 
 /**
@@ -63,6 +65,7 @@ export function cancelLowlightJob(gameId: number): void {
 }
 export function cancelProxyBuild(gameId: number): void {
   proxyBuildAbortControllers.get(gameId)?.abort();
+  hlsBuildAbortControllers.get(gameId)?.abort();
 }
 /** @deprecated use cancelHighlightJob / cancelLowlightJob */
 export function cancelHighlightGeneration(gameId: number): void {
@@ -70,13 +73,37 @@ export function cancelHighlightGeneration(gameId: number): void {
   cancelLowlightJob(gameId);
 }
 
-// ---------------------------------------------------------------------------
-// Module-level shared chunk download cache.
-// Concurrent highlight and lowlight jobs for the same game share downloaded
-// proxy chunks rather than each fetching a separate copy — up to 2× fewer GCS
-// downloads per session.  Key = GCS object path (unique per game/version/index).
-// Reference-counted: the file is deleted only after the last job releases it.
-// ---------------------------------------------------------------------------
+/**
+ * Request cancellation and wait for active game highlight/proxy work to exit.
+ * Account deletion uses this before its final storage sweep so a cancelled
+ * encoder cannot finish uploading an object after that sweep.
+ */
+export async function cancelAndWaitForGameProcessing(
+  gameIds: number[],
+  ownerId?: number,
+  timeoutMs = 15_000,
+): Promise<void> {
+  for (const gameId of gameIds) {
+    cancelHighlightGeneration(gameId);
+    cancelProxyBuild(gameId);
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (
+    gameIds.some((gameId) =>
+      highlightAbortControllers.has(gameId) ||
+      lowlightAbortControllers.has(gameId) ||
+      proxyBuildAbortControllers.has(gameId) ||
+      hlsBuildAbortControllers.has(gameId),
+    )
+    || (ownerId != null && Array.from(teamHighlightOwners.values()).includes(ownerId))
+  ) {
+    if (Date.now() >= deadline) {
+      throw new Error("Timed out waiting for game processing to stop");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
 interface _SharedChunkEntry {
   promise: Promise<string>;
   refs: number;
@@ -3054,12 +3081,15 @@ export async function maybeSendTeamHighlightNotification(
  */
 export async function generateTeamHighlight(teamId: number): Promise<void> {
   let tmpDir: string | null = null;
+  let ownerId: number | null = null;
   try {
     const team = await db.query.teamsTable.findFirst({
       where: eq(teamsTable.id, teamId),
     });
     if (!team) throw new HighlightError("Team not found");
     if (team.ownerId == null) throw new HighlightError("This team has no owner account");
+    ownerId = team.ownerId;
+    teamHighlightOwners.set(teamId, ownerId);
 
     const games = await db.query.gamesTable.findMany({
       where: eq(gamesTable.teamId, teamId),
@@ -3168,6 +3198,17 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
     const outPath = path.join(tmpDir, "season-highlight.mp4");
     await concatSegments(allSegPaths, tmpDir, outPath, anyAudio);
 
+    // A team may have been deleted while its reel was rendering. Do not
+    // upload a new orphaned object after account deletion swept the namespace.
+    const stillExists = await db.query.teamsTable.findFirst({
+      where: eq(teamsTable.id, teamId),
+      columns: { id: true },
+    });
+    if (!stillExists) {
+      logger.warn({ teamId }, "Team highlight: team was deleted mid-generation — discarding output");
+      return;
+    }
+
     const objectPath = await uploadHighlight(outPath, team.ownerId);
 
     await setTeamStatus(teamId, "ready", {
@@ -3190,6 +3231,7 @@ export async function generateTeamHighlight(teamId: number): Promise<void> {
     await setTeamStatus(teamId, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
+    teamHighlightOwners.delete(teamId);
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -3214,6 +3256,8 @@ export function ensureAllProxyChunksInBackground(
 ): void {
   if (backgroundProxyBuilds.has(gameId) || backgroundHlsBuilds.has(gameId)) return;
   backgroundHlsBuilds.add(gameId);
+  const abortController = new AbortController();
+  hlsBuildAbortControllers.set(gameId, abortController);
   (async () => {
     // Fast-path: sentinel already present means a prior run completed the build.
     // getReadyProxyChunkCount reads the sentinel, not a duration estimate.
@@ -3269,7 +3313,7 @@ export function ensureAllProxyChunksInBackground(
         gameId, ownerId, srcPath, workDir,
         existFlags, firstMissing,
         /* deleteAfterUpload */ true,
-        /* signal */ undefined,
+        /* signal */ abortController.signal,
         /* maxDurationSec */ undefined, // encode ALL chunks, no early stop
       );
       // Prepend approximate durations for any chunks that were already in GCS
@@ -3282,6 +3326,7 @@ export function ensureAllProxyChunksInBackground(
       // Write the sentinel AFTER all chunks are safely in GCS.  The sentinel
       // is the only signal getReadyProxyChunkCount trusts, so it must not be
       // written until the encode is complete and uploaded.
+      assertOwnerMediaWritesAllowed(ownerId);
       await writeHlsSentinel(ownerId, gameId, actualNumChunks, allDurations);
       logger.info({ gameId, actualNumChunks }, "HLS chunk build: complete — sentinel written");
     } finally {
@@ -3290,7 +3335,10 @@ export function ensureAllProxyChunksInBackground(
     }
   })()
     .catch((err) => logger.error({ err, gameId }, "HLS chunk build: failed"))
-    .finally(() => backgroundHlsBuilds.delete(gameId));
+    .finally(() => {
+      backgroundHlsBuilds.delete(gameId);
+      hlsBuildAbortControllers.delete(gameId);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -3345,6 +3393,7 @@ async function writeHlsSentinel(
   chunkCount: number,
   segmentDurationsSec: number[],
 ): Promise<void> {
+  assertOwnerMediaWritesAllowed(ownerId);
   const sentinel: HlsSentinel = { chunkCount, segmentDurationsSec };
   const tmpFile = path.join(os.tmpdir(), `hls_sentinel_${gameId}_${Date.now()}.json`);
   await fs.writeFile(tmpFile, JSON.stringify(sentinel));

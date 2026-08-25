@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccountDeletionPending,
   BillingStatus,
   CheckoutSessionResponse,
   CreateCheckoutSessionInput,
@@ -234,9 +235,9 @@ export const getDeleteMyAccountUrl = () => {
  * Does not cancel active StoreKit or Stripe subscriptions.
  * @summary Permanently delete the current user's account and stored application data
  */
-export const deleteMyAccount = async ( options?: RequestInit): Promise<void> => {
+export const deleteMyAccount = async ( options?: RequestInit): Promise<AccountDeletionPending | void> => {
 
-  return customFetch<void>(getDeleteMyAccountUrl(),
+  return customFetch<AccountDeletionPending | void>(getDeleteMyAccountUrl(),
   {
     ...options,
     method: 'DELETE'
