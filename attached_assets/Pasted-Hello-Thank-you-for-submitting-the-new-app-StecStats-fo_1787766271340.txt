@@ -1,0 +1,67 @@
+Hello, 
+
+Thank you for submitting the new app, StecStats, for review. We noticed some issues that require your attention. Please see below for additional information.
+
+If you have any questions, we are here to help. Reply to this message in App Store Connect and let us know.
+
+Review Environment
+Submission ID: bc781d05-645e-4ec8-8ba6-3edb6003449a
+Review date: August 26, 2026
+Review Device: iPad Air 11-inch (M3)
+Version reviewed: 1.0 (36)
+
+Guideline 2.1(a) - Performance - App Completeness
+Issue Description
+
+The app exhibited one or more bugs that would negatively impact users.
+
+Bug description: the app remained at the login screen after we entered verification code. 
+
+Review device details:
+
+- Device type: iPad Air 11-inch (M3) 
+- OS version: iPadOS 26.6
+- Internet Connection: Active
+
+Next Steps
+
+Test the app on supported devices to identify and resolve bugs and stability issues before submitting for review.
+
+If the bug cannot be reproduced, try the following:
+
+- For new apps, uninstall all previous versions of the app from a device, then install and follow the steps to reproduce.
+- For app updates, install the new version as an update to the previous version, then follow the steps to reproduce.
+
+Note that users expect apps they download to function on all the devices where they are available. For example, apps that may be downloaded onto iPad devices should function as expected for iPad users. 
+
+Resources
+
+- For information about testing apps and preparing them for review, see Testing a Release Build.
+- To learn about troubleshooting networking issues, see Networking Overview.
+
+
+Guideline 2.1 - Information Needed
+
+We were unable to sign in with the following demo account credentials you provided in App Store Connect:
+
+User name: reviewer@stecstats.com
+Password: StecStatsReview123
+
+We were unable to sign in after entered verification code with an email address. 
+
+To avoid delays, it is essential to provide access to the app's full features and functionality with every submission.
+
+Next Steps
+
+Provide the username and password for a valid demo account in App Store Connect that provides full access to the app's features and functionality or include a demonstration mode that shows all of the features and functionality available in the app. Note that we cannot use a demo video showing the app in use to continue the review.
+
+Resources
+
+Learn how to share information when submitting an app for review.
+Support
+- Reply to this message in your preferred language if you need assistance. If you need additional support, use the Contact Us module.
+- Consult with fellow developers and Apple engineers on the Apple Developer Forums.
+- Provide feedback on this message and your review experience by completing a short survey.
+
+Test on the latest betas
+Betas of iOS 27, iPadOS 27, macOS 27, tvOS 27 and visionOS 27 are now available. Download the latest betas to prepare your app for upcoming software releases. Learn more about installing and using Apple beta software.

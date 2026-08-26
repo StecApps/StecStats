@@ -9,8 +9,15 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
 ## 1 — Build and reviewer sign-in
 
 - [ ] Increment the iOS build number and upload a new binary.
+- [ ] Remove the obsolete password `StecStatsReview123` from App Store Connect.
+  StecStats uses Sign in with Apple or a fresh six-digit email code—not an app
+  password.
 - [ ] On a physical iPhone or iPad, confirm **Sign in with Apple** is visible
   on the opening screen and completes successfully.
+- [ ] On a clean iPad installation, enter a six-digit email code using iPadOS
+  autofill or paste and confirm the app immediately leaves the login screen.
+- [ ] Repeat with manual code entry and the **Verify** button or keyboard
+  **Done** action.
 - [ ] Confirm the resulting Profile screen shows **Unlock Pro Features**, not
   an external billing portal.
 - [ ] In App Store Connect, provide a free reviewer email account and a
@@ -84,8 +91,10 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
 
 ## 6 — Review reply and final checks
 
-- [ ] If responding to a prior rejection, paste the current review reply in
-  App Store Connect before re-submitting.
+- [ ] Replace `[NEW BUILD NUMBER]` in `review-reply-2.1-login.md`, then paste
+  that reply in App Store Connect before re-submitting.
+- [ ] Do not say the corrected release build was tested until it passes on a
+  physical iPad or another supported iPad-class device after a clean install.
 - [ ] Confirm the account-deletion recording, Sign in with Apple check, and
   Restore purchases check were performed on a physical iOS device.
 - [ ] Submit the build.

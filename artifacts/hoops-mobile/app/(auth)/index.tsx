@@ -148,22 +148,23 @@ export default function AuthScreen() {
     }
   }
 
-  async function handleOtpSubmit() {
-    if (!isLoaded || otp.length !== 6) return;
+  async function handleOtpSubmit(submittedCode = otp) {
+    const code = submittedCode.replace(/\D/g, '').slice(0, 6);
+    if (!isLoaded || code.length !== 6) return;
     setLoading(true);
     setError('');
     try {
       if (mode === 'signIn') {
         const result = await signIn!.attemptFirstFactor({
           strategy: 'email_code',
-          code: otp,
+          code,
         });
         if (result.status === 'complete') {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           await setSignInActive!({ session: result.createdSessionId });
         }
       } else {
-        const result = await signUp!.attemptEmailAddressVerification({ code: otp });
+        const result = await signUp!.attemptEmailAddressVerification({ code });
         if (result.status === 'complete') {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           await setSignUpActive!({ session: result.createdSessionId });
@@ -272,12 +273,17 @@ export default function AuthScreen() {
                 placeholderTextColor={colors.mutedForeground}
                 value={otp}
                 onChangeText={(t) => {
-                  setOtp(t.replace(/\D/g, '').slice(0, 6));
-                  if (t.replace(/\D/g, '').length === 6) handleOtpSubmit();
+                  const sanitized = t.replace(/\D/g, '').slice(0, 6);
+                  setOtp(sanitized);
+                  // Use the value from this event rather than the previous
+                  // render's state. iPad autofill/paste can deliver all six
+                  // digits in one event before React has committed setOtp.
+                  if (sanitized.length === 6) void handleOtpSubmit(sanitized);
                 }}
                 keyboardType="number-pad"
                 returnKeyType="done"
                 maxLength={6}
+                onSubmitEditing={() => void handleOtpSubmit()}
               />
             </View>
 
@@ -285,7 +291,7 @@ export default function AuthScreen() {
 
             <TouchableOpacity
               style={[styles.btn, (otp.length !== 6 || loading) && styles.btnDisabled]}
-              onPress={handleOtpSubmit}
+              onPress={() => void handleOtpSubmit()}
               disabled={otp.length !== 6 || loading}
               activeOpacity={0.8}
             >
