@@ -11,6 +11,9 @@
     "test": "jest --config jest.config.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "ios:release:check": "node scripts/check-local-ios-release-env.js",
+    "ios:release:prepare": "node scripts/check-local-ios-release-env.js && pnpm exec expo prebuild --platform ios",
+    "ios:release:device": "node scripts/check-local-ios-release-env.js && pnpm exec expo run:ios --configuration Release --device",
     "release:staging": "eas update --channel preview --message \"${MESSAGE:-staging release}\"",
     "release:prod": "eas update --channel production --message \"${MESSAGE:-production release}\"",
     "rollback:prod": "eas update:republish --group $GROUP --destination-channel production"
