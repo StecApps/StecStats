@@ -316,6 +316,15 @@ export default function RootLayout() {
  * reel notification falls back to the Games tab.
  */
 function PushNotificationSetup() {
+  // expo-notifications does not implement useLastNotificationResponse on web.
+  // Keep the web preview usable for reviewer/auth flow checks while retaining
+  // the full notification behavior in native iOS and Android builds.
+  if (Platform.OS === 'web') return null;
+
+  return <NativePushNotificationSetup />;
+}
+
+function NativePushNotificationSetup() {
   const { getToken, isSignedIn } = useAuth();
   const router = useRouter();
 
