@@ -22,8 +22,12 @@ the native Apple sign-in sheet to create a new, free StecStats account.
 - **Sign-in method:** Enter the email address, tap **Continue**, then enter
   the 6-digit verification code sent to that inbox. No app password is used.
 - **Account type:** Free (no subscription is pre-activated).
-- **Email-code delivery:** [ENTER IN APP STORE CONNECT ONLY — provide a
-  reviewer-accessible way to receive fresh codes throughout review].
+- **Email-code delivery:** `reviewer@stecstats.com` is the active Production
+  Clerk email-code account for this submission. The review team monitors its
+  inbox throughout review and can provide each newly generated code through
+  the approved reviewer-access arrangement. If a code is not visible, request
+  a new code from the sign-in screen; do not use a password or an earlier
+  code.
 
 ### Review the in-app purchase
 

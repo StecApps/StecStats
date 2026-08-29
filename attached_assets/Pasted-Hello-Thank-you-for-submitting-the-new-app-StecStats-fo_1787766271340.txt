@@ -45,7 +45,7 @@ Guideline 2.1 - Information Needed
 We were unable to sign in with the following demo account credentials you provided in App Store Connect:
 
 User name: reviewer@stecstats.com
-Password: StecStatsReview123
+Password: [redacted from source control]
 
 We were unable to sign in after entered verification code with an email address. 
 

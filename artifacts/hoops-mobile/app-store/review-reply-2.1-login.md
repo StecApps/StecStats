@@ -18,8 +18,9 @@ the login screen. Version 1.0 (build [NEW BUILD NUMBER]) now verifies the exact
 six-digit value entered by autofill, paste, the Verify button, or the keyboard
 Done action, and then activates the session and opens the app.
 
-The previously supplied password `StecStatsReview123` is not an app credential.
-StecStats does not use password authentication.
+The previous submission instructions incorrectly suggested a password-based
+demo credential. StecStats does not use password authentication; the reviewer
+account uses a fresh six-digit Clerk email code for every sign-in attempt.
 
 For the simplest review path, no demo account is required:
 
@@ -32,7 +33,8 @@ For the simplest review path, no demo account is required:
 
 If email sign-in is preferred, enter the reviewer email listed in App Review
 Information, tap **Continue**, and enter the fresh six-digit code delivered to
-the reviewer-accessible inbox. No password is used.
+the reviewer-accessible inbox. The inbox is monitored throughout review so a
+new code can be provided when needed. No password is used.
 
 We tested the corrected release build on a clean installation using six-digit
 autofill/paste and manual entry before resubmitting.

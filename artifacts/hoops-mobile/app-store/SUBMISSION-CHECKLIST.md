@@ -9,9 +9,15 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
 ## 1 — Build and reviewer sign-in
 
 - [ ] Increment the iOS build number and upload a new binary.
-- [ ] Remove the obsolete password `StecStatsReview123` from App Store Connect.
-  StecStats uses Sign in with Apple or a fresh six-digit email code—not an app
-  password.
+- [ ] Remove any obsolete password-based demo credential from App Store
+  Connect. StecStats uses Sign in with Apple or a fresh six-digit email
+  code—not an app password.
+- [ ] In the **Production** Clerk environment, confirm
+  `reviewer@stecstats.com` exists as the free reviewer account and that a
+  fresh verification email arrives in the monitored inbox.
+- [ ] Confirm the monitored inbox or approved forwarding arrangement remains
+  available for the entire review window, and test requesting a second fresh
+  code after the first one expires or is not used.
 - [ ] On a physical iPhone or iPad, confirm **Sign in with Apple** is visible
   on the opening screen and completes successfully.
 - [ ] On a clean iPad installation, enter a six-digit email code using iPadOS
@@ -25,8 +31,8 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
   review. This account must not have an active subscription.
 - [ ] In App Store Connect only, provide the current Sandbox Apple ID for the
   StoreKit payment sheet. It is not an app sign-in credential.
-- [ ] Do **not** put reviewer-inbox or Sandbox Apple ID passwords in Git or
-  another source-controlled file.
+- [ ] Do **not** put reviewer-inbox passwords, email credentials, or Sandbox
+  Apple ID passwords in Git or another source-controlled file.
 
 ## 2 — In-app purchase products
 
