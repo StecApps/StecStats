@@ -1,0 +1,50 @@
+  artifacts/hoops-mobile/plugins/withSwiftConcurrencyFix.js
+
+git pull --ff-only origin main
+error: Entry 'eas.json' not uptodate. Cannot merge.
+Cannot save the current worktree state
+From https://github.com/StecApps/StecStats
+ * branch            main       -> FETCH_HEAD
+Updating 22b9ed4..c1a6739
+error: Your local changes to the following files would be overwritten by merge:
+	artifacts/hoops-mobile/app/_layout.tsx
+	artifacts/hoops-mobile/eas.json
+	artifacts/hoops-mobile/plugins/withSwiftConcurrencyFix.js
+Please commit your changes or stash them before you merge.
+Aborting
+stevenstec@Mac StecStats % ls artifacts/hoops-mobile/local-ios-release.env.example
+ls artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md
+ls artifacts/hoops-mobile/scripts/check-local-ios-release-env.js
+ls: artifacts/hoops-mobile/local-ios-release.env.example: No such file or directory
+ls: artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md: No such file or directory
+ls: artifacts/hoops-mobile/scripts/check-local-ios-release-env.js: No such file or directory
+stevenstec@Mac StecStats % cd /Users/stevenstec/StecStats
+
+git add \
+  artifacts/hoops-mobile/app/_layout.tsx \
+  artifacts/hoops-mobile/eas.json \
+  artifacts/hoops-mobile/plugins/withSwiftConcurrencyFix.js
+
+git stash push -m "local changes before StecStats sync" -- \
+  artifacts/hoops-mobile/app/_layout.tsx \
+  artifacts/hoops-mobile/eas.json \
+  artifacts/hoops-mobile/plugins/withSwiftConcurrencyFix.js
+error: Entry 'eas.json' not uptodate. Cannot merge.
+Cannot save the current worktree state
+stevenstec@Mac StecStats % git pull --ff-only origin main
+From https://github.com/StecApps/StecStats
+ * branch            main       -> FETCH_HEAD
+Updating 22b9ed4..c1a6739
+error: Your local changes to the following files would be overwritten by merge:
+	artifacts/hoops-mobile/app/_layout.tsx
+	artifacts/hoops-mobile/eas.json
+	artifacts/hoops-mobile/plugins/withSwiftConcurrencyFix.js
+Please commit your changes or stash them before you merge.
+Aborting
+stevenstec@Mac StecStats % ls artifacts/hoops-mobile/local-ios-release.env.example
+ls artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md
+ls artifacts/hoops-mobile/scripts/check-local-ios-release-env.js
+ls: artifacts/hoops-mobile/local-ios-release.env.example: No such file or directory
+ls: artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md: No such file or directory
+ls: artifacts/hoops-mobile/scripts/check-local-ios-release-env.js: No such file or directory
+stevenstec@Mac StecStats % 
