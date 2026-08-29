@@ -1,0 +1,78 @@
+ not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.iCloudDrive: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.FaceTime: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.energykit: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.PreviewLegacySignaturesConversion: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.siri.ASR.shared: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.replicatord: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.Photos.PhotosFileProvider: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.icloud.fmipcore: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.AppleSpell: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.mlhost: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.FamilyControls: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.Maps: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.PegasusConfiguration: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.shortcuts: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.MessagesLegacyTransferArchive: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.VoiceMemos: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.archiveutility: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Maps/Data/Maps: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Home: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Safari: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.CloudDocs.MobileDocumentsFileProvider: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.mail: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.MobileSMS: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Notes: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.news: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.corerecents.recentsd/Data/Library/Recents: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.stocks: Operation not permitted
+find: /Users/stevenstec/Library/ContainerManager: Operation not permitted
+find: /Users/stevenstec/Library/PersonalizationPortrait: Operation not permitted
+find: /Users/stevenstec/Library/Metadata/CoreSpotlight: Operation not permitted
+find: /Users/stevenstec/Library/Metadata/com.apple.IntelligentSuggestions: Operation not permitted
+find: /Users/stevenstec/Library/Reminders: Operation not permitted
+find: /Users/stevenstec/Library/Cookies: Operation not permitted
+find: /Users/stevenstec/Library/com.apple.bluetooth.services.cloud/CachedRecords/SoundProfileAsset: Operation not permitted
+find: /Users/stevenstec/Library/CoreFollowUp: Operation not permitted
+find: /Users/stevenstec/Library/StatusKit: Operation not permitted
+find: /Users/stevenstec/Library/DoNotDisturb: Operation not permitted
+find: /Users/stevenstec/Library/Caches/familycircled: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.HomeKit: Operation not permitted
+find: /Users/stevenstec/Library/Caches/CloudKit: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.Safari: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.imagecache: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.fmfcore: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.containermanagerd: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.Safari.SafeBrowsing: Operation not permitted
+find: /Users/stevenstec/Library/Caches/FamilyCircle: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.homed: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.fmipcore: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.ap.adprivacyd: Operation not permitted
+^C
+stevenstec@Mac ~ % cd /Users/stevenstec/StecStats
+cp artifacts/hoops-mobile/local-ios-release.env.example \
+   artifacts/hoops-mobile/.env.local
+open -a TextEdit artifacts/hoops-mobile/.env.local
+cp: artifacts/hoops-mobile/local-ios-release.env.example: No such file or directory
+The file /Users/stevenstec/StecStats/artifacts/hoops-mobile/.env.local does not exist.
+stevenstec@Mac StecStats % cd /Users/stevenstec/StecStats
+git pull --ff-only origin main
+remote: Enumerating objects: 351, done.
+remote: Counting objects: 100% (351/351), done.
+remote: Compressing objects: 100% (91/91), done.
+remote: Total 274 (delta 184), reused 272 (delta 182), pack-reused 0 (from 0)
+Receiving objects: 100% (274/274), 498.91 KiB | 4.80 MiB/s, done.
+Resolving deltas: 100% (184/184), completed with 59 local objects.
+From https://github.com/StecApps/StecStats
+ * branch            main       -> FETCH_HEAD
+   2461d03..c1a6739  main       -> origin/main
+Updating 22b9ed4..c1a6739
+error: Your local changes to the following files would be overwritten by merge:
+	artifacts/hoops-mobile/app/_layout.tsx
+	artifacts/hoops-mobile/eas.json
+	artifacts/hoops-mobile/plugins/withSwiftConcurrencyFix.js
+Please commit your changes or stash them before you merge.
+Aborting
+stevenstec@Mac StecStats % ls artifacts/hoops-mobile/local-ios-release.env.example
+ls: artifacts/hoops-mobile/local-ios-release.env.example: No such file or directory
+stevenstec@Mac StecStats % 
