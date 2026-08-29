@@ -1,0 +1,215 @@
+Here is the checklist that got PayDock through Apple review, plus the important lessons from the rejections.
+
+1. Apple Developer account and agreements
+Before submitting:
+
+Apple Developer Program membership is active.
+Paid Applications Agreement is accepted.
+Banking and tax information is complete in App Store Connect.
+The app’s bundle ID matches the uploaded build.
+The app is listed as Free if downloads are intended to be free.
+The paid feature is configured as an auto-renewable in-app subscription, not as the app’s purchase price.
+For PayDock:
+
+App download: Free
+Subscription: $4.99/month
+Trial: two weeks
+Subscription type: Apple In-App Purchase
+2. Login and App Review access
+If the app requires login, Apple needs to be able to enter the app immediately.
+
+Provide in App Review Information:
+
+A dedicated reviewer email address
+The password
+Step-by-step login instructions
+Any special navigation instructions
+Confirmation that the account is already populated with sample data
+The demo account should contain realistic content so the reviewer can see the actual product.
+
+For PayDock, the review account had:
+
+Sample bills
+Different due dates and categories
+A monthly budget
+Sample saved login entries
+Access to the Account and Subscription screens
+Do not make the reviewer:
+
+Register a new account
+Wait for an invitation
+Verify an email
+Provide a phone number
+Contact you for access
+Complete an unavailable external setup step
+If the app offers Google, Facebook, or another third-party login, Apple may require Sign in with Apple. PayDock avoided that issue by using email/password sign-in only.
+
+3. Account deletion
+If users can create an account, provide a working way to delete it.
+
+For PayDock, this included:
+
+An in-app Delete account control
+A clear confirmation step
+Permanent deletion of the user’s associated data
+A public deletion-information URL: https://paydock.app/delete-account
+The deletion flow should explain what is removed and what happens to subscriptions. App Store subscriptions generally need to be canceled separately through Apple’s subscription management.
+
+4. In-app purchases and subscriptions
+For digital features, use Apple’s In-App Purchase system.
+
+The app must not send iOS users to:
+
+Stripe Checkout
+A web payment page
+PayPal
+Another external payment provider
+The subscription screen should clearly show:
+
+Product name
+Price
+Billing period
+Trial terms, if applicable
+What the subscription unlocks
+Automatic-renewal information
+A purchase button
+Restore Purchases
+Subscription management/cancellation guidance
+The issue that caused PayDock’s rejection
+Having a hosted Terms page was not enough. Apple required the Terms of Use/EULA link to be visible directly inside the subscription purchase section.
+
+The corrected PayDock flow showed both of these links beside the subscription details:
+
+Terms of Use / EULA
+Privacy Policy
+Both links had to open successfully.
+
+For PayDock:
+
+EULA: https://paydock.app/terms
+Privacy Policy: https://paydock.app/privacy
+The subscription group, subscription product, and app version also needed to be submitted together for review.
+
+5. Restore and subscription management
+Include and test:
+
+Restore Purchases
+Existing-purchase recognition after reinstall
+Subscription entitlement activation
+Subscription status after returning to the app
+A Manage Subscription option that opens Apple’s subscription management page
+Apple reviewers should be able to understand how a user:
+
+Purchases Pro
+Restores Pro
+Cancels Pro
+Manages renewal
+6. Privacy, legal, and support information
+The following must be present in App Store Connect and working online:
+
+Privacy Policy URL
+Terms of Use/EULA URL
+Support URL
+Marketing URL, if used
+Accurate app description
+Accurate subscription disclosure
+The privacy policy should describe:
+
+Account information
+Bills and financial-related data
+Stored credentials
+Notifications
+Household sharing
+Data storage
+Third-party services
+Account deletion
+Data retention
+The URL should be public, HTTPS, and return a successful response without requiring login.
+
+7. App Store metadata
+Complete:
+
+App name
+Subtitle
+Description
+Keywords
+Primary category
+Age rating
+Copyright
+Privacy disclosures
+App icon
+Screenshots
+App preview, if used
+“What’s New” text for updates
+Screenshots should:
+
+Show the real app
+Match the submitted version
+Use Apple-supported device dimensions
+Avoid placeholder or misleading content
+Demonstrate the primary features
+For a login-based app, include screenshots that show enough of the product for the reviewer to understand its purpose.
+
+8. App Review notes
+The review notes should explain exactly how to test the app.
+
+A strong format is:
+
+Sign in using the demo credentials.
+Open the main feature.
+Open Account or Settings.
+Navigate to the subscription section.
+Confirm the price and trial.
+Confirm the EULA and Privacy Policy links.
+Test or cancel the purchase in Apple’s sandbox.
+Tap Restore Purchases.
+Explain how to manage or cancel the subscription.
+Also tell Apple:
+
+Whether internet access is required
+Whether push notifications are optional
+Whether the app supports iPhone only or iPad
+Which storefront/country the app targets
+Whether purchases use StoreKit
+What the free tier includes
+What the paid tier unlocks
+9. Technical testing before submission
+Test the exact release build through TestFlight on a real iPhone:
+
+Fresh install
+Login with the reviewer account
+Main navigation
+All primary actions
+Subscription screen
+Purchase flow
+Restore Purchases
+EULA link
+Privacy link
+Account deletion
+Logout and relogin
+Push notification permission handling
+App relaunch
+Network error states
+No crashes or blank screens
+Also verify:
+
+The version number and build number are correct.
+There are no development URLs or placeholder keys.
+The app icon matches the intended branding.
+All external links use HTTPS.
+The app’s actual behavior matches the App Store description.
+Encryption/export-compliance questions are completed.
+The short version
+The most important requirements were:
+
+Give Apple working demo credentials.
+Preload the reviewer account with usable demo data.
+Keep the app download free if the product is subscription-based.
+Use Apple IAP for digital subscriptions.
+Submit the subscription product with the app version.
+Show the subscription price and terms clearly.
+Put visible EULA and Privacy Policy links directly in the purchase section.
+Make Restore Purchases work.
+Provide in-app account deletion.
+Keep the privacy, terms, support, screenshots, and review instructions accurate and live.
+For another app, the safest approach is to complete all of those items before submitting the first build, especially the reviewer account and the in-app EULA/Privacy links.
