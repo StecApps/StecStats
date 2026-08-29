@@ -18,7 +18,7 @@ the native Apple sign-in sheet to create a new, free StecStats account.
 
 **Free reviewer account:** If using the supplied reviewer account instead:
 
-- **Email:** [ENTER IN APP STORE CONNECT ONLY]
+- **Email:** reviewer@stecstats.com
 - **Sign-in method:** Enter the email address, tap **Continue**, then enter
   the 6-digit verification code sent to that inbox. No app password is used.
 - **Account type:** Free (no subscription is pre-activated).
@@ -68,7 +68,7 @@ Attach a current physical-device screen recording to App Review Information
 
 ### Contact
 
-For review support, contact **sstec@stecstats.com**. We respond within one
+For review support, contact **support@stecstats.com**. We respond within one
 business day.
 
 ### Step-by-Step: Account Deletion (Guideline 5.1.1)

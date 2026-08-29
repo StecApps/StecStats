@@ -167,8 +167,8 @@ export default function TermsOfService() {
             <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">12. Contact</h2>
             <p>
               If you have questions about these Terms, please contact us at{" "}
-              <a href="mailto:sstec@stecstats.com" className="text-primary hover:underline">
-                sstec@stecstats.com
+              <a href="mailto:support@stecstats.com" className="text-primary hover:underline">
+                support@stecstats.com
               </a>.
             </p>
           </section>

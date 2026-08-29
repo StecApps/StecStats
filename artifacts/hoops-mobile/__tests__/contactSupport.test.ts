@@ -37,7 +37,7 @@ describe('Contact Support link', () => {
   });
 
   test('CONTACT_SUPPORT_URL contains the correct support email address', () => {
-    expect(CONTACT_SUPPORT_URL).toContain('sstec@stecstats.com');
+    expect(CONTACT_SUPPORT_URL).toContain('support@stecstats.com');
   });
 
   test('openContactSupport calls Linking.openURL exactly once', () => {
@@ -63,7 +63,7 @@ describe('Contact Support link', () => {
     openContactSupport();
 
     const [url] = mockOpenURL.mock.calls[0];
-    expect(url).toContain('sstec@stecstats.com');
+    expect(url).toContain('support@stecstats.com');
   });
 
   test('does not open a browser URL (no https://)', () => {
@@ -77,7 +77,7 @@ describe('Contact Support link', () => {
 
     expect(alertSpy).toHaveBeenCalledWith(
       'Contact Support',
-      'Unable to open your email app. Please email sstec@stecstats.com directly.',
+      'Unable to open your email app. Please email support@stecstats.com directly.',
     );
   });
 });

@@ -8,7 +8,7 @@
  */
 import { Alert, Linking } from 'react-native';
 
-export const CONTACT_SUPPORT_URL = 'mailto:sstec@stecstats.com';
+export const CONTACT_SUPPORT_URL = 'mailto:support@stecstats.com';
 
 /** Opens the device email client addressed to the support inbox. */
 export async function openContactSupport(): Promise<void> {

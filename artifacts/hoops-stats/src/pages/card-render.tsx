@@ -84,7 +84,7 @@ function CardBack() {
           </div>
           <div style={{ fontSize: 22, fontWeight: 700, color: "#f97316" }}>stecstats.com</div>
           <div style={{ fontSize: 22, color: "#ffffff", textAlign: "center", fontWeight: 600 }}>401-365-0933</div>
-          <div style={{ fontSize: 18, color: "#c8c4c2", textAlign: "center" }}>Sstec@stecstats.com</div>
+          <div style={{ fontSize: 18, color: "#c8c4c2", textAlign: "center" }}>support@stecstats.com</div>
           <div style={{ fontSize: 16, color: "#9a9694", textAlign: "center" }}>14-day free · $9.99/mo</div>
         </div>
       </div>

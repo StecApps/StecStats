@@ -129,7 +129,7 @@ function CardBack({ x, y }: { x: number; y: number }) {
             <div style={{ fontSize: 8, fontWeight: 700, color: "#f97316" }}>stecstats.com</div>
             {/* Contact — boosted from #d1ccc9 → #ffffff, email from #9a9290 → #c8c4c2 */}
             <div style={{ fontSize: 7.5, color: "#ffffff", textAlign: "center", fontWeight: 600 }}>401-365-0933</div>
-            <div style={{ fontSize: 6.5, color: "#c8c4c2", textAlign: "center" }}>Sstec@stecstats.com</div>
+            <div style={{ fontSize: 6.5, color: "#c8c4c2", textAlign: "center" }}>support@stecstats.com</div>
             <div style={{ fontSize: 6, color: "#9a9694", textAlign: "center" }}>14-day free · $9.99/mo</div>
           </div>
         </div>
