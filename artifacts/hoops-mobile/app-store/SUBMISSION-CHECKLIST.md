@@ -58,6 +58,10 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
 
 ## 3 — Account deletion
 
+- [ ] In App Store Connect, set the Account Deletion URL to
+  `https://stecstats.com/account-deletion`.
+- [ ] Open `https://stecstats.com/account-deletion` in a signed-out browser and
+  confirm it loads over HTTPS without requiring an account.
 - [ ] Sign in with a throwaway account that has a player, game, and uploaded
   photo or recording.
 - [ ] Go to **Profile → Delete Account**, confirm both destructive prompts,

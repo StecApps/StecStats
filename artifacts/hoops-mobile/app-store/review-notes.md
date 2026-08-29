@@ -59,6 +59,9 @@ The app supports direct, permanent in-app account deletion:
 Deleting a StecStats account does not cancel an Apple subscription. The final
 confirmation directs users to Apple Account Settings to manage or cancel it.
 
+Public account-deletion information page:
+https://stecstats.com/account-deletion
+
 
 ### Required physical-device recording
 

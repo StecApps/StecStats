@@ -143,6 +143,10 @@ export default function PrivacyPolicy() {
               <a href="mailto:support@stecstats.com" className="text-primary hover:underline">support@stecstats.com</a>.
               We will respond within 30 days.
             </p>
+            <p className="mt-3">
+              For step-by-step account deletion instructions, visit our{" "}
+              <a href="/account-deletion" className="text-primary hover:underline">Account Deletion page</a>.
+            </p>
           </section>
 
           <section>

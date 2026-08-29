@@ -49,6 +49,9 @@ https://stecstats.com
 ## Privacy Policy URL
 https://stecstats.com/privacy
 
+## Account Deletion URL
+https://stecstats.com/account-deletion
+
 ---
 
 ## App Store Categories
