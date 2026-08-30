@@ -38,6 +38,20 @@ function getInstalledClerkExpoVersion() {
   }
 }
 
+function hasClerkCompatibleIosTarget() {
+  try {
+    const properties = JSON.parse(
+      fs.readFileSync(
+        path.resolve(process.cwd(), 'ios/Podfile.properties.json'),
+        'utf8',
+      ),
+    );
+    return Number.parseFloat(properties['ios.deploymentTarget']) >= 17;
+  } catch {
+    return false;
+  }
+}
+
 function decodePublishableKeyHost(value) {
   if (typeof value !== 'string' || !value.startsWith('pk_live_')) return null;
   try {
@@ -66,6 +80,9 @@ const invalid = Object.entries(required)
 const clerkExpoVersion = getInstalledClerkExpoVersion();
 if (!clerkExpoVersion || !clerkExpoVersion.startsWith('4.')) {
   invalid.push('@clerk/expo v4 (run pnpm install)');
+}
+if (!hasClerkCompatibleIosTarget()) {
+  invalid.push('iOS deployment target 17.0+ (required by ClerkExpo)');
 }
 
 async function verifyClerkProxy() {
@@ -135,5 +152,6 @@ if (require.main === module) {
 module.exports = {
   decodePublishableKeyHost,
   getInstalledClerkExpoVersion,
+  hasClerkCompatibleIosTarget,
   verifyClerkProxy,
 };

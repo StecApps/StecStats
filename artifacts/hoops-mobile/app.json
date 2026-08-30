@@ -76,6 +76,7 @@
         }
       ],
       "./plugins/withSwiftConcurrencyFix",
+      "@clerk/expo",
       "expo-apple-authentication",
       [
         "expo-notifications",

@@ -28,7 +28,18 @@ corepack enable
 pnpm install
 ```
 
-## 3. Validate the production environment
+## 3. Generate the native iOS workspace
+
+```bash
+pnpm --filter @workspace/hoops-mobile run ios:release:prepare
+```
+
+This runs Expo prebuild for iOS without `--clean`, preserving any existing
+native project changes. It also applies Clerk's required iOS 17 deployment
+target before CocoaPods installs ClerkKit. The generated `ios/` directory is
+intentionally ignored by Git.
+
+## 4. Validate the production environment
 
 ```bash
 pnpm --filter @workspace/hoops-mobile run ios:release:check
@@ -37,17 +48,8 @@ pnpm --filter @workspace/hoops-mobile run ios:release:check
 The check intentionally fails if the build would use a missing/test/wrong-tenant
 Clerk key, the wrong API domain, the wrong Clerk proxy, a proxy that does not
 advertise email-code and Apple-token login, a non-proxy-capable Clerk Expo SDK,
-or a missing RevenueCat iOS key. It never prints the key value.
-
-## 4. Generate the native iOS workspace
-
-```bash
-pnpm --filter @workspace/hoops-mobile run ios:release:prepare
-```
-
-This runs Expo prebuild for iOS without `--clean`, preserving any existing
-native project changes. The generated `ios/` directory is intentionally
-ignored by Git.
+an iOS deployment target below 17, or a missing RevenueCat iOS key. It never
+prints the key value.
 
 ## 5. Verify on a physical iPhone
 
