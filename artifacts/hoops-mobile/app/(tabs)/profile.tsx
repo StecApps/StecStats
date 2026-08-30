@@ -29,6 +29,7 @@ import * as Updates from 'expo-updates';
 import { openStoreSubscriptions } from '@/lib/manageBilling';
 import { openContactSupport } from '@/lib/supportConfig';
 import { clearDeletedAccountDataThenSignOut } from '@/lib/accountDeletionCleanup';
+import { PUBLIC_LEGAL_LINKS } from '@/lib/legalLinks';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -493,19 +494,13 @@ export default function ProfileScreen() {
       <ProfileRow
         icon="shield-checkmark-outline"
         label="Privacy Policy"
-        onPress={() => {
-          const domain = process.env.EXPO_PUBLIC_DOMAIN ?? 'stecstats.com';
-          WebBrowser.openBrowserAsync(`https://${domain}/privacy`);
-        }}
+        onPress={() => WebBrowser.openBrowserAsync(PUBLIC_LEGAL_LINKS.privacy)}
         colors={colors}
       />
       <ProfileRow
         icon="document-text-outline"
         label="Terms of Use"
-        onPress={() => {
-          const domain = process.env.EXPO_PUBLIC_DOMAIN ?? 'stecstats.com';
-          WebBrowser.openBrowserAsync(`https://${domain}/terms`);
-        }}
+        onPress={() => WebBrowser.openBrowserAsync(PUBLIC_LEGAL_LINKS.terms)}
         colors={colors}
       />
 

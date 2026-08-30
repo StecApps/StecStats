@@ -7,10 +7,6 @@
  *   2. Contains "/terms" when the Terms of Use row is tapped.
  *   3. Falls back to "stecstats.com" when EXPO_PUBLIC_DOMAIN is undefined.
  *   4. Uses EXPO_PUBLIC_DOMAIN when it is set.
- *
- * Uses a self-contained helper that mirrors the exact onPress logic from
- * artifacts/hoops-mobile/app/(tabs)/profile.tsx so any change to the URL
- * construction or domain fallback breaks these tests first.
  */
 
 // ── Mocks (hoisted before imports) ───────────────────────────────────────────
@@ -22,25 +18,19 @@ jest.mock('expo-web-browser', () => ({
 // ── Imports (after mock hoisting) ─────────────────────────────────────────────
 
 import * as WebBrowser from 'expo-web-browser';
+import { getLegalLinks } from '@/lib/legalLinks';
 
 const mockOpenBrowserAsync = WebBrowser.openBrowserAsync as jest.Mock;
 
-// ── Replicas of the profile.tsx onPress handlers ──────────────────────────────
-//
-// Mirror the Privacy Policy and Terms of Use onPress callbacks verbatim so
-// that any change to URL construction or domain fallback breaks these tests.
-
 function makePrivacyHandler(domain: string | undefined) {
   return function handlePrivacyPress() {
-    const resolvedDomain = domain ?? 'stecstats.com';
-    WebBrowser.openBrowserAsync(`https://${resolvedDomain}/privacy`);
+    WebBrowser.openBrowserAsync(getLegalLinks(domain).privacy);
   };
 }
 
 function makeTermsHandler(domain: string | undefined) {
   return function handleTermsPress() {
-    const resolvedDomain = domain ?? 'stecstats.com';
-    WebBrowser.openBrowserAsync(`https://${resolvedDomain}/terms`);
+    WebBrowser.openBrowserAsync(getLegalLinks(domain).terms);
   };
 }
 

@@ -3,6 +3,10 @@ const path = require('path');
 
 const EXPECTED_CLERK_HOST = 'clerk.stecstats.stecco.org';
 const REQUIRED_CLERK_STRATEGIES = ['email_code', 'oauth_token_apple'];
+const PUBLISHED_ARTIFACT_PATH = path.resolve(
+  __dirname,
+  '../../hoops-stats/.replit-artifact/artifact.toml',
+);
 
 function readLocalEnv() {
   const filePath = path.resolve(process.cwd(), '.env.local');
@@ -62,9 +66,33 @@ function decodePublishableKeyHost(value) {
   }
 }
 
+function readPublishedLegalHost() {
+  const artifact = fs.readFileSync(PUBLISHED_ARTIFACT_PATH, 'utf8');
+  const servicesEnv = artifact.match(
+    /\[services\.env\]([\s\S]*?)(?=\n\[|$)/,
+  )?.[1];
+  const configuredHost = servicesEnv?.match(
+    /^PUBLIC_DOMAIN\s*=\s*"([^"]+)"\s*$/m,
+  )?.[1];
+
+  if (!configuredHost) {
+    throw new Error(
+      `Published legal host is missing from ${PUBLISHED_ARTIFACT_PATH}.`,
+    );
+  }
+
+  return configuredHost;
+}
+
+const PUBLISHED_LEGAL_HOST = readPublishedLegalHost();
+
+function matchesPublishedLegalHost(value) {
+  return value === PUBLISHED_LEGAL_HOST;
+}
+
 const required = {
   APP_ENV: (value) => value === 'production',
-  EXPO_PUBLIC_DOMAIN: (value) => value === 'stecstats.com',
+  EXPO_PUBLIC_DOMAIN: matchesPublishedLegalHost,
   EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: (value) =>
     decodePublishableKeyHost(value) === EXPECTED_CLERK_HOST,
   EXPO_PUBLIC_CLERK_PROXY_URL: (value) =>
@@ -153,5 +181,7 @@ module.exports = {
   decodePublishableKeyHost,
   getInstalledClerkExpoVersion,
   hasClerkCompatibleIosTarget,
+  matchesPublishedLegalHost,
+  readPublishedLegalHost,
   verifyClerkProxy,
 };

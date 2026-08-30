@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const {
+  matchesPublishedLegalHost,
+  readPublishedLegalHost,
+} = require('../scripts/check-local-ios-release-env.js');
+
 const mobileRoot = path.resolve(__dirname, '..');
 const repositoryRoot = path.resolve(mobileRoot, '../..');
 
@@ -48,5 +53,18 @@ describe('iOS release configuration and legal surfaces', () => {
     expect(legalPages[1]).toContain(
       'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
     );
+  });
+
+  test('production mobile domain matches the published legal host', () => {
+    const eas = JSON.parse(read('artifacts/hoops-mobile/eas.json'));
+    const publishedHost = readPublishedLegalHost();
+
+    expect(publishedHost).toBeTruthy();
+    expect(
+      matchesPublishedLegalHost(
+        eas.build.production.env.EXPO_PUBLIC_DOMAIN,
+      ),
+    ).toBe(true);
+    expect(matchesPublishedLegalHost('outdated.example.com')).toBe(false);
   });
 });

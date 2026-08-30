@@ -29,3 +29,4 @@ to = "/index.html"
 [services.env]
 PORT = "20095"
 BASE_PATH = "/"
+PUBLIC_DOMAIN = "stecstats.com"
