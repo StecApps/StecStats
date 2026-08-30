@@ -8,8 +8,8 @@ export const REVENUECAT_PACKAGE_IDS = {
 } as const;
 
 export const IOS_PRODUCT_IDS = {
-  monthly: 'com.stecapps.stecstats.pro.monthly',
-  annual: 'com.stecapps.stecstats.pro.annualDeal',
+  monthly: 'StecStats',
+  annual: 'StecStatsAnnual',
 } as const;
 
 type PackageLike = {

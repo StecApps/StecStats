@@ -1,8 +1,8 @@
 # Production iOS RevenueCat Configuration
 
 This is the single release configuration for the StecStats production iOS app.
-The bundle and product namespaces are intentionally different legacy
-identifiers; do not rename either one during App Review.
+The bundle ID and App Store product IDs are intentionally different legacy
+identifiers; do not rename them during App Review.
 
 | Setting | Production value |
 |---|---|
@@ -13,16 +13,16 @@ identifiers; do not rename either one during App Review.
 | Pro entitlement | `pro` |
 | Monthly package | `$rc_monthly` |
 | Annual package | `$rc_annual` |
-| Monthly App Store product | `com.stecapps.stecstats.pro.monthly` |
-| Annual App Store product | `com.stecapps.stecstats.pro.annualDeal` |
+| Monthly App Store product | `StecStats` |
+| Annual App Store product | `StecStatsAnnual` |
 
 ## 1 — App Store Connect
 
 1. Open the app whose bundle ID is `com.hoopsstats.coach`.
 2. Under **Monetization → Subscriptions**, confirm both products are in the same
    subscription group:
-   - `com.stecapps.stecstats.pro.monthly` — 1 month, $9.99, 14-day trial
-   - `com.stecapps.stecstats.pro.annualDeal` — 1 year, $59.99, 14-day trial
+   - `StecStats` — 1 month, $9.99, 14-day trial
+   - `StecStatsAnnual` — 1 year, $59.99, 14-day trial
 3. Confirm pricing, localization, tax/category details, review screenshots,
    storefront availability, and Apple agreements are complete.
 4. Attach both subscriptions to the app version and submit them with the binary.
@@ -34,8 +34,8 @@ identifiers; do not rename either one during App Review.
 3. Confirm both products grant entitlement `pro`.
 4. Open offering `default` and mark it **Current**.
 5. Assign:
-   - `$rc_monthly` → `com.stecapps.stecstats.pro.monthly`
-   - `$rc_annual` → `com.stecapps.stecstats.pro.annualDeal`
+   - `$rc_monthly` → `StecStats`
+   - `$rc_annual` → `StecStatsAnnual`
 6. Do not attach either product to the unreleased `premium` entitlement.
 
 ## 3 — Production build

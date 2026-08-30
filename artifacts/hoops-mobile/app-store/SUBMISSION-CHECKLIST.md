@@ -76,12 +76,11 @@ the values come from the exact uploaded TestFlight build.
 ## 2 — In-app purchase products
 
 - [ ] Confirm the selected app/binary uses bundle ID `com.hoopsstats.coach`.
-  The existing subscription product namespace is intentionally
-  `com.stecapps.stecstats`; do not rename either identifier before review.
+  The App Store Connect product IDs are legacy values and must not be renamed.
 - [ ] In App Store Connect, verify both products are attached to this app
   version and submitted with the build:
-  - `com.stecapps.stecstats.pro.monthly`
-  - `com.stecapps.stecstats.pro.annualDeal`
+  - `StecStats`
+  - `StecStatsAnnual`
 - [ ] Each product has completed pricing, localization, tax/category details,
   and the required App Review screenshot.
 - [ ] Confirm the subscription group, 14-day trial configuration, and

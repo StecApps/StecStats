@@ -28,8 +28,8 @@ const productionOfferings = {
 describe('production RevenueCat configuration', () => {
   test('uses the submitted iOS products, current offering, packages, and Pro entitlement', () => {
     expect(IOS_PRODUCT_IDS).toEqual({
-      monthly: 'com.stecapps.stecstats.pro.monthly',
-      annual: 'com.stecapps.stecstats.pro.annualDeal',
+      monthly: 'StecStats',
+      annual: 'StecStatsAnnual',
     });
     expect(REVENUECAT_CURRENT_OFFERING).toBe('default');
     expect(REVENUECAT_PACKAGE_IDS).toEqual({

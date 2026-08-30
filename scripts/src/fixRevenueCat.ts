@@ -30,8 +30,8 @@ import {
 
 const PROJECT_ID = process.env.REVENUECAT_PROJECT_ID!;
 // Correct App Store Connect product identifiers
-const APP_STORE_PRO_MONTHLY_ID  = "com.stecapps.stecstats.pro.monthly";
-const APP_STORE_PRO_ANNUAL_ID   = "com.stecapps.stecstats.pro.annualDeal";
+const APP_STORE_PRO_MONTHLY_ID  = "StecStats";
+const APP_STORE_PRO_ANNUAL_ID   = "StecStatsAnnual";
 const TEST_STORE_PRO_ANNUAL_ID  = "pro_annual"; // test store internal ID
 const CORRECT_BUNDLE_ID         = "com.hoopsstats.coach";
 
@@ -90,11 +90,12 @@ async function main() {
       return existing;
     }
 
-    // Second check: exists with same display name but wrong store_identifier — try to update it
+    // Test Store identifiers can be updated. App Store identifiers are immutable,
+    // so create a new RevenueCat product when App Store Connect uses a different ID.
     const existingByName = allProducts.find(
       p => p.app_id === app.id && p.display_name === displayName,
     );
-    if (existingByName) {
+    if (existingByName && isTestStore) {
       console.log(`${label} exists (id: ${existingByName.id}) with wrong store_id '${existingByName.store_identifier}', updating to '${storeIdentifier}'...`);
       const { data: updated, error: updateErr } = await updateProduct({
         client,
@@ -108,6 +109,22 @@ async function main() {
       }
       console.log(`Updated ${label} store_identifier to ${storeIdentifier}`);
       return updated ?? existingByName;
+    }
+    if (existingByName) {
+      const legacyDisplayName = `${displayName} (Legacy Reference ID)`;
+      console.log(
+        `${label} has a legacy store_id '${existingByName.store_identifier}'; renaming it to '${legacyDisplayName}' before creating '${storeIdentifier}'...`,
+      );
+      const { error: renameError } = await updateProduct({
+        client,
+        path: { project_id: PROJECT_ID, product_id: existingByName.id },
+        body: { display_name: legacyDisplayName },
+      });
+      if (renameError) {
+        throw new Error(
+          `Failed to rename legacy ${label}: ${JSON.stringify(renameError)}`,
+        );
+      }
     }
 
     // Create new product
@@ -223,6 +240,29 @@ async function main() {
   // Fix $rc_monthly — ensure correct App Store monthly product is attached
   const monthlyAttached = await getPackageProductIds(monthlyPkg.id);
   console.log("\n$rc_monthly currently has product ids:", monthlyAttached);
+
+  const staleMonthlyAppStoreIds = monthlyAttached.filter((id) =>
+    id !== appStoreMonthly.id &&
+    allProducts.some((product) => product.id === id && product.app_id === appStoreApp.id)
+  );
+  if (staleMonthlyAppStoreIds.length > 0) {
+    const { error: detachMonthlyError } = await detachProductsFromPackage({
+      client,
+      path: { project_id: PROJECT_ID, package_id: monthlyPkg.id },
+      body: { product_ids: staleMonthlyAppStoreIds },
+    });
+    if (detachMonthlyError) {
+      console.warn(
+        "Could not detach legacy App Store products from $rc_monthly:",
+        JSON.stringify(detachMonthlyError),
+      );
+    } else {
+      console.log(
+        "Detached legacy App Store products from $rc_monthly:",
+        staleMonthlyAppStoreIds,
+      );
+    }
+  }
 
   if (!monthlyAttached.includes(appStoreMonthly.id)) {
     const { error } = await attachProductsToPackage({

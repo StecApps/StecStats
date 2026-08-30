@@ -26,8 +26,8 @@ describe('iOS release configuration and legal surfaces', () => {
       read('artifacts/hoops-mobile/docs/revenuecat-annual-setup.md'),
     ].join('\n');
 
-    expect(docs).toContain('com.stecapps.stecstats.pro.monthly');
-    expect(docs).toContain('com.stecapps.stecstats.pro.annualDeal');
+    expect(docs).toContain('`StecStats`');
+    expect(docs).toContain('`StecStatsAnnual`');
     expect(docs).toContain('$rc_monthly');
     expect(docs).toContain('$rc_annual');
     expect(docs).toContain('`default`');

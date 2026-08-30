@@ -21,7 +21,7 @@ import {
 } from "@replit/revenuecat-sdk";
 
 const PROJECT_ID = process.env.REVENUECAT_PROJECT_ID!;
-const CORRECT_MONTHLY_STORE_ID = "com.stecapps.stecstats.pro.monthly";
+const CORRECT_MONTHLY_STORE_ID = "StecStats";
 const OLD_APP_STORE_PRO_MONTHLY_ID = "proda60d41261c"; // App Store Pro Monthly with wrong store_id
 
 async function main() {

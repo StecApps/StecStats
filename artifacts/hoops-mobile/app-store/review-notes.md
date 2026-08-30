@@ -103,8 +103,8 @@ StoreKit / RevenueCat offering:
 
 | Product | App Store product ID | Duration | Price | Introductory offer |
 |---|---|---|---|---|
-| Pro Monthly | `com.stecapps.stecstats.pro.monthly` | 1 month | $9.99/month | 14-day free trial |
-| Pro Annual | `com.stecapps.stecstats.pro.annualDeal` | 1 year | $59.99/year | 14-day free trial |
+| Pro Monthly | `StecStats` | 1 month | $9.99/month | 14-day free trial |
+| Pro Annual | `StecStatsAnnual` | 1 year | $59.99/year | 14-day free trial |
 
 Premium is displayed as **Coming Soon** and is not a purchasable product in
 this submission.
