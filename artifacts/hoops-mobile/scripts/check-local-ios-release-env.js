@@ -30,6 +30,14 @@ function readLocalEnv() {
 
 const env = { ...readLocalEnv(), ...process.env };
 
+function getInstalledClerkExpoVersion() {
+  try {
+    return require('@clerk/expo/package.json').version;
+  } catch {
+    return null;
+  }
+}
+
 function decodePublishableKeyHost(value) {
   if (typeof value !== 'string' || !value.startsWith('pk_live_')) return null;
   try {
@@ -54,6 +62,11 @@ const required = {
 const invalid = Object.entries(required)
   .filter(([name, isValid]) => !isValid(env[name]))
   .map(([name]) => name);
+
+const clerkExpoVersion = getInstalledClerkExpoVersion();
+if (!clerkExpoVersion || !clerkExpoVersion.startsWith('4.')) {
+  invalid.push('@clerk/expo v4 (run pnpm install)');
+}
 
 async function verifyClerkProxy() {
   const controller = new AbortController();
@@ -121,5 +134,6 @@ if (require.main === module) {
 
 module.exports = {
   decodePublishableKeyHost,
+  getInstalledClerkExpoVersion,
   verifyClerkProxy,
 };

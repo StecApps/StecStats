@@ -26,7 +26,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
-import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, useAuth } from '@clerk/expo';
 import * as SecureStore from 'expo-secure-store';
 import { setBaseUrl, setAuthTokenGetter } from '@workspace/api-client-react';
 import { SubscriptionProvider, initializeRevenueCat } from '@/lib/revenuecat';
@@ -260,7 +260,13 @@ const PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
 // clerk.stecstats.stecco.org custom-domain DNS record is not yet propagated.
 // The proxy is live at /api/__clerk on the API server and forwards to
 // frontend-api.clerk.dev, so Clerk SDK calls work regardless of DNS state.
-const CLERK_PROXY_URL = process.env.EXPO_PUBLIC_CLERK_PROXY_URL;
+const CLERK_PROXY_URL =
+  process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
+
+// Safe Release diagnostic: identifies the selected transport without logging
+// the publishable key or any credentials. Xcode should show "proxy" in the
+// production build before Clerk begins loading.
+console.info(`[Clerk] Transport: ${CLERK_PROXY_URL ? 'proxy' : 'direct'}`);
 
 export default function RootLayout() {
   useOTAUpdate();
@@ -288,7 +294,11 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY} tokenCache={tokenCache} {...(CLERK_PROXY_URL ? { proxyUrl: CLERK_PROXY_URL } : {})}>
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      tokenCache={tokenCache}
+      proxyUrl={CLERK_PROXY_URL}
+    >
       <SafeAreaProvider>
         <ErrorBoundary>
           <QueryClientProvider client={queryClient}>

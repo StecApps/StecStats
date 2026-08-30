@@ -23,7 +23,7 @@
 
 // ── Shared mocks (always hoisted) ────────────────────────────────────────────
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo/legacy', () => ({
   useSignIn: jest.fn(() => ({
     signIn: {},
     setActive: jest.fn(),

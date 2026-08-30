@@ -36,8 +36,8 @@ pnpm --filter @workspace/hoops-mobile run ios:release:check
 
 The check intentionally fails if the build would use a missing/test/wrong-tenant
 Clerk key, the wrong API domain, the wrong Clerk proxy, a proxy that does not
-advertise email-code and Apple-token login, or a missing RevenueCat iOS key. It
-never prints the key value.
+advertise email-code and Apple-token login, a non-proxy-capable Clerk Expo SDK,
+or a missing RevenueCat iOS key. It never prints the key value.
 
 ## 4. Generate the native iOS workspace
 

@@ -46,7 +46,7 @@ const mockUseAuth = jest.fn(() => ({
   userId: null,
 }));
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   ClerkProvider: ({ children }: any) => children,
   useAuth: (...args: any[]) => mockUseAuth(...args),
 }));

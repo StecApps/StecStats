@@ -79,7 +79,7 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(() => ({ invalidateQueries: jest.fn() })),
 }));
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(() => ({ getToken: jest.fn(async () => 'tok') })),
 }));
 
@@ -115,7 +115,7 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import { useCreateGame, useRequestUploadUrl } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { uploadVideoFile } from '@/lib/uploadVideoFile';

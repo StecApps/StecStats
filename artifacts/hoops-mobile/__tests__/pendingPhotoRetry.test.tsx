@@ -43,7 +43,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(),
 }));
 
@@ -65,7 +65,7 @@ jest.mock('@/lib/photoUpload', () => ({
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { Alert } from 'react-native';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import { useUpdatePlayer } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { uploadPhoto } from '@/lib/photoUpload';

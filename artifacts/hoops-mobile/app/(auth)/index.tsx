@@ -11,7 +11,7 @@ import {
   ScrollView,
   useColorScheme,
 } from 'react-native';
-import { useSignIn, useSignUp } from '@clerk/clerk-expo';
+import { useSignIn, useSignUp } from '@clerk/expo/legacy';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';

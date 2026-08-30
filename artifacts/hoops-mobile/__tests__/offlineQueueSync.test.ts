@@ -27,7 +27,7 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios', Version: '17.0' },
 }));
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(() => ({
     getToken: jest.fn().mockResolvedValue('test-jwt-token'),
     isSignedIn: true,

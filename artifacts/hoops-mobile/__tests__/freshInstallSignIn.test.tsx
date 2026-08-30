@@ -46,12 +46,30 @@
 // etc.) on import; all those dependencies must be stubbed.
 
 jest.mock('expo-splash-screen', () => ({ preventAutoHideAsync: jest.fn() }));
+jest.mock('expo-updates', () => ({
+  isEnabled: false,
+  checkForUpdateAsync: jest.fn(),
+  fetchUpdateAsync: jest.fn(),
+  reloadAsync: jest.fn(),
+}));
 jest.mock('expo-system-ui', () => ({ setBackgroundColorAsync: jest.fn() }));
 jest.mock('expo-font', () => ({ useFonts: jest.fn(() => [true, null]) }));
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(),
   setItemAsync: jest.fn(),
   deleteItemAsync: jest.fn(),
+}));
+jest.mock('expo-notifications', () => ({
+  AndroidImportance: { HIGH: 4 },
+  setNotificationChannelAsync: jest.fn(),
+  getPermissionsAsync: jest.fn(),
+  requestPermissionsAsync: jest.fn(),
+  getExpoPushTokenAsync: jest.fn(),
+  useLastNotificationResponse: jest.fn(() => null),
+}));
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { expoConfig: { extra: { eas: { projectId: 'test-project' } } } },
 }));
 jest.mock('react-native-gesture-handler', () => ({
   GestureHandlerRootView: ({ children }: any) => children,
@@ -77,7 +95,7 @@ jest.mock('@expo-google-fonts/teko', () => ({
 // ── Clerk mock — controllable per test via mockUseAuth ─────────────────────────
 
 const mockUseAuth = jest.fn();
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   ClerkProvider: ({ children }: any) => children,
   useAuth: (...args: any[]) => mockUseAuth(...args),
   useUser: jest.fn(() => ({ user: { firstName: 'Test', fullName: 'Test Coach' } })),
@@ -119,6 +137,10 @@ jest.mock('react-native', () => {
       hairlineWidth: 0.5,
     },
     Alert: { alert: jest.fn() },
+    AppState: {
+      currentState: 'active',
+      addEventListener: jest.fn(() => ({ remove: jest.fn() })),
+    },
     Platform: { OS: 'ios', select: (o: any) => o.ios ?? o.default },
     Share: { share: jest.fn() },
     useColorScheme: jest.fn(() => 'dark'),

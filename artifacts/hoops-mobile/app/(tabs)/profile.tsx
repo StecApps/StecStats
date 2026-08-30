@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth, useUser } from '@clerk/clerk-expo';
+import { useAuth, useUser } from '@clerk/expo';
 import { useRouter } from 'expo-router';
 import { useDeleteMyAccount, useGetBillingStatus, useListTeams, useListPlayers, useGetMe, useUpdateMe } from '@workspace/api-client-react';
 import { useSubscription } from '@/lib/revenuecat';

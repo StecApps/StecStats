@@ -21,7 +21,7 @@
 
 // ── External / native mocks (hoisted before imports) ─────────────────────────
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(() => ({
     getToken: jest.fn(() => Promise.resolve('test-token')),
     userId: 'test-user-id',

@@ -10,7 +10,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import { useUpdatePlayer, getListPlayersQueryKey } from '@workspace/api-client-react';
 import { getPendingPhotos, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { uploadPhoto } from '@/lib/photoUpload';

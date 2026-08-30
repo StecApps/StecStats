@@ -12,7 +12,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import { useQueryClient } from '@tanstack/react-query';
 import { getPendingPhotos, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { uploadPhoto, API_BASE } from '@/lib/photoUpload';

@@ -44,7 +44,7 @@ const mockWsInstance = {
 
 // ── jest.mock calls — hoisted before imports ──────────────────────────────────
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(() => ({
     isSignedIn: true,
     userId: 'test-user',

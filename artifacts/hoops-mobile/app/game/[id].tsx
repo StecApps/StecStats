@@ -32,7 +32,7 @@ import { useLayoutEffect } from 'react';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN

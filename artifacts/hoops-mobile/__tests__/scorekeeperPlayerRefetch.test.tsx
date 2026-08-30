@@ -12,10 +12,10 @@
 
 // jest.mock calls are hoisted before imports; factories must be self-contained.
 
-// @clerk/clerk-expo pulls in react-native-url-polyfill which requires the
+// @clerk/expo pulls in native dependencies that require the
 // native BlobModule — not available in Jest/Node. Mock the whole package so
 // scorekeeper.tsx's `useAuth` import doesn't crash the test environment.
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(() => ({ isSignedIn: true, userId: 'test-user-id' })),
 }));
 
@@ -139,7 +139,7 @@ jest.mock('expo-camera', () => ({
   useMicrophonePermissions: jest.fn(() => [{ granted: false }, jest.fn()]),
 }));
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(() => ({ getToken: jest.fn(async () => 'test-token') })),
 }));
 

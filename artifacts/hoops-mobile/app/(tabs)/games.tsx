@@ -24,7 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useListTeams, useListTeamGames, useListAllGames, useListPlayers, useCreateGame, useRequestUploadUrl, useDeleteGame } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { uploadVideoFile } from '@/lib/uploadVideoFile';

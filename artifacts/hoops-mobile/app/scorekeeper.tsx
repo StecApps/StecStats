@@ -41,7 +41,7 @@ import {
   PermissionsAndroid,
   ToastAndroid,
 } from 'react-native';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/expo';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { showNoVideoAlert } from '@/lib/noVideoAlert';
 import { uploadVideoFile, UPLOAD_CANCELLED_MSG } from '@/lib/uploadVideoFile';

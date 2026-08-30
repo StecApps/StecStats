@@ -6,7 +6,7 @@
  * five-digit state.
  */
 
-jest.mock('@clerk/clerk-expo', () => ({
+jest.mock('@clerk/expo/legacy', () => ({
   useSignIn: jest.fn(),
   useSignUp: jest.fn(),
 }));
@@ -61,7 +61,7 @@ jest.mock('react-native', () => {
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { useSignIn, useSignUp } from '@clerk/clerk-expo';
+import { useSignIn, useSignUp } from '@clerk/expo/legacy';
 import AuthScreen from '../app/(auth)/index';
 
 describe('AuthScreen — email OTP autofill', () => {
