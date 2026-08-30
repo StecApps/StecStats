@@ -1,0 +1,43 @@
+[Codegen] Processing rnworklets
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnworklets
+[Codegen] Generating Native Code for rnasyncstorage - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rngesturehandler_codegen - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for reactnativekeyboardcontroller - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rnreanimated - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for safeareacontext - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rnscreens - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rnsvg - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rnworklets - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating RCTThirdPartyComponentsProvider.h
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.h
+[Codegen] Generating RCTThirdPartyComponentsProvider.mm
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.mm
+[Codegen] Generating RCTModulesProvider.h
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.h
+[Codegen] Generating RCTModuleProviders.mm
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.mm
+[Codegen] Generating RCTAppDependencyProvider
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.h
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.mm
+[Codegen] Generated podspec: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/ReactAppDependencyProvider.podspec
+[Codegen] Generated podspec: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/ReactCodegen.podspec
+[Codegen] Done.
+
+[!] Invalid `Podfile` file: undefined local variable or method 'installer' for #<Pod::Podfile:0x0000000122e62558>.
+
+ #  from /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/Podfile:65
+ #  -------------------------------------------
+ #    # Third-party pods are not yet Swift 6 compliant; "minimal" restores pre-Xcode-26 behaviour.
+ >    installer.pods_project.targets.each do |target|
+ #      target.build_configurations.each do |config|
+ #  -------------------------------------------
+stevenstec@Mac ios % 
