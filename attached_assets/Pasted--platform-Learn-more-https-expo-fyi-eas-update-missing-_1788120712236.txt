@@ -1,0 +1,219 @@
+\"platform\". Learn more:
+https:\/\/expo.fyi\/eas-update-missing-headers","code":"Unknown","stacktrace":["StecStats
+0x0000000100cf7960
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_
++ 672","StecStats                           0x0000000100cc31c4
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_TATm
++ 32","StecStats                <…>
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[StecStats] Detected the current OS's ImageIO PNG Decoder is buggy on indexed
+color PNG. Perform workaround solution...
+[StecStats] ❌ [ERROR] 2026-08-30 13:49:15.186 Clerk.swift:409
+installConfiguration(dependencies:) - 🚨 Failed to load environment
+Error: identityChangedBeforeRetry
+[StecStats] ❌ [ERROR] 2026-08-30 13:49:15.202 Clerk.swift:449
+startStartupClientRefreshIfNeeded(after:) - 🚨 Failed to load client
+Error: identityChangedBeforeRetry
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[React] [RevenueCat] 🍎‼️ Purchase was cancelled.
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[CoreServices] unable to make sandbox extension: [2: No such file or directory]
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation =
+dismissAutoFillPanel, customInfoType = UIUserInteractionRemoteInputOperations
+[UIKitCore] Snapshotting a view (0x10762ac00, UIKeyboardImpl) that is not in a
+visible window requires afterScreenUpdates:YES.
+[StecStats] ❌ [ERROR] 2026-08-30 13:53:15.511 Clerk.swift:893
+onWillEnterForeground() - 🚨 Failed to refresh environment on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x10a49d0b0 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<29BDEC69-460A-4D20-9F4D-E91A3E4D12E9>.<17>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <29BDEC69-460A-4D20-9F4D-E91A3E4D12E9>.<17>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/environment?_is_native=true,
+NSError<…>
+[StecStats] ❌ [ERROR] 2026-08-30 13:53:15.521 Clerk.swift:880
+onWillEnterForeground() - 🚨 Failed to refresh client on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x10a49f2a0 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<6346C4EA-760E-45E4-8849-C5A1DB97354B>.<18>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <6346C4EA-760E-45E4-8849-C5A1DB97354B>.<18>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/client?_is_native=true,
+NSErrorFailingURL<…>
+› Stopped server
+stevenstec@Mac StecStats % git switch task-735-release-sync
+git pull origin task-735-release-sync
+pnpm install
+pnpm run typecheck:libs
+pnpm --filter @workspace/hoops-mobile run ios:release:prepare
+pnpm --filter @workspace/hoops-mobile run ios:release:check
+M	pnpm-workspace.yaml
+Already on 'task-735-release-sync'
+Your branch is up to date with 'origin/task-735-release-sync'.
+From https://github.com/StecApps/StecStats
+ * branch            task-735-release-sync -> FETCH_HEAD
+Already up to date.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (verified 16h ago)
+Lockfile is up to date, resolution step is skipped
+Packages: +1
++
+Progress: resolved 1, reused 1, downloaded 0, added 1, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 30ms
+Done in 1s using pnpm v11.24.0
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ tsc --build
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ pnpm exec expo prebuild --platform ios && node scripts/check-local-ios-release-env.js
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+env: load .env.local
+env: export APP_ENV EXPO_PUBLIC_DOMAIN EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_CLERK_PROXY_URL EXPO_PUBLIC_REVENUECAT_IOS_API_KEY
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✔ Created native directory | reusing /ios
+✔ Updated package.json | no changes
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+[withSwiftConcurrencyFix] Already applied — skipping.
+✅ Updated iOS deployment target to 17.0
+✔ Finished prebuild
+Local iOS release environment validated for clerk.stecstats.stecco.org.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js
+Local iOS release environment validated for clerk.stecstats.stecco.org.
+stevenstec@Mac StecStats % open artifacts/hoops-mobile/ios/StecStats.xcworkspace 
+stevenstec@Mac StecStats % cd /Users/stevenstec/StecStats
+git switch task-735-release-sync
+git pull origin task-735-release-sync
+pnpm install
+pnpm run typecheck:libs
+pnpm --filter @workspace/hoops-mobile run typecheck
+M	pnpm-workspace.yaml
+Already on 'task-735-release-sync'
+Your branch is up to date with 'origin/task-735-release-sync'.
+remote: Enumerating objects: 64, done.
+remote: Counting objects: 100% (26/26), done.
+remote: Total 64 (delta 26), reused 26 (delta 26), pack-reused 38 (from 1)
+Unpacking objects: 100% (64/64), 2.06 MiB | 7.07 MiB/s, done.
+From https://github.com/StecApps/StecStats
+ * branch            task-735-release-sync -> FETCH_HEAD
+   bccd582..525d7fe  task-735-release-sync -> origin/task-735-release-sync
+Updating bccd582..525d7fe
+Fast-forward
+ .agents/memory/MEMORY.md                           |   2 +
+ .agents/memory/clerk-native-apple-transfer-flow.md |  10 +
+ .agents/memory/workspace-library-build-order.md    |  10 +
+ .../__tests__/appleSignInVisibility.test.tsx       |  37 +-
+ .../hoops-mobile/__tests__/legalLinks.test.ts      |  16 +-
+ .../__tests__/releaseConfiguration.test.ts         |  20 +-
+ artifacts/hoops-mobile/app/(auth)/index.tsx        |  63 +-
+ artifacts/hoops-mobile/app/(tabs)/profile.tsx      |  11 +-
+ artifacts/hoops-mobile/app/paywall.tsx             |  13 +-
+ artifacts/hoops-mobile/lib/legalLinks.ts           |  21 +
+ artifacts/hoops-mobile/package.json                |   9 +-
+ .../scripts/check-local-ios-release-env.js         |  34 +-
+ .../hoops-stats/.replit-artifact/artifact.toml     |   1 +
+ ...lerk-Android-plugin-loaded-Cl_1788111199470.txt | 699 ++++++++++++++++
+ ...l-appear-below-Press-Ctrl-C-t_1788112478211.txt | 131 +++
+ ...-an-issue-with-your-configura_1788111532704.txt | 499 ++++++++++++
+ ...ingsManager-Error-error-1-The_1788111423613.txt | 173 ++++
+ ...4-0626-40DB-B8F4-AECFC6BB82C5_1788112292362.png | Bin 0 -> 1215336 bytes
+ ...7-F8D1-44B4-BE4D-91BD0C0D8CAA_1788112410442.png | Bin 0 -> 679715 bytes
+ pnpm-lock.yaml                                     | 900 +++++++++++++--------
+ screenshots/legal-pages-production-verification.md |  30 +
+ screenshots/privacy-page-production.png            | Bin 0 -> 155772 bytes
+ screenshots/terms-page-production.png              | Bin 142699 -> 181825 bytes
+ 23 files changed, 2268 insertions(+), 411 deletions(-)
+ create mode 100644 .agents/memory/clerk-native-apple-transfer-flow.md
+ create mode 100644 .agents/memory/workspace-library-build-order.md
+ create mode 100644 artifacts/hoops-mobile/lib/legalLinks.ts
+ create mode 100644 attached_assets/Pasted--Clerk-iOS-plugin-loaded-Clerk-Android-plugin-loaded-Cl_1788111199470.txt
+ create mode 100644 attached_assets/Pasted--Logs-for-your-project-will-appear-below-Press-Ctrl-C-t_1788112478211.txt
+ create mode 100644 attached_assets/Pasted--React-RevenueCat-There-is-an-issue-with-your-configura_1788111532704.txt
+ create mode 100644 attached_assets/Pasted-completed-RevenueCat-OfferingsManager-Error-error-1-The_1788111423613.txt
+ create mode 100644 attached_assets/simulator_screenshot_E00DEC84-0626-40DB-B8F4-AECFC6BB82C5_1788112292362.png
+ create mode 100644 attached_assets/simulator_screenshot_FE253DC7-F8D1-44B4-BE4D-91BD0C0D8CAA_1788112410442.png
+ create mode 100644 screenshots/legal-pages-production-verification.md
+ create mode 100644 screenshots/privacy-page-production.png
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (1583 entries in 3.4s)
+artifacts/hoops-stats                    | [WARN] deprecated recharts@2.15.4
+[WARN] 14 deprecated subdependencies found: @xmldom/xmldom@0.8.13, @xmldom/xmldom@0.9.10, abab@2.0.6, crypto-js@4.2.0, domexception@4.0.0, fstream@1.0.12, glob@10.5.0, glob@7.2.3, inflight@1.0.6, lodash.isequal@4.5.0, node-domexception@1.0.0, rimraf@2.7.1, rimraf@3.0.2, whatwg-encoding@2.0.0
+Packages: +264 -261
++++++++++++++++++++++++++++++++++++++++---------------------------------------
+Progress: resolved 1582, reused 1575, downloaded 1, added 264, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 34ms
+[WARN] Issues with peer dependencies found. Run "pnpm peers check" to list them.
+Done in 13.2s using pnpm v11.24.0
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ tsc --build
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ tsc -p tsconfig.json --noEmit
+stevenstec@Mac StecStats % 
