@@ -6,9 +6,48 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
 
 ---
 
+
+## 0 — Identify the exact release candidate
+
+The production EAS profile uses remote app-versioning with automatic build-number
+increments. The `buildNumber` in `app.json` is therefore not proof of which
+binary is in TestFlight. Complete this section from the App Store Connect and
+TestFlight records before running any device check.
+
+- [ ] Upload the corrected binary and select the exact TestFlight build that will
+  be submitted. It must be newer than the previously reviewed build 36.
+- [ ] Record the App Store version and TestFlight build number below. Do not use
+  the source `app.json` value as a substitute.
+- [ ] Record the EAS build ID and upload date/time so the binary can be audited.
+- [ ] Confirm the installed TestFlight build number matches this record on both
+  the iPad and iPhone before testing any flow.
+- [ ] Keep a screenshot of the TestFlight build details with the submission
+  evidence. Do not submit a different build after these checks without
+  repeating the device verification.
+
+### Exact build and evidence record
+
+| Field | Value |
+|---|---|
+| App Store version | `[ENTER VERSION FROM APP STORE CONNECT]` |
+| Exact TestFlight build number | `[ENTER BUILD NUMBER FROM APP STORE CONNECT]` |
+| EAS build ID | `[ENTER EAS BUILD ID]` |
+| Upload date/time (UTC) | `[ENTER DATE/TIME]` |
+| iPad model / iPadOS | `[ENTER DEVICE DETAILS]` |
+| iPhone model / iOS | `[ENTER DEVICE DETAILS]` |
+| Physical test date/time (UTC) | `[ENTER DATE/TIME]` |
+| TestFlight build screenshot/evidence | `[ATTACH OR LINK IN RELEASE RECORD]` |
+| Account-deletion recording from this build | `[ATTACH IN APP REVIEW INFORMATION]` |
+
+Do not replace the placeholders or check the physical-device items below until
+the values come from the exact uploaded TestFlight build.
+
+---
+
 ## 1 — Build and reviewer sign-in
 
-- [ ] Increment the iOS build number and upload a new binary.
+- [ ] Confirm the uploaded iOS build number is a new number and is the exact
+  build recorded in Section 0.
 - [ ] Remove any obsolete password-based demo credential from App Store
   Connect. StecStats uses Sign in with Apple or a fresh six-digit email
   code—not an app password.
@@ -107,13 +146,16 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
   Stripe, web billing portal, or password-based app-sign-in path.
 - [ ] Attach the required physical-device account-deletion recording (or a
   review-accessible link) to App Review Information.
+- [ ] Confirm the attached deletion recording was captured from the exact
+  TestFlight build recorded in Section 0.
 - [ ] Select the newly uploaded build, submit both IAP products for review,
   and then submit the app version.
 
 ## 6 — Review reply and final checks
 
-- [ ] Replace `[NEW BUILD NUMBER]` in `review-reply-2.1-login.md`, then paste
-  that reply in App Store Connect before re-submitting.
+- [ ] Replace `[EXACT TESTFLIGHT BUILD NUMBER]` in
+  `review-reply-2.1-login.md` with the exact build number from Section 0, then
+  paste that reply in App Store Connect before re-submitting.
 - [ ] Do not say the corrected release build was tested until it passes on a
   physical iPad or another supported iPad-class device after a clean install.
 - [ ] Confirm the account-deletion recording, Sign in with Apple check, and

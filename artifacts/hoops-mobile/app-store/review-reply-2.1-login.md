@@ -1,8 +1,9 @@
 # App Review Reply — Guideline 2.1 Login
 
-> Replace `[NEW BUILD NUMBER]` only after uploading and selecting the corrected
-> build in App Store Connect. Do not claim the physical-device check is complete
-> until it has actually passed.
+> Replace `[EXACT TESTFLIGHT BUILD NUMBER]` only after uploading and selecting
+> the corrected build in App Store Connect. Use the same build number recorded
+> in `SUBMISSION-CHECKLIST.md`; do not claim the physical-device check is
+> complete until it has actually passed.
 
 ---
 
@@ -14,7 +15,7 @@ Thank you for identifying the email verification issue in version 1.0
 We found and corrected an iPad-specific verification-code handling bug. When
 iPadOS autofill or paste delivered all six digits in one input event, the app
 could attempt verification using the previous incomplete value and remain on
-the login screen. Version 1.0 (build [NEW BUILD NUMBER]) now verifies the exact
+the login screen. Version 1.0 (build [EXACT TESTFLIGHT BUILD NUMBER]) now verifies the exact
 six-digit value entered by autofill, paste, the Verify button, or the keyboard
 Done action, and then activates the session and opens the app.
 
