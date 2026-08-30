@@ -1,0 +1,185 @@
+/Users/stevenstec/StecStats/artifacts/hoops-mobile:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @workspace/hoops-mobile@0.0.0 ios:release:check: `node scripts/check-local-ios-release-env.js`
+Exit status 1
+stevenstec@Mac StecStats % open -a TextEdit artifacts/hoops-mobile/.env.local
+stevenstec@Mac StecStats % EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_Y2xlcmsuc3RlY3N0YXRzLnN0ZWNjby5vcmck
+stevenstec@Mac StecStats % pnpm --filter @workspace/hoops-mobile run ios:release:check
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js
+Local iOS release environment is not ready.
+Missing or invalid: EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+Copy local-ios-release.env.example to .env.local, fill in the
+Production Clerk publishable key, then run this command again.
+The key must belong to the same Production tenant shown in Replit Auth.
+/Users/stevenstec/StecStats/artifacts/hoops-mobile:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @workspace/hoops-mobile@0.0.0 ios:release:check: `node scripts/check-local-ios-release-env.js`
+Exit status 1
+stevenstec@Mac StecStats % open -a TextEdit artifacts/hoops-mobile/.env.local
+stevenstec@Mac StecStats % pnpm --filter @workspace/hoops-mobile run ios:release:check
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js
+Local iOS release environment validated.
+stevenstec@Mac StecStats % pnpm --filter @workspace/hoops-mobile run ios:release:prepare
+open artifacts/hoops-mobile/ios/*.xcworkspace
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js && pnpm exec expo prebuild --platform ios
+Local iOS release environment validated.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+env: load .env.local
+env: export APP_ENV EXPO_PUBLIC_DOMAIN EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_CLERK_PROXY_URL EXPO_PUBLIC_REVENUECAT_IOS_API_KEY
+✔ Created native directory | reusing /ios
+✔ Updated package.json | no changes
+[withSwiftConcurrencyFix] Already applied — skipping.
+✔ Finished prebuild
+zsh: no matches found: artifacts/hoops-mobile/ios/*.xcworkspace
+stevenstec@Mac StecStats % pnpm --filter @workspace/hoops-mobile run ios:release:prepare
+open artifacts/hoops-mobile/ios/*.xcworkspace
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js && pnpm exec expo prebuild --platform ios
+Local iOS release environment validated.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+env: load .env.local
+env: export APP_ENV EXPO_PUBLIC_DOMAIN EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_CLERK_PROXY_URL EXPO_PUBLIC_REVENUECAT_IOS_API_KEY
+✔ Created native directory | reusing /ios
+✔ Updated package.json | no changes
+[withSwiftConcurrencyFix] Already applied — skipping.
+✔ Finished prebuild
+zsh: no matches found: artifacts/hoops-mobile/ios/*.xcworkspace
+stevenstec@Mac StecStats % open artifacts/hoops-mobile/ios/StecStats.xcodeproj
+stevenstec@Mac StecStats % cd /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios
+pod install --repo-update
+Using Expo modules
+[Expo] Enabling modular headers for pod ExpoModulesCore
+[Expo] Enabling modular headers for pod React-RCTAppDelegate
+[Expo] Enabling modular headers for pod React-RCTFabric
+[Expo] Enabling modular headers for pod ReactAppDependencyProvider
+[Expo] Enabling modular headers for pod React-Core
+[Expo] Enabling modular headers for pod ReactCodegen
+[Expo] Enabling modular headers for pod RCTRequired
+[Expo] Enabling modular headers for pod RCTTypeSafety
+[Expo] Enabling modular headers for pod ReactCommon
+[Expo] Enabling modular headers for pod React-NativeModulesApple
+[Expo] Enabling modular headers for pod Yoga
+[Expo] Enabling modular headers for pod React-Fabric
+[Expo] Enabling modular headers for pod React-graphics
+[Expo] Enabling modular headers for pod React-utils
+[Expo] Enabling modular headers for pod React-featureflags
+[Expo] Enabling modular headers for pod React-debug
+[Expo] Enabling modular headers for pod React-ImageManager
+[Expo] Enabling modular headers for pod React-rendererdebug
+[Expo] Enabling modular headers for pod React-jsi
+[Expo] Enabling modular headers for pod React-renderercss
+[Expo] Enabling modular headers for pod hermes-engine
+[Expo] Enabling modular headers for pod glog
+[Expo] Enabling modular headers for pod boost
+[Expo] Enabling modular headers for pod DoubleConversion
+[Expo] Enabling modular headers for pod fast_float
+[Expo] Enabling modular headers for pod fmt
+[Expo] Enabling modular headers for pod RCT-Folly
+[Expo] Enabling modular headers for pod SocketRocket
+[Expo] Enabling modular headers for pod ZXingObjC
+[Expo] Enabling modular headers for pod SDWebImage
+[Expo] Enabling modular headers for pod SDWebImageAVIFCoder
+[Expo] Enabling modular headers for pod SDWebImageSVGCoder
+[Expo] Enabling modular headers for pod SDWebImageWebPCoder
+[Expo] Enabling modular headers for pod libavif
+[Expo] Enabling modular headers for pod RNScreens
+[Expo] Enabling modular headers for pod EXStructuredHeaders
+[Expo] Enabling modular headers for pod EXUpdatesInterface
+[Expo] Enabling modular headers for pod EXManifests
+[Expo] Enabling modular headers for pod EASClient
+[Expo] Enabling modular headers for pod ReachabilitySwift
+Found 11 modules for target `StecStats`
+link_native_modules! {ios_packages: [{configurations: [], name: "expo", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo", path: "../../../node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/expo@54.0.36_@babel+core@7.29.7_@expo+metro-runtime@6.1.2_expo-router@6.0.24_react-nati_8a2dcc09644893d5858529be12645cfc/node_modules/expo/Expo.podspec", script_phases: []}, {configurations: [], name: "react-native-purchases", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases", path: "../../../node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-purchases@10.6.0_react-native-web@0.21.2_react-dom@19.1.0_react@19.1.0__re_31f088b00a071b8b31e99789c2521808/node_modules/react-native-purchases/RNPurchases.podspec", script_phases: []}, {configurations: [], name: "react-native-webrtc", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc", path: "../../../node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-webrtc@124.0.8_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0_/node_modules/react-native-webrtc/react-native-webrtc.podspec", script_phases: []}, {configurations: [], name: "@react-native-async-storage/async-storage", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage", path: "../../../node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/@react-native-async-storage+async-storage@2.2.0_react-native@0.81.5_@babel+core@7.29.7__d49f32497d808f9d9edd92ab8a3596e4/node_modules/@react-native-async-storage/async-storage/RNCAsyncStorage.podspec", script_phases: []}, {configurations: [], name: "react-native-gesture-handler", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler", path: "../../../node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-gesture-handler@2.28.0_react-native@0.81.5_@babel+core@7.29.7_@types+react_6b98d2a8a97cf173293c133680b7c091/node_modules/react-native-gesture-handler/RNGestureHandler.podspec", script_phases: []}, {configurations: [], name: "react-native-keyboard-controller", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller", path: "../../../node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-keyboard-controller@1.18.5_react-native-reanimated@4.1.7_react-native-work_c0502eb1f31fa583f9b2654b9b1260a5/node_modules/react-native-keyboard-controller/react-native-keyboard-controller.podspec", script_phases: []}, {configurations: [], name: "react-native-reanimated", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated", path: "../../../node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-reanimated@4.1.7_react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a1_fe1138a96f1568d0c4a28d9ef52e70df/node_modules/react-native-reanimated/RNReanimated.podspec", script_phases: []}, {configurations: [], name: "react-native-safe-area-context", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context", path: "../../../node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-safe-area-context@5.6.2_react-native@0.81.5_@babel+core@7.29.7_@types+reac_1e63c254cc0120e4d9a9d8c54552af60/node_modules/react-native-safe-area-context/react-native-safe-area-context.podspec", script_phases: []}, {configurations: [], name: "react-native-screens", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens", path: "../../../node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-screens@4.16.0_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-screens/RNScreens.podspec", script_phases: []}, {configurations: [], name: "react-native-svg", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg", path: "../../../node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-svg@15.12.1_react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0__react@19.1.0/node_modules/react-native-svg/RNSVG.podspec", script_phases: []}, {configurations: [], name: "react-native-worklets", root: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets", path: "../../../node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets", podspec_path: "/Users/stevenstec/StecStats/node_modules/.pnpm/react-native-worklets@0.5.1_patch_hash=4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf753_b05633a10b151c8d6293e7ad386422e0/node_modules/react-native-worklets/RNWorklets.podspec", script_phases: []}], ios_project_root_path: "/Users/stevenstec/StecStats/artifacts/hoops-mobile/ios", react_native_path: "../../../node_modules/.pnpm/react-native@0.81.5_@babel+core@7.29.7_@types+react@19.2.17_react@19.1.0/node_modules/react-native"}
+Auto-linking React Native modules for target `StecStats`: RNCAsyncStorage, RNGestureHandler, RNPurchases, RNReanimated, RNSVG, RNScreens, RNWorklets, react-native-keyboard-controller, react-native-safe-area-context, and react-native-webrtc
+Framework build type is static library
+[ReactNativeDependencies] Setting up ReactNativeDependencies...
+[ReactNativeDependencies] Building from source: false
+[ReactNativeDependencies] Using release tarball
+[ReactNativeDependencies] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz
+[ReactNativeDependencies] Source: {http: "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-dependencies-debug.tar.gz"}
+[ReactNativeCore] Setting up ReactNativeCore...
+[ReactNativeCore] Building from source: false
+[ReactNativeCore] Using tarball from URL: https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz
+[ReactNativeCore] Source: {http: "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/0.81.5/react-native-artifacts-0.81.5-reactnative-core-debug.tar.gz"}
+Configuring the target with the New Architecture
+[ReactNativeCore] Using React Native Core and React Native Dependencies prebuilt versions.
+[Codegen] Analyzing /Users/stevenstec/StecStats/artifacts/hoops-mobile/package.json
+[Codegen] Searching for codegen-enabled libraries in the app.
+[Codegen] The "codegenConfig" field is not defined in package.json. Assuming there is nothing to generate at the app level.
+[Codegen] Searching for codegen-enabled libraries in react-native.config.js
+[Codegen] Found @react-native-async-storage/async-storage
+[Codegen] Found react-native-gesture-handler
+[Codegen] Found react-native-keyboard-controller
+[Codegen] Found react-native-reanimated
+[Codegen] Found react-native-safe-area-context
+[Codegen] Found react-native-screens
+[Codegen] Found react-native-svg
+[Codegen] Found react-native-worklets
+[Codegen] Processing rnasyncstorage
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnasyncstorage
+[Codegen] Processing rngesturehandler_codegen
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rngesturehandler_codegen
+[Codegen] Processing reactnativekeyboardcontroller
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios for reactnativekeyboardcontroller
+[Codegen] Processing rnreanimated
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnreanimated
+[Codegen] Processing safeareacontext
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios, macos, tvos, visionos for safeareacontext
+[Codegen] Processing rnscreens
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios, tvos, visionos for rnscreens
+[Codegen] Processing rnsvg
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnsvg
+[Codegen] Processing rnworklets
+[Codegen] Searching for podspec in the project dependencies.
+[Codegen] Supported Apple platforms: ios, macos, tvos, visionos for rnworklets
+[Codegen] Generating Native Code for rnasyncstorage - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rngesturehandler_codegen - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for reactnativekeyboardcontroller - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rnreanimated - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for safeareacontext - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rnscreens - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rnsvg - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating Native Code for rnworklets - ios
+[Codegen] Generated artifacts: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios
+[Codegen] Generating RCTThirdPartyComponentsProvider.h
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.h
+[Codegen] Generating RCTThirdPartyComponentsProvider.mm
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTThirdPartyComponentsProvider.mm
+[Codegen] Generating RCTModulesProvider.h
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.h
+[Codegen] Generating RCTModuleProviders.mm
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTModuleProviders.mm
+[Codegen] Generating RCTAppDependencyProvider
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.h
+[Codegen] Generated artifact: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/RCTAppDependencyProvider.mm
+[Codegen] Generated podspec: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/ReactAppDependencyProvider.podspec
+[Codegen] Generated podspec: /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/build/generated/ios/ReactCodegen.podspec
+[Codegen] Done.
+
+[!] Invalid `Podfile` file: undefined local variable or method 'installer' for #<Pod::Podfile:0x0000000120fd2408>.
+
+ #  from /Users/stevenstec/StecStats/artifacts/hoops-mobile/ios/Podfile:65
+ #  -------------------------------------------
+ #    # Third-party pods are not yet Swift 6 compliant; "minimal" restores pre-Xcode-26 behaviour.
+ >    installer.pods_project.targets.each do |target|
+ #      target.build_configurations.each do |config|
+ #  -------------------------------------------
+stevenstec@Mac ios % ios/StecStats.xcworkspace
+zsh: no such file or directory: ios/StecStats.xcworkspace
+stevenstec@Mac ios % 
