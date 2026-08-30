@@ -1,0 +1,173 @@
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+› Stopped server
+stevenstec@Mac StecStats % cd /Users/stevenstec/StecStats
+git status
+git fetch origin
+git switch --track origin/task-735-release-sync
+git pull
+pnpm install
+pnpm --filter @workspace/hoops-mobile run typecheck
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   pnpm-workspace.yaml
+
+no changes added to commit (use "git add" and/or "git commit -a")
+remote: Enumerating objects: 89, done.
+remote: Counting objects: 100% (89/89), done.
+remote: Compressing objects: 100% (23/23), done.
+remote: Total 66 (delta 43), reused 66 (delta 43), pack-reused 0 (from 0)
+Unpacking objects: 100% (66/66), 1.96 MiB | 7.28 MiB/s, done.
+From https://github.com/StecApps/StecStats
+ * [new branch]      task-735-release-sync -> origin/task-735-release-sync
+M	pnpm-workspace.yaml
+branch 'task-735-release-sync' set up to track 'origin/task-735-release-sync'.
+Switched to a new branch 'task-735-release-sync'
+Already up to date.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (verified 14h ago)
+Lockfile is up to date, resolution step is skipped
+Packages: +1
++
+Progress: resolved 1, reused 1, downloaded 0, added 1, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 35ms
+Done in 1s using pnpm v11.24.0
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ tsc -p tsconfig.json --noEmit
+app/(tabs)/games.tsx:25:132 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+25 import { useListTeams, useListTeamGames, useListAllGames, useListPlayers, useCreateGame, useRequestUploadUrl, useDeleteGame } from '@workspace/api-client-react';
+                                                                                                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/(tabs)/index.tsx:31:8 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+31 } from '@workspace/api-client-react';
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/(tabs)/profile.tsx:22:110 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+22 import { useDeleteMyAccount, useGetBillingStatus, useListTeams, useListPlayers, useGetMe, useUpdateMe } from '@workspace/api-client-react';
+                                                                                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/(tabs)/record.tsx:18:67 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+18 import { useListTeams, useCreateTeam, getListTeamsQueryKey } from '@workspace/api-client-react';
+                                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/_layout.tsx:31:48 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+31 import { setBaseUrl, setAuthTokenGetter } from '@workspace/api-client-react';
+                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/game/[id].tsx:30:8 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+30 } from '@workspace/api-client-react';
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/paywall.tsx:23:45 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+23 import { getGetBillingStatusQueryKey } from '@workspace/api-client-react';
+                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/roster.tsx:25:8 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+25 } from '@workspace/api-client-react';
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/roster.tsx:320:28 - error TS7006: Parameter 'player' implicitly has an 'any' type.
+
+320             {players!.map((player) => (
+                               ~~~~~~
+
+app/scorekeeper.tsx:50:68 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+50 import { useListPlayers, useCreateGame, useRequestUploadUrl } from '@workspace/api-client-react';
+                                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+components/PendingPhotoRetry.tsx:14:57 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+14 import { useUpdatePlayer, getListPlayersQueryKey } from '@workspace/api-client-react';
+                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+hooks/usePendingPhotoRetry.ts:19:40 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+19 import { getListPlayersQueryKey } from '@workspace/api-client-react';
+                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+lib/useOfflineQueueSync.ts:30:8 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+30 } from '@workspace/api-client-react';
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Found 13 errors in 12 files.
+
+Errors  Files
+     1  app/(tabs)/games.tsx:25
+     1  app/(tabs)/index.tsx:31
+     1  app/(tabs)/profile.tsx:22
+     1  app/(tabs)/record.tsx:18
+     1  app/_layout.tsx:31
+     1  app/game/[id].tsx:30
+     1  app/paywall.tsx:23
+     2  app/roster.tsx:25
+     1  app/scorekeeper.tsx:50
+     1  components/PendingPhotoRetry.tsx:14
+     1  hooks/usePendingPhotoRetry.ts:19
+     1  lib/useOfflineQueueSync.ts:30
+/Users/stevenstec/StecStats/artifacts/hoops-mobile:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @workspace/hoops-mobile@0.0.0 typecheck: `tsc -p tsconfig.json --noEmit`
+Exit status 2
+stevenstec@Mac StecStats % cd /Users/stevenstec/StecStats
+git status
+git switch task-735-release-sync
+git pull origin task-735-release-sync
+pnpm install
+pnpm run typecheck:libs
+pnpm --filter @workspace/hoops-mobile run typecheck
+On branch task-735-release-sync
+Your branch is up to date with 'origin/task-735-release-sync'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   pnpm-workspace.yaml
+
+no changes added to commit (use "git add" and/or "git commit -a")
+M	pnpm-workspace.yaml
+Already on 'task-735-release-sync'
+Your branch is up to date with 'origin/task-735-release-sync'.
+From https://github.com/StecApps/StecStats
+ * branch            task-735-release-sync -> FETCH_HEAD
+Already up to date.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (verified 14h ago)
+Lockfile is up to date, resolution step is skipped
+Packages: +1
++
+Progress: resolved 1, reused 1, downloaded 0, added 1, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 26ms
+Done in 1s using pnpm v11.24.0
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ tsc --build
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ tsc -p tsconfig.json --noEmit
+stevenstec@Mac StecStats % 
