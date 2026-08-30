@@ -1,0 +1,87 @@
+cd /path/to/your/repo
+pnpm install
+Already up to date.
+cd: no such file or directory: /path/to/your/repo
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (verified 2h ago)
+../..                                    |   +1 +
+../..                                    | Progress: resolved 1, reused 1, downloaded 0, added 1, done
+../.. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use…
+└─ Done in 34ms
+Done in 1s using pnpm v11.24.0
+stevenstec@Mac ios % cd ..
+pwd
+ls -la package.json .env.local
+/Users/stevenstec/StecStats/artifacts/hoops-mobile
+-rw-r--r--@ 1 stevenstec  staff   612 Aug 29 20:17 .env.local
+-rw-r--r--  1 stevenstec  staff  3655 Aug 29 20:01 package.json
+stevenstec@Mac hoops-mobile % pnpm run ios:release:check
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js
+Local iOS release environment validated.
+stevenstec@Mac hoops-mobile % grep -n "withAuthTimeout" "app/(auth)/index.tsx"
+grep -n "clerk.stecstats.stecco.org" scripts/check-local-ios-release-env.js
+grep -n "Archive verified" scripts/verify-ios-release-archive.js
+grep: scripts/verify-ios-release-archive.js: No such file or directory
+stevenstec@Mac hoops-mobile % Fix iOS release login spinner
+zsh: command not found: Fix
+stevenstec@Mac hoops-mobile % cd /Users/stevenstec/StecStats
+git pull --ff-only origin main
+cd artifacts/hoops-mobile
+remote: Enumerating objects: 97, done.
+remote: Counting objects: 100% (97/97), done.
+remote: Compressing objects: 100% (33/33), done.
+remote: Total 80 (delta 47), reused 80 (delta 47), pack-reused 0 (from 0)
+Unpacking objects: 100% (80/80), 727.14 KiB | 243.00 KiB/s, done.
+From https://github.com/StecApps/StecStats
+ * branch            main       -> FETCH_HEAD
+   c1a6739..55265f3  main       -> origin/main
+Updating c1a6739..55265f3
+Fast-forward
+ .agents/memory/MEMORY.md                                                    |    1 +
+ .agents/memory/local-expo-cocoapods.md                                      |   10 +
+ artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md                                 |   23 +-
+ artifacts/hoops-mobile/__tests__/authTimeout.test.ts                        |   43 +
+ artifacts/hoops-mobile/__tests__/verifyIosReleaseArchive.test.ts            |   52 +
+ artifacts/hoops-mobile/app/(auth)/index.tsx                                 |   94 +-
+ artifacts/hoops-mobile/lib/authTimeout.ts                                   |   42 +
+ artifacts/hoops-mobile/local-ios-release.env.example                        |    3 +-
+ artifacts/hoops-mobile/package.json                                         |    1 +
+ artifacts/hoops-mobile/scripts/check-local-ios-release-env.js               |   92 +-
+ artifacts/hoops-mobile/scripts/verify-ios-release-archive.js                |   98 ++
+ ...Codegen-Processing-rnworklets-Codegen-Searching-for-po_1788049674652.txt |   43 +
+ ...Expo-Enabling-modular-headers-for-pod-SocketRocket-Exp_1788049543663.txt |  106 ++
+ ...Users-stevenstec-StecStats-artifacts-hoops-mobile-ERR-_1788049353654.txt |  185 +++
+ ...artifacts-hoops-mobile-plugins-withSwiftConcurrencyFix_1788047551911.txt |   50 +
+ ...create-mode-100644-artifacts-hoops-stats-src-pages-ter_1788048416432.txt |  146 +++
+ ...not-permitted-find-Users-stevenstec-Library-Group-Cont_1788046920915.txt |   78 ++
+ ...260a5-node-modules-react-native-keyboard-controller-po_1788049627536.txt |   90 ++
+ ...Screens-podspec-script-phases-configurations-name-reac_1788049784725.txt |   90 ++
+ ...rror-21-11-20-316586-0400-kernel-netagent-get-agent-do_1788052361222.txt | 2259 ++++++++++++++++++++++++++++++++++
+ ...mport-Expo-import-React-import-ReactAppDependencyProvi_1788050845321.txt |   70 ++
+ ...tevenstec-Mac-ios-cd-Users-stevenstec-StecStats-artifa_1788049900926.txt |  137 +++
+ attached_assets/Screenshot_2026-08-29_at_9.02.55_PM_1788051792596.png       |  Bin 0 -> 147000 bytes
+ attached_assets/image_1788047282841.png                                     |  Bin 0 -> 117240 bytes
+ attached_assets/image_1788050480850.png                                     |  Bin 0 -> 559478 bytes
+ 25 files changed, 3667 insertions(+), 46 deletions(-)
+ create mode 100644 .agents/memory/local-expo-cocoapods.md
+ create mode 100644 artifacts/hoops-mobile/__tests__/authTimeout.test.ts
+ create mode 100644 artifacts/hoops-mobile/__tests__/verifyIosReleaseArchive.test.ts
+ create mode 100644 artifacts/hoops-mobile/lib/authTimeout.ts
+ create mode 100644 artifacts/hoops-mobile/scripts/verify-ios-release-archive.js
+ create mode 100644 attached_assets/Pasted--Codegen-Processing-rnworklets-Codegen-Searching-for-po_1788049674652.txt
+ create mode 100644 attached_assets/Pasted--Expo-Enabling-modular-headers-for-pod-SocketRocket-Exp_1788049543663.txt
+ create mode 100644 attached_assets/Pasted--Users-stevenstec-StecStats-artifacts-hoops-mobile-ERR-_1788049353654.txt
+ create mode 100644 attached_assets/Pasted--artifacts-hoops-mobile-plugins-withSwiftConcurrencyFix_1788047551911.txt
+ create mode 100644 attached_assets/Pasted--create-mode-100644-artifacts-hoops-stats-src-pages-ter_1788048416432.txt
+ create mode 100644 attached_assets/Pasted--not-permitted-find-Users-stevenstec-Library-Group-Cont_1788046920915.txt
+ create mode 100644 attached_assets/Pasted-1260a5-node-modules-react-native-keyboard-controller-po_1788049627536.txt
+ create mode 100644 attached_assets/Pasted-NScreens-podspec-script-phases-configurations-name-reac_1788049784725.txt
+ create mode 100644 attached_assets/Pasted-error-21-11-20-316586-0400-kernel-netagent-get-agent-do_1788052361222.txt
+ create mode 100644 attached_assets/Pasted-import-Expo-import-React-import-ReactAppDependencyProvi_1788050845321.txt
+ create mode 100644 attached_assets/Pasted-stevenstec-Mac-ios-cd-Users-stevenstec-StecStats-artifa_1788049900926.txt
+ create mode 100644 attached_assets/Screenshot_2026-08-29_at_9.02.55_PM_1788051792596.png
+ create mode 100644 attached_assets/image_1788047282841.png
+ create mode 100644 attached_assets/image_1788050480850.png
+stevenstec@Mac hoops-mobile % 
