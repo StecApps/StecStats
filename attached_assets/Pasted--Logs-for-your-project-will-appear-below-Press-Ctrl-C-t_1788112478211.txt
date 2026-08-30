@@ -1,0 +1,131 @@
+
+› Logs for your project will appear below. Press Ctrl+C to exit.
+[StecStats] 🟠 {"code":"Unknown","message":"HTTP response error 400:
+\"channel-name\": Required. The headers \"expo-runtime-version\",
+\"expo-channel-name\", and \"expo-platform\" are required. They can also be set
+with the query parameters \"runtime-version\", \"channel-name\", and
+\"platform\". Learn more:
+https:\/\/expo.fyi\/eas-update-missing-headers","timestamp":1788112150000,"stacktrace":["StecStats
+0x0000000100cf7960
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_
++ 672","StecStats                           0x0000000100cc31c4
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_TATm
++ 32","StecStats                <…>
+[StecStats] 🟠 {"code":"UpdateFailedToLoad","message":"AppController
+appLoaderTask didFinishBackgroundUpdateWithStatus=Error: HTTP response error
+400: \"channel-name\": Required. The headers \"expo-runtime-version\",
+\"expo-channel-name\", and \"expo-platform\" are required. They can also be set
+with the query parameters \"runtime-version\", \"channel-name\", and
+\"platform\". Learn more:
+https:\/\/expo.fyi\/eas-update-missing-headers","timestamp":1788112150000,"stacktrace":["StecStats
+0x0000000100d17d80
+$s9EXUpdates16StartupProcedureC13appLoaderTask_35didFinishBackgroundUpdateWithStatus6update5erroryAA03AppeF0C_AA0ijL0OAA0J0CSgs5Error_pSgtFTf4dnnnn_n
++ 852","StecStats                           0x0000000100d15edc
+$s9EXUpdates16StartupProcedureC13appLoaderTask_35didFinishBackgroundUpdateWithStatus6update5erroryAA03AppeF0C_AA0ijL0OAA0J0CSgs5Error_pSgtFTo
++ 104","StecStats                           0x0000000100cd0c38
+$s9EXUpdates13AppLoaderTaskC25didFinishBackgroundUpdate019_3339434A583F<…>
+[StecStats] 🟠 {"timestamp":1788112151000,"message":"HTTP response error 400:
+\"channel-name\": Required. The headers \"expo-runtime-version\",
+\"expo-channel-name\", and \"expo-platform\" are required. They can also be set
+with the query parameters \"runtime-version\", \"channel-name\", and
+\"platform\". Learn more:
+https:\/\/expo.fyi\/eas-update-missing-headers","code":"Unknown","stacktrace":["StecStats
+0x0000000100cf7960
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_
++ 672","StecStats                           0x0000000100cc31c4
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_TATm
++ 32","StecStats                <…>
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[StecStats] Detected the current OS's ImageIO PNG Decoder is buggy on indexed
+color PNG. Perform workaround solution...
+[StecStats] ❌ [ERROR] 2026-08-30 13:49:15.186 Clerk.swift:409
+installConfiguration(dependencies:) - 🚨 Failed to load environment
+Error: identityChangedBeforeRetry
+[StecStats] ❌ [ERROR] 2026-08-30 13:49:15.202 Clerk.swift:449
+startStartupClientRefreshIfNeeded(after:) - 🚨 Failed to load client
+Error: identityChangedBeforeRetry
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[React] [RevenueCat] 🍎‼️ Purchase was cancelled.
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[CoreServices] unable to make sandbox extension: [2: No such file or directory]
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation =
+dismissAutoFillPanel, customInfoType = UIUserInteractionRemoteInputOperations
+[UIKitCore] Snapshotting a view (0x10762ac00, UIKeyboardImpl) that is not in a
+visible window requires afterScreenUpdates:YES.
+[StecStats] ❌ [ERROR] 2026-08-30 13:53:15.511 Clerk.swift:893
+onWillEnterForeground() - 🚨 Failed to refresh environment on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x10a49d0b0 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<29BDEC69-460A-4D20-9F4D-E91A3E4D12E9>.<17>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <29BDEC69-460A-4D20-9F4D-E91A3E4D12E9>.<17>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/environment?_is_native=true,
+NSError<…>
+[StecStats] ❌ [ERROR] 2026-08-30 13:53:15.521 Clerk.swift:880
+onWillEnterForeground() - 🚨 Failed to refresh client on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x10a49f2a0 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<6346C4EA-760E-45E4-8849-C5A1DB97354B>.<18>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <6346C4EA-760E-45E4-8849-C5A1DB97354B>.<18>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/client?_is_native=true,
+NSErrorFailingURL<…>
