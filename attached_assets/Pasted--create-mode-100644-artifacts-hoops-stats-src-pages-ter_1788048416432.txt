@@ -1,0 +1,146 @@
+ create mode 100644 artifacts/hoops-stats/src/pages/terms.tsx
+ create mode 100644 attached_assets/Pasted--Apple-ID-stecleadership24-gmail-com-Restoring-session-_1786769944991.txt
+ create mode 100644 attached_assets/Pasted--INSTALL-PODS-Downloading-dependencies-INSTALL-PODS-Ins_1787493920285.txt
+ create mode 100644 attached_assets/Pasted--INSTALL-PODS-Expo-Enabling-modular-headers-for-pod-RCT_1787493401973.txt
+ create mode 100644 attached_assets/Pasted--INSTALL-PODS-Expo-Enabling-modular-headers-for-pod-Rea_1786768499042.txt
+ create mode 100644 attached_assets/Pasted--PREBUILD-preinstall-sh-c-rm-f-package-lock-json-yarn-l_1786771770872.txt
+ create mode 100644 attached_assets/Pasted--RUN-FASTLANE-Compiling-expo-image-Pods-libwebp-picture_1786769330785.txt
+ create mode 100644 attached_assets/Pasted--RUN-FASTLANE-Compiling-react-native-svg-Pods-RNSVG-RNS_1786775959875.txt
+ create mode 100644 attached_assets/Pasted--at-async-BuildContext-runBuildPhase-Users-stevenstec-n_1786768990884.txt
+ create mode 100644 attached_assets/Pasted--icon-assets-images-icon-png-scheme-hoopsstats-userInte_1786772258460.txt
+ create mode 100644 attached_assets/Pasted-CLERK-PROXY-URL-proxyUrl-CLERK-PROXY-URL-fs-writeFileSy_1786777471525.txt
+ create mode 100644 attached_assets/Pasted-Guideline-2-1-Information-Needed-New-App-Submission-We-_1787480761834.txt
+ create mode 100644 attached_assets/Pasted-Hello-Thank-you-for-submitting-the-new-app-StecStats-fo_1787766271340.txt
+ create mode 100644 attached_assets/Pasted-Hello-Thank-you-for-your-resubmission-Upon-further-revi_1787560880322.txt
+ create mode 100644 attached_assets/Pasted-Here-is-the-checklist-that-got-PayDock-through-Apple-re_1788042019685.txt
+ create mode 100644 attached_assets/Pasted-N-FASTLANE-Compiling-react-native-reanimated-Pods-RNRea_1786777231613.txt
+ create mode 100644 attached_assets/Pasted-find-Users-stevenstec-Library-Group-Containers-com-appl_1788045859881.txt
+ create mode 100644 attached_assets/Pasted-find-Users-stevenstec-Library-IdentityServices-Operatio_1788046312585.txt
+ create mode 100644 attached_assets/Pasted-pace-INSTALL-DEPENDENCIES-Running-pnpm-install-frozen-l_1786770324134.txt
+ create mode 100644 attached_assets/Pasted-stevenstec-Mac-StecStats-cd-StecStats-pnpm-install-eas-_1786909521473.txt
+ create mode 100644 attached_assets/Pasted-stevenstec-Mac-hoops-mobile-cd-StecStats-artifacts-hoop_1786772568737.txt
+ create mode 100644 attached_assets/Screenshot_2026-08-15_at_1.22.02_PM_1786814671245.png
+ create mode 100644 attached_assets/Screenshot_2026-08-15_at_1.56.51_AM_1786773453904.png
+ create mode 100644 attached_assets/Screenshot_2026-08-15_at_2.11.20_PM_1786817614279.png
+ create mode 100644 attached_assets/Screenshot_2026-08-23_at_12.53.11_PM_1787504016209.png
+ create mode 100644 attached_assets/Screenshot_2026-08-23_at_4.21.50_PM_1787516533972.png
+ create mode 100644 attached_assets/Screenshot_2026-08-23_at_8.23.48_PM_1787531042715.png
+ create mode 100644 attached_assets/Screenshot_2026-08-29_at_7.03.01_PM_1788044595501.png
+ create mode 100644 attached_assets/image_1786825754051.png
+ create mode 100644 attached_assets/image_1786825885992.png
+ create mode 100644 attached_assets/image_1787493612984.png
+ create mode 100644 attached_assets/image_1787501019307.png
+ create mode 100644 attached_assets/image_1787501133503.png
+ create mode 100644 attached_assets/image_1787501730636.png
+ create mode 100644 attached_assets/image_1787504522752.png
+ create mode 100644 attached_assets/image_1787505446493.png
+ create mode 100644 attached_assets/image_1787517130339.png
+ create mode 100644 attached_assets/image_1788044763237.png
+ create mode 100644 lib/api-zod/src/generated/types/accountDeletionPending.ts
+ create mode 100644 lib/api-zod/src/generated/types/accountDeletionPendingStatus.ts
+ create mode 100644 screenshots/terms-page-production.png
+ create mode 100644 screenshots/terms-page.png
+ create mode 100644 scripts/src/fixAnnualPackage.ts
+ create mode 100644 scripts/src/fixMonthlyStoreId.ts
+ create mode 100644 scripts/src/fixRevenueCat.ts
+ create mode 100644 scripts/src/inspectRevenueCat.ts
+stevenstec@Mac StecStats % ls artifacts/hoops-mobile/local-ios-release.env.example
+ls artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md
+ls artifacts/hoops-mobile/scripts/check-local-ios-release-env.js
+artifacts/hoops-mobile/local-ios-release.env.example
+artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md
+artifacts/hoops-mobile/scripts/check-local-ios-release-env.js
+stevenstec@Mac StecStats % cp artifacts/hoops-mobile/local-ios-release.env.example \
+   artifacts/hoops-mobile/.env.local
+
+open -a TextEdit artifacts/hoops-mobile/.env.local
+stevenstec@Mac StecStats % cd /Users/stevenstec/StecStats
+
+git status --short --branch
+
+ls artifacts/hoops-mobile/local-ios-release.env.example
+ls artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md
+## main...origin/main
+ M artifacts/hoops-mobile/app.json
+ A eas.json
+?? app.json
+?? artifacts/hoops-mobile/artifacts/
+?? artifacts/hoops-mobile/build-1786408630337.ipa
+?? artifacts/hoops-mobile/build-1786412751199.ipa
+?? artifacts/hoops-mobile/build-1786442140906.ipa
+?? artifacts/hoops-mobile/build-1786443123071.ipa
+?? artifacts/hoops-mobile/build-1786582732537.ipa
+?? artifacts/hoops-mobile/build-1786773028974.ipa
+?? artifacts/hoops-mobile/build-1786776620730.ipa
+?? artifacts/hoops-mobile/build-1786778679854.ipa
+?? artifacts/hoops-mobile/build-1786779414765.ipa
+?? artifacts/hoops-mobile/build-1786780274660.ipa
+?? artifacts/hoops-mobile/build-1786793570123.ipa
+?? artifacts/hoops-mobile/build-1786812104849.ipa
+?? artifacts/hoops-mobile/build-1786813723690.ipa
+?? artifacts/hoops-mobile/build-1786816864715.ipa
+?? artifacts/hoops-mobile/build-1786822390386.ipa
+?? artifacts/hoops-mobile/build-1786827485980.ipa
+?? artifacts/hoops-mobile/build-1786911159181.ipa
+?? artifacts/hoops-mobile/build-1787502189194.ipa
+?? artifacts/hoops-mobile/package-lock.json
+artifacts/hoops-mobile/local-ios-release.env.example
+artifacts/hoops-mobile/LOCAL-XCODE-BUILD.md
+stevenstec@Mac StecStats % cp artifacts/hoops-mobile/local-ios-release.env.example \
+   artifacts/hoops-mobile/.env.local
+
+open -a TextEdit artifacts/hoops-mobile/.env.local
+stevenstec@Mac StecStats % pnpm install
+pnpm --filter @workspace/hoops-mobile run ios:release:check
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✔ The modules directories will be removed and reinstalled from scratch. Proceed? Yes
+Recreating /Users/stevenstec/StecStats/node_modules
+✓ Lockfile passes supply-chain policies (1610 entries in 6.1s)
+Lockfile is up to date, resolution step is skipped
+Packages: +1606
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 1606, reused 1604, downloaded 1, added 1606, done
+
+dependencies:
++ @replit/connectors-sdk 0.4.1
++ @replit/revenuecat-sdk 5.0.0
++ stripe 22.3.0
++ stripe-replit-sync 1.0.0
+
+devDependencies:
++ prettier 3.8.4
++ typescript 5.9.3
+
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnp…
+└─ Done in 42ms
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: @clerk/shared@3.47.7, @clerk/shared@3.47.8, browser-tabs-lock@1.3.0, core-js@3.41.0, esbuild@0.27.3
+
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (verified 3s ago)
+Lockfile is up to date, resolution step is skipped
+Packages: +1
++
+Progress: resolved 1, reused 1, downloaded 0, added 1, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnp…
+└─ Done in 29ms
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: @clerk/shared@3.47.7, @clerk/shared@3.47.8, browser-tabs-lock@1.3.0, core-js@3.41.0, esbuild@0.27.3
+
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+[ERROR] Command failed with exit code 1: '/opt/homebrew/Cellar/node@22/22.23.2/bin/node' /Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/bin/pnpm.mjs install
+
+pnpm: Command failed with exit code 1: '/opt/homebrew/Cellar/node@22/22.23.2/bin/node' /Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/bin/pnpm.mjs install
+    at getFinalError (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:89319:14)
+    at makeError (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:91626:21)
+    at getSyncResult (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93470:10)
+    at spawnSubprocessSync (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93430:14)
+    at execaCoreSync (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93360:23)
+    at callBoundExeca (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:95888:23)
+    at boundExeca (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:95865:49)
+    at sync2 (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:96024:10)
+    at runPnpmCli (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:273513:5)
+    at runDepsStatusCheck (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:274731:7)
+stevenstec@Mac StecStats % 
