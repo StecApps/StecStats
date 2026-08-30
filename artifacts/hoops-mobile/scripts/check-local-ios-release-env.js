@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
+const EXPECTED_CLERK_HOST = 'clerk.stecstats.stecco.org';
+const REQUIRED_CLERK_STRATEGIES = ['email_code', 'oauth_token_apple'];
+
 function readLocalEnv() {
   const filePath = path.resolve(process.cwd(), '.env.local');
   if (!fs.existsSync(filePath)) return {};
@@ -27,11 +30,21 @@ function readLocalEnv() {
 
 const env = { ...readLocalEnv(), ...process.env };
 
+function decodePublishableKeyHost(value) {
+  if (typeof value !== 'string' || !value.startsWith('pk_live_')) return null;
+  try {
+    const encoded = value.slice('pk_live_'.length);
+    return Buffer.from(encoded, 'base64url').toString('utf8').replace(/\$$/, '');
+  } catch {
+    return null;
+  }
+}
+
 const required = {
   APP_ENV: (value) => value === 'production',
   EXPO_PUBLIC_DOMAIN: (value) => value === 'stecstats.com',
   EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY: (value) =>
-    typeof value === 'string' && value.startsWith('pk_live_'),
+    decodePublishableKeyHost(value) === EXPECTED_CLERK_HOST,
   EXPO_PUBLIC_CLERK_PROXY_URL: (value) =>
     value === 'https://stecstats.com/api/__clerk',
   EXPO_PUBLIC_REVENUECAT_IOS_API_KEY: (value) =>
@@ -42,18 +55,71 @@ const invalid = Object.entries(required)
   .filter(([name, isValid]) => !isValid(env[name]))
   .map(([name]) => name);
 
-if (invalid.length > 0) {
-  console.error(
-    [
-      'Local iOS release environment is not ready.',
-      `Missing or invalid: ${invalid.join(', ')}`,
-      '',
-      'Copy local-ios-release.env.example to .env.local, fill in the',
-      'Production Clerk publishable key, then run this command again.',
-      'The key must belong to the same Production tenant shown in Replit Auth.',
-    ].join('\n'),
-  );
-  process.exit(1);
+async function verifyClerkProxy() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(
+      `${env.EXPO_PUBLIC_CLERK_PROXY_URL}/v1/environment`,
+      { signal: controller.signal },
+    );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const body = await response.json();
+    const factors = body?.auth_config?.first_factors;
+    if (
+      !Array.isArray(factors) ||
+      REQUIRED_CLERK_STRATEGIES.some((strategy) => !factors.includes(strategy))
+    ) {
+      throw new Error('required login strategies are not enabled');
+    }
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-console.log('Local iOS release environment validated.');
+async function main() {
+  if (invalid.length > 0) {
+    console.error(
+      [
+        'Local iOS release environment is not ready.',
+        `Missing or invalid: ${invalid.join(', ')}`,
+        '',
+        'Copy local-ios-release.env.example to .env.local, fill in the',
+        'Production Clerk publishable key, then run this command again.',
+        `The key must encode the expected production host: ${EXPECTED_CLERK_HOST}`,
+      ].join('\n'),
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    await verifyClerkProxy();
+  } catch (error) {
+    console.error(
+      [
+        'Local iOS release environment is not ready.',
+        'The production Clerk proxy did not pass its login-strategy check.',
+        error instanceof Error ? error.message : String(error),
+        '',
+        'Do not archive until this check succeeds.',
+      ].join('\n'),
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(
+    `Local iOS release environment validated for ${EXPECTED_CLERK_HOST}.`,
+  );
+}
+
+if (require.main === module) {
+  void main();
+}
+
+module.exports = {
+  decodePublishableKeyHost,
+  verifyClerkProxy,
+};

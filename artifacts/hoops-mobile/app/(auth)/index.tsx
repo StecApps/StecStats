@@ -18,6 +18,7 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { withAuthTimeout } from '@/lib/authTimeout';
 
 // Simple UUID v4 — no native module needed, Expo Go safe
 function makeNonce(): string {
@@ -72,28 +73,40 @@ export default function AuthScreen() {
 
       // Attempt sign-in for returning users
       // nonce must be forwarded to Clerk so it can verify SHA256(nonce) in Apple's identity token
-      const signInResult = await signIn!.create({
-        strategy: 'oauth_token_apple',
-        token: credential.identityToken,
-        nonce,
-      } as any);
+      const signInResult = await withAuthTimeout(
+        signIn!.create({
+          strategy: 'oauth_token_apple',
+          token: credential.identityToken,
+          nonce,
+        } as any),
+        'contacting Apple sign-in',
+      );
 
       const isTransferable = signInResult.firstFactorVerification?.status === 'transferable';
 
       if (isTransferable) {
         // New user — transfer the verified Apple credential into a sign-up
-        const suResult = await signUp!.create({
-          transfer: true,
-          ...(credential.fullName?.givenName  ? { firstName: credential.fullName.givenName  } : {}),
-          ...(credential.fullName?.familyName ? { lastName:  credential.fullName.familyName } : {}),
-        } as any);
+        const suResult = await withAuthTimeout(
+          signUp!.create({
+            transfer: true,
+            ...(credential.fullName?.givenName  ? { firstName: credential.fullName.givenName  } : {}),
+            ...(credential.fullName?.familyName ? { lastName:  credential.fullName.familyName } : {}),
+          } as any),
+          'creating your account',
+        );
         if (suResult.status === 'complete') {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await setSignUpActive!({ session: suResult.createdSessionId });
+          await withAuthTimeout(
+            setSignUpActive!({ session: suResult.createdSessionId }),
+            'opening your account',
+          );
         }
       } else if (signInResult.status === 'complete') {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await setSignInActive!({ session: signInResult.createdSessionId });
+        await withAuthTimeout(
+          setSignInActive!({ session: signInResult.createdSessionId }),
+          'opening your account',
+        );
       }
     } catch (err: any) {
       if (err?.code === 'ERR_REQUEST_CANCELED') return; // User dismissed the Apple sheet
@@ -109,9 +122,15 @@ export default function AuthScreen() {
     setError('');
     try {
       // Try sign-in first; if account not found, switch to sign-up
-      const result = await signIn!.create({ identifier: email.trim() });
+      const result = await withAuthTimeout(
+        signIn!.create({ identifier: email.trim() }),
+        'starting email sign-in',
+      );
       if (result.status === 'complete') {
-        await setSignInActive!({ session: result.createdSessionId });
+        await withAuthTimeout(
+          setSignInActive!({ session: result.createdSessionId }),
+          'opening your account',
+        );
         return;
       }
       // Need email OTP
@@ -119,10 +138,13 @@ export default function AuthScreen() {
         (f: any) => f.strategy === 'email_code',
       ) as any;
       if (factor) {
-        await signIn!.prepareFirstFactor({
-          strategy: 'email_code',
-          emailAddressId: factor.emailAddressId,
-        });
+        await withAuthTimeout(
+          signIn!.prepareFirstFactor({
+            strategy: 'email_code',
+            emailAddressId: factor.emailAddressId,
+          }),
+          'sending your verification code',
+        );
         setMode('signIn');
         setPhase('otp');
         setTimeout(() => otpRef.current?.focus(), 300);
@@ -132,8 +154,14 @@ export default function AuthScreen() {
       if (code === 'form_identifier_not_found') {
         // No account → sign up
         try {
-          await signUp!.create({ emailAddress: email.trim() });
-          await signUp!.prepareEmailAddressVerification({ strategy: 'email_code' });
+          await withAuthTimeout(
+            signUp!.create({ emailAddress: email.trim() }),
+            'creating your account',
+          );
+          await withAuthTimeout(
+            signUp!.prepareEmailAddressVerification({ strategy: 'email_code' }),
+            'sending your verification code',
+          );
           setMode('signUp');
           setPhase('otp');
           setTimeout(() => otpRef.current?.focus(), 300);
@@ -155,19 +183,31 @@ export default function AuthScreen() {
     setError('');
     try {
       if (mode === 'signIn') {
-        const result = await signIn!.attemptFirstFactor({
-          strategy: 'email_code',
-          code,
-        });
+        const result = await withAuthTimeout(
+          signIn!.attemptFirstFactor({
+            strategy: 'email_code',
+            code,
+          }),
+          'verifying your code',
+        );
         if (result.status === 'complete') {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await setSignInActive!({ session: result.createdSessionId });
+          await withAuthTimeout(
+            setSignInActive!({ session: result.createdSessionId }),
+            'opening your account',
+          );
         }
       } else {
-        const result = await signUp!.attemptEmailAddressVerification({ code });
+        const result = await withAuthTimeout(
+          signUp!.attemptEmailAddressVerification({ code }),
+          'verifying your code',
+        );
         if (result.status === 'complete') {
           await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await setSignUpActive!({ session: result.createdSessionId });
+          await withAuthTimeout(
+            setSignUpActive!({ session: result.createdSessionId }),
+            'opening your account',
+          );
         }
       }
     } catch (err: any) {

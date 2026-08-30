@@ -34,9 +34,10 @@ pnpm install
 pnpm --filter @workspace/hoops-mobile run ios:release:check
 ```
 
-The check intentionally fails if the build would use a missing/test Clerk key,
-the wrong API domain, the wrong Clerk proxy, or a missing RevenueCat iOS key.
-It never prints the key value.
+The check intentionally fails if the build would use a missing/test/wrong-tenant
+Clerk key, the wrong API domain, the wrong Clerk proxy, a proxy that does not
+advertise email-code and Apple-token login, or a missing RevenueCat iOS key. It
+never prints the key value.
 
 ## 4. Generate the native iOS workspace
 
@@ -81,8 +82,20 @@ In Xcode:
 2. Select **Any iOS Device (arm64)** as the destination.
 3. Confirm the Release signing team and bundle identifier.
 4. Choose **Product → Archive**.
-5. In Organizer, choose **Distribute App → App Store Connect → Upload**.
-6. Wait for processing, then install that exact build from TestFlight.
+5. In Organizer, right-click the new archive and choose **Show in Finder**.
+6. Before uploading, verify that exact archive from the repository root:
+
+```bash
+pnpm --filter @workspace/hoops-mobile run ios:release:verify-archive -- \
+  "/full/path/to/StecStats.xcarchive"
+```
+
+The verifier fails if the archive has no `main.jsbundle` or if the bundle does
+not contain the production values from `.env.local`. It reports variable names
+only and never prints the Clerk key.
+
+7. In Organizer, choose **Distribute App → App Store Connect → Upload**.
+8. Wait for processing, then install that exact build from TestFlight.
 
 Do not resubmit the older build. Clerk client configuration is embedded in the
 JavaScript bundle during the native archive, so correcting `.env.local`
