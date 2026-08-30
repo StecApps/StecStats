@@ -36,6 +36,13 @@ jest.mock('@clerk/expo/legacy', () => ({
   })),
 }));
 
+const mockStartAppleAuthenticationFlow = jest.fn();
+jest.mock('@clerk/expo/apple', () => ({
+  useSignInWithApple: jest.fn(() => ({
+    startAppleAuthenticationFlow: mockStartAppleAuthenticationFlow,
+  })),
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, bottom: 0, left: 0, right: 0 })),
 }));
@@ -99,7 +106,7 @@ jest.mock('react-native', () => {
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import AuthScreen, { makeClerkAppleTokenRequest } from '../app/(auth)/index';
+import AuthScreen from '../app/(auth)/index';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -127,16 +134,6 @@ function findNodes(node: any, predicate: (n: any) => boolean, acc: any[] = []): 
 function wasAppleButtonRendered(): boolean {
   return MockAppleButton.mock.calls.length > 0;
 }
-
-describe('Apple legacy Clerk request shape', () => {
-  test('sends only the supported strategy and identity token fields', () => {
-    expect(makeClerkAppleTokenRequest('apple-identity-token')).toEqual({
-      strategy: 'oauth_token_apple',
-      token: 'apple-identity-token',
-    });
-    expect(makeClerkAppleTokenRequest('apple-identity-token')).not.toHaveProperty('nonce');
-  });
-});
 
 // ── Suite 1: Android ──────────────────────────────────────────────────────────
 
@@ -227,5 +224,23 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
     });
 
     expect(wasAppleButtonRendered()).toBe(true);
+  });
+
+  test('Apple button uses Clerk native Apple authentication flow', async () => {
+    mockStartAppleAuthenticationFlow.mockResolvedValue({
+      createdSessionId: null,
+    });
+    MockAppleButton.mockClear();
+
+    await act(async () => {
+      renderer.create(<AuthScreen />);
+    });
+
+    const buttonProps = MockAppleButton.mock.calls.at(-1)?.[0];
+    await act(async () => {
+      await buttonProps.onPress();
+    });
+
+    expect(mockStartAppleAuthenticationFlow).toHaveBeenCalledTimes(1);
   });
 });

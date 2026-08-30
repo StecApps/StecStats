@@ -11,6 +11,7 @@ import {
   ScrollView,
   useColorScheme,
 } from 'react-native';
+import { useSignInWithApple } from '@clerk/expo/apple';
 import { useSignIn, useSignUp } from '@clerk/expo/legacy';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,23 +21,8 @@ import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { withAuthTimeout } from '@/lib/authTimeout';
 
-// Simple UUID v4 — no native module needed, Expo Go safe
-function makeNonce(): string {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = (Math.random() * 16) | 0;
-    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
-  });
-}
-
 type Phase = 'email' | 'otp';
 type Mode = 'signIn' | 'signUp';
-
-export function makeClerkAppleTokenRequest(identityToken: string) {
-  return {
-    strategy: 'oauth_token_apple' as const,
-    token: identityToken,
-  };
-}
 
 export default function AuthScreen() {
   const colors = useColors();
@@ -44,6 +30,7 @@ export default function AuthScreen() {
   const colorScheme = useColorScheme();
   const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn();
   const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp();
+  const { startAppleAuthenticationFlow } = useSignInWithApple();
 
   const [phase, setPhase] = useState<Phase>('email');
   const [mode, setMode] = useState<Mode>('signIn');
@@ -67,50 +54,20 @@ export default function AuthScreen() {
     setLoading(true);
     setError('');
     try {
-      // Nonce ties the Apple identity token to this exact request (replay protection)
-      const nonce = makeNonce();
-      const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
-        nonce,
-      });
-      if (!credential.identityToken) throw new Error('No identity token returned from Apple');
-
-      // Keep the nonce on Apple's native request for replay protection. The
-      // installed Clerk legacy token strategy accepts only strategy + token;
-      // forwarding nonce produces "nonce is not a valid parameter".
-      const signInResult = await withAuthTimeout(
-        signIn!.create(makeClerkAppleTokenRequest(credential.identityToken) as any),
+      // Clerk owns the secure nonce, Apple token exchange, and existing-user
+      // transfer flow. Reimplementing those steps can leave a production
+      // attempt in an unauthorized transfer state.
+      const result = await withAuthTimeout(
+        startAppleAuthenticationFlow(),
         'contacting Apple sign-in',
       );
 
-      const isTransferable = signInResult.firstFactorVerification?.status === 'transferable';
-
-      if (isTransferable) {
-        // New user — transfer the verified Apple credential into a sign-up
-        const suResult = await withAuthTimeout(
-          signUp!.create({
-            transfer: true,
-            ...(credential.fullName?.givenName  ? { firstName: credential.fullName.givenName  } : {}),
-            ...(credential.fullName?.familyName ? { lastName:  credential.fullName.familyName } : {}),
-          } as any),
-          'creating your account',
-        );
-        if (suResult.status === 'complete') {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          await withAuthTimeout(
-            setSignUpActive!({ session: suResult.createdSessionId }),
-            'opening your account',
-          );
-        }
-      } else if (signInResult.status === 'complete') {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (result.createdSessionId && result.setActive) {
         await withAuthTimeout(
-          setSignInActive!({ session: signInResult.createdSessionId }),
+          result.setActive({ session: result.createdSessionId }),
           'opening your account',
         );
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err: any) {
       if (err?.code === 'ERR_REQUEST_CANCELED') return; // User dismissed the Apple sheet

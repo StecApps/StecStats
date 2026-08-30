@@ -22,6 +22,7 @@ import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetBillingStatusQueryKey } from '@workspace/api-client-react';
 import { findRevenueCatPackages } from '@/lib/revenuecatConfig';
+import { openContactSupport } from '@/lib/supportConfig';
 
 import { FREE_FEATURES, PRO_FEATURES, PREMIUM_FEATURES } from '@workspace/plan-copy';
 
@@ -363,9 +364,17 @@ export default function PaywallScreen() {
             </View>
           ))}
 
-          <View style={[styles.proCta, { backgroundColor: colors.muted }]}>
+          <TouchableOpacity
+            onPress={() => {
+              void openContactSupport();
+            }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Notify me about StecStats Premium"
+            style={[styles.proCta, { backgroundColor: colors.muted }]}
+          >
             <Text style={[styles.proCtaText, { color: colors.mutedForeground }]}>Notify Me</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         {/* Required Apple subscription disclosure */}
