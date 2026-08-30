@@ -1,0 +1,45 @@
+Last login: Sun Aug 30 10:47:05 on ttys000
+stevenstec@Mac ~ % open ios/StecStats.xcworkspace
+The file /Users/stevenstec/ios/StecStats.xcworkspace does not exist.
+stevenstec@Mac ~ % cd ~/StecStats
+git pull --ff-only origin task-735-release-sync
+cd artifacts/hoops-mobile
+From https://github.com/StecApps/StecStats
+ * branch            task-735-release-sync -> FETCH_HEAD
+Already up to date.
+stevenstec@Mac hoops-mobile % find "$HOME/Library/Developer/Xcode/Archives/2026-08-30" \
+  -name "*.xcarchive" \
+  -print
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.04 PM.xcarchive
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 3.34 PM.xcarchive
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 4.24 PM.xcarchive
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.40 PM.xcarchive
+stevenstec@Mac hoops-mobile % pnpm run ios:release:verify-archive -- \
+  "$HOME/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.40 PM.xcarchive"
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js && node scripts/verify-ios-release-archive.js -- '/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.40 PM.xcarchive'
+Local iOS release environment validated for clerk.stecstats.stecco.org.
+Archive verified: Release JavaScript bundle and production configuration are embedded.
+stevenstec@Mac hoops-mobile % ARCHIVE="$(find "$HOME/Library/Developer/Xcode/Archives/2026-08-30" \
+  -type d -name '*5.40*.xcarchive' -print -quit)"
+
+printf 'Checking: %s\n' "$ARCHIVE"
+
+pnpm run ios:release:verify-archive -- "$ARCHIVE"
+Checking: /Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.40 PM.xcarchive
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js && node scripts/verify-ios-release-archive.js -- '/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.40 PM.xcarchive'
+Local iOS release environment validated for clerk.stecstats.stecco.org.
+Archive verified: Release JavaScript bundle and production configuration are embedded.
+stevenstec@Mac hoops-mobile % ARCHIVE="$(find "$HOME/Library/Mobile Documents" \ 
+  -type d -name '*5.54*.xcarchive' -print -quit)"
+
+printf 'Checking: %s\n' "$ARCHIVE"
+
+pnpm run ios:release:verify-archive -- "$ARCHIVE"
+Checking: /Users/stevenstec/Library/Mobile Documents/com~apple~CloudDocs/StecStats 8-30-26, 5.54 PM.xcarchive
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ node scripts/check-local-ios-release-env.js && node scripts/verify-ios-release-archive.js -- '/Users/stevenstec/Library/Mobile Documents/com~apple~CloudDocs/StecStats 8-30-26, 5.54 PM.xcarchive'
+Local iOS release environment validated for clerk.stecstats.stecco.org.
+Archive verified: Release JavaScript bundle and production configuration are embedded.
+stevenstec@Mac hoops-mobile % 
