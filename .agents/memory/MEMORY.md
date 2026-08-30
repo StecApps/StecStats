@@ -128,3 +128,4 @@
 - [Account deletion side-effect ordering](account-deletion-side-effect-ordering.md) — external revocations and identity deletion must never precede a retryable local-data failure boundary.
 - [Signed upload deletion boundary](signed-upload-deletion-boundary.md) — deletion must wait through the exact expiry of any issued direct-upload capability before its final media sweep.
 - [Clerk Expo native proxy support](clerk-expo-native-proxy.md) — old Expo SDKs drop proxyUrl on native; use @clerk/expo v4+ and verify proxy traffic on-device.
+- [RevenueCat package relations](revenuecat-package-relations.md) — package-product responses nest product IDs and store identifiers under `relation.product`.

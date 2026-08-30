@@ -19,6 +19,7 @@ import {
   detachProductsFromEntitlement,
   listOfferings,
   listPackages,
+  updatePackage,
   attachProductsToPackage,
   detachProductsFromPackage,
   getProductsFromPackage,
@@ -214,7 +215,9 @@ async function main() {
       path: { project_id: PROJECT_ID, package_id: pkgId },
       query: { limit: 50 },
     });
-    return data?.items?.map((p: any) => p.id) ?? [];
+    return data?.items
+      ?.map((relation: any) => relation.product?.id ?? relation.id)
+      .filter((id: unknown): id is string => typeof id === "string" && id.length > 0) ?? [];
   };
 
   // Fix $rc_monthly — ensure correct App Store monthly product is attached
@@ -241,46 +244,61 @@ async function main() {
     console.log("App Store Pro Monthly already on $rc_monthly");
   }
 
-  // Fix $rc_annual — detach old Premium products, attach Pro Annual products
+  // Fix $rc_annual — remove non-annual products and attach any missing annual products.
   const annualAttached = await getPackageProductIds(annualPkg.id);
   console.log("\n$rc_annual currently has product ids:", annualAttached);
 
-  // Detach any products currently on the annual package (these are Premium Monthly placeholders)
-  if (annualAttached.length > 0) {
+  const expectedAnnualIds = new Set([appStoreAnnual.id, testStoreAnnual.id]);
+  const annualIdsToDetach = annualAttached.filter((id) => !expectedAnnualIds.has(id));
+  if (annualIdsToDetach.length > 0) {
     const { error: detErr } = await detachProductsFromPackage({
       client,
       path: { project_id: PROJECT_ID, package_id: annualPkg.id },
-      body: { product_ids: annualAttached },
+      body: { product_ids: annualIdsToDetach },
     });
     if (detErr) {
       console.warn("Could not detach old products from $rc_annual:", JSON.stringify(detErr));
     } else {
-      console.log("Detached old products from $rc_annual:", annualAttached);
+      console.log("Detached old products from $rc_annual:", annualIdsToDetach);
     }
   }
 
-  // Attach annual products to $rc_annual
   const annualProductsToAttach = [
-    { product_id: appStoreAnnual.id,  eligibility_criteria: "all" as const },
+    { product_id: appStoreAnnual.id, eligibility_criteria: "all" as const },
     { product_id: testStoreAnnual.id, eligibility_criteria: "all" as const },
-  ];
-  const { error: attAnnErr } = await attachProductsToPackage({
-    client,
-    path: { project_id: PROJECT_ID, package_id: annualPkg.id },
-    body: { products: annualProductsToAttach },
-  });
-  if (attAnnErr) {
-    const errType = (attAnnErr as any)?.type ?? "";
-    if (errType === "unprocessable_entity_error") {
-      console.log("Annual products already on $rc_annual");
-    } else {
+  ].filter(({ product_id }) => !annualAttached.includes(product_id));
+  if (annualProductsToAttach.length > 0) {
+    const { error: attAnnErr } = await attachProductsToPackage({
+      client,
+      path: { project_id: PROJECT_ID, package_id: annualPkg.id },
+      body: { products: annualProductsToAttach },
+    });
+    if (attAnnErr) {
       console.warn("Failed to attach annual products to $rc_annual:", JSON.stringify(attAnnErr));
+    } else {
+      console.log("Attached missing Pro Annual products to $rc_annual");
     }
   } else {
-    console.log("Attached Pro Annual products to $rc_annual (AppStore + TestStore)");
+    console.log("Pro Annual products already on $rc_annual");
   }
 
-  // Also update the $rc_annual package display name
+  // Keep the dashboard label aligned with the package's annual Pro products.
+  if (annualPkg.display_name !== "Pro Annual") {
+    const { error: updatePackageError } = await updatePackage({
+      client,
+      path: { project_id: PROJECT_ID, package_id: annualPkg.id },
+      body: { display_name: "Pro Annual" },
+    });
+    if (updatePackageError) {
+      console.warn(
+        "Could not rename $rc_annual to Pro Annual:",
+        JSON.stringify(updatePackageError),
+      );
+    } else {
+      console.log("Renamed $rc_annual package to Pro Annual");
+    }
+  }
+
   console.log("\nDone! Running final inspection...");
 
   // Final state

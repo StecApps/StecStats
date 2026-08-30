@@ -45,7 +45,10 @@ async function inspect() {
     const { data: pkgs } = await listPackages({ client, path: { project_id: projectId, offering_id: o.id }, query: { limit: 20 } });
     for (const pkg of pkgs?.items ?? []) {
       const { data: pp } = await getProductsFromPackage({ client, path: { project_id: projectId, package_id: pkg.id }, query: { limit: 20 } });
-      const productStoreIds = pp?.items?.map(p => p.store_identifier).join(", ") ?? "none";
+      const productStoreIds = pp?.items
+        ?.map((relation: any) => relation.product?.store_identifier ?? relation.store_identifier)
+        .filter(Boolean)
+        .join(", ") || "none";
       console.log(`    Package: ${pkg.lookup_key} (${pkg.display_name}) — id: ${pkg.id} — products: ${productStoreIds}`);
     }
   }
