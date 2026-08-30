@@ -72,7 +72,10 @@ function verifyBundle(bundlePath, env) {
 }
 
 function main() {
-  const archivePath = process.argv[2];
+  // When this script is invoked through a chained pnpm/npm script, the
+  // argument separator can be forwarded as a literal "--". Ignore it so the
+  // documented `pnpm run ... -- /path/to/archive` form works reliably.
+  const archivePath = process.argv.slice(2).find((argument) => argument !== '--');
   if (!archivePath) {
     console.error(
       'Usage: pnpm run ios:release:verify-archive -- /path/to/StecStats.xcarchive',
