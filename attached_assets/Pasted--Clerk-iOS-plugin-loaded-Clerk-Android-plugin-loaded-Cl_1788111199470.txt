@@ -1,0 +1,699 @@
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+█ ▄▄▄▄▄ █▄▄████▀ ▄▄ ▄▀█▀ █▄██ █ ▄▄▄▄▄ █
+█ █   █ █ ▀█ ▄▄▄▄█▀▀█▀█▄▄█ ▀▀██ █   █ █
+█ █▄▄▄█ █▄ ▄▄▀▄▀██▄▄  ▄▄█ ▄ ▄ █ █▄▄▄█ █
+█▄▄▄▄▄▄▄█▄▀▄▀▄▀ █▄▀ █ █ ▀ █▄▀ █▄▄▄▄▄▄▄█
+█▄  ▄█▀▄▀ ▀███▄▄██▄█▀▄▄█▀▄█ █▀▄█▀▄▄ █▄█
+█▀▀ █ ▄▄▄▀▄ ▀▀▀ █▀█▄▀██▀  ▀▄█▄ ▀ ▄  ███
+█▀▄  ▄▀▄▀▀▄  █▀█▀▄▄ ▀ █ ▄█   ▀  ▀   ▀▀█
+█▀ █▀  ▄█  ▀█ ▀▄▀▄█▀ ▀▀█▀▄▄ ▀ █ ▀ ▄█▄██
+█▄█ ██ ▄█▄▄█▄▀▀█▀ ▀█▀ ▄▄▀█ █▀█ ▀██▄ █ █
+██▀▄█ █▄▄▀▀▀▄ ██▄█ █▀▀▄▄▀ █▄▄ ▀▀▄  ██▄█
+█▀▀▄▀█ ▄▄█▄▄▄  ▀▄█▄█ ▄ ▀▀▄▀▄▄▄██ ▄ █▄▄█
+███▄██▀▄█  ▀▄▄▄██ ▄▀▀▀█▀ ▀ █▀▄▀ █▀  ▀▀█
+██▀▀▀██▄▄█▄▄▀ █ ▄▀▄▄▀▀██▄ ▄▄▀▀▀ █ █▄ ▀█
+█▀▄▄▀▀▄▄▄▀ █ █▄▀██▄  ▀▀▀█▄▄▄▀▄ ▄█▄▄█ ██
+████▄█▄▄█ █▄█▄█ ▀ █▀▀ ▄█ ▀▄▄▀ ▄▄▄   ▄▀█
+█ ▄▄▄▄▄ ██▄▀▀█  ▄  ▄▀▀█▀▀██▄▀ █▄█  █▄▄█
+█ █   █ █▀ ███▄▄█▄▄█ ▄▀█ ██▄▀▄    ▀█ ▀█
+█ █▄▄▄█ █   ▀▀▀ ▀▀▄▀▀▀██▄▀  ▀▄ ▄ ▄ ▀███
+█▄▄▄▄▄▄▄█▄▄█▄███▄▄▄▄████▄▄▄▄██▄▄▄██▄▄▄█
+
+› Metro waiting on
+com.hoopsstats.coach://expo-development-client/?url=http%3A%2F%2F192.168.1.212%3A8081
+› Scan the QR code above to open the project in a development build. Learn more:
+https://expo.fyi/start
+
+› Web is waiting on http://localhost:8081
+
+› Using development build
+› Press s │ switch to Expo Go
+
+› Press a │ open Android
+› Press i │ open iOS simulator
+› Press w │ open web
+
+› Press j │ open debugger
+› Press r │ reload app
+› Press m │ toggle menu
+› shift+m │ more tools
+› Press o │ open project code in your editor
+
+› Press ? │ show all commands
+
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+› Installing /Users/stevenstec/Library/Developer/Xcode/DerivedData/StecStats-gntwlsrevrwmtdbxaojejmcrfzkp/Build/Products/Release-iphonesimulator/StecStats.app
+› Installing on iPhone 17 Pro Max
+› Opening on iPhone 17 Pro Max (com.hoopsstats.coach)
+› Opening com.hoopsstats.coach://expo-development-client/?url=http%3A%2F%2F192.168.1.212%3A8081 on iPhone 17 Pro Max
+
+› Logs for your project will appear below. Press Ctrl+C to exit.
+[libapp_launch_measurement.dylib] Failed to send CA Event for app launch
+measurements for ca_event_type: 0 event_name:
+com.apple.app_launch_measurement.FirstFramePresentationMetric
+[StecStats] 🟠 {"timestamp":1788103439000,"message":"HTTP response error 400:
+\"channel-name\": Required. The headers \"expo-runtime-version\",
+\"expo-channel-name\", and \"expo-platform\" are required. They can also be set
+with the query parameters \"runtime-version\", \"channel-name\", and
+\"platform\". Learn more:
+https:\/\/expo.fyi\/eas-update-missing-headers","stacktrace":["StecStats
+0x000000010359f960
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_
++ 672","StecStats                           0x000000010356b1c4
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_TATm
++ 32","StecStats                           0x0000<…>
+[StecStats] 🟠
+{"level":"error","code":"UpdateFailedToLoad","timestamp":1788103439000,"message":"AppController
+appLoaderTask didFinishBackgroundUpdateWithStatus=Error: HTTP response error
+400: \"channel-name\": Required. The headers \"expo-runtime-version\",
+\"expo-channel-name\", and \"expo-platform\" are required. They can also be set
+with the query parameters \"runtime-version\", \"channel-name\", and
+\"platform\". Learn more:
+https:\/\/expo.fyi\/eas-update-missing-headers","stacktrace":["StecStats
+0x00000001035bfd80
+$s9EXUpdates16StartupProcedureC13appLoaderTask_35didFinishBackgroundUpdateWithStatus6update5erroryAA03AppeF0C_AA0ijL0OAA0J0CSgs5Error_pSgtFTf4dnnnn_n
++ 852","StecStats                           0x00000001035bdedc
+$s9EXUpdates16StartupProcedureC13appLoaderTask_35didFinishBackgroundUpdateWithStatus6update5erroryAA03AppeF0C_AA0ijL0OAA0J0CSgs5Error_pSgtFTo
++ 104","StecStats                           0x0000000103578c38
+$s9EXUpdates13AppLoaderTaskC25didFinishBackgroundUpdate<…>
+[libapp_launch_measurement.dylib] Failed to send CA Event for app launch
+measurements for ca_event_type: 1 event_name:
+com.apple.app_launch_measurement.ExtendedLaunchMetrics
+[StecStats] 🟠 {"level":"error","stacktrace":["StecStats
+0x000000010359f960
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_
++ 672","StecStats                           0x000000010356b1c4
+$s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_TATm
++ 32","StecStats                           0x000000010359fa8c
+$s10Foundation4DataVSgSo13NSURLResponseCSgs5Error_pSgIeghggg_So6NSDataCSgAGSo7NSErrorCSgIeyBhyyy_TR
++ 144","CFNetwork                           0x0000000184dbf3a0
+__40-[__NSURLSessionLocal taskForClassInfo:]_block_invoke + 500","CFNetwork
+0x0000000184dd5c94 __49-[__NSCFLocalSessionTask _task_onq<…>
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[StecStats] Detected the current OS's ImageIO PNG Decoder is buggy on indexed
+color PNG. Perform workaround solution...
+[React] [RevenueCat] 😿‼️ LogOut was called but the current user is anonymous.
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[StecStats] ❌ [ERROR] 2026-08-30 11:24:04.837 Clerk.swift:409
+installConfiguration(dependencies:) - 🚨 Failed to load environment
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x119892460 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<52AD5B62-360B-435D-A869-8F579D4C147B>.<13>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <52AD5B62-360B-435D-A869-8F579D4C147B>.<13>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/environment?_is_native=true,
+NSErrorFaili<…>
+[StecStats] ❌ [ERROR] 2026-08-30 11:24:04.846 Clerk.swift:449
+startStartupClientRefreshIfNeeded(after:) - 🚨 Failed to load client
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x1198928b0 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 0ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<A7214546-40F9-44AD-A418-9464B940E607>.<14>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <A7214546-40F9-44AD-A418-9464B940E607>.<14>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/client?_is_native=true,
+NSErrorFailingUR<…>
+[TextInputUI] Result accumulator timeout: 0.250000, exceeded.
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[ManagedConfiguration] MCPasscodeManager passcode set check is not supported on
+this device.
+[AuthKit] Authorization failed: Error Domain=AKAuthenticationError Code=-7022
+"(null)" UserInfo={AKClientBundleID=com.hoopsstats.coach}
+[AuthenticationServices] ASAuthorizationController credential request failed
+with error: Error Domain=com.apple.AuthenticationServices.AuthorizationError
+Code=1000 "(null)"
+[StecStats] 🟠 Apple authorization failed: The operation couldn’t be completed.
+(com.apple.AuthenticationServices.AuthorizationError error 1000.)
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[StecStats] ❌ [ERROR] 2026-08-30 11:38:32.449 Clerk.swift:880
+onWillEnterForeground() - 🚨 Failed to refresh client on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x11cfa6940 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<9DF80F14-F6EB-470B-BD1C-794C2783E931>.<19>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <9DF80F14-F6EB-470B-BD1C-794C2783E931>.<19>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/client?_is_native=true,
+NSErrorFailingURL<…>
+[StecStats] ❌ [ERROR] 2026-08-30 11:38:32.453 Clerk.swift:893
+onWillEnterForeground() - 🚨 Failed to refresh environment on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x11cfa6c10 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<332209AE-0964-4BFC-BFB5-95BBCD49B893>.<20>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <332209AE-0964-4BFC-BFB5-95BBCD49B893>.<20>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/environment?_is_native=true,
+NSError<…>
+[ManagedConfiguration] MCPasscodeManager passcode set check is not supported on
+this device.
+[AuthKit] Authorization failed: Error Domain=AKAuthenticationError Code=-7022
+"(null)" UserInfo={AKClientBundleID=com.hoopsstats.coach}
+[AuthenticationServices] ASAuthorizationController credential request failed
+with error: Error Domain=com.apple.AuthenticationServices.AuthorizationError
+Code=1000 "(null)"
+[StecStats] 🟠 Apple authorization failed: The operation couldn’t be completed.
+(com.apple.AuthenticationServices.AuthorizationError error 1000.)
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[StecStats] ❌ [ERROR] 2026-08-30 11:39:11.722 Clerk.swift:893
+onWillEnterForeground() - 🚨 Failed to refresh environment on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x11ce62040 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<04ABD22A-09ED-4B18-9B24-5D152F5A49BA>.<23>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <04ABD22A-09ED-4B18-9B24-5D152F5A49BA>.<23>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/environment?_is_native=true,
+NSError<…>
+[StecStats] ❌ [ERROR] 2026-08-30 11:39:11.725 Clerk.swift:880
+onWillEnterForeground() - 🚨 Failed to refresh client on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x11ce61650 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<F31F1E18-0F8C-4948-AD6E-7BE909838067>.<24>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <F31F1E18-0F8C-4948-AD6E-7BE909838067>.<24>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/client?_is_native=true,
+NSErrorFailingURL<…>
+[ManagedConfiguration] MCPasscodeManager passcode set check is not supported on
+this device.
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[ManagedConfiguration] MCPasscodeManager passcode set check is not supported on
+this device.
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[TextInputUI] Result accumulator timeout: 0.250000, exceeded.
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation = <null
+selector>, customInfoType = UIEmojiSearchOperations
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[CoreServices] unable to make sandbox extension: [2: No such file or directory]
+[RemoteTextInput] -[RTIInputSystemClient
+remoteTextInputSessionWithID:performInputOperation:]  perform input operation
+requires a valid sessionID. inputModality = Keyboard, inputOperation =
+dismissAutoFillPanel, customInfoType = UIUserInteractionRemoteInputOperations
+[UIKitCore] Snapshotting a view (0x11ce48000, UIKeyboardImpl) that is not in a
+visible window requires afterScreenUpdates:YES.
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[StecStats] ❌ [ERROR] 2026-08-30 11:41:11.518 Clerk.swift:893
+onWillEnterForeground() - 🚨 Failed to refresh environment on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x119b5d320 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<EEF206A4-2F74-4489-AF0B-829424CC0844>.<27>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <EEF206A4-2F74-4489-AF0B-829424CC0844>.<27>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/environment?_is_native=true,
+NSError<…>
+[StecStats] ❌ [ERROR] 2026-08-30 11:41:11.522 Clerk.swift:880
+onWillEnterForeground() - 🚨 Failed to refresh client on foreground
+Error: Error Domain=NSURLErrorDomain Code=-1003 "A server with the specified
+hostname could not be found." UserInfo={_kCFStreamErrorCodeKey=8,
+NSUnderlyingError=0x119b5e430 {Error Domain=kCFErrorDomainCFNetwork Code=-1003
+"(null)" UserInfo={_kCFStreamErrorDomainKey=12, _kCFStreamErrorCodeKey=8,
+_NSURLErrorNWResolutionReportKey=Resolved 0 endpoints in 1ms using unknown from
+cache, _NSURLErrorNWPathKey=satisfied (Path is satisfied), interface:
+en0[802.11], uses wifi, proxy, LQM: unknown}},
+_NSURLErrorFailingURLSessionTaskErrorKey=LocalDataTask
+<45814993-2BCD-4E89-8270-11B7E30ADE62>.<28>,
+_NSURLErrorRelatedURLSessionTaskErrorKey=(
+"LocalDataTask <45814993-2BCD-4E89-8270-11B7E30ADE62>.<28>"
+), NSLocalizedDescription=A server with the specified hostname could not be
+found.,
+NSErrorFailingURLStringKey=https://clerk.stecstats.stecco.org/v1/client?_is_native=true,
+NSErrorFailingURL<…>
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 🍎‼️ Error fetching offerings - The operation couldn’t be
+completed. (RevenueCat.OfferingsManager.Error error 1.)
+There's a problem with your configuration. None of the products registered in
+the RevenueCat dashboard could be fetched from App Store Connect (or the
+StoreKit Configuration file if one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+[React] [RevenueCat] 😿‼️ There is an issue with your configuration. Check the
+underlying error for more details.
+More information: https://rev.cat/sdk-troubleshooting There's a problem with
+your configuration. None of the products registered in the RevenueCat dashboard
+could be fetched from App Store Connect (or the StoreKit Configuration file if
+one is being used).
+More information: https://rev.cat/why-are-offerings-empty
+› Stopped server
+stevenstec@Mac StecStats % cd /Users/stevenstec/StecStats
+git status
+git fetch origin
+git switch --track origin/task-735-release-sync
+git pull
+pnpm install
+pnpm --filter @workspace/hoops-mobile run typecheck
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   pnpm-workspace.yaml
+
+no changes added to commit (use "git add" and/or "git commit -a")
+remote: Enumerating objects: 89, done.
+remote: Counting objects: 100% (89/89), done.
+remote: Compressing objects: 100% (23/23), done.
+remote: Total 66 (delta 43), reused 66 (delta 43), pack-reused 0 (from 0)
+Unpacking objects: 100% (66/66), 1.96 MiB | 7.28 MiB/s, done.
+From https://github.com/StecApps/StecStats
+ * [new branch]      task-735-release-sync -> origin/task-735-release-sync
+M	pnpm-workspace.yaml
+branch 'task-735-release-sync' set up to track 'origin/task-735-release-sync'.
+Switched to a new branch 'task-735-release-sync'
+Already up to date.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (verified 14h ago)
+Lockfile is up to date, resolution step is skipped
+Packages: +1
++
+Progress: resolved 1, reused 1, downloaded 0, added 1, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 35ms
+Done in 1s using pnpm v11.24.0
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+$ tsc -p tsconfig.json --noEmit
+app/(tabs)/games.tsx:25:132 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+25 import { useListTeams, useListTeamGames, useListAllGames, useListPlayers, useCreateGame, useRequestUploadUrl, useDeleteGame } from '@workspace/api-client-react';
+                                                                                                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/(tabs)/index.tsx:31:8 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+31 } from '@workspace/api-client-react';
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/(tabs)/profile.tsx:22:110 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+22 import { useDeleteMyAccount, useGetBillingStatus, useListTeams, useListPlayers, useGetMe, useUpdateMe } from '@workspace/api-client-react';
+                                                                                                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/(tabs)/record.tsx:18:67 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+18 import { useListTeams, useCreateTeam, getListTeamsQueryKey } from '@workspace/api-client-react';
+                                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/_layout.tsx:31:48 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+31 import { setBaseUrl, setAuthTokenGetter } from '@workspace/api-client-react';
+                                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/game/[id].tsx:30:8 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+30 } from '@workspace/api-client-react';
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/paywall.tsx:23:45 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+23 import { getGetBillingStatusQueryKey } from '@workspace/api-client-react';
+                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/roster.tsx:25:8 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+25 } from '@workspace/api-client-react';
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+app/roster.tsx:320:28 - error TS7006: Parameter 'player' implicitly has an 'any' type.
+
+320             {players!.map((player) => (
+                               ~~~~~~
+
+app/scorekeeper.tsx:50:68 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+50 import { useListPlayers, useCreateGame, useRequestUploadUrl } from '@workspace/api-client-react';
+                                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+components/PendingPhotoRetry.tsx:14:57 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+14 import { useUpdatePlayer, getListPlayersQueryKey } from '@workspace/api-client-react';
+                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+hooks/usePendingPhotoRetry.ts:19:40 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+19 import { getListPlayersQueryKey } from '@workspace/api-client-react';
+                                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+lib/useOfflineQueueSync.ts:30:8 - error TS6305: Output file '/Users/stevenstec/StecStats/lib/api-client-react/dist/index.d.ts' has not been built from source file '/Users/stevenstec/StecStats/lib/api-client-react/src/index.ts'.
+
+30 } from '@workspace/api-client-react';
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Found 13 errors in 12 files.
+
+Errors  Files
+     1  app/(tabs)/games.tsx:25
+     1  app/(tabs)/index.tsx:31
+     1  app/(tabs)/profile.tsx:22
+     1  app/(tabs)/record.tsx:18
+     1  app/_layout.tsx:31
+     1  app/game/[id].tsx:30
+     1  app/paywall.tsx:23
+     2  app/roster.tsx:25
+     1  app/scorekeeper.tsx:50
+     1  components/PendingPhotoRetry.tsx:14
+     1  hooks/usePendingPhotoRetry.ts:19
+     1  lib/useOfflineQueueSync.ts:30
+/Users/stevenstec/StecStats/artifacts/hoops-mobile:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @workspace/hoops-mobile@0.0.0 typecheck: `tsc -p tsconfig.json --noEmit`
+Exit status 2
+stevenstec@Mac StecStats % 
