@@ -6,18 +6,42 @@
  * function that profile.tsx binds to the onPress — a change to the address
  * or the Linking call breaks the test immediately.
  */
-import { Alert, Linking } from 'react-native';
+import { Alert, Linking, Share } from 'react-native';
 
-export const CONTACT_SUPPORT_URL = 'mailto:support@stecstats.com';
+export const SUPPORT_EMAIL = 'support@stecstats.com';
+export const CONTACT_SUPPORT_URL = `mailto:${SUPPORT_EMAIL}`;
 
-/** Opens the device email client addressed to the support inbox. */
+function showSupportFallback(): void {
+  Alert.alert(
+    'Contact Support',
+    `No email app is configured. You can share or copy ${SUPPORT_EMAIL} instead.`,
+    [
+      {
+        text: 'Share / Copy Address',
+        onPress: () => {
+          void Share.share({
+            message: SUPPORT_EMAIL,
+            title: 'StecStats Support',
+          });
+        },
+      },
+      { text: 'Close', style: 'cancel' },
+    ],
+  );
+}
+
+/** Opens a composer, or offers the native share/copy sheet when none exists. */
 export async function openContactSupport(): Promise<void> {
   try {
+    const canOpen =
+      typeof Linking.canOpenURL !== 'function' ||
+      await Linking.canOpenURL(CONTACT_SUPPORT_URL);
+    if (!canOpen) {
+      showSupportFallback();
+      return;
+    }
     await Linking.openURL(CONTACT_SUPPORT_URL);
   } catch {
-    Alert.alert(
-      'Contact Support',
-      `Unable to open your email app. Please email ${CONTACT_SUPPORT_URL.replace('mailto:', '')} directly.`,
-    );
+    showSupportFallback();
   }
 }

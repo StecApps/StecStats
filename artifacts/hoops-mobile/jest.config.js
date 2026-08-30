@@ -13,6 +13,9 @@ module.exports = {
   moduleNameMapper: {
     // honour the @/* path alias from tsconfig
     '^@/(.*)$': '<rootDir>/$1',
+    // The mobile package consumes this workspace package from TypeScript
+    // source. Resolve it outside node_modules so Babel transforms it in Jest.
+    '^@workspace/plan-copy$': '<rootDir>/packages/plan-copy/src/index.ts',
     // stub out asset imports
     '\\.(jpg|jpeg|png|gif|svg|ttf|otf|woff|woff2|mp4|webm|wav|mp3|aac|oga|webp)$':
       '<rootDir>/__mocks__/fileMock.js',

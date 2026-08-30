@@ -85,7 +85,9 @@ business day.
 3. Scroll to the **Account** section and tap **Delete Account**.
 4. The first confirmation explains that teams, players, game stats, saved videos, highlights, photos, YouTube connection, and the sign-in identity will be permanently deleted. It also explains that deleting the account does **not** cancel an Apple subscription.
 5. If a subscription needs to be cancelled, tap **Manage in App Store** on that confirmation; otherwise tap **Continue**.
-6. Tap **Delete Permanently** in the final confirmation. The app signs out and returns to the sign-in screen.
+6. Tap **Delete Account** in the final confirmation. The app clears recoverable
+   drafts and pending uploads from the device, signs out, and returns to the
+   sign-in screen.
 
 ---
 
@@ -93,6 +95,11 @@ business day.
 
 The submitted iOS build includes these Pro subscriptions in the default
 StoreKit / RevenueCat offering:
+
+- App bundle ID: `com.hoopsstats.coach`
+- RevenueCat current offering: `default`
+- RevenueCat packages: `$rc_monthly` and `$rc_annual`
+- RevenueCat entitlement granted by both products: `pro`
 
 | Product | App Store product ID | Duration | Price | Introductory offer |
 |---|---|---|---|---|

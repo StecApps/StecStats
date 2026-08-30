@@ -68,6 +68,19 @@ export default function TermsOfService() {
                 Apple and subject to Apple's refund policies. We have no control over and cannot process refunds
                 for purchases made through Apple's In-App Purchase system.
               </li>
+              <li>
+                <strong className="text-foreground">Apple standard EULA:</strong> Use of the iOS App is also
+                subject to Apple&apos;s Licensed Application End User License Agreement (Standard EULA), available
+                at{" "}
+                <a
+                  href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+                  className="text-primary hover:underline"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  apple.com/legal/internet-services/itunes/dev/stdeula
+                </a>.
+              </li>
             </ul>
           </section>
 

@@ -36,6 +36,9 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
 
 ## 2 — In-app purchase products
 
+- [ ] Confirm the selected app/binary uses bundle ID `com.hoopsstats.coach`.
+  The existing subscription product namespace is intentionally
+  `com.stecapps.stecstats`; do not rename either identifier before review.
 - [ ] In App Store Connect, verify both products are attached to this app
   version and submitted with the build:
   - `com.stecapps.stecstats.pro.monthly`
@@ -46,6 +49,9 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
   availability are active for the intended storefront.
 - [ ] In RevenueCat, confirm `$rc_monthly` points to the monthly product and
   `$rc_annual` points to the annual product in the current offering.
+- [ ] Confirm RevenueCat offering `default` is marked **Current**, both products
+  grant entitlement `pro`, and the production build uses the iOS public SDK key
+  (`appl_…`) rather than the RevenueCat test key.
 - [ ] On a physical TestFlight device with a Sandbox Apple ID, sign in using
   **Sign in with Apple** or the free email-code reviewer account, then open
   **Profile → Unlock Pro Features**.
@@ -82,6 +88,11 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
   collected by the app and linked services.
 - [ ] Verify the Privacy Policy and Terms links resolve from both Profile and
   the paywall.
+- [ ] Confirm Terms links to Apple’s Standard EULA and every legal/support
+  surface uses `support@stecstats.com`.
+- [ ] On a simulator/device with no configured mail account, tap **Contact
+  Support**, then confirm **Share / Copy Address** exposes
+  `support@stecstats.com`.
 
 ## 5 — App Review Information
 
@@ -107,6 +118,9 @@ a real StoreKit payment sheet, so those checks are intentionally manual.
   physical iPad or another supported iPad-class device after a clean install.
 - [ ] Confirm the account-deletion recording, Sign in with Apple check, and
   Restore purchases check were performed on a physical iOS device.
+- [ ] Confirm deleting a test account removes its draft, queued offline game,
+  pending video upload, and pending player-photo upload before the welcome
+  screen appears.
 - [ ] Submit the build.
 
 ---

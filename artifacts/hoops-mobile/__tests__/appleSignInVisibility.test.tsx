@@ -99,7 +99,7 @@ jest.mock('react-native', () => {
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import AuthScreen from '../app/(auth)/index';
+import AuthScreen, { makeClerkAppleTokenRequest } from '../app/(auth)/index';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -127,6 +127,16 @@ function findNodes(node: any, predicate: (n: any) => boolean, acc: any[] = []): 
 function wasAppleButtonRendered(): boolean {
   return MockAppleButton.mock.calls.length > 0;
 }
+
+describe('Apple legacy Clerk request shape', () => {
+  test('sends only the supported strategy and identity token fields', () => {
+    expect(makeClerkAppleTokenRequest('apple-identity-token')).toEqual({
+      strategy: 'oauth_token_apple',
+      token: 'apple-identity-token',
+    });
+    expect(makeClerkAppleTokenRequest('apple-identity-token')).not.toHaveProperty('nonce');
+  });
+});
 
 // ── Suite 1: Android ──────────────────────────────────────────────────────────
 

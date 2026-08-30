@@ -21,6 +21,7 @@ import { tekoStyle } from '@/lib/tekoStyle';
 import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
 import { getGetBillingStatusQueryKey } from '@workspace/api-client-react';
+import { findRevenueCatPackages } from '@/lib/revenuecatConfig';
 
 import { FREE_FEATURES, PRO_FEATURES, PREMIUM_FEATURES } from '@workspace/plan-copy';
 
@@ -29,7 +30,20 @@ export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { offerings, offeringsRefetch, purchase, restore, isPurchasing, isRestoring, isPro, isPremium, configured, isLoading } =
+  const {
+    offerings,
+    offeringsRefetch,
+    offeringsIssue,
+    isOfferingsRefetching,
+    purchase,
+    restore,
+    isPurchasing,
+    isRestoring,
+    isPro,
+    isPremium,
+    configured,
+    isLoading,
+  } =
     useSubscription();
 
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annual'>('annual');
@@ -41,15 +55,11 @@ export default function PaywallScreen() {
   const currentOffering = offerings?.current;
   const packages = currentOffering?.availablePackages ?? [];
 
-  // Separate monthly / annual packages from RevenueCat.
-  // Use `identifier` (e.g. '$rc_monthly') not `packageType` (e.g. 'MONTHLY') — the SDK
-  // uses the enum string for packageType, not the identifier string.
-  const monthlyPkg = packages.find((p: any) => p.identifier === '$rc_monthly') ?? packages[0] ?? null;
-  const annualPkg  = packages.find((p: any) => p.identifier === '$rc_annual') ?? null;
+  const { monthly: monthlyPkg, annual: annualPkg } = findRevenueCatPackages(packages);
   const hasAnnual  = !!annualPkg;
 
   // Pick active package based on toggle; default to annual when available
-  const activePkg = hasAnnual && billingPeriod === 'annual' ? annualPkg : (monthlyPkg ?? packages[0] ?? null);
+  const activePkg = hasAnnual && billingPeriod === 'annual' ? annualPkg : monthlyPkg;
 
   // Derive the price string shown in the card
   const proPrice = activePkg?.product?.priceString ?? (billingPeriod === 'annual' ? '$59.99' : '$9.99');
@@ -278,7 +288,7 @@ export default function PaywallScreen() {
               <View style={[styles.proCta, { backgroundColor: colors.primary, opacity: 0.7 }]}>
                 <ActivityIndicator color="#fff" />
               </View>
-            ) : activePkg ? (
+            ) : activePkg && !offeringsIssue ? (
               <TouchableOpacity
                 onPress={handlePurchase}
                 disabled={isPurchasing}
@@ -295,15 +305,24 @@ export default function PaywallScreen() {
               <View style={{ gap: 6 }}>
                 <TouchableOpacity
                   onPress={() => offeringsRefetch()}
+                  disabled={isOfferingsRefetching}
                   style={[styles.proCta, { backgroundColor: colors.muted, opacity: 0.9 }]}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.proCtaText, { color: colors.mutedForeground }]}>
-                    Tap to Retry
-                  </Text>
+                  {isOfferingsRefetching ? (
+                    <ActivityIndicator color={colors.mutedForeground} />
+                  ) : (
+                    <Text style={[styles.proCtaText, { color: colors.mutedForeground }]}>
+                      Retry Subscription Setup
+                    </Text>
+                  )}
                 </TouchableOpacity>
+                <Text style={[styles.diagnosticTitle, { color: colors.foreground }]}>
+                  {offeringsIssue?.title ?? 'Subscription packages unavailable'}
+                </Text>
                 <Text style={[styles.unconfiguredNote, { color: colors.mutedForeground }]}>
-                  No subscription packages loaded (found {packages.length}). Make sure you are signed in with a Sandbox Apple ID and the products are configured in App Store Connect.
+                  {offeringsIssue?.message ??
+                    `RevenueCat returned ${packages.length} package${packages.length === 1 ? '' : 's'}, but no supported monthly or annual package is ready to purchase.`}
                 </Text>
               </View>
             )
@@ -315,7 +334,7 @@ export default function PaywallScreen() {
                 </Text>
               </View>
               <Text style={[styles.unconfiguredNote, { color: colors.mutedForeground }]}>
-                RevenueCat is not configured in this build (no API key).
+                {offeringsIssue?.message ?? 'RevenueCat is not configured in this build.'}
               </Text>
             </View>
           )}
@@ -487,6 +506,11 @@ function makeStyles(colors: any, insets: any) {
       fontSize: 16,
       fontFamily: 'Inter_700Bold',
       color: '#fff',
+    },
+    diagnosticTitle: {
+      fontSize: 14,
+      fontFamily: 'Inter_600SemiBold',
+      textAlign: 'center',
     },
     trialBadge: {
       position: 'absolute',

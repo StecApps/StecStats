@@ -1,89 +1,61 @@
-# RevenueCat Annual Product Setup
+# Production iOS RevenueCat Configuration
 
-The paywall UI (`app/paywall.tsx`) already supports the annual/monthly toggle and savings badge.
-The toggle only appears when RevenueCat returns a package with `packageType === '$rc_annual'`
-in the **default** offering. Follow the steps below to unlock it.
+This is the single release configuration for the StecStats production iOS app.
+The bundle and product namespaces are intentionally different legacy
+identifiers; do not rename either one during App Review.
 
----
+| Setting | Production value |
+|---|---|
+| App name | StecStats |
+| iOS bundle ID | `com.hoopsstats.coach` |
+| RevenueCat iOS SDK key | Production public key with `appl_` prefix |
+| RevenueCat current offering | `default` |
+| Pro entitlement | `pro` |
+| Monthly package | `$rc_monthly` |
+| Annual package | `$rc_annual` |
+| Monthly App Store product | `com.stecapps.stecstats.pro.monthly` |
+| Annual App Store product | `com.stecapps.stecstats.pro.annualDeal` |
 
-## 1 — Apple App Store Connect
+## 1 — App Store Connect
 
-1. Sign in → **My Apps → Hoops Stats Coach**
-2. Navigate to **Monetization → Subscriptions**
-3. Open the existing subscription group (e.g. *Hoops Stats Pro*)
-4. Click **+** to add a new subscription product
-   | Field | Value |
-   |---|---|
-   | Reference Name | Pro Annual |
-   | Product ID | `com.hoopsstats.coach.pro_annual` |
-   | Duration | 1 Year |
-   | Price | **$59.99 / yr** (Tier 60) |
-5. Under **Localizations**, add an English description:
-   > *Full Pro access — live streaming, highlight reels, career stats — billed annually.*
-6. Set **Free Trial** to **14 days** (matches the monthly product)
-7. Submit for review (or mark "Ready to Submit" if the app is already approved)
+1. Open the app whose bundle ID is `com.hoopsstats.coach`.
+2. Under **Monetization → Subscriptions**, confirm both products are in the same
+   subscription group:
+   - `com.stecapps.stecstats.pro.monthly` — 1 month, $9.99, 14-day trial
+   - `com.stecapps.stecstats.pro.annualDeal` — 1 year, $59.99, 14-day trial
+3. Confirm pricing, localization, tax/category details, review screenshots,
+   storefront availability, and Apple agreements are complete.
+4. Attach both subscriptions to the app version and submit them with the binary.
 
----
+## 2 — RevenueCat
 
-## 2 — Google Play Console
+1. Select the production iOS app for bundle ID `com.hoopsstats.coach`.
+2. Confirm both App Store product IDs above are imported.
+3. Confirm both products grant entitlement `pro`.
+4. Open offering `default` and mark it **Current**.
+5. Assign:
+   - `$rc_monthly` → `com.stecapps.stecstats.pro.monthly`
+   - `$rc_annual` → `com.stecapps.stecstats.pro.annualDeal`
+6. Do not attach either product to the unreleased `premium` entitlement.
 
-1. Sign in → **Hoops Stats Coach → Monetize → Products → Subscriptions**
-2. Click **Create subscription**
-   | Field | Value |
-   |---|---|
-   | Product ID | `com.hoopsstats.coach.pro_annual` |
-   | Name | Pro Annual |
-3. Add a **Base plan**:
-   | Field | Value |
-   |---|---|
-   | Base plan ID | `pro-annual` |
-   | Billing period | Annually |
-   | Price | **$59.99 / yr** |
-4. Add an **offer** for the free trial:
-   - Offer ID: `pro-annual-trial`
-   - Eligibility: New subscribers only
-   - Phase 1: Free trial — **14 days**
-   - Phase 2: Regular billing at $59.99/yr
-5. Activate the base plan and offer
+## 3 — Production build
 
----
+The production profile must set `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` to the
+RevenueCat public iOS SDK key (`appl_…`). The app logs only the selected key
+path, current offering identifier, package identifiers, and product identifiers;
+it never logs the key itself.
 
-## 3 — RevenueCat Dashboard
+## 4 — Final physical-device/TestFlight smoke test
 
-1. Sign in → **Projects → Hoops Stats Coach**
-2. Go to **Products** and add both new store products:
-   - App Store: `com.hoopsstats.coach.pro_annual`
-   - Play Store: `com.hoopsstats.coach.pro_annual`
-3. Go to **Offerings → default**
-4. Click **+ Add package** → choose type **Annual** (identifier: `$rc_annual`)
-5. Attach both new store products to this package
-6. Verify the offering now has **two packages**: Monthly (`$rc_monthly`) and Annual (`$rc_annual`)
-7. Confirm the **Pro** entitlement is attached to the annual product (same entitlement used by monthly)
+1. Install the exact submitted TestFlight build on a physical iOS device.
+2. Sign in with a free account and open **Profile → Unlock Pro Features**.
+3. Confirm Monthly and Annual appear and both prices come from StoreKit.
+4. Select each period and confirm **Start Free Trial** reaches Apple’s purchase
+   sheet.
+5. Complete one Sandbox purchase and confirm the `pro` entitlement activates.
+6. Confirm **Restore purchases** restores the entitlement.
 
----
-
-## 4 — Verify in the App
-
-Once RevenueCat propagates the updated offering (usually < 1 minute):
-
-- Open the paywall — the **Monthly / Annual** toggle should appear above the PRO card
-- The toggle defaults to **Annual** and the PRO card shows **$59.99 / year**
-- The **Annual** button shows a green **"Save 37%"** badge (calculated from $9.99 × 12 vs $59.99)
-- Tapping **Start Free Trial** on the Annual option initiates the `$rc_annual` purchase flow
-- Completing the purchase grants the same **Pro** entitlement as the monthly plan
-
----
-
-## Savings badge math
-
-The badge is calculated automatically in the app:
-
-```
-saved = round((1 − annualPrice / (monthlyPrice × 12)) × 100)
-      = round((1 − 59.99 / (9.99 × 12)) × 100)
-      = round((1 − 59.99 / 119.88) × 100)
-      ≈ 50%   ← at $59.99; adjust price to match stecstats.com positioning
-```
-
-To target ~30% savings, set the annual price to **$83.99**; for ~37% use **$75.49**.
-The badge text updates automatically — no code change needed.
+If loading fails, the paywall now distinguishes a network/App Store failure,
+missing current offering, empty StoreKit response, missing package assignment,
+wrong current offering, and wrong product assignment. Use that message with the
+table above rather than treating every failure as an empty package list.

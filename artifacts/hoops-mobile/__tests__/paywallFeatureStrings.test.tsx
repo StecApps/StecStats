@@ -13,6 +13,10 @@ jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ back: jest.fn() })),
 }));
 
+jest.mock('expo-web-browser', () => ({
+  openBrowserAsync: jest.fn(),
+}));
+
 jest.mock('@/hooks/useColors', () => ({
   useColors: jest.fn(() => ({
     background: '#000',
@@ -34,6 +38,12 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('@/lib/revenuecat', () => ({
   useSubscription: jest.fn(() => ({
     offerings: null,
+    offeringsRefetch: jest.fn(),
+    offeringsIssue: {
+      title: 'Subscriptions unavailable in this build',
+      message: 'RevenueCat is not configured in this test build.',
+    },
+    isOfferingsRefetching: false,
     purchase: jest.fn(),
     restore: jest.fn(),
     isPurchasing: false,
@@ -41,6 +51,7 @@ jest.mock('@/lib/revenuecat', () => ({
     isPro: false,
     isPremium: false,
     configured: false,
+    isLoading: false,
   })),
 }));
 

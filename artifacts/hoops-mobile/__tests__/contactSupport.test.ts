@@ -14,21 +14,30 @@
 
 jest.mock('react-native', () => ({
   Alert: { alert: jest.fn() },
-  Linking: { openURL: jest.fn() },
+  Linking: { canOpenURL: jest.fn(), openURL: jest.fn() },
+  Share: { share: jest.fn() },
 }));
 
 // ── Imports (after mock hoisting) ─────────────────────────────────────────────
 
-import { Alert, Linking } from 'react-native';
-import { CONTACT_SUPPORT_URL, openContactSupport } from '../lib/supportConfig';
+import { Alert, Linking, Share } from 'react-native';
+import {
+  CONTACT_SUPPORT_URL,
+  SUPPORT_EMAIL,
+  openContactSupport,
+} from '../lib/supportConfig';
 
 const alertSpy = Alert.alert as jest.Mock;
 const mockOpenURL = Linking.openURL as jest.Mock;
+const mockCanOpenURL = Linking.canOpenURL as jest.Mock;
+const mockShare = Share.share as jest.Mock;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCanOpenURL.mockResolvedValue(true);
+  mockOpenURL.mockResolvedValue(undefined);
 });
 
 describe('Contact Support link', () => {
@@ -37,30 +46,30 @@ describe('Contact Support link', () => {
   });
 
   test('CONTACT_SUPPORT_URL contains the correct support email address', () => {
-    expect(CONTACT_SUPPORT_URL).toContain('support@stecstats.com');
+    expect(CONTACT_SUPPORT_URL).toContain(SUPPORT_EMAIL);
   });
 
-  test('openContactSupport calls Linking.openURL exactly once', () => {
-    openContactSupport();
+  test('openContactSupport calls Linking.openURL exactly once', async () => {
+    await openContactSupport();
 
     expect(mockOpenURL).toHaveBeenCalledTimes(1);
   });
 
-  test('openContactSupport calls Linking.openURL with CONTACT_SUPPORT_URL', () => {
-    openContactSupport();
+  test('openContactSupport calls Linking.openURL with CONTACT_SUPPORT_URL', async () => {
+    await openContactSupport();
 
     expect(mockOpenURL).toHaveBeenCalledWith(CONTACT_SUPPORT_URL);
   });
 
-  test('openContactSupport calls Linking.openURL with a mailto: URL', () => {
-    openContactSupport();
+  test('openContactSupport calls Linking.openURL with a mailto: URL', async () => {
+    await openContactSupport();
 
     const [url] = mockOpenURL.mock.calls[0];
     expect(url).toContain('mailto:');
   });
 
-  test('openContactSupport calls Linking.openURL with the correct email address', () => {
-    openContactSupport();
+  test('openContactSupport calls Linking.openURL with the correct email address', async () => {
+    await openContactSupport();
 
     const [url] = mockOpenURL.mock.calls[0];
     expect(url).toContain('support@stecstats.com');
@@ -70,14 +79,24 @@ describe('Contact Support link', () => {
     expect(CONTACT_SUPPORT_URL).not.toMatch(/^https?:\/\//);
   });
 
-  test('shows an alert when the device cannot open the email client', async () => {
-    mockOpenURL.mockRejectedValueOnce(new Error('No email app installed'));
+  test('offers a share/copy fallback when no email client is configured', async () => {
+    mockCanOpenURL.mockResolvedValueOnce(false);
 
     await openContactSupport();
 
     expect(alertSpy).toHaveBeenCalledWith(
       'Contact Support',
-      'Unable to open your email app. Please email support@stecstats.com directly.',
+      'No email app is configured. You can share or copy support@stecstats.com instead.',
+      expect.arrayContaining([
+        expect.objectContaining({ text: 'Share / Copy Address' }),
+      ]),
+    );
+    expect(mockOpenURL).not.toHaveBeenCalled();
+
+    const buttons = alertSpy.mock.calls[0][2];
+    await buttons[0].onPress();
+    expect(mockShare).toHaveBeenCalledWith(
+      expect.objectContaining({ message: SUPPORT_EMAIL }),
     );
   });
 });

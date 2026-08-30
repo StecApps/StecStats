@@ -31,6 +31,13 @@ function makeNonce(): string {
 type Phase = 'email' | 'otp';
 type Mode = 'signIn' | 'signUp';
 
+export function makeClerkAppleTokenRequest(identityToken: string) {
+  return {
+    strategy: 'oauth_token_apple' as const,
+    token: identityToken,
+  };
+}
+
 export default function AuthScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -71,14 +78,11 @@ export default function AuthScreen() {
       });
       if (!credential.identityToken) throw new Error('No identity token returned from Apple');
 
-      // Attempt sign-in for returning users
-      // nonce must be forwarded to Clerk so it can verify SHA256(nonce) in Apple's identity token
+      // Keep the nonce on Apple's native request for replay protection. The
+      // installed Clerk legacy token strategy accepts only strategy + token;
+      // forwarding nonce produces "nonce is not a valid parameter".
       const signInResult = await withAuthTimeout(
-        signIn!.create({
-          strategy: 'oauth_token_apple',
-          token: credential.identityToken,
-          nonce,
-        } as any),
+        signIn!.create(makeClerkAppleTokenRequest(credential.identityToken) as any),
         'contacting Apple sign-in',
       );
 

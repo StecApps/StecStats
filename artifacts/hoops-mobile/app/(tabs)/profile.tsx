@@ -28,6 +28,7 @@ import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 import * as Updates from 'expo-updates';
 import { openStoreSubscriptions } from '@/lib/manageBilling';
 import { openContactSupport } from '@/lib/supportConfig';
+import { clearDeletedAccountDataThenSignOut } from '@/lib/accountDeletionCleanup';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -293,6 +294,27 @@ export default function ProfileScreen() {
     await signOut();
   }
 
+  async function finishDeletedAccountOnDevice(clerkUserId: string | null | undefined) {
+    try {
+      await clearDeletedAccountDataThenSignOut(clerkUserId, signOut);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert(
+        'Account deleted — device cleanup needed',
+        'The server accepted the deletion, but this device still has recoverable drafts or uploads. Keep the app open and retry cleanup before another person signs in.',
+        [
+          {
+            text: 'Retry Cleanup',
+            onPress: () => {
+              void finishDeletedAccountOnDevice(clerkUserId);
+            },
+          },
+        ],
+        { cancelable: false },
+      );
+    }
+  }
+
   function handleDeleteAccount() {
     if (deleteMyAccount.isPending) return;
 
@@ -314,15 +336,10 @@ export default function ProfileScreen() {
                   text: 'Delete Account',
                   style: 'destructive',
                   onPress: () => {
+                    const deletingClerkUserId = user?.id;
                     deleteMyAccount.mutate(undefined, {
                       onSuccess: async () => {
-                        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        try {
-                          await signOut();
-                        } catch {
-                          // The server has already removed the Clerk identity,
-                          // so a local sign-out failure must not hide success.
-                        }
+                        await finishDeletedAccountOnDevice(deletingClerkUserId);
                       },
                       onError: () => {
                         Alert.alert(

@@ -20,3 +20,15 @@ export async function clearDeletedAccountLocalData(clerkUserId?: string | null):
   }
   await Promise.all(keys.map((key) => AsyncStorage.removeItem(key)));
 }
+
+/**
+ * Enforces the deletion boundary: recoverable local data must be gone before
+ * the Clerk session is allowed to sign out and a later account can sign in.
+ */
+export async function clearDeletedAccountDataThenSignOut(
+  clerkUserId: string | null | undefined,
+  signOut: () => Promise<unknown>,
+): Promise<void> {
+  await clearDeletedAccountLocalData(clerkUserId);
+  await signOut();
+}

@@ -1,16 +1,28 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect } from 'react';
 import { Platform } from 'react-native';
 import Purchases from 'react-native-purchases';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
+import {
+  getRevenueCatOfferingIssue,
+  IOS_PRODUCT_IDS,
+  PREMIUM_ENTITLEMENT,
+  PRO_ENTITLEMENT,
+  REVENUECAT_CURRENT_OFFERING,
+  REVENUECAT_PACKAGE_IDS,
+} from './revenuecatConfig';
 
 const REVENUECAT_TEST_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
 const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY;
 const REVENUECAT_ANDROID_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY;
 
-// Entitlement identifiers — must match what the seed script creates.
-export const PRO_ENTITLEMENT = 'pro';
-export const PREMIUM_ENTITLEMENT = 'premium';
+export {
+  IOS_PRODUCT_IDS,
+  PREMIUM_ENTITLEMENT,
+  PRO_ENTITLEMENT,
+  REVENUECAT_CURRENT_OFFERING,
+  REVENUECAT_PACKAGE_IDS,
+} from './revenuecatConfig';
 
 interface RevenueCatKeyResult {
   key: string | null;
@@ -110,7 +122,15 @@ function useSubscriptionContext() {
     queryKey: ['revenuecat', 'offerings'],
     queryFn: async () => {
       if (!configured) return null;
-      return Purchases.getOfferings();
+      const offerings = await Purchases.getOfferings();
+      const current = offerings.current;
+      const packageSummary = (current?.availablePackages ?? [])
+        .map((pkg) => `${pkg.identifier}:${pkg.product.identifier}`)
+        .join(', ');
+      console.info(
+        `[RevenueCat] Offering: current=${current?.identifier ?? 'none'}; packages=${packageSummary || 'none'}`,
+      );
+      return offerings;
     },
     staleTime: 300 * 1000,
   });
@@ -137,11 +157,30 @@ function useSubscriptionContext() {
   const entitlements = customerInfoQuery.data?.entitlements.active ?? {};
   const isPro = PRO_ENTITLEMENT in entitlements || PREMIUM_ENTITLEMENT in entitlements;
   const isPremium = PREMIUM_ENTITLEMENT in entitlements;
+  const enforceProductionIosConfig =
+    !__DEV__ &&
+    Platform.OS === 'ios' &&
+    Constants.executionEnvironment !== 'storeClient';
+  const offeringsIssue = getRevenueCatOfferingIssue({
+    configured,
+    isLoading: offeringsQuery.isLoading,
+    error: offeringsQuery.error,
+    offerings: offeringsQuery.data,
+    enforceProductionIosConfig,
+  });
+
+  useEffect(() => {
+    if (offeringsIssue && !offeringsQuery.isLoading) {
+      console.warn(`[RevenueCat] ${offeringsIssue.title}: ${offeringsIssue.message}`);
+    }
+  }, [offeringsIssue?.title, offeringsIssue?.message, offeringsQuery.isLoading]);
 
   return {
     customerInfo: customerInfoQuery.data,
     offerings: offeringsQuery.data,
     offeringsRefetch: offeringsQuery.refetch,
+    offeringsIssue,
+    isOfferingsRefetching: offeringsQuery.isFetching,
     isPro,
     isPremium,
     isSubscribed: isPro,
