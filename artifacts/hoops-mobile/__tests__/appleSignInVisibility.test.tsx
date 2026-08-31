@@ -279,4 +279,52 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
       session: 'sess_apple_fallback',
     });
   });
+
+  test('does not open a second Apple flow while the SSO browser is still open', async () => {
+    mockStartAppleAuthenticationFlow.mockClear();
+    mockStartSSOFlow.mockClear();
+    let resolveFallback!: (value: {
+      createdSessionId: null;
+      setActive: undefined;
+    }) => void;
+    mockStartAppleAuthenticationFlow.mockRejectedValueOnce({
+      errors: [{
+        code: 'authorization_invalid',
+        longMessage: 'You are not authorized to perform this request',
+      }],
+    });
+    mockStartSSOFlow.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFallback = resolve;
+        }),
+    );
+    MockAppleButton.mockClear();
+
+    await act(async () => {
+      renderer.create(<AuthScreen />);
+    });
+
+    const buttonProps = MockAppleButton.mock.calls.at(-1)?.[0];
+    let firstPress!: Promise<void>;
+    await act(async () => {
+      firstPress = buttonProps.onPress();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await buttonProps.onPress();
+    });
+
+    expect(mockStartAppleAuthenticationFlow).toHaveBeenCalledTimes(1);
+    expect(mockStartSSOFlow).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFallback({
+        createdSessionId: null,
+        setActive: undefined,
+      });
+      await firstPress;
+    });
+  });
 });

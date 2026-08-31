@@ -42,6 +42,7 @@ export default function AuthScreen() {
   const [error, setError] = useState('');
   const [appleAvailable, setAppleAvailable] = useState(false);
   const otpRef = useRef<TextInput>(null);
+  const appleFlowInProgressRef = useRef(false);
 
   const isLoaded = signInLoaded && signUpLoaded;
 
@@ -52,7 +53,8 @@ export default function AuthScreen() {
   }, []);
 
   async function handleAppleSignIn() {
-    if (!isLoaded) return;
+    if (!isLoaded || appleFlowInProgressRef.current) return;
+    appleFlowInProgressRef.current = true;
     setLoading(true);
     setError('');
     try {
@@ -92,10 +94,12 @@ export default function AuthScreen() {
         // identity-token exchange even though Apple OAuth is enabled. Fall
         // back only for that exact rejection to Clerk's configured Apple SSO
         // flow; do not hide unrelated Apple or network failures.
-        const fallback = await withAuthTimeout(
-          startSSOFlow({ strategy: 'oauth_apple' }),
-          'opening Apple sign-in',
-        );
+        // Do not race an Expo WebBrowser auth session against our generic
+        // timeout. Rejecting the race does not close the native browser, and a
+        // second tap would then fail with "Another web browser is already
+        // open". Keep this flow single-flight until Expo reports success,
+        // cancellation, or failure.
+        const fallback = await startSSOFlow({ strategy: 'oauth_apple' });
         if (fallback.createdSessionId && fallback.setActive) {
           await withAuthTimeout(
             fallback.setActive({ session: fallback.createdSessionId }),
@@ -112,6 +116,7 @@ export default function AuthScreen() {
         );
       }
     } finally {
+      appleFlowInProgressRef.current = false;
       setLoading(false);
     }
   }
