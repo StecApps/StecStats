@@ -134,3 +134,4 @@
 - [Workspace library build order](workspace-library-build-order.md) — build shared declarations before running the mobile typecheck after a clone or branch switch.
 - [Expo OTA runtime isolation](expo-ota-runtime-isolation.md) — native rebuilds still load a bad OTA when runtimeVersion follows an unchanged app version; use a new runtime to escape it.
 - [Expo browser auth sessions are not cancellable by Promise timeout](expo-browser-auth-timeout.md) — never timeout-race openAuthSessionAsync; keep the flow single-flight until Expo settles it.
+- [Clerk proxy Brotli responses break React Native JSON parsing](clerk-proxy-brotli.md) — force Accept-Encoding: identity upstream; larger OAuth responses otherwise arrive as compressed text.

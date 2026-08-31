@@ -77,6 +77,12 @@ export function clerkProxyMiddleware(): RequestHandler {
         const host = getClerkProxyHost(req) || "";
         const proxyUrl = `${protocol}://${host}${CLERK_PROXY_PATH}`;
 
+        // React Native's fetch implementation can expose Brotli-compressed
+        // response bytes as text instead of decoding them. Clerk compresses
+        // larger successful OAuth responses, which then fail JSON parsing on
+        // iOS. Ask Clerk for an identity response so every proxied native
+        // response is valid JSON on arrival.
+        proxyReq.setHeader("Accept-Encoding", "identity");
         proxyReq.setHeader("Clerk-Proxy-Url", proxyUrl);
         proxyReq.setHeader("Clerk-Secret-Key", secretKey);
 
