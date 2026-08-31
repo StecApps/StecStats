@@ -7,8 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "hoopsstats",
     "userInterfaceStyle": "dark",
-    "jsEngine": "jsc",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
       "resizeMode": "contain",
@@ -103,7 +102,7 @@
     },
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": false
+      "reactCompiler": true
     },
     "extra": {
       "router": {
