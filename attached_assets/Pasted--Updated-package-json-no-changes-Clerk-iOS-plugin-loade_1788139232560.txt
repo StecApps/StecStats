@@ -1,0 +1,86 @@
+✔ Updated package.json | no changes
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+[withSwiftConcurrencyFix] Already applied — skipping.
+✅ Updated iOS deployment target to 17.0
+✔ Finished prebuild
+Local iOS release environment validated for clerk.stecstats.stecco.org.
+stevenstec@Mac hoops-mobile % find "$HOME/Library/Developer/Xcode/Archives" \
+  -path "*.xcarchive/dSYMs/StecStats.app.dSYM" \
+  -print
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats 2026-08-23 21.56.57.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats 2026-08-23 20.28.37.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats 2026-08-23 22.20.46.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats 2026-08-23 16.51.11.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats 2026-08-23 20.07.26.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats 2026-08-23 19.44.21.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats 2026-08-23 12.19.57.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-23/StecStats 2026-08-23 20.53.50.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 13.56.49.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 02.47.08.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 03.20.27.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 11.48.41.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 16.54.43.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 01.47.11.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 03.33.36.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 03.47.50.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 15.29.07.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 13.04.11.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-15/StecStats 2026-08-15 07.29.37.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-12/StecStats 2026-08-12 20.55.31.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.04 PM.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 7.46 PM.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 6.41 PM.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 3.34 PM.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 4.24 PM.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 7.32 PM.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.40 PM.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-09/StecStats 2026-08-09 12.31.20.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-09/StecStats 2026-08-09 16.09.51.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-09/StecStats 2026-08-09 23.48.35.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-09/StecStats 2026-08-09 21.48.11.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-09/StecStats 2026-08-09 22.58.04.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-09/StecStats 2026-08-09 22.13.42.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-09/StecStats 2026-08-09 15.32.01.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-09/StecStats 2026-08-09 13.08.43.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-10/StecStats 2026-08-10 20.34.04.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-10/StecStats 2026-08-10 21.42.24.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-11/StecStats 2026-08-11 05.51.34.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-11/StecStats 2026-08-11 06.01.12.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-29/StecStats 8-29-26, 9.57 PM.xcarchive/dSYMs/StecStats.app.dSYM
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-16/StecStats 2026-08-16 16.08.42.xcarchive/dSYMs/StecStats.app.dSYM
+stevenstec@Mac hoops-mobile % DSYM="$HOME/Library/Developer/Xcode/Archives/2026-08-16/StecStats 2026-08-16 16.08.42.xcarchive/dSYMs/StecStats.app.dSYM"
+
+dwarfdump --uuid "$DSYM"
+UUID: 68C61AB7-AC6A-3407-B461-7407AFC13C4E (arm64) /Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-16/StecStats 2026-08-16 16.08.42.xcarchive/dSYMs/StecStats.app.dSYM/Contents/Resources/DWARF/StecStats
+stevenstec@Mac hoops-mobile % TARGET="25990229-1BCF-3268-AC0F-1F36060D1A83"
+
+while IFS= read -r DSYM; do
+  if dwarfdump --uuid "$DSYM" 2>/dev/null | grep -qi "$TARGET"; then
+    echo "MATCH FOUND:"
+    echo "$DSYM"
+  fi
+done < <(
+  find "$HOME/Library/Developer/Xcode/Archives" \
+    -path "*.xcarchive/dSYMs/StecStats.app.dSYM" \
+    -print
+)
+MATCH FOUND:
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.04 PM.xcarchive/dSYMs/StecStats.app.dSYM
+MATCH FOUND:
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 7.46 PM.xcarchive/dSYMs/StecStats.app.dSYM
+MATCH FOUND:
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 6.41 PM.xcarchive/dSYMs/StecStats.app.dSYM
+MATCH FOUND:
+/Users/stevenstec/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 7.32 PM.xcarchive/dSYMs/StecStats.app.dSYM
+stevenstec@Mac hoops-mobile % DSYM="$HOME/Library/Developer/Xcode/Archives/2026-08-30/StecStats 8-30-26, 5.04 PM.xcarchive/dSYMs/StecStats.app.dSYM"
+
+atos -arch arm64 \
+  -o "$DSYM/Contents/Resources/DWARF/StecStats" \
+  -l 0x1002a0000 \
+  0x100af9368 0x100af80f8 0x100af97f0 0x1002aceec
+ErrorRecovery.crash() (in StecStats) (/<compiler-generated>:0)
+ErrorRecovery.runNextTask() (in StecStats) (ErrorRecovery.swift:192)
+closure #1 in closure #1 in ErrorRecovery.tryRelaunchFromCache() (in StecStats) (ErrorRecovery.swift:237)
+<deduplicated_symbol> (in StecStats) + 28
+stevenstec@Mac hoops-mobile % 
