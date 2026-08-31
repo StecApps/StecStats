@@ -43,13 +43,6 @@ jest.mock('@clerk/expo', () => ({
   })),
 }));
 
-const mockStartAppleAuthenticationFlow = jest.fn();
-jest.mock('@clerk/expo/apple', () => ({
-  useSignInWithApple: jest.fn(() => ({
-    startAppleAuthenticationFlow: mockStartAppleAuthenticationFlow,
-  })),
-}));
-
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, bottom: 0, left: 0, right: 0 })),
 }));
@@ -233,8 +226,9 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
     expect(wasAppleButtonRendered()).toBe(true);
   });
 
-  test('Apple button uses Clerk native Apple authentication flow', async () => {
-    mockStartAppleAuthenticationFlow.mockResolvedValue({
+  test('Apple button uses Clerk Apple OAuth directly', async () => {
+    mockStartSSOFlow.mockClear();
+    mockStartSSOFlow.mockResolvedValue({
       createdSessionId: null,
     });
     MockAppleButton.mockClear();
@@ -248,51 +242,15 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
       await buttonProps.onPress();
     });
 
-    expect(mockStartAppleAuthenticationFlow).toHaveBeenCalledTimes(1);
-  });
-
-  test('falls back to Apple SSO when the native token exchange is unauthorized', async () => {
-    const fallbackSetActive = jest.fn().mockResolvedValue(undefined);
-    mockStartAppleAuthenticationFlow.mockRejectedValueOnce({
-      errors: [{
-        code: 'authorization_invalid',
-        longMessage: 'You are not authorized to perform this request',
-      }],
-    });
-    mockStartSSOFlow.mockResolvedValueOnce({
-      createdSessionId: 'sess_apple_fallback',
-      setActive: fallbackSetActive,
-    });
-    MockAppleButton.mockClear();
-
-    await act(async () => {
-      renderer.create(<AuthScreen />);
-    });
-
-    const buttonProps = MockAppleButton.mock.calls.at(-1)?.[0];
-    await act(async () => {
-      await buttonProps.onPress();
-    });
-
     expect(mockStartSSOFlow).toHaveBeenCalledWith({ strategy: 'oauth_apple' });
-    expect(fallbackSetActive).toHaveBeenCalledWith({
-      session: 'sess_apple_fallback',
-    });
   });
 
   test('does not open a second Apple flow while the SSO browser is still open', async () => {
-    mockStartAppleAuthenticationFlow.mockClear();
     mockStartSSOFlow.mockClear();
     let resolveFallback!: (value: {
       createdSessionId: null;
       setActive: undefined;
     }) => void;
-    mockStartAppleAuthenticationFlow.mockRejectedValueOnce({
-      errors: [{
-        code: 'authorization_invalid',
-        longMessage: 'You are not authorized to perform this request',
-      }],
-    });
     mockStartSSOFlow.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -316,7 +274,6 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
       await buttonProps.onPress();
     });
 
-    expect(mockStartAppleAuthenticationFlow).toHaveBeenCalledTimes(1);
     expect(mockStartSSOFlow).toHaveBeenCalledTimes(1);
 
     await act(async () => {

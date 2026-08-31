@@ -128,7 +128,7 @@
 - [Account deletion side-effect ordering](account-deletion-side-effect-ordering.md) — external revocations and identity deletion must never precede a retryable local-data failure boundary.
 - [Signed upload deletion boundary](signed-upload-deletion-boundary.md) — deletion must wait through the exact expiry of any issued direct-upload capability before its final media sweep.
 - [Clerk Expo native proxy support](clerk-expo-native-proxy.md) — old Expo SDKs drop proxyUrl on native; use @clerk/expo v4+ and verify proxy traffic on-device.
-- [Clerk native Apple transfer flow](clerk-native-apple-transfer-flow.md) — use the SDK’s native Apple hook; manual sign-in-first token exchange rejects new Apple users with 403.
+- [Clerk Apple strategy selection](clerk-native-apple-transfer-flow.md) — this managed instance must use oauth_apple SSO; its native oauth_token_apple helper fails in production.
 - [RevenueCat package relations](revenuecat-package-relations.md) — package-product responses nest product IDs and store identifiers under `relation.product`.
 - [App Store product identifiers](app-store-product-identifiers.md) — RevenueCat must use App Store Connect’s Product ID column, not its Reference Name.
 - [Workspace library build order](workspace-library-build-order.md) — build shared declarations before running the mobile typecheck after a clone or branch switch.

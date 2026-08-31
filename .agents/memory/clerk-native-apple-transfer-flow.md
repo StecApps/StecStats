@@ -1,10 +1,10 @@
 ---
-name: Clerk native Apple transfer flow
-description: Why native Apple authentication must use Clerk’s supported Expo helper rather than a manual token exchange.
+name: Clerk Apple strategy selection
+description: Why StecStats uses Clerk Apple OAuth instead of the native Apple token helper.
 ---
 
-Use Clerk’s native Apple authentication helper exported from `@clerk/expo/apple`. Do not manually call the legacy Apple token strategy and reproduce sign-in/sign-up transfer logic.
+Use Clerk’s `oauth_apple` SSO flow directly for StecStats. Do not use the native `oauth_token_apple` helper or manually reproduce its sign-in/sign-up transfer logic.
 
-**Why:** A valid native Apple credential for a new user can be rejected with HTTP 403 when a custom flow attempts sign-in before establishing or transferring the sign-up. Clerk’s helper owns secure nonce generation and the sign-up-versus-existing-account transfer sequence.
+**Why:** The managed production Clerk instance advertises both strategies, but its native helper repeatedly failed during the production token exchange. The configured browser-based Apple OAuth flow reaches the managed shared Apple gateway and avoids that broken exchange.
 
-**How to apply:** For native iOS Apple login, call the helper and activate its returned session. Keep direct legacy sign-in/sign-up APIs only for flows not yet migrated to Clerk’s current API.
+**How to apply:** Start `oauth_apple` as a single-flight browser auth session and activate the returned session. Do not Promise-timeout-race the browser session, and do not add the native helper back as a first attempt or fallback.

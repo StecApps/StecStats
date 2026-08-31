@@ -11,7 +11,6 @@ import {
   ScrollView,
   useColorScheme,
 } from 'react-native';
-import { useSignInWithApple } from '@clerk/expo/apple';
 import { useSSO } from '@clerk/expo';
 import { useSignIn, useSignUp } from '@clerk/expo/legacy';
 import { useColors } from '@/hooks/useColors';
@@ -31,7 +30,6 @@ export default function AuthScreen() {
   const colorScheme = useColorScheme();
   const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn();
   const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp();
-  const { startAppleAuthenticationFlow } = useSignInWithApple();
   const { startSSOFlow } = useSSO();
 
   const [phase, setPhase] = useState<Phase>('email');
@@ -58,14 +56,11 @@ export default function AuthScreen() {
     setLoading(true);
     setError('');
     try {
-      // Clerk owns the secure nonce, Apple token exchange, and existing-user
-      // transfer flow. Reimplementing those steps can leave a production
-      // attempt in an unauthorized transfer state.
-      const result = await withAuthTimeout(
-        startAppleAuthenticationFlow(),
-        'contacting Apple sign-in',
-      );
-
+      // The managed Clerk instance supports Apple OAuth, while its native
+      // oauth_token_apple exchange rejects or mis-parses production iOS
+      // tokens. Use the configured OAuth flow directly instead of attempting
+      // that broken native exchange first.
+      const result = await startSSOFlow({ strategy: 'oauth_apple' });
       if (result.createdSessionId && result.setActive) {
         await withAuthTimeout(
           result.setActive({ session: result.createdSessionId }),
@@ -74,47 +69,13 @@ export default function AuthScreen() {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err: any) {
-      if (err?.code === 'ERR_REQUEST_CANCELED') return; // User dismissed the Apple sheet
-      const message =
+      if (err?.code === 'ERR_REQUEST_CANCELED') return;
+      setError(
         err?.errors?.[0]?.longMessage ??
         err?.errors?.[0]?.message ??
         err?.message ??
-        'Apple Sign-In failed';
-      const isAuthorizationRejection =
-        err?.errors?.[0]?.code === 'authorization_invalid' ||
-        /not authorized to perform this request/i.test(message);
-
-      if (!isAuthorizationRejection) {
-        setError(message);
-        return;
-      }
-
-      try {
-        // Some managed Clerk production instances reject Apple's native
-        // identity-token exchange even though Apple OAuth is enabled. Fall
-        // back only for that exact rejection to Clerk's configured Apple SSO
-        // flow; do not hide unrelated Apple or network failures.
-        // Do not race an Expo WebBrowser auth session against our generic
-        // timeout. Rejecting the race does not close the native browser, and a
-        // second tap would then fail with "Another web browser is already
-        // open". Keep this flow single-flight until Expo reports success,
-        // cancellation, or failure.
-        const fallback = await startSSOFlow({ strategy: 'oauth_apple' });
-        if (fallback.createdSessionId && fallback.setActive) {
-          await withAuthTimeout(
-            fallback.setActive({ session: fallback.createdSessionId }),
-            'opening your account',
-          );
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-      } catch (fallbackErr: any) {
-        setError(
-          fallbackErr?.errors?.[0]?.longMessage ??
-          fallbackErr?.errors?.[0]?.message ??
-          fallbackErr?.message ??
-          message,
-        );
-      }
+        'Apple Sign-In failed',
+      );
     } finally {
       appleFlowInProgressRef.current = false;
       setLoading(false);
