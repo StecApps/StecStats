@@ -36,6 +36,13 @@ jest.mock('@clerk/expo/legacy', () => ({
   })),
 }));
 
+const mockStartSSOFlow = jest.fn();
+jest.mock('@clerk/expo', () => ({
+  useSSO: jest.fn(() => ({
+    startSSOFlow: mockStartSSOFlow,
+  })),
+}));
+
 const mockStartAppleAuthenticationFlow = jest.fn();
 jest.mock('@clerk/expo/apple', () => ({
   useSignInWithApple: jest.fn(() => ({
@@ -242,5 +249,34 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
     });
 
     expect(mockStartAppleAuthenticationFlow).toHaveBeenCalledTimes(1);
+  });
+
+  test('falls back to Apple SSO when the native token exchange is unauthorized', async () => {
+    const fallbackSetActive = jest.fn().mockResolvedValue(undefined);
+    mockStartAppleAuthenticationFlow.mockRejectedValueOnce({
+      errors: [{
+        code: 'authorization_invalid',
+        longMessage: 'You are not authorized to perform this request',
+      }],
+    });
+    mockStartSSOFlow.mockResolvedValueOnce({
+      createdSessionId: 'sess_apple_fallback',
+      setActive: fallbackSetActive,
+    });
+    MockAppleButton.mockClear();
+
+    await act(async () => {
+      renderer.create(<AuthScreen />);
+    });
+
+    const buttonProps = MockAppleButton.mock.calls.at(-1)?.[0];
+    await act(async () => {
+      await buttonProps.onPress();
+    });
+
+    expect(mockStartSSOFlow).toHaveBeenCalledWith({ strategy: 'oauth_apple' });
+    expect(fallbackSetActive).toHaveBeenCalledWith({
+      session: 'sess_apple_fallback',
+    });
   });
 });

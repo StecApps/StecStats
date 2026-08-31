@@ -12,6 +12,7 @@ import {
   useColorScheme,
 } from 'react-native';
 import { useSignInWithApple } from '@clerk/expo/apple';
+import { useSSO } from '@clerk/expo';
 import { useSignIn, useSignUp } from '@clerk/expo/legacy';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +32,7 @@ export default function AuthScreen() {
   const { signIn, setActive: setSignInActive, isLoaded: signInLoaded } = useSignIn();
   const { signUp, setActive: setSignUpActive, isLoaded: signUpLoaded } = useSignUp();
   const { startAppleAuthenticationFlow } = useSignInWithApple();
+  const { startSSOFlow } = useSSO();
 
   const [phase, setPhase] = useState<Phase>('email');
   const [mode, setMode] = useState<Mode>('signIn');
@@ -71,7 +73,44 @@ export default function AuthScreen() {
       }
     } catch (err: any) {
       if (err?.code === 'ERR_REQUEST_CANCELED') return; // User dismissed the Apple sheet
-      setError(err?.errors?.[0]?.longMessage ?? err?.message ?? 'Apple Sign-In failed');
+      const message =
+        err?.errors?.[0]?.longMessage ??
+        err?.errors?.[0]?.message ??
+        err?.message ??
+        'Apple Sign-In failed';
+      const isAuthorizationRejection =
+        err?.errors?.[0]?.code === 'authorization_invalid' ||
+        /not authorized to perform this request/i.test(message);
+
+      if (!isAuthorizationRejection) {
+        setError(message);
+        return;
+      }
+
+      try {
+        // Some managed Clerk production instances reject Apple's native
+        // identity-token exchange even though Apple OAuth is enabled. Fall
+        // back only for that exact rejection to Clerk's configured Apple SSO
+        // flow; do not hide unrelated Apple or network failures.
+        const fallback = await withAuthTimeout(
+          startSSOFlow({ strategy: 'oauth_apple' }),
+          'opening Apple sign-in',
+        );
+        if (fallback.createdSessionId && fallback.setActive) {
+          await withAuthTimeout(
+            fallback.setActive({ session: fallback.createdSessionId }),
+            'opening your account',
+          );
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      } catch (fallbackErr: any) {
+        setError(
+          fallbackErr?.errors?.[0]?.longMessage ??
+          fallbackErr?.errors?.[0]?.message ??
+          fallbackErr?.message ??
+          message,
+        );
+      }
     } finally {
       setLoading(false);
     }
