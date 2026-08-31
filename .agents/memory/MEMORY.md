@@ -132,3 +132,4 @@
 - [RevenueCat package relations](revenuecat-package-relations.md) — package-product responses nest product IDs and store identifiers under `relation.product`.
 - [App Store product identifiers](app-store-product-identifiers.md) — RevenueCat must use App Store Connect’s Product ID column, not its Reference Name.
 - [Workspace library build order](workspace-library-build-order.md) — build shared declarations before running the mobile typecheck after a clone or branch switch.
+- [Expo OTA runtime isolation](expo-ota-runtime-isolation.md) — native rebuilds still load a bad OTA when runtimeVersion follows an unchanged app version; use a new runtime to escape it.
