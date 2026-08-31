@@ -111,16 +111,17 @@ vi.mock("@workspace/db", () => {
 vi.mock("drizzle-orm", () => ({
   eq:     vi.fn((_col: unknown, _val: unknown) => ({})),
   isNull: vi.fn((_col: unknown) => ({})),
-  // and() and ne() are used by the secondary-account mapping query
-  // (finds any row sharing the same email but a different id).
+  // and() and lt() are used by the secondary-account mapping query. Restricting
+  // the match to lower ids prevents the oldest account mapping to a newer row.
   and:    vi.fn((..._args: unknown[]) => ({})),
-  ne:     vi.fn((_col: unknown, _val: unknown) => ({})),
+  lt:     vi.fn((_col: unknown, _val: unknown) => ({})),
 }));
 
 // ---------------------------------------------------------------------------
 // Real import (after mocks are registered)
 // ---------------------------------------------------------------------------
 import { requireAuth } from "../requireAuth";
+import { lt } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -239,6 +240,19 @@ describe("requireAuth — per-request DB read contract", () => {
     expect(req.appUser).toBeDefined();
     expect(req.appUser?.id).toBe(mockUser.id);
     expect(req.appUser?.clerkUserId).toBe(mockUser.clerkUserId);
+  });
+
+  it("only maps duplicate-email identities to an older local account", async () => {
+    const req = makeMockReq();
+    const res = makeMockRes();
+    const next = vi.fn() as NextFunction;
+
+    await requireAuth(req, res, next);
+
+    expect(lt).toHaveBeenCalledWith("id", mockUser.id);
+    expect(req.authenticatedClerkUserId).toBe(mockUser.clerkUserId);
+    expect(req.appUser?.id).toBe(mockUser.id);
+    expect(next).toHaveBeenCalledTimes(1);
   });
 
   // -------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { getAuth, clerkClient } from "@clerk/express";
 import { createPublicKey, createVerify } from "crypto";
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, isNull, lt } from "drizzle-orm";
 import { db, usersTable, playersTable, teamsTable, gamesTable, type User } from "@workspace/db";
 
 declare global {
@@ -244,12 +244,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       }
     }
 
-    // If this user record has an email that matches another existing user (e.g. the
-    // same person authenticated via a different Clerk instance — mobile test vs web
-    // live), use the primary account (lower id) so both surfaces share the same data.
+    // If this user record has an email that matches an OLDER existing user (e.g.
+    // the same person authenticated via a different Clerk instance — mobile test
+    // vs web live), use the oldest account so both surfaces share the same data.
+    //
+    // Only search lower ids. Searching for "any other" matching row lets the
+    // oldest account map forward to a newer duplicate, hiding its historical data
+    // and making destructive routes compare against the wrong Clerk identity.
     if (user && email) {
       const primaryUser = await db.query.usersTable.findFirst({
-        where: and(eq(usersTable.email, email), ne(usersTable.id, user.id)),
+        where: and(eq(usersTable.email, email), lt(usersTable.id, user.id)),
         orderBy: (u, { asc }) => [asc(u.id)],
       });
       if (primaryUser) {
