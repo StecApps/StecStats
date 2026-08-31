@@ -269,8 +269,6 @@ const CLERK_PROXY_URL =
 console.info(`[Clerk] Transport: ${CLERK_PROXY_URL ? 'proxy' : 'direct'}`);
 
 export default function RootLayout() {
-  useOTAUpdate();
-
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,

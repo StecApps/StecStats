@@ -3,6 +3,7 @@ const path = require('path');
 
 const EXPECTED_CLERK_HOST = 'clerk.stecstats.stecco.org';
 const REQUIRED_CLERK_STRATEGIES = ['email_code', 'oauth_token_apple'];
+const RESCUE_RUNTIME_VERSION = '1.0.0-rescue-20260830';
 const PUBLISHED_ARTIFACT_PATH = path.resolve(
   __dirname,
   '../../hoops-stats/.replit-artifact/artifact.toml',
@@ -51,6 +52,21 @@ function hasClerkCompatibleIosTarget() {
       ),
     );
     return Number.parseFloat(properties['ios.deploymentTarget']) >= 17;
+  } catch {
+    return false;
+  }
+}
+
+function hasSafeOtaStartupConfig() {
+  try {
+    const appConfig = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), 'app.json'), 'utf8'),
+    ).expo;
+    return (
+      appConfig?.updates?.enabled === true &&
+      appConfig?.updates?.checkAutomatically === 'NEVER' &&
+      appConfig?.runtimeVersion === RESCUE_RUNTIME_VERSION
+    );
   } catch {
     return false;
   }
@@ -111,6 +127,11 @@ if (!clerkExpoVersion || !clerkExpoVersion.startsWith('4.')) {
 }
 if (!hasClerkCompatibleIosTarget()) {
   invalid.push('iOS deployment target 17.0+ (required by ClerkExpo)');
+}
+if (!hasSafeOtaStartupConfig()) {
+  invalid.push(
+    `isolated OTA runtime ${RESCUE_RUNTIME_VERSION} with startup checks disabled`,
+  );
 }
 
 async function verifyClerkProxy() {
@@ -181,6 +202,7 @@ module.exports = {
   decodePublishableKeyHost,
   getInstalledClerkExpoVersion,
   hasClerkCompatibleIosTarget,
+  hasSafeOtaStartupConfig,
   matchesPublishedLegalHost,
   readPublishedLegalHost,
   verifyClerkProxy,
