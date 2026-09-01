@@ -27,7 +27,7 @@ For the simplest review path, no demo account is required:
 
 1. Open StecStats.
 2. Tap **Sign in with Apple**.
-3. Complete Apple’s native sign-in sheet. A new free StecStats account is
+3. Complete Apple’s authorization flow. A new free StecStats account is
    created and the app opens automatically.
 4. To review the in-app purchase, open
    **Profile → Unlock Pro Features → Start Free Trial**.
