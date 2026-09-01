@@ -158,9 +158,9 @@ export function ApiAuthSetup() {
     setAuthTokenGetter(() => getToken());
   }, [getToken]);
 
-  // When auth becomes ready, reset all queries so pre-auth 401 error entries
-  // are removed and active (mounted) query observers immediately re-fetch with
-  // the fresh Clerk token — no pull-to-refresh required.
+  // When auth becomes ready OR the active Clerk identity changes, reset all
+  // queries so pre-auth errors and the previous account's cached data are
+  // removed. Active observers immediately re-fetch with the fresh Clerk token.
   //
   // resetQueries() is preferred over clear() because it notifies active
   // observers so they re-fetch inline, whereas clear() destroys observers and
@@ -184,7 +184,7 @@ export function ApiAuthSetup() {
       }
     });
     return () => { cancelled = true; };
-  }, [isSignedIn, qc, getToken]);
+  }, [isSignedIn, userId, qc, getToken]);
 
   // Sync RevenueCat subscriber identity with Clerk — guarded on isLoaded so
   // the transient reload state (isLoaded=false, isSignedIn=false) is never
