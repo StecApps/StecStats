@@ -447,6 +447,43 @@ describe('ApiAuthSetup (production component) — resetQueries() fires on sign-i
     expect(resetSpy).toHaveBeenCalledTimes(1);
   });
 
+  test('resetQueries() runs again when Clerk switches to a different signed-in user', async () => {
+    const { qc, resetSpy } = makeSpyQc();
+    const stableGetToken = jest.fn(() => Promise.resolve('test-token'));
+    let instance!: renderer.ReactTestRenderer;
+
+    mockUseAuth.mockReturnValue({
+      getToken: stableGetToken,
+      isSignedIn: true,
+      isLoaded: true,
+      userId: 'user_first',
+    });
+    await act(async () => {
+      instance = renderer.create(
+        <QueryClientProvider client={qc}>
+          <ApiAuthSetup />
+        </QueryClientProvider>,
+      );
+    });
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+
+    mockUseAuth.mockReturnValue({
+      getToken: stableGetToken,
+      isSignedIn: true,
+      isLoaded: true,
+      userId: 'user_second',
+    });
+    await act(async () => {
+      instance.update(
+        <QueryClientProvider client={qc}>
+          <ApiAuthSetup />
+        </QueryClientProvider>,
+      );
+    });
+
+    expect(resetSpy).toHaveBeenCalledTimes(2);
+  });
+
   test('resetQueries() is NOT called when isSignedIn is false throughout', async () => {
     const { qc, resetSpy } = makeSpyQc();
 
