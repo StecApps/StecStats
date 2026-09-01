@@ -32,6 +32,7 @@ const {
   SENTINEL,
   currentUser,
   hlsSentinelMode,
+  hlsPlayableCount,
 } = vi.hoisted(() => {
   const COACH         = { id: 7, clerkUserId: "clerk_hls_coach", email: "hls@example.com" };
   const LONG_GAME_ID  = 42;
@@ -43,7 +44,16 @@ const {
   };
   const currentUser     = { value: COACH as typeof COACH };
   const hlsSentinelMode = { value: "none" as "none" | "ready" };
-  return { COACH, LONG_GAME_ID, SHORT_GAME_ID, SENTINEL, currentUser, hlsSentinelMode };
+  const hlsPlayableCount = { value: 0 };
+  return {
+    COACH,
+    LONG_GAME_ID,
+    SHORT_GAME_ID,
+    SENTINEL,
+    currentUser,
+    hlsSentinelMode,
+    hlsPlayableCount,
+  };
 });
 
 // ---------------------------------------------------------------------------
@@ -168,6 +178,9 @@ vi.mock("../../lib/highlightGenerator", () => ({
   getReadyProxyChunkCount: vi.fn().mockImplementation(async () =>
     hlsSentinelMode.value === "ready" ? SENTINEL.chunkCount : -1,
   ),
+  getPlayableProxyChunkCount: vi.fn().mockImplementation(async () =>
+    hlsSentinelMode.value === "ready" ? SENTINEL.chunkCount : hlsPlayableCount.value,
+  ),
   // readHlsSentinel returns the full sentinel including per-segment durations.
   readHlsSentinel: vi.fn().mockImplementation(async () =>
     hlsSentinelMode.value === "ready" ? { ...SENTINEL } : null,
@@ -246,6 +259,7 @@ afterAll(async () => {
 beforeEach(() => {
   currentUser.value = COACH;
   hlsSentinelMode.value = "none";
+  hlsPlayableCount.value = 0;
 });
 
 // ---------------------------------------------------------------------------
@@ -361,6 +375,29 @@ describe("GET /api/games/:gameId/hls/playlist.m3u8 — M3U8 correctness", () => 
     for (const seg of segmentLines) {
       expect(seg).toContain(`t=${token}`);
     }
+  });
+
+  it("serves a growing EVENT playlist before the full encode completes", async () => {
+    hlsPlayableCount.value = 1;
+    const tokenRes = await fetch(`${baseUrl}/api/games/${LONG_GAME_ID}/stream-token/video`);
+    expect(tokenRes.status).toBe(200);
+    const tokenBody = (await tokenRes.json()) as {
+      token: string;
+      proxyType: string;
+      isComplete: boolean;
+    };
+    expect(tokenBody.proxyType).toBe("hls");
+    expect(tokenBody.isComplete).toBe(false);
+
+    const res = await fetch(
+      `${baseUrl}/api/games/${LONG_GAME_ID}/hls/playlist.m3u8?t=${tokenBody.token}`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toContain("no-cache");
+    const text = await res.text();
+    expect(text).toContain("#EXT-X-PLAYLIST-TYPE:EVENT");
+    expect(text).not.toContain("#EXT-X-ENDLIST");
+    expect(text.match(/^segment\//gm)).toHaveLength(1);
   });
 });
 

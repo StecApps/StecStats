@@ -31,7 +31,7 @@ import {
 import { useLayoutEffect } from 'react';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
-import { VideoView, useVideoPlayer } from 'expo-video';
+import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 
@@ -39,11 +39,22 @@ const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : '';
 
+// Expo Video defaults to a 1 GB LRU cache. A single full-game recording can
+// approach that size, which caused previously watched footage to be evicted
+// almost immediately. This setting is persistent and does not pre-download
+// anything; it only gives already-requested video ranges room to stay cached.
+if (Platform.OS !== 'web') {
+  setVideoCacheSizeAsync(3 * 1024 * 1024 * 1024).catch(() => {
+    // During Fast Refresh an existing player can briefly prevent resizing.
+    // The last successful value is persistent, so playback can continue.
+  });
+}
+
 async function fetchStreamUrl(
   gameId: number,
   type: 'video' | 'highlight' | 'lowlight',
   token: string,
-): Promise<{ url: string; proxyReady: boolean; proxySkipped: boolean }> {
+): Promise<{ url: string; proxyReady: boolean; proxySkipped: boolean; isHls: boolean }> {
   const res = await fetch(`${API_BASE}/api/games/${gameId}/stream-token/${type}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -67,12 +78,76 @@ async function fetchStreamUrl(
 
   return {
     url,
+    isHls: proxyType === 'hls',
     // proxyReady=false → server is still building the proxy (H.264 or HLS);
     // raw VP9/WebM is unplayable on iOS so we show a spinner and keep polling.
     proxyReady: proxyReady !== false,
     // proxySkipped=true → proxy build permanently skipped (genuine error
     // fallback; should not normally occur with the HLS path in place).
     proxySkipped: proxySkipped === true,
+  };
+}
+
+type CachedStream = {
+  url: string;
+  isHls: boolean;
+  expiresAt: number;
+};
+
+// Keep the exact same signed URL while the app stays open. Expo Video's native
+// cache is keyed by source URL, so minting a new signed URL on every tab visit
+// made already-buffered bytes look like a completely different video.
+const streamUrlCache = new Map<string, CachedStream>();
+const STREAM_URL_REUSE_MS = 4.5 * 60 * 60_000;
+
+function streamCacheKey(gameId: number, type: 'video' | 'highlight' | 'lowlight') {
+  return `${gameId}:${type}`;
+}
+
+async function getReusableStreamUrl(
+  gameId: number,
+  type: 'video' | 'highlight' | 'lowlight',
+  token: string,
+) {
+  const key = streamCacheKey(gameId, type);
+  const cached = streamUrlCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return {
+      url: cached.url,
+      isHls: cached.isHls,
+      proxyReady: true,
+      proxySkipped: false,
+    };
+  }
+
+  const result = await fetchStreamUrl(gameId, type, token);
+  if (result.proxyReady) {
+    streamUrlCache.set(key, {
+      url: result.url,
+      isHls: result.isHls,
+      expiresAt: Date.now() + STREAM_URL_REUSE_MS,
+    });
+  }
+  return result;
+}
+
+function playbackSource(url: string, isHls: boolean) {
+  return {
+    uri: url,
+    // iOS cannot cache HLS through Expo Video, but progressive MP4 footage,
+    // highlights, and lowlights are cached on both iOS and Android.
+    useCaching: !isHls || Platform.OS === 'android',
+    contentType: isHls ? 'hls' as const : 'progressive' as const,
+  };
+}
+
+function configureReviewPlayer(player: ReturnType<typeof useVideoPlayer>) {
+  player.bufferOptions = {
+    preferredForwardBufferDuration: 60,
+    waitsToMinimizeStalling: true,
+    minBufferForPlayback: 2,
+    maxBufferBytes: 256 * 1024 * 1024,
+    prioritizeTimeOverSizeThreshold: true,
   };
 }
 
@@ -216,7 +291,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const [proxySkipped, setProxySkipped] = useState(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const player = useVideoPlayer('', () => {});
+  const player = useVideoPlayer('', configureReviewPlayer);
 
   const loadStream = useCallback(
     (cancelled: { value: boolean }) => {
@@ -224,7 +299,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       getToken()
         .then((token) => {
           if (!token || cancelled.value) return;
-          return fetchStreamUrl(game.id, 'video', token);
+          return getReusableStreamUrl(game.id, 'video', token);
         })
         .then((result) => {
           if (!result || cancelled.value) return;
@@ -237,7 +312,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           setProxyReady(result.proxyReady);
           if (result.proxyReady) {
             setStreamUrl(result.url);
-            player.replaceAsync({ uri: result.url });
+            player.replaceAsync(playbackSource(result.url, result.isHls));
           } else {
             // Proxy not ready yet — poll every 4 s until it is.
             retryTimerRef.current = setTimeout(() => {
@@ -349,7 +424,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
 
-  const player = useVideoPlayer('', () => {});
+  const player = useVideoPlayer('', configureReviewPlayer);
 
   // Poll every 3 s while generating
   useEffect(() => {
@@ -383,12 +458,12 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     getToken()
       .then((token) => {
         if (!token || cancelled) return;
-        return fetchStreamUrl(gameId, 'lowlight', token);
+        return getReusableStreamUrl(gameId, 'lowlight', token);
       })
       .then((result) => {
         if (!result || cancelled) return;
         setSignedUrl(result.url);
-        player.replaceAsync({ uri: result.url });
+        player.replaceAsync(playbackSource(result.url, result.isHls));
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -416,7 +491,12 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             .then((result) => {
               if (!result) return;
               setSignedUrl(result.url);
-              player.replaceAsync({ uri: result.url });
+              streamUrlCache.set(streamCacheKey(gameId, 'lowlight'), {
+                url: result.url,
+                isHls: result.isHls,
+                expiresAt: Date.now() + STREAM_URL_REUSE_MS,
+              });
+              player.replaceAsync(playbackSource(result.url, result.isHls));
             })
             .catch(() => {});
         }
@@ -521,7 +601,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [uploading, setUploading] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
 
-  const player = useVideoPlayer('', () => {});
+  const player = useVideoPlayer('', configureReviewPlayer);
 
   // Sync stored YouTube URL from the server whenever the highlight data loads.
   useEffect(() => {
@@ -565,12 +645,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     getToken()
       .then((token) => {
         if (!token || cancelled) return;
-        return fetchStreamUrl(gameId, 'highlight', token);
+        return getReusableStreamUrl(gameId, 'highlight', token);
       })
       .then((result) => {
         if (!result || cancelled) return;
         setSignedUrl(result.url);
-        player.replaceAsync({ uri: result.url });
+        player.replaceAsync(playbackSource(result.url, result.isHls));
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -598,7 +678,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             .then((result) => {
               if (!result) return;
               setSignedUrl(result.url);
-              player.replaceAsync({ uri: result.url });
+              streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
+                url: result.url,
+                isHls: result.isHls,
+                expiresAt: Date.now() + STREAM_URL_REUSE_MS,
+              });
+              player.replaceAsync(playbackSource(result.url, result.isHls));
             })
             .catch(() => {});
         }

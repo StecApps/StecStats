@@ -325,6 +325,9 @@ vi.mock("../../lib/highlightGenerator", () => ({
     (_ownerId: number, _gameId: number, i: number) => `/chunks/${i}`,
   ),
   getReadyProxyChunkCount: vi.fn().mockImplementation(() => Promise.resolve(hlsChunkCount.value)),
+  getPlayableProxyChunkCount: vi.fn().mockImplementation(() =>
+    Promise.resolve(hlsChunkCount.value > 0 ? hlsChunkCount.value : 0),
+  ),
   readHlsSentinel: vi.fn().mockImplementation(() => Promise.resolve(hlsSentinel.value)),
   ensureAllProxyChunksInBackground: vi.fn(),
   acquireProxyChunkLocally: vi.fn(),

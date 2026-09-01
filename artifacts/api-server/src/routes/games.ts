@@ -40,6 +40,7 @@ import {
   PROXY_CHUNK_DURATION_SEC,
   makeProxyChunkGcsPath,
   getReadyProxyChunkCount,
+  getPlayableProxyChunkCount,
   readHlsSentinel,
   acquireProxyChunkLocally,
   ensureAllProxyChunksInBackground,
@@ -1913,6 +1914,8 @@ interface StreamTokenEntry {
    * routes serve proxy chunks directly from GCS rather than a single object.
    */
   isHls?: boolean;
+  /** Stored duration lets a growing HLS playlist bound chunk probes. */
+  hlsDurationMs?: number;
   /**
    * Pre-generated GCS signed URL returned alongside the token so the mobile
    * client can pass it directly to expo-video/AVPlayer without going through
@@ -2021,9 +2024,17 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     if (isLongGame && game.videoDurationMs) {
       // Long game: the full-proxy concat path would OOM on RAM-backed /tmp.
       // Serve via HLS using per-chunk proxy files in GCS instead.
-      const chunkCount = await getReadyProxyChunkCount(gameId, ownerId, game.videoDurationMs);
-      if (chunkCount > 0) {
-        // All proxy chunks are ready — issue an HLS token and return the playlist URL.
+      const completeChunkCount = await getReadyProxyChunkCount(gameId, ownerId, game.videoDurationMs);
+      const playableChunkCount = completeChunkCount > 0
+        ? completeChunkCount
+        : await getPlayableProxyChunkCount(gameId, ownerId, game.videoDurationMs);
+      if (playableChunkCount > 0) {
+        // Start or resume the remaining encode, but let AVPlayer begin with
+        // every consecutive chunk already uploaded instead of waiting for the
+        // entire game and final sentinel.
+        if (completeChunkCount < 0) {
+          ensureAllProxyChunksInBackground(gameId, ownerId, game.videoObjectPath, game.videoDurationMs);
+        }
         // TTL matches STREAM_SIGNED_URL_TTL_S (5 h) so the HLS token outlasts
         // the non-HLS stream token (4 h).  This gives HLS the same
         // post-token-expiry seek window: segment requests remain valid for 1 h
@@ -2037,11 +2048,17 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
           gameId,
           streamType: "hls",
           isHls: true,
+          hlsDurationMs: game.videoDurationMs,
         });
         return void res.json({
           token: hlsToken,
           proxyReady: true,
           proxyType: "hls",
+          availableDurationSec: Math.min(
+            game.videoDurationMs / 1000,
+            playableChunkCount * PROXY_CHUNK_DURATION_SEC,
+          ),
+          isComplete: completeChunkCount > 0,
         });
       }
       // Chunks not ready yet — kick off background encode and tell client to keep polling.
@@ -2251,10 +2268,17 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
   // The sentinel is written by ensureAllProxyChunksInBackground only after
   // every chunk is safely in GCS, so its presence alone confirms readiness.
   const sentinel = await readHlsSentinel(entry.ownerId, gameId);
-  if (!sentinel) {
-    return void res.status(503).json({ error: "Proxy chunks not yet ready — try again shortly" });
+  const chunkCount = sentinel?.chunkCount
+    ?? await getPlayableProxyChunkCount(
+      gameId,
+      entry.ownerId,
+      entry.hlsDurationMs ?? PROXY_CHUNK_DURATION_SEC * 1000,
+    );
+  if (chunkCount < 1) {
+    return void res.status(503).json({ error: "First video segment not ready — try again shortly" });
   }
-  const { chunkCount, segmentDurationsSec } = sentinel;
+  const segmentDurationsSec = sentinel?.segmentDurationsSec
+    ?? Array<number>(chunkCount).fill(PROXY_CHUNK_DURATION_SEC);
 
   // #EXT-X-TARGETDURATION must be >= ceil of the longest actual segment
   // (RFC 8216 §4.3.3.1).  Derive from measured durations, not the nominal
@@ -2266,6 +2290,7 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     `#EXT-X-TARGETDURATION:${Math.ceil(maxDur)}`,
     "#EXT-X-MEDIA-SEQUENCE:0",
   ];
+  if (!sentinel) lines.push("#EXT-X-PLAYLIST-TYPE:EVENT");
   for (let i = 0; i < chunkCount; i++) {
     // Use the ffprobe-measured duration stored in the sentinel.  Falls back to
     // PROXY_CHUNK_DURATION_SEC when the entry is missing or zero (shouldn't
@@ -2277,10 +2302,12 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     // Relative URL so AVPlayer resolves it against the playlist base path.
     lines.push(`segment/${i}?t=${token}`);
   }
-  lines.push("#EXT-X-ENDLIST");
+  // Omit ENDLIST while the encode is still growing. AVPlayer will refresh the
+  // playlist and discover each newly uploaded segment without restarting.
+  if (sentinel) lines.push("#EXT-X-ENDLIST");
 
   res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-  res.setHeader("Cache-Control", "private, max-age=60");
+  res.setHeader("Cache-Control", sentinel ? "private, max-age=60" : "private, no-cache");
   res.end(lines.join("\n"));
 });
 

@@ -3313,12 +3313,20 @@ export function ensureAllProxyChunksInBackground(
     );
     await fs.mkdir(workDir, { recursive: true });
     logger.info({ gameId, firstMissing, numChunksGuess }, "HLS chunk build: starting background encode");
-    const { srcPath, release } = await acquireSourceVideo(videoObjectPath);
+    // Stream the source directly from GCS for the HLS-only build. Waiting for
+    // acquireSourceVideo to download a multi-GB game before starting ffmpeg
+    // added many minutes before chunk zero could become playable. The encoder
+    // reads from the beginning sequentially, so it does not depend on the
+    // unreliable mid-file signed-URL Range behavior.
+    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
+      videoObjectPath,
+      6 * 60 * 60,
+    );
     try {
       // encodeChunksToGcs returns the ACTUAL number of chunks and ffprobe-
       // measured per-segment durations — both stored in the sentinel.
       const { actualNumChunks, segmentDurationsSec: newDurations } = await encodeChunksToGcs(
-        gameId, ownerId, srcPath, workDir,
+        gameId, ownerId, srcUrl, workDir,
         existFlags, firstMissing,
         /* deleteAfterUpload */ true,
         /* signal */ abortController.signal,
@@ -3331,14 +3339,10 @@ export function ensureAllProxyChunksInBackground(
         ...Array<number>(firstMissing).fill(PROXY_CHUNK_DURATION_SEC),
         ...newDurations,
       ];
-      // Write the sentinel AFTER all chunks are safely in GCS.  The sentinel
-      // is the only signal getReadyProxyChunkCount trusts, so it must not be
-      // written until the encode is complete and uploaded.
       await assertOwnerMediaWritesAllowed(ownerId);
       await writeHlsSentinel(ownerId, gameId, actualNumChunks, allDurations);
       logger.info({ gameId, actualNumChunks }, "HLS chunk build: complete — sentinel written");
     } finally {
-      release();
       await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
     }
   })()
@@ -3461,6 +3465,33 @@ export async function getReadyProxyChunkCount(
 ): Promise<number> {
   const sentinel = await readHlsSentinel(ownerId, gameId);
   return sentinel?.chunkCount ?? -1;
+}
+
+/**
+ * Returns the number of consecutive HLS-ready chunks starting at chunk zero.
+ * Unlike getReadyProxyChunkCount, this intentionally allows a still-running
+ * encode to become playable before the final completion sentinel is written.
+ */
+export async function getPlayableProxyChunkCount(
+  gameId: number,
+  ownerId: number,
+  durationMs: number,
+): Promise<number> {
+  const sentinel = await readHlsSentinel(ownerId, gameId);
+  if (sentinel) return sentinel.chunkCount;
+
+  const estimatedCount = Math.max(
+    1,
+    Math.ceil(durationMs / 1000 / PROXY_CHUNK_DURATION_SEC),
+  );
+  let readyCount = 0;
+  while (
+    readyCount < estimatedCount + 2 &&
+    await proxyChunkExistsInGcs(makeProxyChunkGcsPath(ownerId, gameId, readyCount))
+  ) {
+    readyCount++;
+  }
+  return readyCount;
 }
 
 const backgroundHlsBuilds = new Set<number>();
