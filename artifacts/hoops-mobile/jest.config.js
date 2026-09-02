@@ -10,6 +10,10 @@ module.exports = {
   transformIgnorePatterns,
   testEnvironment: 'node',
   testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  // React Native/Expo module teardown can take slightly longer than Jest's
+  // one-second warning threshold. Test resources are explicitly cleaned up;
+  // keep forceExit disabled so a genuine stuck process still fails CI.
+  openHandlesTimeout: 5000,
   moduleNameMapper: {
     // honour the @/* path alias from tsconfig
     '^@/(.*)$': '<rootDir>/$1',
