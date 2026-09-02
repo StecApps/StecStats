@@ -220,11 +220,13 @@ jest.mock('@/lib/tekoStyle', () => ({
 
 const mockUseListPlayers = jest.fn();
 const mockUseGetPlayerSummary = jest.fn();
+const mockUseGetMe = jest.fn();
 const mockUseUpdatePlayer = jest.fn(() => ({ mutateAsync: jest.fn() }));
 
 jest.mock('@workspace/api-client-react', () => ({
   useListPlayers: (...args: any[]) => mockUseListPlayers(...args),
   useGetPlayerSummary: (...args: any[]) => mockUseGetPlayerSummary(...args),
+  useGetMe: (...args: any[]) => mockUseGetMe(...args),
   useUpdatePlayer: (...args: any[]) => mockUseUpdatePlayer(...args),
   // Mirrors the real implementation: getListPlayersQueryKey() => ['/api/players']
   getListPlayersQueryKey: () => ['/api/players'],
@@ -318,6 +320,10 @@ beforeEach(() => {
       threeMade: 20, threeAttempted: 50, ftMade: 40, ftAttempted: 50,
       seasonScope: 'season',
     },
+    isLoading: false,
+  });
+  mockUseGetMe.mockReturnValue({
+    data: { firstName: 'Test' },
     isLoading: false,
   });
 });
@@ -704,10 +710,16 @@ describe('Full integration sequence — real ApiAuthSetup + real useQuery', () =
           <QueryObserver queryFn={queryFn} states={states} />
         </QueryClientProvider>,
       );
-      // Flush pending promise resolutions so queryFn result settles
-      await Promise.resolve();
-      await Promise.resolve();
     });
+
+    // React Query schedules observer notifications after the auth promise
+    // resolves. Poll the rendered state inside act() rather than relying on a
+    // fixed number of microtasks or an elapsed-time guess.
+    for (let attempt = 0; attempt < 50 && !states.includes('data'); attempt += 1) {
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      });
+    }
 
     // queryFn must have been called — cache was reset and the query re-fetched
     expect(queryFn).toHaveBeenCalled();

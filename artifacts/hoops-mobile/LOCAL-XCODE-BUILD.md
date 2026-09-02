@@ -35,11 +35,26 @@ pnpm --filter @workspace/hoops-mobile run ios:release:prepare
 ```
 
 This runs Expo prebuild for iOS without `--clean`, preserving any existing
-native project changes. It also applies Clerk's required iOS 17 deployment
-target before CocoaPods installs ClerkKit. The generated `ios/` directory is
-intentionally ignored by Git.
+native project changes. The `--no-install` flag keeps Expo from opening an
+interactive dependency-install prompt; dependencies are installed explicitly
+in the next step. It also applies Clerk's required iOS 17 deployment target.
+The generated `ios/` directory is intentionally ignored by Git.
 
-## 4. Validate the production environment
+## 4. Install iOS pods
+
+From the repository root:
+
+```bash
+cd artifacts/hoops-mobile/ios
+pod install
+cd ../..
+```
+
+This is intentionally separate from prebuild so CocoaPods progress and any
+credential or network issue are visible in the terminal instead of making the
+release-preparation command appear frozen.
+
+## 5. Validate the production environment
 
 ```bash
 pnpm --filter @workspace/hoops-mobile run ios:release:check
@@ -51,7 +66,7 @@ advertise email-code and Apple-token login, a non-proxy-capable Clerk Expo SDK,
 an iOS deployment target below 17, or a missing RevenueCat iOS key. It never
 prints the key value.
 
-## 5. Verify on a physical iPhone
+## 6. Verify on a physical iPhone
 
 Connect the iPhone and run:
 
@@ -67,7 +82,7 @@ Before archiving, verify:
 4. Monthly and annual StoreKit products appear.
 5. Purchase, restore, subscription management, and account deletion work.
 
-## 6. Archive and upload to TestFlight
+## 7. Archive and upload to TestFlight
 
 Open the workspace:
 

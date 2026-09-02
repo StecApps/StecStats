@@ -136,3 +136,4 @@
 - [Expo browser auth sessions are not cancellable by Promise timeout](expo-browser-auth-timeout.md) — never timeout-race openAuthSessionAsync; keep the flow single-flight until Expo settles it.
 - [Clerk proxy Brotli responses break React Native JSON parsing](clerk-proxy-brotli.md) — force Accept-Encoding: identity upstream; larger OAuth responses otherwise arrive as compressed text.
 - [Mobile replay caching and progressive HLS readiness](mobile-video-replay.md) — stable URLs enable Expo cache; long games must expose growing HLS before full transcode completes.
+- [Expo prebuild dependency rewrite](expo-prebuild-dependency-rewrite.md) — keep Expo core in runtime dependencies; prebuild rewrites the manifest even with --no-install otherwise.
