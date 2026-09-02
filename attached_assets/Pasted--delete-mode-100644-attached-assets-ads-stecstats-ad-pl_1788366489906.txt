@@ -1,0 +1,324 @@
+ delete mode 100644 attached_assets/ads/stecstats-ad-player-layup-square.png
+ delete mode 100644 attached_assets/icon-final.png
+ delete mode 100644 attached_assets/icon-v1-basketball.png
+ delete mode 100644 attached_assets/icon-v2-s-basketball.png
+ delete mode 100644 attached_assets/icon-v3-slash.png
+ delete mode 100644 attached_assets/icon-v4-text.png
+ delete mode 100644 attached_assets/icon-v5-ball-text.png
+ delete mode 100644 attached_assets/image_1783186331894.png
+ delete mode 100644 attached_assets/image_1783207679852.jpg
+ delete mode 100644 attached_assets/image_1783219608635.jpg
+ delete mode 100644 attached_assets/image_1783378875935.png
+ delete mode 100644 attached_assets/image_1783910935324.png
+ delete mode 100644 attached_assets/image_1783991578507.png
+ delete mode 100644 attached_assets/image_1784174399824.png
+ delete mode 100644 attached_assets/image_1784175249596.png
+ delete mode 100644 attached_assets/image_1784176243325.png
+ delete mode 100644 attached_assets/image_1784176296444.png
+ delete mode 100644 attached_assets/image_1784177036287.png
+ delete mode 100644 attached_assets/image_1784179265427.png
+ delete mode 100644 attached_assets/image_1784387185607.png
+ delete mode 100644 attached_assets/image_1784415024974.png
+ delete mode 100644 attached_assets/image_1784418695578.png
+ delete mode 100644 attached_assets/image_1784420583496.png
+ delete mode 100644 attached_assets/image_1784423213991.png
+ delete mode 100644 attached_assets/image_1784490102481.png
+ delete mode 100644 attached_assets/image_1784490186049.png
+ delete mode 100644 attached_assets/image_1784678259384.png
+ delete mode 100644 attached_assets/image_1784692791487.png
+ delete mode 100644 attached_assets/image_1784696421773.png
+ delete mode 100644 attached_assets/image_1784782502610.png
+ delete mode 100644 attached_assets/image_1784991070500.png
+ delete mode 100644 attached_assets/image_1785085452181.png
+ delete mode 100644 attached_assets/image_1785087786521.png
+ delete mode 100644 attached_assets/image_1785088622292.png
+ delete mode 100644 attached_assets/image_1785089273234.png
+ delete mode 100644 attached_assets/image_1785098220090.png
+ delete mode 100644 attached_assets/image_1785164240728.png
+ delete mode 100644 attached_assets/image_1785282175215.png
+ delete mode 100644 attached_assets/image_1785289167377.png
+ delete mode 100644 attached_assets/image_1785289323727.png
+ delete mode 100644 attached_assets/image_1785289558345.png
+ delete mode 100644 attached_assets/image_1785432231752.png
+ delete mode 100644 attached_assets/image_1785721102659.png
+ delete mode 100644 attached_assets/image_1785726607505.png
+ delete mode 100644 attached_assets/image_1785727562220.png
+ delete mode 100644 attached_assets/image_1785727671776.png
+ delete mode 100644 attached_assets/image_1785728219329.png
+ delete mode 100644 attached_assets/image_1785728263234.png
+ delete mode 100644 attached_assets/image_1785771388156.png
+ delete mode 100644 attached_assets/image_1785815498696.png
+ delete mode 100644 attached_assets/image_1785815621652.png
+ delete mode 100644 attached_assets/image_1785815702953.png
+ delete mode 100644 attached_assets/image_1785816274855.png
+ delete mode 100644 attached_assets/image_1785816292842.png
+ delete mode 100644 attached_assets/image_1785949228524.png
+ delete mode 100644 attached_assets/image_1785996664121.png
+ delete mode 100644 attached_assets/image_1786217994465.png
+ delete mode 100644 attached_assets/image_1786218597218.png
+ delete mode 100644 attached_assets/image_1786224406072.png
+ delete mode 100644 attached_assets/image_1786227864802.png
+ delete mode 100644 attached_assets/image_1786257716217.png
+ delete mode 100644 attached_assets/image_1786258155797.png
+ delete mode 100644 attached_assets/image_1786258537937.png
+ delete mode 100644 attached_assets/image_1786259669213.png
+ delete mode 100644 attached_assets/image_1786259699023.png
+ delete mode 100644 attached_assets/image_1786288826322.png
+ delete mode 100644 attached_assets/image_1786303565408.png
+ delete mode 100644 attached_assets/image_1786305056053.png
+ delete mode 100644 attached_assets/image_1786305539185.png
+ delete mode 100644 attached_assets/image_1786333341982.png
+ delete mode 100644 attached_assets/image_1786339697817.png
+ delete mode 100644 attached_assets/image_1786340840852.png
+ delete mode 100644 attached_assets/image_1786346354452.png
+ delete mode 100644 attached_assets/image_1786346806922.png
+ delete mode 100644 attached_assets/image_1786346855451.png
+ delete mode 100644 attached_assets/image_1786379220256.png
+ delete mode 100644 attached_assets/image_1786405452167.png
+ delete mode 100644 attached_assets/image_1786583586042.png
+ delete mode 100644 attached_assets/image_1786825754051.png
+ delete mode 100644 attached_assets/image_1786825885992.png
+ delete mode 100644 attached_assets/image_1787493612984.png
+ delete mode 100644 attached_assets/image_1787501019307.png
+ delete mode 100644 attached_assets/image_1787501133503.png
+ delete mode 100644 attached_assets/image_1787501730636.png
+ delete mode 100644 attached_assets/image_1787504522752.png
+ delete mode 100644 attached_assets/image_1787505446493.png
+ delete mode 100644 attached_assets/image_1787517130339.png
+ delete mode 100644 attached_assets/image_1788044763237.png
+ delete mode 100644 attached_assets/image_1788047282841.png
+ delete mode 100644 attached_assets/image_1788050480850.png
+ delete mode 100644 attached_assets/image_1788110662288.png
+ delete mode 100644 attached_assets/image_1788110742172.png
+ delete mode 100644 attached_assets/image_1788110941940.png
+ delete mode 100644 attached_assets/image_1788126823953.png
+ delete mode 100644 attached_assets/image_1788128981121.png
+ delete mode 100644 attached_assets/image_1788131580195.png
+ delete mode 100644 attached_assets/image_1788131825816.png
+ delete mode 100644 attached_assets/image_1788134564040.png
+ delete mode 100644 attached_assets/keyword_template_1784600007914.csv
+ delete mode 100644 attached_assets/keyword_template_1784600007916.csv
+ delete mode 100644 attached_assets/logo_option_1.png
+ delete mode 100644 attached_assets/logo_option_2.png
+ delete mode 100644 attached_assets/logo_option_3.png
+ delete mode 100644 attached_assets/logo_transparent.png
+ delete mode 100644 attached_assets/screenshots/stecstats_replit_app.png
+ delete mode 100644 attached_assets/simulator_screenshot_4A835400-6934-420F-B540-3FCE05CAE5B5_1788104391045.png
+ delete mode 100644 attached_assets/simulator_screenshot_5597C38A-31A6-4D1F-B34F-A30C29D80B0F_1788104208312.png
+ delete mode 100644 attached_assets/simulator_screenshot_CBB27B5B-FD33-4623-95ED-02EDC14359FD_1788104166254.png
+ delete mode 100644 attached_assets/simulator_screenshot_E00DEC84-0626-40DB-B8F4-AECFC6BB82C5_1788112292362.png
+ delete mode 100644 attached_assets/simulator_screenshot_FE253DC7-F8D1-44B4-BE4D-91BD0C0D8CAA_1788112410442.png
+ delete mode 100644 attached_assets/simulator_screenshot_FE5CB1D2-BC00-410D-969A-E3D103AF888A_1788104128813.png
+ delete mode 100644 attached_assets/stec-highlights-hoop-nerd_1783810097123.mp4
+ delete mode 100644 attached_assets/stecstats-google-ads-keywords-upload.csv
+ delete mode 100644 attached_assets/stecstats-google-ads-keywords.csv
+ delete mode 100644 docs/manual-tests/server-restart-resilience.md
+ delete mode 100644 lib/api-client-react/package.json
+ delete mode 100644 lib/api-client-react/src/custom-fetch.ts
+ delete mode 100644 lib/api-client-react/src/generated/api.schemas.ts
+ delete mode 100644 lib/api-client-react/src/generated/api.ts
+ delete mode 100644 lib/api-client-react/src/index.ts
+ delete mode 100644 lib/api-client-react/tsconfig.json
+ delete mode 100644 lib/api-spec/openapi.yaml
+ delete mode 100644 lib/api-spec/orval.config.ts
+ delete mode 100644 lib/api-spec/package.json
+ delete mode 100644 lib/api-zod/package.json
+ delete mode 100644 lib/api-zod/src/generated/api.ts
+ delete mode 100644 lib/api-zod/src/generated/types/accountDeletionPending.ts
+ delete mode 100644 lib/api-zod/src/generated/types/accountDeletionPendingStatus.ts
+ delete mode 100644 lib/api-zod/src/generated/types/billingStatus.ts
+ delete mode 100644 lib/api-zod/src/generated/types/billingStatusPlan.ts
+ delete mode 100644 lib/api-zod/src/generated/types/checkoutSessionResponse.ts
+ delete mode 100644 lib/api-zod/src/generated/types/createCheckoutSessionInput.ts
+ delete mode 100644 lib/api-zod/src/generated/types/createCheckoutSessionInputInterval.ts
+ delete mode 100644 lib/api-zod/src/generated/types/createCheckoutSessionInputTier.ts
+ delete mode 100644 lib/api-zod/src/generated/types/errorEnvelope.ts
+ delete mode 100644 lib/api-zod/src/generated/types/game.ts
+ delete mode 100644 lib/api-zod/src/generated/types/gameEvent.ts
+ delete mode 100644 lib/api-zod/src/generated/types/gameHighlightStatus.ts
+ delete mode 100644 lib/api-zod/src/generated/types/gameInput.ts
+ delete mode 100644 lib/api-zod/src/generated/types/gameInputResult.ts
+ delete mode 100644 lib/api-zod/src/generated/types/gameResult.ts
+ delete mode 100644 lib/api-zod/src/generated/types/gameUpdate.ts
+ delete mode 100644 lib/api-zod/src/generated/types/gameUpdateResult.ts
+ delete mode 100644 lib/api-zod/src/generated/types/healthStatus.ts
+ delete mode 100644 lib/api-zod/src/generated/types/highlightStatus.ts
+ delete mode 100644 lib/api-zod/src/generated/types/highlightStatusStatus.ts
+ delete mode 100644 lib/api-zod/src/generated/types/importGameRow.ts
+ delete mode 100644 lib/api-zod/src/generated/types/importGameRowResult.ts
+ delete mode 100644 lib/api-zod/src/generated/types/importInput.ts
+ delete mode 100644 lib/api-zod/src/generated/types/importResult.ts
+ delete mode 100644 lib/api-zod/src/generated/types/index.ts
+ delete mode 100644 lib/api-zod/src/generated/types/lowlightStatus.ts
+ delete mode 100644 lib/api-zod/src/generated/types/lowlightStatusStatus.ts
+ delete mode 100644 lib/api-zod/src/generated/types/mergeGamesInput.ts
+ delete mode 100644 lib/api-zod/src/generated/types/player.ts
+ delete mode 100644 lib/api-zod/src/generated/types/playerGameStatInput.ts
+ delete mode 100644 lib/api-zod/src/generated/types/playerGameStatLine.ts
+ delete mode 100644 lib/api-zod/src/generated/types/playerInput.ts
+ delete mode 100644 lib/api-zod/src/generated/types/playerSummary.ts
+ delete mode 100644 lib/api-zod/src/generated/types/playerSummaryPlan.ts
+ delete mode 100644 lib/api-zod/src/generated/types/playerSummarySeasonScope.ts
+ delete mode 100644 lib/api-zod/src/generated/types/playerTeamGroup.ts
+ delete mode 100644 lib/api-zod/src/generated/types/playerUpdate.ts
+ delete mode 100644 lib/api-zod/src/generated/types/portalSessionResponse.ts
+ delete mode 100644 lib/api-zod/src/generated/types/team.ts
+ delete mode 100644 lib/api-zod/src/generated/types/teamInput.ts
+ delete mode 100644 lib/api-zod/src/generated/types/teamInputSport.ts
+ delete mode 100644 lib/api-zod/src/generated/types/teamUpdate.ts
+ delete mode 100644 lib/api-zod/src/generated/types/teamUpdateSport.ts
+ delete mode 100644 lib/api-zod/src/generated/types/uploadUrlRequest.ts
+ delete mode 100644 lib/api-zod/src/generated/types/uploadUrlResponse.ts
+ delete mode 100644 lib/api-zod/src/generated/types/userProfile.ts
+ delete mode 100644 lib/api-zod/src/generated/types/userProfileUpdate.ts
+ delete mode 100644 lib/api-zod/src/index.ts
+ delete mode 100644 lib/api-zod/tsconfig.json
+ delete mode 100644 lib/db/drizzle.config.ts
+ delete mode 100644 lib/db/package.json
+ delete mode 100644 lib/db/src/index.ts
+ delete mode 100644 lib/db/src/schema/feedback.ts
+ delete mode 100644 lib/db/src/schema/game-events.ts
+ delete mode 100644 lib/db/src/schema/games.ts
+ delete mode 100644 lib/db/src/schema/index.ts
+ delete mode 100644 lib/db/src/schema/live-sessions.ts
+ delete mode 100644 lib/db/src/schema/player-game-stats.ts
+ delete mode 100644 lib/db/src/schema/players.ts
+ delete mode 100644 lib/db/src/schema/purchase-events.ts
+ delete mode 100644 lib/db/src/schema/teams.ts
+ delete mode 100644 lib/db/src/schema/users.ts
+ delete mode 100644 lib/db/tsconfig.json
+ delete mode 100644 lib/plan-copy/package.json
+ delete mode 100644 lib/plan-copy/src/index.test.ts
+ delete mode 100644 lib/plan-copy/src/index.ts
+ delete mode 100644 patches/react-native-worklets@0.5.1.patch
+ delete mode 100644 pnpm-workspace.yaml
+ delete mode 100644 replit.md
+ delete mode 100644 replit.nix
+ delete mode 100644 screenshots/card-back.jpg
+ delete mode 100644 screenshots/card-front.jpg
+ delete mode 100644 screenshots/legal-pages-production-verification.md
+ delete mode 100644 screenshots/privacy-page-production.png
+ delete mode 100644 screenshots/terms-page-production.png
+ delete mode 100644 screenshots/terms-page.png
+ delete mode 100755 scripts/check-production-secrets.sh
+ delete mode 100644 scripts/package.json
+ delete mode 100644 scripts/post-merge.sh
+ delete mode 100644 scripts/src/fixAnnualPackage.ts
+ delete mode 100644 scripts/src/fixMonthlyStoreId.ts
+ delete mode 100644 scripts/src/fixRevenueCat.ts
+ delete mode 100644 scripts/src/hello.ts
+ delete mode 100644 scripts/src/inspectRevenueCat.ts
+ delete mode 100644 scripts/src/revenueCatClient.ts
+ delete mode 100644 scripts/src/seed-products.ts
+ delete mode 100644 scripts/src/seedRevenueCat.ts
+ delete mode 100644 scripts/src/stripeClient.ts
+ delete mode 100644 scripts/tsconfig.json
+ delete mode 100644 tsconfig.base.json
+ delete mode 100644 tsconfig.json
+97f274c (HEAD -> task-735-release-sync) Align pnpm patch lockfile format with EAS
+stevenstec@Mac stecstats-eas-archive % cd artifacts/hoops-mobile
+
+rm -rf /tmp/stecstats-eas-archive
+
+corepack pnpm exec eas build:inspect \
+  --platform ios \
+  --stage archive \
+  --profile production \
+  --output /tmp/stecstats-eas-archive \
+  --force
+
+cd /tmp/stecstats-eas-archive
+
+node -p "require('./package.json').packageManager"
+node -p "require('./package.json').pnpm"
+grep -A5 '^patchedDependencies:' pnpm-lock.yaml
+CI=true corepack pnpm install --frozen-lockfile
+node:internal/bootstrap/switches/does_own_process_state:142
+    cachedCwd = rawMethods.cwd();
+                           ^
+
+Error: ENOENT: no such file or directory, uv_cwd
+    at process.wrappedCwd (node:internal/bootstrap/switches/does_own_process_state:142:28)
+    at process.cwd (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/lib/corepack.cjs:17408:23)
+    at Object.runMain (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/lib/corepack.cjs:23711:22)
+    at Object.<anonymous> (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/corepack.js:4:31)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Module._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'uv_cwd'
+}
+
+Node.js v22.23.2
+cd: no such file or directory: /tmp/stecstats-eas-archive
+node:internal/modules/cjs/loader:1433
+  throw err;
+  ^
+
+Error: Cannot find module './package.json'
+Require stack:
+- /opt/homebrew/Cellar/node@22/22.23.2/bin/[eval]
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    at Module._load (node:internal/modules/cjs/loader:1216:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Module.require (node:internal/modules/cjs/loader:1527:12)
+    at require (node:internal/modules/helpers:147:16)
+    at [eval]:1:1
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:446:12 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/opt/homebrew/Cellar/node@22/22.23.2/bin/[eval]' ]
+}
+
+Node.js v22.23.2
+node:internal/modules/cjs/loader:1433
+  throw err;
+  ^
+
+Error: Cannot find module './package.json'
+Require stack:
+- /opt/homebrew/Cellar/node@22/22.23.2/bin/[eval]
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    at Module._load (node:internal/modules/cjs/loader:1216:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Module.require (node:internal/modules/cjs/loader:1527:12)
+    at require (node:internal/modules/helpers:147:16)
+    at [eval]:1:1
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:446:12 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/opt/homebrew/Cellar/node@22/22.23.2/bin/[eval]' ]
+}
+
+Node.js v22.23.2
+grep: pnpm-lock.yaml: No such file or directory
+node:internal/bootstrap/switches/does_own_process_state:142
+    cachedCwd = rawMethods.cwd();
+                           ^
+
+Error: ENOENT: no such file or directory, uv_cwd
+    at process.wrappedCwd (node:internal/bootstrap/switches/does_own_process_state:142:28)
+    at process.cwd (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/lib/corepack.cjs:17408:23)
+    at Object.runMain (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/lib/corepack.cjs:23711:22)
+    at Object.<anonymous> (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/corepack.js:4:31)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Module._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'uv_cwd'
+}
+
+Node.js v22.23.2
+stevenstec@Mac hoops-mobile % 
