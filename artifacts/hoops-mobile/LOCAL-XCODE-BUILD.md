@@ -104,12 +104,22 @@ In Xcode:
 
 ```bash
 pnpm --filter @workspace/hoops-mobile run ios:release:verify-archive -- \
-  "/full/path/to/StecStats.xcarchive"
+  "/full/path/to/StecStats.xcarchive" \
+  --expected-build-number 42
 ```
 
 The verifier fails if the archive has no `main.jsbundle` or if the bundle does
 not contain the production values from `.env.local`. It reports variable names
-only and never prints the Clerk key.
+only and never prints the Clerk key. It also reads `CFBundleVersion` from the
+`Info.plist` inside that exact `.xcarchive` and fails if it does not match the
+expected build number. Use `--minimum-build-number 42` instead when the
+release process has only established a lowest acceptable number.
+
+Record the number printed by the verifier before uploading:
+
+```text
+Verified archive CFBundleVersion: [ENTER NUMBER PRINTED ABOVE]
+```
 
 7. In Organizer, choose **Distribute App → App Store Connect → Upload**.
 8. Wait for processing, then install that exact build from TestFlight.
