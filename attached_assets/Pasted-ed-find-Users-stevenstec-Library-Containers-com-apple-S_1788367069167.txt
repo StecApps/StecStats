@@ -1,0 +1,46 @@
+ed
+find: /Users/stevenstec/Library/Containers/com.apple.Safari: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.CloudDocs.MobileDocumentsFileProvider: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.mail: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.MobileSMS: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Notes: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.news: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.corerecents.recentsd/Data/Library/Recents: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.stocks: Operation not permitted
+find: /Users/stevenstec/Library/ContainerManager: Operation not permitted
+find: /Users/stevenstec/Library/PersonalizationPortrait: Operation not permitted
+find: /Users/stevenstec/Library/Metadata/CoreSpotlight: Operation not permitted
+find: /Users/stevenstec/Library/Metadata/com.apple.IntelligentSuggestions: Operation not permitted
+find: /Users/stevenstec/Library/Reminders: Operation not permitted
+find: /Users/stevenstec/Library/Cookies: Operation not permitted
+find: /Users/stevenstec/Library/com.apple.bluetooth.services.cloud/CachedRecords/SoundProfileAsset: Operation not permitted
+find: /Users/stevenstec/Library/CoreFollowUp: Operation not permitted
+find: /Users/stevenstec/Library/StatusKit: Operation not permitted
+find: /Users/stevenstec/Library/DoNotDisturb: Operation not permitted
+find: /Users/stevenstec/Library/Caches/familycircled: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.HomeKit: Operation not permitted
+find: /Users/stevenstec/Library/Caches/CloudKit: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.Safari: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.imagecache: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.fmfcore: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.containermanagerd: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.Safari.SafeBrowsing: Operation not permitted
+find: /Users/stevenstec/Library/Caches/FamilyCircle: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.homed: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.fmipcore: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.ap.adprivacyd: Operation not permitted
+find: /Users/stevenstec/.Trash: Operation not permitted
+/Users/stevenstec/Downloads/StecStats/artifacts/hoops-mobile
+stevenstec@Mac ~ % cd /Users/stevenstec/Downloads/StecStats
+pwd
+git status --short
+git show --stat --summary 97f274c
+/Users/stevenstec/Downloads/StecStats
+ M pnpm-lock.yaml
+ M pnpm-workspace.yaml
+?? .config/
+?? "artifacts (1).zip"
+fatal: ambiguous argument '97f274c': unknown revision or path not in the working tree.
+Use '--' to separate paths from revisions, like this:
+'git <command> [<revision>...] -- [<file>...]'
+stevenstec@Mac StecStats % 
