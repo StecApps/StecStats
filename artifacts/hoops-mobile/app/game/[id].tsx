@@ -153,6 +153,308 @@ function configureReviewPlayer(player: ReturnType<typeof useVideoPlayer>) {
 
 type Tab = 'stats' | 'video' | 'highlights' | 'lowlights';
 
+type ReviewEvent = {
+  playerId: number;
+  statField: string;
+  delta: number;
+  videoTimestampMs: number | null;
+};
+
+const REVIEW_STAT_LABELS: Record<string, string> = {
+  ftMade: 'FT Made',
+  ftAttempted: 'FT Miss',
+  twoMade: '2PT Made',
+  twoAttempted: '2PT Miss',
+  threeMade: '3PT Made',
+  threeAttempted: '3PT Miss',
+  assists: 'Assist',
+  rebounds: 'Rebound',
+  steals: 'Steal',
+  turnovers: 'Turnover',
+  blocks: 'Block',
+};
+
+const REVIEW_CATEGORIES = [
+  { key: 'all', label: 'All', color: '#9ca3af', fields: [] as string[] },
+  { key: 'made', label: 'Made', color: '#22c55e', fields: ['twoMade', 'threeMade', 'ftMade'] },
+  { key: 'missed', label: 'Missed', color: '#ef4444', fields: ['twoAttempted', 'threeAttempted', 'ftAttempted'] },
+  { key: 'assist', label: 'Assists', color: '#3b82f6', fields: ['assists'] },
+  { key: 'rebound', label: 'Rebounds', color: '#06b6d4', fields: ['rebounds'] },
+  { key: 'steal', label: 'Steals', color: '#a855f7', fields: ['steals'] },
+  { key: 'block', label: 'Blocks', color: '#6366f1', fields: ['blocks'] },
+  { key: 'turnover', label: 'TOs', color: '#f97316', fields: ['turnovers'] },
+] as const;
+
+function formatReviewTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+  return `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
+
+function reviewEventColor(statField: string) {
+  return REVIEW_CATEGORIES.find((category) => category.fields.includes(statField as never))?.color ?? '#9ca3af';
+}
+
+async function saveReviewVideo(url: string, title: string) {
+  try {
+    await Share.share({
+      title,
+      message: url,
+      url,
+    });
+  } catch (error: any) {
+    if (error?.message !== 'User did not share') {
+      Alert.alert('Save Failed', 'Could not open the save sheet. Please try again.');
+    }
+  }
+}
+
+function FilmRoomSection({
+  game,
+  player,
+  colors,
+}: {
+  game: any;
+  player: ReturnType<typeof useVideoPlayer>;
+  colors: any;
+}) {
+  const [currentTime, setCurrentTime] = useState(0);
+  const [mediaDuration, setMediaDuration] = useState(0);
+  const [activePlayerId, setActivePlayerId] = useState<number | null>(null);
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [timelineWidth, setTimelineWidth] = useState(0);
+
+  useEffect(() => {
+    player.timeUpdateEventInterval = 0.5;
+    const timeSubscription = player.addListener('timeUpdate', ({ currentTime: nextTime }) => {
+      setCurrentTime(nextTime);
+      const duration = player.duration;
+      if (Number.isFinite(duration) && duration > 0) setMediaDuration(duration);
+    });
+    const sourceSubscription = player.addListener('sourceLoad', () => {
+      const duration = player.duration;
+      if (Number.isFinite(duration) && duration > 0) setMediaDuration(duration);
+    });
+    return () => {
+      timeSubscription.remove();
+      sourceSubscription.remove();
+    };
+  }, [player]);
+
+  const toVideoSeconds = useCallback((timestampMs: number) => {
+    const gapAdjustment =
+      game.videoHalf2StartMs != null &&
+      game.videoHalftimeGapMs != null &&
+      timestampMs >= game.videoHalf2StartMs
+        ? game.videoHalftimeGapMs
+        : 0;
+    return (timestampMs - (game.videoOffsetMs ?? 0) - gapAdjustment) / 1000;
+  }, [game.videoHalf2StartMs, game.videoHalftimeGapMs, game.videoOffsetMs]);
+
+  const events = ((game.events ?? []) as ReviewEvent[])
+    .filter((event) => event.videoTimestampMs != null && toVideoSeconds(event.videoTimestampMs) >= 0)
+    .map((event, originalIndex) => ({ ...event, originalIndex }))
+    .sort((a, b) => (a.videoTimestampMs! - b.videoTimestampMs!));
+
+  const players: { id: number; name: string }[] = (game.stats ?? []).reduce((result: { id: number; name: string }[], stat: any) => {
+    if (!result.some((item) => item.id === stat.playerId)) {
+      result.push({ id: stat.playerId, name: stat.playerName ?? `Player ${stat.playerId}` });
+    }
+    return result;
+  }, []);
+  events.forEach((event) => {
+    if (!players.some((item) => item.id === event.playerId)) {
+      players.push({ id: event.playerId, name: `Player ${event.playerId}` });
+    }
+  });
+
+  const filmDuration = game.videoDurationMs != null && game.videoDurationMs > 0
+    ? game.videoDurationMs / 1000
+    : mediaDuration;
+  const isOffFilm = useCallback((event: ReviewEvent) => {
+    if (!filmDuration || event.videoTimestampMs == null) return false;
+    return toVideoSeconds(event.videoTimestampMs) >= filmDuration;
+  }, [filmDuration, toVideoSeconds]);
+
+  const playerFilteredEvents = activePlayerId == null
+    ? events
+    : events.filter((event) => event.playerId === activePlayerId);
+  const filteredEvents = activeCategory === 'all'
+    ? playerFilteredEvents
+    : playerFilteredEvents.filter((event) => {
+      const category = REVIEW_CATEGORIES.find((item) => item.key === activeCategory);
+      return category?.fields.includes(event.statField as never);
+    });
+  const offFilmCount = events.filter(isOffFilm).length;
+  const currentEventIndex = filteredEvents.findLastIndex(
+    (event) => !isOffFilm(event) && toVideoSeconds(event.videoTimestampMs!) <= currentTime + 8,
+  );
+
+  if (events.length === 0) return null;
+
+  const seekToEvent = (event: ReviewEvent) => {
+    if (event.videoTimestampMs == null || isOffFilm(event)) return;
+    player.currentTime = Math.max(0, toVideoSeconds(event.videoTimestampMs) - 8);
+    player.play();
+  };
+
+  const seekOnTimeline = (locationX: number) => {
+    if (!timelineWidth || !filmDuration) return;
+    player.currentTime = Math.max(0, Math.min(filmDuration, (locationX / timelineWidth) * filmDuration));
+  };
+
+  return (
+    <View style={[filmStyle.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[filmStyle.header, { borderBottomColor: colors.border }]}>
+        <Ionicons name="play-circle-outline" size={18} color={colors.primary} />
+        <Text style={[filmStyle.headerTitle, { color: colors.foreground }]}>Film Room</Text>
+        <Text style={[filmStyle.headerCount, { color: colors.mutedForeground }]}>
+          {offFilmCount > 0 ? `${events.length - offFilmCount} of ${events.length} on film` : `${events.length} events`}
+        </Text>
+      </View>
+
+      {offFilmCount > 0 && (
+        <Text style={[filmStyle.notice, { color: '#fbbf24', backgroundColor: '#f59e0b18' }]}>
+          {offFilmCount} {offFilmCount === 1 ? 'stat was' : 'stats were'} logged after the recording stopped and {offFilmCount === 1 ? "isn't" : "aren't"} on film.
+        </Text>
+      )}
+
+      <View style={[filmStyle.timelineSection, { borderBottomColor: colors.border }]}>
+        <View style={filmStyle.timelineLabels}>
+          <Text style={[filmStyle.timeText, { color: colors.mutedForeground }]}>{formatReviewTime(currentTime)}</Text>
+          <Text style={[filmStyle.timeText, { color: colors.mutedForeground }]}>{formatReviewTime(filmDuration)}</Text>
+        </View>
+        <Pressable
+          testID="film-room-timeline"
+          onLayout={(event) => setTimelineWidth(event.nativeEvent.layout.width)}
+          onPress={(event) => seekOnTimeline(event.nativeEvent.locationX)}
+          style={[filmStyle.timeline, { backgroundColor: colors.muted }]}
+        >
+          <View style={[filmStyle.timelineFill, { width: `${filmDuration ? Math.min(100, (currentTime / filmDuration) * 100) : 0}%`, backgroundColor: colors.primary }]} />
+          {events.map((event) => {
+            const seconds = toVideoSeconds(event.videoTimestampMs!);
+            const percent = filmDuration ? (seconds / filmDuration) * 100 : -1;
+            if (percent < 0 || percent > 100) return null;
+            return (
+              <Pressable
+                key={event.originalIndex}
+                onPress={(pressEvent) => {
+                  pressEvent.stopPropagation();
+                  seekToEvent(event);
+                }}
+                hitSlop={6}
+                style={[filmStyle.marker, { left: `${percent}%`, backgroundColor: isOffFilm(event) ? colors.mutedForeground : reviewEventColor(event.statField) }]}
+              />
+            );
+          })}
+          <View style={[filmStyle.playhead, { left: `${filmDuration ? Math.min(100, (currentTime / filmDuration) * 100) : 0}%`, backgroundColor: colors.foreground }]} />
+        </Pressable>
+        <Text style={[filmStyle.timelineHint, { color: colors.mutedForeground }]}>Tap the timeline or an event to jump to that moment</Text>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filmStyle.chipRow}>
+        <TouchableOpacity
+          testID="film-room-player-all"
+          onPress={() => setActivePlayerId(null)}
+          style={[filmStyle.chip, { borderColor: activePlayerId == null ? colors.primary : colors.border, backgroundColor: activePlayerId == null ? colors.primary + '20' : colors.background }]}
+        >
+          <Text style={[filmStyle.chipText, { color: activePlayerId == null ? colors.primary : colors.mutedForeground }]}>All players</Text>
+        </TouchableOpacity>
+        {players.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            testID={`film-room-player-${item.id}`}
+            onPress={() => setActivePlayerId(item.id)}
+            style={[filmStyle.chip, { borderColor: activePlayerId === item.id ? colors.primary : colors.border, backgroundColor: activePlayerId === item.id ? colors.primary + '20' : colors.background }]}
+          >
+            <Text style={[filmStyle.chipText, { color: activePlayerId === item.id ? colors.primary : colors.mutedForeground }]} numberOfLines={1}>{item.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filmStyle.chipRow}>
+        {REVIEW_CATEGORIES.map((category) => {
+          const count = category.key === 'all'
+            ? playerFilteredEvents.length
+            : playerFilteredEvents.filter((event) => category.fields.includes(event.statField as never)).length;
+          if (count === 0 && category.key !== 'all') return null;
+          const selected = activeCategory === category.key;
+          return (
+            <TouchableOpacity
+              key={category.key}
+              testID={`film-room-category-${category.key}`}
+              onPress={() => setActiveCategory(category.key)}
+              style={[filmStyle.chip, { borderColor: selected ? category.color : colors.border, backgroundColor: selected ? `${category.color}20` : colors.background }]}
+            >
+              <Text style={[filmStyle.chipText, { color: selected ? category.color : colors.mutedForeground }]}>
+                {category.label} {count}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {filteredEvents.length === 0 ? (
+        <Text style={[filmStyle.empty, { color: colors.mutedForeground }]}>No events for these filters.</Text>
+      ) : (
+        filteredEvents.map((event, index) => {
+          const eventPlayer = players.find((item) => item.id === event.playerId);
+          const offFilm = isOffFilm(event);
+          const active = !offFilm && index === currentEventIndex;
+          return (
+            <TouchableOpacity
+              key={`${event.originalIndex}-${index}`}
+              testID={`film-room-event-${event.originalIndex}`}
+              onPress={() => seekToEvent(event)}
+              disabled={offFilm}
+              activeOpacity={0.7}
+              style={[filmStyle.eventRow, { borderTopColor: colors.border, backgroundColor: active ? colors.primary + '14' : 'transparent', opacity: offFilm ? 0.45 : 1 }]}
+            >
+              <View style={[filmStyle.eventPip, { backgroundColor: offFilm ? colors.mutedForeground : reviewEventColor(event.statField) }]} />
+              <Text style={[filmStyle.eventTime, { color: colors.mutedForeground }]}>{formatReviewTime(toVideoSeconds(event.videoTimestampMs!))}</Text>
+              <Text style={[filmStyle.eventLabel, { color: active ? colors.foreground : colors.mutedForeground }]} numberOfLines={1}>
+                <Text style={{ fontFamily: 'Inter_600SemiBold' }}>{eventPlayer?.name ?? 'Player'}</Text>
+                {' — '}{REVIEW_STAT_LABELS[event.statField] ?? event.statField}
+              </Text>
+              <Ionicons name={offFilm ? 'eye-off-outline' : 'play-outline'} size={15} color={offFilm ? colors.mutedForeground : active ? colors.primary : colors.mutedForeground} />
+            </TouchableOpacity>
+          );
+        })
+      )}
+    </View>
+  );
+}
+
+const filmStyle = StyleSheet.create({
+  container: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
+  headerTitle: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  headerCount: { marginLeft: 'auto', fontSize: 11, fontFamily: 'Inter_500Medium' },
+  notice: { paddingHorizontal: 14, paddingVertical: 9, fontSize: 12, fontFamily: 'Inter_400Regular' },
+  timelineSection: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
+  timelineLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  timeText: { fontSize: 11, fontFamily: 'Inter_500Medium', fontVariant: ['tabular-nums'] },
+  timeline: { height: 20, borderRadius: 5, overflow: 'hidden', position: 'relative' },
+  timelineFill: { position: 'absolute', left: 0, top: 0, bottom: 0, opacity: 0.22 },
+  marker: { position: 'absolute', top: 2, bottom: 2, width: 4, borderRadius: 2, transform: [{ translateX: -2 }] },
+  playhead: { position: 'absolute', top: 0, bottom: 0, width: 2, transform: [{ translateX: -1 }] },
+  timelineHint: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 7 },
+  chipRow: { gap: 7, paddingHorizontal: 12, paddingVertical: 10 },
+  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 170 },
+  chipText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  empty: { textAlign: 'center', fontSize: 13, fontFamily: 'Inter_400Regular', paddingHorizontal: 14, paddingBottom: 16 },
+  eventRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1 },
+  eventPip: { width: 8, height: 8, borderRadius: 4 },
+  eventTime: { width: 42, fontSize: 11, fontFamily: 'Inter_500Medium', fontVariant: ['tabular-nums'] },
+  eventLabel: { flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular' },
+});
+
 function PlayerStatCard({ stat, rank, colors }: { stat: any; rank: number; colors: any }) {
   const secondaryStats: [string, number][] = [
     ['REB', stat.rebounds ?? 0],
@@ -392,16 +694,28 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   }
 
   return (
-    <ZoomableVideo style={videoStyle.wrap}>
-      <VideoView
-        player={player}
-        style={videoStyle.video}
-        contentFit="contain"
-        allowsFullscreen
-        allowsPictureInPicture
-        nativeControls
-      />
-    </ZoomableVideo>
+    <>
+      <ZoomableVideo style={videoStyle.wrap}>
+        <VideoView
+          player={player}
+          style={videoStyle.video}
+          contentFit="contain"
+          allowsFullscreen
+          allowsPictureInPicture
+          nativeControls
+        />
+      </ZoomableVideo>
+      <FilmRoomSection game={game} player={player} colors={colors} />
+      <TouchableOpacity
+        testID="save-full-game"
+        onPress={() => saveReviewVideo(streamUrl, `Full Game — vs ${game.opponent}`)}
+        activeOpacity={0.8}
+        style={[reviewAction.rowButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+      >
+        <Feather name="download" size={16} color={colors.primary} />
+        <Text style={[reviewAction.rowButtonText, { color: colors.primary }]}>Save Video</Text>
+      </TouchableOpacity>
+    </>
   );
 }
 
@@ -470,6 +784,34 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => { cancelled = true; };
   }, [lowlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function handleSaveLowlight() {
+    if (!signedUrl) return;
+    await saveReviewVideo(signedUrl, 'Game Lowlights');
+  }
+
+  async function handleRegenerateLowlight() {
+    if (generateMutation.isPending) return;
+    try {
+      await generateMutation.mutateAsync({ gameId });
+      refetch();
+    } catch {
+      Alert.alert('Could Not Regenerate', 'Please try again in a moment.');
+    }
+  }
+
+  async function handleCancelLowlight() {
+    try {
+      const token = await getToken();
+      await fetch(`${API_BASE}/api/games/${gameId}/lowlight`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      refetch();
+    } catch {
+      Alert.alert('Could Not Cancel', 'The lowlight reel is still processing. Please try again.');
+    }
+  }
+
   // When the app returns from background after the 60-second GCS signed URL
   // TTL has elapsed, the player shows a black screen because the URL it holds
   // has expired.  Detect a long background and fetch a completely fresh stream
@@ -511,16 +853,43 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   if (lowlight.status === 'ready') {
     if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
     return (
-      <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
-        <VideoView
-          player={player}
-          style={{ flex: 1 }}
-          contentFit="contain"
-          allowsFullscreen
-          allowsPictureInPicture
-          nativeControls
-        />
-      </ZoomableVideo>
+      <View style={{ flex: 1, backgroundColor: colors.card }}>
+        <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
+          <VideoView
+            player={player}
+            style={{ flex: 1 }}
+            contentFit="contain"
+            allowsFullscreen
+            allowsPictureInPicture
+            nativeControls
+          />
+        </ZoomableVideo>
+        <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            testID="save-lowlight-video"
+            onPress={handleSaveLowlight}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1 }]}
+            activeOpacity={0.8}
+          >
+            <Feather name="download" size={16} color={colors.foreground} />
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>Save Video</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            testID="regenerate-lowlights"
+            onPress={handleRegenerateLowlight}
+            disabled={generateMutation.isPending}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1, opacity: generateMutation.isPending ? 0.55 : 1 }]}
+            activeOpacity={0.8}
+          >
+            {generateMutation.isPending ? (
+              <ActivityIndicator size="small" color={colors.foreground} />
+            ) : (
+              <Ionicons name="refresh-outline" size={16} color={colors.foreground} />
+            )}
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>{generateMutation.isPending ? 'Starting…' : 'Regenerate'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     );
   }
 
@@ -548,6 +917,14 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
           {pct}% · {elapsed} elapsed — typically 30–90 min for a full game
         </Text>
+        <TouchableOpacity
+          testID="cancel-lowlights"
+          onPress={handleCancelLowlight}
+          activeOpacity={0.7}
+          style={[reviewAction.cancelButton, { borderColor: colors.border }]}
+        >
+          <Text style={[reviewAction.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -770,6 +1147,34 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     }
   }
 
+  async function handleSaveClip() {
+    if (!signedUrl) return;
+    await saveReviewVideo(signedUrl, 'Game Highlights');
+  }
+
+  async function handleRegenerate() {
+    if (generateMutation.isPending) return;
+    try {
+      await generateMutation.mutateAsync({ gameId });
+      refetch();
+    } catch {
+      Alert.alert('Could Not Regenerate', 'Please try again in a moment.');
+    }
+  }
+
+  async function handleCancelGeneration() {
+    try {
+      const token = await getToken();
+      await fetch(`${API_BASE}/api/games/${gameId}/highlight`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      refetch();
+    } catch {
+      Alert.alert('Could Not Cancel', 'The highlight reel is still processing. Please try again.');
+    }
+  }
+
   if (!highlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (highlight.status === 'ready') {
@@ -803,6 +1208,15 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             )}
             <Text style={ytStyle.btnText}>{sharingClip ? 'Preparing…' : 'Share Clip'}</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            testID="save-highlight-video"
+            onPress={handleSaveClip}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1 }]}
+            activeOpacity={0.8}
+          >
+            <Feather name="download" size={16} color={colors.foreground} />
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>Save Video</Text>
+          </TouchableOpacity>
           {youtubeUrl ? (
             <TouchableOpacity
               onPress={() => Linking.openURL(youtubeUrl)}
@@ -825,6 +1239,20 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
               <Text style={ytStyle.btnText}>YouTube</Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            testID="regenerate-highlights"
+            onPress={handleRegenerate}
+            disabled={generateMutation.isPending}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1, opacity: generateMutation.isPending ? 0.55 : 1 }]}
+            activeOpacity={0.8}
+          >
+            {generateMutation.isPending ? (
+              <ActivityIndicator size="small" color={colors.foreground} />
+            ) : (
+              <Ionicons name="refresh-outline" size={16} color={colors.foreground} />
+            )}
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>{generateMutation.isPending ? 'Starting…' : 'Regenerate'}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Upload modal */}
@@ -952,6 +1380,14 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
           {pct}% · {elapsed} elapsed — typically 30–90 min for a full game
         </Text>
+        <TouchableOpacity
+          testID="cancel-highlights"
+          onPress={handleCancelGeneration}
+          activeOpacity={0.7}
+          style={[reviewAction.cancelButton, { borderColor: colors.border }]}
+        >
+          <Text style={[reviewAction.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -983,9 +1419,28 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   );
 }
 
+const reviewAction = StyleSheet.create({
+  rowButton: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  rowButtonText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  cancelButton: { borderWidth: 1, borderRadius: 9, paddingHorizontal: 18, paddingVertical: 9 },
+  cancelText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+});
+
 const ytStyle = StyleSheet.create({
   bar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -999,6 +1454,8 @@ const ytStyle = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 18,
     paddingVertical: 11,
+    minWidth: 130,
+    justifyContent: 'center',
   },
   btnText: {
     color: '#fff',
