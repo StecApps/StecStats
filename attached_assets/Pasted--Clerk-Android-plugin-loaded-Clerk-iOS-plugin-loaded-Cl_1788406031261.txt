@@ -1,0 +1,88 @@
+✅ Clerk Android plugin loaded
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✅ Clerk iOS plugin loaded
+✅ Clerk Android plugin loaded
+✔ Incremented buildNumber from 76 to 77.
+
+
+ios.buildNumber field in app config is ignored when version source is set to remote, but this value will still be in the manifest available via expo-constants. It's recommended to remove this value from app config.
+✔ Using remote iOS credentials (Expo server)
+
+Distribution Certificate is not validated for non-interactive builds.
+Skipping Provisioning Profile validation on Apple Servers because we aren't authenticated.
+
+Project Credentials Configuration
+
+Project                   @sstec/hoops-mobile
+Bundle Identifier         com.hoopsstats.coach
+                          
+App Store Configuration   
+                          
+Distribution Certificate  
+Serial Number             540DC88B97752E805917038A3625C7C3
+Expiration Date           Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   1 month ago
+                          
+Provisioning Profile      
+Developer Portal ID       B7RS7N6VC2
+Status                    active
+Expiration                Mon, 02 Aug 2027 20:21:45 EDT
+Apple Team                76529G6UKL (STEVEN RAYMOND STEC (Individual))
+Updated                   10 days ago
+                          
+All credentials are ready to build @sstec/hoops-mobile (com.hoopsstats.coach)
+
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+✔ Compressed project files 14s (625 MB)
+Your project archive is 625 MB. You can reduce its size and the time it takes to upload by excluding files that are unnecessary for the build process in .easignore file. Learn more: https://expo.fyi/eas-build-archive
+✔ Uploaded to EAS 3m 19s
+✔ Computed project fingerprint
+
+See logs: https://expo.dev/accounts/sstec/projects/hoops-mobile/builds/4c658fda-5287-4f07-ae5f-e1913d7bb10c
+
+Waiting for build to complete. You can press Ctrl+C to exit.
+✔ Build finished
+
+🍏 iOS app:
+https://expo.dev/artifacts/eas/0w5t7uwC-NY_uDVg8BShP25JSf0ZLcntcOK3Dl1nosA.ipa
+stevenstec@Mac hoops-mobile % cd /Users/stevenstec/Downloads/StecStats
+
+git status --short
+git branch --show-current
+git log -1 --oneline
+
+git fetch origin task-735-release-sync
+git log --oneline --left-right --decorate \
+  origin/task-735-release-sync...HEAD -20
+?? .config/
+?? "artifacts (1).zip"
+task-735-release-sync
+4938c37 (HEAD -> task-735-release-sync) Align pnpm patch lockfile format with EAS
+From https://github.com/StecApps/StecStats
+ * branch            task-735-release-sync -> FETCH_HEAD
+> 4938c37 (HEAD -> task-735-release-sync) Align pnpm patch lockfile format with EAS
+> 73c9331 Implement video replay and caching features for API and mobile app
+> 19e6c14 Published your App
+> d179846 Update mobile app store review notes and reply content
+< b6cde94 (origin/task-735-release-sync) fix(mobile): refresh data when account changes
+> 5e011c3 fix(mobile): refresh data when account changes
+> 5751a94 Published your App
+> ed32780 Add screenshot to attached assets
+< 4de7288 fix(auth): keep oldest duplicate account canonical
+> 9c5c6fb fix(auth): keep oldest duplicate account canonical
+> 241785a Add new documentation screenshots
+> 660652a Add screenshot to attached assets
+stevenstec@Mac StecStats % cd /Users/stevenstec/Downloads/StecStats
+
+git branch backup/task-735-before-merge
+git merge --no-ff origin/task-735-release-sync \
+  -m "Merge GitHub release branch with EAS dependency fix"
+Merge made by the 'ort' strategy.
+stevenstec@Mac StecStats % 
