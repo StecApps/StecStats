@@ -24,4 +24,15 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('preferredForwardBufferDuration: 60');
     expect(gameScreen).toContain('waitsToMinimizeStalling: true');
   });
+
+  test('shows a paused full-frame player with native playback controls', () => {
+    expect(gameScreen).toContain('contentFit="contain"');
+    expect(gameScreen).toMatch(/allowsPictureInPicture\s+nativeControls/);
+  });
+
+  test('shares highlight clips without requiring YouTube', () => {
+    expect(gameScreen).toContain('async function handleShareClip()');
+    expect(gameScreen).toContain('`${WEB_BASE}/highlight/${shareToken}`');
+    expect(gameScreen).toContain("sharingClip ? 'Preparing…' : 'Share Clip'");
+  });
 });

@@ -396,9 +396,10 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       <VideoView
         player={player}
         style={videoStyle.video}
-        contentFit="cover"
+        contentFit="contain"
         allowsFullscreen
         allowsPictureInPicture
+        nativeControls
       />
     </ZoomableVideo>
   );
@@ -600,6 +601,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [uploadPrivacy, setUploadPrivacy] = useState<PrivacyStatus>('unlisted');
   const [uploading, setUploading] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
+  const [sharingClip, setSharingClip] = useState(false);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -741,6 +743,33 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     }
   }
 
+  async function handleShareClip() {
+    if (sharingClip) return;
+    setSharingClip(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch(`${API_BASE}/api/games/${gameId}/share-token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Could not generate share link');
+      const { shareToken } = await res.json() as { shareToken: string };
+      const url = `${WEB_BASE}/highlight/${shareToken}`;
+      await Share.share({
+        title: 'Game Highlights',
+        message: `Watch our game highlights: ${url}`,
+        url,
+      });
+    } catch (error: any) {
+      if (error?.message !== 'User did not share') {
+        Alert.alert('Share Failed', 'Could not create the highlight link. Please try again.');
+      }
+    } finally {
+      setSharingClip(false);
+    }
+  }
+
   if (!highlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (highlight.status === 'ready') {
@@ -759,43 +788,41 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           />
         </ZoomableVideo>
 
-        {/* YouTube upload row */}
+        {/* Sharing works without YouTube; YouTube remains an optional destination. */}
         <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            onPress={handleShareClip}
+            disabled={sharingClip}
+            style={[ytStyle.btn, { backgroundColor: colors.primary, flex: 1, opacity: sharingClip ? 0.65 : 1 }]}
+            activeOpacity={0.8}
+          >
+            {sharingClip ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Feather name="share-2" size={16} color="#fff" />
+            )}
+            <Text style={ytStyle.btnText}>{sharingClip ? 'Preparing…' : 'Share Clip'}</Text>
+          </TouchableOpacity>
           {youtubeUrl ? (
-            <>
-              <TouchableOpacity
-                onPress={() => Linking.openURL(youtubeUrl)}
-                style={[ytStyle.btn, { backgroundColor: '#FF0000', flex: 1 }]}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="logo-youtube" size={16} color="#fff" />
-                <Text style={ytStyle.btnText}>View on YouTube</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() =>
-                  Share.share({
-                    message: `Watch our game highlights: ${youtubeUrl}`,
-                    url: youtubeUrl,
-                  })
-                }
-                style={[ytStyle.btn, { backgroundColor: colors.muted }]}
-                activeOpacity={0.8}
-              >
-                <Feather name="share-2" size={16} color={colors.foreground} />
-                <Text style={[ytStyle.btnText, { color: colors.foreground }]}>Share</Text>
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity
+              onPress={() => Linking.openURL(youtubeUrl)}
+              style={[ytStyle.btn, { backgroundColor: '#FF0000', flex: 1 }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-youtube" size={16} color="#fff" />
+              <Text style={ytStyle.btnText}>YouTube</Text>
+            </TouchableOpacity>
           ) : (
             <TouchableOpacity
               onPress={() => {
                 setUploadTitle('Highlight Reel');
                 setUploadModalVisible(true);
               }}
-              style={[ytStyle.btn, { backgroundColor: '#FF0000' }]}
+              style={[ytStyle.btn, { backgroundColor: '#FF0000', flex: 1 }]}
               activeOpacity={0.8}
             >
               <Ionicons name="logo-youtube" size={16} color="#fff" />
-              <Text style={ytStyle.btnText}>Upload to YouTube</Text>
+              <Text style={ytStyle.btnText}>YouTube</Text>
             </TouchableOpacity>
           )}
         </View>
