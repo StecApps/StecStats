@@ -31,6 +31,7 @@ import {
 import { useLayoutEffect } from 'react';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
+import { saveReviewVideo } from '@/lib/saveReviewVideo';
 import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
@@ -193,20 +194,6 @@ function formatReviewTime(seconds: number) {
 
 function reviewEventColor(statField: string) {
   return REVIEW_CATEGORIES.find((category) => category.fields.includes(statField as never))?.color ?? '#9ca3af';
-}
-
-async function saveReviewVideo(url: string, title: string) {
-  try {
-    await Share.share({
-      title,
-      message: url,
-      url,
-    });
-  } catch (error: any) {
-    if (error?.message !== 'User did not share') {
-      Alert.alert('Save Failed', 'Could not open the save sheet. Please try again.');
-    }
-  }
 }
 
 function FilmRoomSection({
