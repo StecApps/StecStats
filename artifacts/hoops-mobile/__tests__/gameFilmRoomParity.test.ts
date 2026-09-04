@@ -95,7 +95,7 @@ describe('mobile game-video parity', () => {
 
   test('retains stable progressive and HLS playback behavior', () => {
     expect(gameScreen).toContain('return getReusableStreamUrl(game.id');
-    expect(gameScreen).toContain("useCaching: !isHls || Platform.OS === 'android'");
+    expect(gameScreen).toContain("useCaching: allowCaching && (!isHls || Platform.OS === 'android')");
     expect(gameScreen).toContain("contentType: isHls ? 'hls' as const : 'progressive' as const");
   });
 });

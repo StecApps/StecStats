@@ -8,14 +8,14 @@ const gameScreen = fs.readFileSync(
 
 describe('saved-video playback caching', () => {
   test('keeps progressive game media in Expo Video native cache', () => {
-    expect(gameScreen).toContain("useCaching: !isHls || Platform.OS === 'android'");
+    expect(gameScreen).toContain("useCaching: allowCaching && (!isHls || Platform.OS === 'android')");
     expect(gameScreen).toContain("contentType: isHls ? 'hls' as const : 'progressive' as const");
   });
 
   test('reuses the same signed URL so buffered ranges remain addressable', () => {
     expect(gameScreen).toContain('const streamUrlCache = new Map<string, CachedStream>()');
     expect(gameScreen).toContain('return getReusableStreamUrl(game.id');
-    expect(gameScreen).toContain("return getReusableStreamUrl(gameId, 'highlight'");
+    expect(gameScreen).toContain("await getReusableStreamUrl(gameId, 'highlight'");
     expect(gameScreen).toContain("return getReusableStreamUrl(gameId, 'lowlight'");
   });
 
@@ -34,5 +34,12 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('async function handleShareClip()');
     expect(gameScreen).toContain('`${WEB_BASE}/highlight/${shareToken}`');
     expect(gameScreen).toContain("sharingClip ? 'Preparing…' : 'Share Clip'");
+  });
+
+  test('recovers from an iOS native player source error', () => {
+    expect(gameScreen).toContain("player.addListener('statusChange'");
+    expect(gameScreen).toContain("loadHighlightVideo(true, Platform.OS === 'ios')");
+    expect(gameScreen).toContain('streamUrlCache.delete');
+    expect(gameScreen).toContain('testID="retry-highlight-playback"');
   });
 });

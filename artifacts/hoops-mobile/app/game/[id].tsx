@@ -132,12 +132,12 @@ async function getReusableStreamUrl(
   return result;
 }
 
-function playbackSource(url: string, isHls: boolean) {
+function playbackSource(url: string, isHls: boolean, allowCaching = true) {
   return {
     uri: url,
     // iOS cannot cache HLS through Expo Video, but progressive MP4 footage,
     // highlights, and lowlights are cached on both iOS and Android.
-    useCaching: !isHls || Platform.OS === 'android',
+    useCaching: allowCaching && (!isHls || Platform.OS === 'android'),
     contentType: isHls ? 'hls' as const : 'progressive' as const,
   };
 }
@@ -712,6 +712,38 @@ const videoStyle = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 8 },
   emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   emptySubText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4, opacity: 0.75 },
+  playbackLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+  playbackError: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  playbackErrorText: {
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
+    textAlign: 'center',
+  },
+  retryButton: {
+    minHeight: 42,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
 });
 
 // Module-level maps so processing start times survive tab-switches/remounts.
@@ -966,6 +998,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [uploading, setUploading] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
   const [sharingClip, setSharingClip] = useState(false);
+  const [playbackLoading, setPlaybackLoading] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const automaticRetryRef = useRef(false);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -1005,22 +1040,67 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   // Range requests reliably in production.
   const highlightReady = highlight?.status === 'ready';
 
+  const loadHighlightVideo = useCallback(async (
+    forceFresh = false,
+    disableCaching = false,
+  ) => {
+    setPlaybackLoading(true);
+    setPlaybackError(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Your session expired. Please sign in again.');
+
+      if (forceFresh) {
+        streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
+      }
+      const result = forceFresh
+        ? await fetchStreamUrl(gameId, 'highlight', token)
+        : await getReusableStreamUrl(gameId, 'highlight', token);
+
+      setSignedUrl(result.url);
+      if (result.proxyReady) {
+        streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
+          url: result.url,
+          isHls: result.isHls,
+          expiresAt: Date.now() + STREAM_URL_REUSE_MS,
+        });
+      }
+      await player.replaceAsync(
+        playbackSource(result.url, result.isHls, !disableCaching),
+      );
+    } catch (error: any) {
+      setPlaybackError(error?.message ?? 'The highlight video could not be loaded.');
+    } finally {
+      setPlaybackLoading(false);
+    }
+  }, [gameId, getToken, player]);
+
   useEffect(() => {
     if (!highlightReady) return;
     let cancelled = false;
-    getToken()
-      .then((token) => {
-        if (!token || cancelled) return;
-        return getReusableStreamUrl(gameId, 'highlight', token);
-      })
-      .then((result) => {
-        if (!result || cancelled) return;
-        setSignedUrl(result.url);
-        player.replaceAsync(playbackSource(result.url, result.isHls));
-      })
-      .catch(() => {});
+    automaticRetryRef.current = false;
+    void loadHighlightVideo().then(() => {
+      if (cancelled) return;
+    });
     return () => { cancelled = true; };
-  }, [highlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [highlightReady, gameId, loadHighlightVideo]);
+
+  // AVPlayer can reject a signed source after Expo Video has accepted it, so
+  // replaceAsync resolving is not sufficient proof that playback is available.
+  // Retry once with a fresh URL and native caching disabled; this bypasses a
+  // stale/corrupt cache entry while preserving caching for the normal path.
+  useEffect(() => {
+    const subscription = player.addListener('statusChange', ({ status, error }) => {
+      if (status !== 'error') return;
+      const message = error?.message ?? 'The highlight video could not be loaded.';
+      setPlaybackError(message);
+      if (!automaticRetryRef.current) {
+        automaticRetryRef.current = true;
+        void loadHighlightVideo(true, Platform.OS === 'ios');
+      }
+    });
+    return () => subscription.remove();
+  }, [player, loadHighlightVideo]);
 
   // When the app returns from background after the 60-second GCS signed URL
   // TTL has elapsed, the player shows a black screen because the URL it holds
@@ -1036,27 +1116,13 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         const bg = highlightBgAtRef.current;
         highlightBgAtRef.current = null;
         if (bg !== null && Date.now() - bg > 50_000) {
-          getToken()
-            .then((token) => {
-              if (!token) return;
-              return fetchStreamUrl(gameId, 'highlight', token);
-            })
-            .then((result) => {
-              if (!result) return;
-              setSignedUrl(result.url);
-              streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
-                url: result.url,
-                isHls: result.isHls,
-                expiresAt: Date.now() + STREAM_URL_REUSE_MS,
-              });
-              player.replaceAsync(playbackSource(result.url, result.isHls));
-            })
-            .catch(() => {});
+          automaticRetryRef.current = false;
+          void loadHighlightVideo(true);
         }
       }
     });
     return () => sub.remove();
-  }, [highlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [highlightReady, loadHighlightVideo]);
 
   async function handleYoutubeUpload() {
     if (!uploadTitle.trim() || uploading) return;
@@ -1170,14 +1236,41 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       <View style={{ flex: 1, backgroundColor: colors.card }}>
         {/* ZoomableVideo from the pinch-to-zoom task wraps only the player */}
         <ZoomableVideo style={{ flex: 1 }}>
-          <VideoView
-            player={player}
-            style={{ flex: 1 }}
-            contentFit="contain"
-            allowsFullscreen
-            allowsPictureInPicture
-            nativeControls
-          />
+          {playbackError && !playbackLoading ? (
+            <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
+              <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
+              <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
+                This highlight could not be loaded.
+              </Text>
+              <TouchableOpacity
+                testID="retry-highlight-playback"
+                onPress={() => {
+                  automaticRetryRef.current = false;
+                  void loadHighlightVideo(true, Platform.OS === 'ios');
+                }}
+                style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+              >
+                <Feather name="refresh-cw" size={15} color="#fff" />
+                <Text style={videoStyle.retryButtonText}>Retry Video</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <VideoView
+                player={player}
+                style={{ flex: 1 }}
+                contentFit="contain"
+                allowsFullscreen
+                allowsPictureInPicture
+                nativeControls
+              />
+              {playbackLoading && (
+                <View pointerEvents="none" style={videoStyle.playbackLoading}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              )}
+            </>
+          )}
         </ZoomableVideo>
 
         {/* Sharing works without YouTube; YouTube remains an optional destination. */}
