@@ -78,6 +78,19 @@ describe('mobile game-video parity', () => {
 
       expect(alert).not.toHaveBeenCalled();
     });
+
+    test('reports an unexpected native share failure to the coach', async () => {
+      share.mockRejectedValueOnce(new Error('Native share sheet unavailable'));
+
+      await expect(
+        saveReviewVideo('https://cdn.example.test/highlights.mp4', 'Game Highlights'),
+      ).resolves.toBeUndefined();
+
+      expect(alert).toHaveBeenCalledWith(
+        'Save Failed',
+        'Could not open the save sheet. Please try again.',
+      );
+    });
   });
 
   test('retains stable progressive and HLS playback behavior', () => {
