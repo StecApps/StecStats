@@ -43,6 +43,7 @@ import { Gauge } from "lucide-react";
 import { createRecordingSessionId, saveChunk, getOrderedChunks, deleteSession } from "@/lib/recordingStore";
 import { getSportProfile, SPORT_EMOJI } from "@/lib/sport-profiles";
 import MusicTrackSelector, { MUSIC_TRACKS, stopPreview as stopMusicPreview } from "@/components/MusicTrackSelector";
+import { trackEvent } from "@/lib/analytics";
 
 type StatCounters = {
   playerId: number;
@@ -435,6 +436,10 @@ export default function RecordGame() {
     document.body.appendChild(a);
     a.click();
     a.remove();
+    trackEvent("highlight_downloaded", {
+      asset_type: "highlight",
+      music_selected: Boolean(highlightLastUsedTrack),
+    });
     if (cached) setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   };
 
@@ -452,6 +457,11 @@ export default function RecordGame() {
       if (typeof navigator.share === "function") {
         try {
           await navigator.share({ title, url });
+          trackEvent("highlight_shared", {
+            asset_type: "highlight",
+            share_channel: "native",
+            music_selected: Boolean(highlightLastUsedTrack),
+          });
           return;
         } catch (err) {
           // AbortError = user dismissed the share sheet — don't fall through
@@ -460,6 +470,11 @@ export default function RecordGame() {
         }
       }
       await navigator.clipboard.writeText(url);
+      trackEvent("highlight_shared", {
+        asset_type: "highlight",
+        share_channel: "clipboard",
+        music_selected: Boolean(highlightLastUsedTrack),
+      });
       toast({ title: "Link copied", description: "Anyone with the link can watch the highlight reel." });
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
@@ -2154,6 +2169,12 @@ export default function RecordGame() {
       mediaRecorderRef.current = recorder;
       recordingStartRef.current = Date.now();
       recorder.start(3000);
+      trackEvent("recording_started", {
+        capture_mode: usesCanvasRef.current ? "canvas" : "raw",
+        has_audio: recordStream.getAudioTracks().length > 0,
+        is_live: isLive,
+        orientation: window.innerWidth >= window.innerHeight ? "landscape" : "portrait",
+      });
       setIsRecording(true);
       setHasRecording(true);
       shotDetectionUsageRef.current = 0;
@@ -2637,6 +2658,10 @@ export default function RecordGame() {
     ws.onmessage = async (event) => {
       const message = JSON.parse(event.data);
       if (message.type === "broadcaster-joined") {
+        trackEvent("live_stream_started", {
+          is_recording: isRecording,
+          reconnect: isReconnect,
+        });
         // Server has fully registered this socket as the broadcaster.
         // Now it is safe to send resync-events — the server will not
         // drop it due to role === null from a concurrent getOrResumeSession.
@@ -3210,6 +3235,14 @@ export default function RecordGame() {
       } else {
         await createGame.mutateAsync({ data: payload });
       }
+      trackEvent("game_saved", {
+        mode: isEditing ? "edit" : "create",
+        has_video: Boolean(videoObjectPath),
+        video_save_mode: videoObjectPath ? "uploaded" : skipVideo ? "stats_only" : "none",
+        stat_event_count: events.length,
+        player_count: selectedPlayerIds.length,
+        result,
+      });
 
       const videoWasExpectedButMissing =
         didAttemptRecordingRef.current &&
@@ -3251,6 +3284,11 @@ export default function RecordGame() {
     if (!newTeamName) return;
     try {
       const t = await createTeam.mutateAsync({ data: { name: newTeamName, sport: newTeamSport } });
+      trackEvent("team_created", {
+        flow: "record",
+        sport: newTeamSport,
+        has_existing_teams: (teams?.length ?? 0) > 0,
+      });
       await refetchTeams();
       setTeamId(t.id.toString());
       setIsAddTeamOpen(false);

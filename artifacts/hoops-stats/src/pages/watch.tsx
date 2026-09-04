@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2, RefreshCw, AlertTriangle } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
+import { trackEvent } from "@/lib/analytics";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
 
@@ -52,6 +53,7 @@ export default function WatchStream() {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const viewerTrackedRef = useRef(false);
   const iceWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks whether an offer arrives after we send request-offer. If it
   // doesn't fire within 30 s the broadcaster is likely offline, so we
@@ -295,6 +297,13 @@ export default function WatchStream() {
     const stream = remoteStreamRef.current;
     if (!v || !stream || v.srcObject === stream) return;
     v.srcObject = stream;
+    if (!viewerTrackedRef.current) {
+      viewerTrackedRef.current = true;
+      trackEvent("live_stream_viewed", {
+        device_class: isTouchDevice ? "mobile" : "desktop",
+        reconnected: reconnectAttemptCount > 0,
+      });
+    }
     // If the viewer already explicitly tapped to unmute, restore that state
     // on reconnect — browsers allow unmuted play after a prior user gesture.
     if (userUnmutedRef.current) {

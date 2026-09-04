@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, User, Trophy, ArrowRight, PartyPopper, Link, Plus, Zap, CheckCircle2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { trackEvent } from "@/lib/analytics";
 
 type Step = "player" | "team" | "done";
 
@@ -179,6 +180,11 @@ export default function Onboarding() {
     if (!teamName.trim()) return;
     try {
       await createTeam.mutateAsync({ data: { name: teamName.trim() } });
+      trackEvent("team_created", {
+        flow: "onboarding",
+        sport: "basketball",
+        has_existing_teams: (teams?.length ?? 0) > 0,
+      });
       queryClient.invalidateQueries({ queryKey: getListTeamsQueryKey() });
       setConfirmedTeamName(teamName.trim());
       toast({ title: "Team added", description: `${teamName.trim()} is ready.` });

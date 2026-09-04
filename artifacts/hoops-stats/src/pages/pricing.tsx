@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Check, Sparkles, Loader2 } from "lucide-react";
 import MarketingHeader from "@/components/marketing-header";
 import { useToast } from "@/hooks/use-toast";
+import { trackEvent } from "@/lib/analytics";
 
 export const PENDING_CHECKOUT_KEY = "stec-pending-checkout";
 export const FAILED_CHECKOUT_KEY = "stec-failed-checkout";
@@ -57,6 +58,11 @@ export default function Pricing() {
 
     try {
       const res = await checkout.mutateAsync({ data: { interval, tier } });
+      trackEvent("subscription_checkout_started", {
+        tier,
+        interval,
+        location: "pricing",
+      });
       window.location.href = res.url;
     } catch {
       toast({ title: "Error", description: "Failed to start checkout. Please try again.", variant: "destructive" });

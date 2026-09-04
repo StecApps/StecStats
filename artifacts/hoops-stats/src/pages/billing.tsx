@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSearch, useLocation } from "wouter";
 import { FAILED_CHECKOUT_KEY, decodeCheckoutIntent } from "@/pages/pricing";
 import type { CheckoutIntent } from "@/pages/pricing";
+import { trackEvent } from "@/lib/analytics";
 
 import { FREE_FEATURES, PRO_FEATURES, PREMIUM_FEATURES } from "@workspace/plan-copy";
 
@@ -124,6 +125,10 @@ export default function Billing() {
     const plan = status?.plan;
     if (!plan || plan === "free") return;
     setPurchaseEventFired(true);
+    trackEvent("subscription_checkout_completed", {
+      tier: plan,
+      activation_waited: true,
+    });
     fetch("/api/purchase-events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -154,6 +159,11 @@ export default function Billing() {
     try {
       const res = await checkout.mutateAsync({ data: { interval, tier } });
       try { localStorage.removeItem(FAILED_CHECKOUT_KEY); } catch {}
+      trackEvent("subscription_checkout_started", {
+        tier,
+        interval,
+        location: "billing",
+      });
       window.location.href = res.url;
     } catch {
       toast({ title: "Error", description: "Failed to start checkout. Please try again.", variant: "destructive" });
