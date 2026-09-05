@@ -75,7 +75,13 @@ async function fetchStreamUrl(
   // expires so the coach can seek freely throughout a long review session.
   const url = proxyType === 'hls'
     ? `${API_BASE}/api/games/${gameId}/hls/playlist.m3u8?t=${streamToken}`
-    : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
+    : type === 'highlight' || type === 'lowlight'
+      // iOS AVPlayer has repeatedly rejected otherwise-valid MP4s when handed
+      // their GCS signed URLs directly. Keep reels on the tokenized API route,
+      // which serves deterministic Content-Type/Length and byte ranges through
+      // the authenticated GCS SDK instead of a redirect.
+      ? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`
+      : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
 
   return {
     url,
@@ -984,6 +990,8 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 type PrivacyStatus = 'public' | 'unlisted' | 'private';
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const router = useRouter();
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
@@ -1047,7 +1055,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     setPlaybackLoading(true);
     setPlaybackError(null);
     try {
-      const token = await getToken();
+      const token = await getTokenRef.current();
       if (!token) throw new Error('Your session expired. Please sign in again.');
 
       if (forceFresh) {
@@ -1073,7 +1081,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     } finally {
       setPlaybackLoading(false);
     }
-  }, [gameId, getToken, player]);
+  }, [gameId, player]);
 
   useEffect(() => {
     if (!highlightReady) return;

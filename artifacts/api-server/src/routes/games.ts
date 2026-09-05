@@ -2183,6 +2183,82 @@ router.get("/games/:gameId/stream/:type", async (req, res) => {
   }
 
   try {
+    if (req.query.proxy === "1" && (routeType === "highlight" || routeType === "lowlight")) {
+      const objectFile = await objectStorageService.getObjectEntityFile(entry.objectPath);
+      const [metadata] = await objectFile.getMetadata();
+      const totalSize = Number(metadata.size);
+      if (!Number.isSafeInteger(totalSize) || totalSize <= 0) {
+        throw new Error("Invalid media object size");
+      }
+
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Content-Type", String(metadata.contentType || "video/mp4"));
+      res.setHeader("Cache-Control", "private, max-age=3600");
+
+      const rangeHeader = req.headers.range;
+      let start = 0;
+      let end = totalSize - 1;
+
+      if (rangeHeader) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+        if (!match || (!match[1] && !match[2])) {
+          res.setHeader("Content-Range", `bytes */${totalSize}`);
+          return void res.status(416).end();
+        }
+
+        if (!match[1]) {
+          const suffixLength = Number(match[2]);
+          if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+            res.setHeader("Content-Range", `bytes */${totalSize}`);
+            return void res.status(416).end();
+          }
+          start = Math.max(0, totalSize - suffixLength);
+        } else {
+          start = Number(match[1]);
+        }
+        if (match[2] && match[1]) {
+          end = Math.min(Number(match[2]), totalSize - 1);
+        }
+
+        if (
+          !Number.isSafeInteger(start)
+          || !Number.isSafeInteger(end)
+          || start < 0
+          || start >= totalSize
+          || end < start
+        ) {
+          res.setHeader("Content-Range", `bytes */${totalSize}`);
+          return void res.status(416).end();
+        }
+
+        res.status(206);
+        res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+        res.setHeader("Content-Length", String(end - start + 1));
+      } else {
+        res.status(200);
+        res.setHeader("Content-Length", String(totalSize));
+      }
+
+      if (req.method === "HEAD") {
+        return void res.end();
+      }
+
+      const mediaStream = objectFile.createReadStream({ start, end });
+      mediaStream.on("error", (error) => {
+        req.log.error({ err: error, gameId: routeGameId, routeType }, "stream: GCS read failed");
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Failed to stream video" });
+        } else {
+          res.destroy(error);
+        }
+      });
+      res.on("close", () => {
+        if (!mediaStream.destroyed) mediaStream.destroy();
+      });
+      mediaStream.pipe(res);
+      return;
+    }
+
     // Redirect ALL requests — both initial full-file loads and Range seeks —
     // to a 3600 s GCS signed URL so the client streams directly from GCS,
     // bypassing the Replit reverse proxy entirely.

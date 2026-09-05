@@ -7,13 +7,19 @@ For progressive MP4 playback, keep the exact signed media URL stable while the a
 
 **Why:** Re-fetching a signed URL on every tab visit made Expo Video discard the practical value of already-buffered ranges, so replay felt like a fresh download.
 
-**How to apply:** Any future mobile player or refactor should preserve source URL identity, opt progressive MP4 into the native cache, and avoid enabling iOS caching for HLS because Expo Video does not support that combination.
+**How to apply:** Any future mobile player or refactor should preserve source URL identity, opt progressive MP4 into the native cache, and avoid enabling iOS caching for HLS because Expo Video does not support that combination. For generated highlight/lowlight reels on iOS, use the tokenized API byte-range stream rather than exposing the GCS signed URL directly.
 
 Expo Video can accept `replaceAsync()` and only report AVPlayer's source failure later through the `statusChange` event. A player must not treat the resolved replacement promise as proof that media loaded.
 
 **Why:** A valid, fast-start H.264/AAC highlight remained on iOS as a black player with the crossed-out play icon because the delayed native error was ignored.
 
 **How to apply:** Listen for `statusChange: error`; invalidate the reusable signed URL, retry once with a freshly signed URL and iOS caching disabled, then expose a manual retry state instead of leaving the native error screen.
+
+Keep Clerk's `getToken` function in a ref when a media-loading callback is itself an effect dependency.
+
+**Why:** Its changing function identity recreated the loader after each state update, producing a stream-token request storm and an eventual native app restart.
+
+**How to apply:** Update a `getToken` ref during render and keep the loader callback dependent only on stable media identifiers/player objects; add a regression test that guards the callback dependency list.
 
 Long-game HLS must become available from consecutive uploaded chunks before the completion sentinel exists. Use an EVENT playlist while encoding is active and switch to a closed VOD playlist only after the sentinel is written.
 

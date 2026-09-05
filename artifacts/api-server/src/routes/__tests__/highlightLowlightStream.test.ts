@@ -440,6 +440,18 @@ async function streamWithRange(
   });
 }
 
+async function streamThroughApiWithRange(
+  gameId: number,
+  type: string,
+  token: string,
+  start: number,
+  end: number,
+) {
+  return fetch(`${baseUrl}/api/games/${gameId}/stream/${type}?t=${token}&proxy=1`, {
+    headers: { Range: `bytes=${start}-${end}` },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // A — Full-file requests redirect to the GCS signed URL (no proxy buffering)
 // ---------------------------------------------------------------------------
@@ -598,6 +610,35 @@ describe("Range seek request → 302 redirect to GCS signed URL (not 206)", () =
 
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(SIGNED_URL);
+  });
+});
+
+describe("Native reel stream → authenticated GCS SDK byte ranges", () => {
+  it("serves a highlight range as 206 without redirecting AVPlayer to GCS", async () => {
+    reelMode.value = "highlight";
+    const token = await mintToken(GAME_ID, "highlight");
+
+    const res = await streamThroughApiWithRange(GAME_ID, "highlight", token, 0, 1023);
+
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-type")).toContain("video/mp4");
+    expect(res.headers.get("accept-ranges")).toBe("bytes");
+    expect(res.headers.get("content-range")).toBe("bytes 0-1023/5000000");
+    expect(res.headers.get("content-length")).toBe("1024");
+    expect((await res.arrayBuffer()).byteLength).toBe(1024);
+    expect(lastStreamObjectPath.value).toBe(PATH_HIGHLIGHT);
+    expect(streamCalls.createReadStream).toBe(1);
+  });
+
+  it("rejects an invalid lowlight range without opening the object stream", async () => {
+    reelMode.value = "lowlight";
+    const token = await mintToken(GAME_ID, "lowlight");
+
+    const res = await streamThroughApiWithRange(GAME_ID, "lowlight", token, 6_000_000, 6_000_100);
+
+    expect(res.status).toBe(416);
+    expect(res.headers.get("content-range")).toBe("bytes */5000000");
+    expect(streamCalls.createReadStream).toBe(0);
   });
 });
 

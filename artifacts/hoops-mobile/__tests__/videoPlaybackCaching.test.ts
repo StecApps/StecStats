@@ -42,4 +42,15 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('streamUrlCache.delete');
     expect(gameScreen).toContain('testID="retry-highlight-playback"');
   });
+
+  test('does not recreate the highlight loader when Clerk refreshes getToken', () => {
+    expect(gameScreen).toContain('const getTokenRef = useRef(getToken)');
+    expect(gameScreen).toContain('const token = await getTokenRef.current()');
+    expect(gameScreen).toContain('}, [gameId, player])');
+  });
+
+  test('plays highlight and lowlight reels through the stable ranged API stream', () => {
+    expect(gameScreen).toContain("type === 'highlight' || type === 'lowlight'");
+    expect(gameScreen).toContain("stream/${type}?t=${streamToken}&proxy=1");
+  });
 });
