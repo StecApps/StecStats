@@ -139,3 +139,4 @@
 - [Expo prebuild dependency rewrite](expo-prebuild-dependency-rewrite.md) — keep Expo core in runtime dependencies; prebuild rewrites the manifest even with --no-install otherwise.
 - [EAS pnpm patch compatibility](eas-pnpm-patch-compatibility.md) — pin pnpm and keep patchedDependencies only in pnpm-workspace.yaml to avoid remote frozen-lockfile mismatches.
 - [Expo React type isolation](expo-react-type-isolation.md) — never globally override React type versions across web and Expo; Expo Launch requires its SDK-compatible types in the mobile importer.
+- [Metro image-size advisory](metro-image-size-advisory.md) — no safe upstream release exists; keep Metro on the bounded local parser until upstream publishes a patched version.
