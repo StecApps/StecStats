@@ -1,5 +1,5 @@
 /**
- * Highlight / lowlight streaming — redirect-ALL design regression test
+ * Highlight / lowlight streaming — direct-GCS fallback and native API ranges
  *
  * The /games/:gameId/stream/:type endpoint redirects ALL requests — both
  * full-file loads and Range seeks — to a 3600 s GCS signed URL.  This
@@ -47,6 +47,7 @@
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import express from "express";
+import { createHmac } from "crypto";
 import { createServer, type Server } from "http";
 import type { AddressInfo } from "net";
 
@@ -614,6 +615,33 @@ describe("Range seek request → 302 redirect to GCS signed URL (not 206)", () =
 });
 
 describe("Native reel stream → authenticated GCS SDK byte ranges", () => {
+  it("accepts a signed token that was not minted in this server process", async () => {
+    reelMode.value = "highlight";
+    const payload = Buffer.from(JSON.stringify({
+      objectPath: PATH_HIGHLIGHT,
+      expiresAt: Date.now() + 60_000,
+      ownerId: COACH_A.id,
+      entitlementOkUntil: Date.now() + 60_000,
+      gameId: GAME_ID,
+      streamType: "highlight",
+    })).toString("base64url");
+    const signature = createHmac("sha256", process.env.SESSION_SECRET!)
+      .update(payload)
+      .digest("base64url");
+
+    const res = await streamThroughApiWithRange(
+      GAME_ID,
+      "highlight",
+      `${payload}.${signature}`,
+      0,
+      1023,
+    );
+
+    expect(res.status).toBe(206);
+    expect((await res.arrayBuffer()).byteLength).toBe(1024);
+    expect(lastStreamObjectPath.value).toBe(PATH_HIGHLIGHT);
+  });
+
   it("serves a highlight range as 206 without redirecting AVPlayer to GCS", async () => {
     reelMode.value = "highlight";
     const token = await mintToken(GAME_ID, "highlight");

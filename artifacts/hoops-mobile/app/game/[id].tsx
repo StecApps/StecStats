@@ -33,6 +33,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { saveReviewVideo } from '@/lib/saveReviewVideo';
 import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
+import { File, Paths } from 'expo-file-system';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 
@@ -75,13 +76,7 @@ async function fetchStreamUrl(
   // expires so the coach can seek freely throughout a long review session.
   const url = proxyType === 'hls'
     ? `${API_BASE}/api/games/${gameId}/hls/playlist.m3u8?t=${streamToken}`
-    : type === 'highlight' || type === 'lowlight'
-      // iOS AVPlayer has repeatedly rejected otherwise-valid MP4s when handed
-      // their GCS signed URLs directly. Keep reels on the tokenized API route,
-      // which serves deterministic Content-Type/Length and byte ranges through
-      // the authenticated GCS SDK instead of a redirect.
-      ? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`
-      : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
+    : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
 
   return {
     url,
@@ -105,10 +100,31 @@ type CachedStream = {
 // cache is keyed by source URL, so minting a new signed URL on every tab visit
 // made already-buffered bytes look like a completely different video.
 const streamUrlCache = new Map<string, CachedStream>();
+const localReelFileCache = new Map<string, string>();
 const STREAM_URL_REUSE_MS = 4.5 * 60 * 60_000;
 
 function streamCacheKey(gameId: number, type: 'video' | 'highlight' | 'lowlight') {
   return `${gameId}:${type}`;
+}
+
+async function getReelPlaybackUrl(
+  gameId: number,
+  type: 'highlight' | 'lowlight',
+  remoteUrl: string,
+  forceFresh = false,
+) {
+  if (Platform.OS !== 'ios') return remoteUrl;
+
+  const key = streamCacheKey(gameId, type);
+  const cachedUri = localReelFileCache.get(key);
+  if (!forceFresh && cachedUri) return cachedUri;
+
+  const destination = new File(Paths.cache, `stecstats-${type}-${gameId}.mp4`);
+  const downloaded = await File.downloadFileAsync(remoteUrl, destination, {
+    idempotent: true,
+  });
+  localReelFileCache.set(key, downloaded.uri);
+  return downloaded.uri;
 }
 
 async function getReusableStreamUrl(
@@ -802,8 +818,11 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       })
       .then((result) => {
         if (!result || cancelled) return;
-        setSignedUrl(result.url);
-        player.replaceAsync(playbackSource(result.url, result.isHls));
+        return getReelPlaybackUrl(gameId, 'lowlight', result.url).then((playbackUrl) => {
+          if (cancelled) return;
+          setSignedUrl(result.url);
+          return player.replaceAsync(playbackSource(playbackUrl, false));
+        });
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -817,6 +836,8 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   async function handleRegenerateLowlight() {
     if (generateMutation.isPending) return;
     try {
+      localReelFileCache.delete(streamCacheKey(gameId, 'lowlight'));
+      streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
       await generateMutation.mutateAsync({ gameId });
       refetch();
     } catch {
@@ -851,6 +872,9 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         const bg = lowlightBgAtRef.current;
         lowlightBgAtRef.current = null;
         if (bg !== null && Date.now() - bg > 50_000) {
+          if (Platform.OS === 'ios' && localReelFileCache.has(streamCacheKey(gameId, 'lowlight'))) {
+            return;
+          }
           getToken()
             .then((token) => {
               if (!token) return;
@@ -858,13 +882,15 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             })
             .then((result) => {
               if (!result) return;
-              setSignedUrl(result.url);
-              streamUrlCache.set(streamCacheKey(gameId, 'lowlight'), {
-                url: result.url,
-                isHls: result.isHls,
-                expiresAt: Date.now() + STREAM_URL_REUSE_MS,
+              return getReelPlaybackUrl(gameId, 'lowlight', result.url, true).then((playbackUrl) => {
+                setSignedUrl(result.url);
+                streamUrlCache.set(streamCacheKey(gameId, 'lowlight'), {
+                  url: result.url,
+                  isHls: result.isHls,
+                  expiresAt: Date.now() + STREAM_URL_REUSE_MS,
+                });
+                return player.replaceAsync(playbackSource(playbackUrl, false));
               });
-              player.replaceAsync(playbackSource(result.url, result.isHls));
             })
             .catch(() => {});
         }
@@ -1065,6 +1091,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         ? await fetchStreamUrl(gameId, 'highlight', token)
         : await getReusableStreamUrl(gameId, 'highlight', token);
 
+      const playbackUrl = await getReelPlaybackUrl(
+        gameId,
+        'highlight',
+        result.url,
+        forceFresh,
+      );
       setSignedUrl(result.url);
       if (result.proxyReady) {
         streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
@@ -1074,7 +1106,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         });
       }
       await player.replaceAsync(
-        playbackSource(result.url, result.isHls, !disableCaching),
+        playbackSource(playbackUrl, false, !disableCaching),
       );
     } catch (error: any) {
       setPlaybackError(error?.message ?? 'The highlight video could not be loaded.');

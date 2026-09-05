@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { randomUUID } from "crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { and, asc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { execFile, spawn } from "child_process";
 import { promises as fs, createWriteStream, createReadStream } from "fs";
@@ -1934,6 +1934,62 @@ interface StreamTokenEntry {
 
 const streamTokens = new Map<string, StreamTokenEntry>();
 
+/**
+ * Stream tokens must be valid across every autoscaled API instance. Keep a
+ * per-instance map only as an entitlement re-check cache; the HMAC-signed token
+ * is the source of truth when AVPlayer lands on a different instance.
+ */
+function signStreamToken(entry: StreamTokenEntry): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required to issue stream tokens");
+  const payload = Buffer.from(JSON.stringify({
+    objectPath: entry.objectPath,
+    expiresAt: entry.expiresAt,
+    ownerId: entry.ownerId,
+    entitlementOkUntil: entry.entitlementOkUntil,
+    gameId: entry.gameId,
+    streamType: entry.streamType,
+    isHls: entry.isHls,
+    hlsDurationMs: entry.hlsDurationMs,
+  })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function verifyStreamToken(token: string): StreamTokenEntry | null {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+
+  const expected = Buffer.from(createHmac("sha256", secret).update(parts[0]).digest("base64url"));
+  const supplied = Buffer.from(parts[1]);
+  if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return null;
+
+  try {
+    const value = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as Partial<StreamTokenEntry>;
+    if (
+      typeof value.objectPath !== "string"
+      || !Number.isSafeInteger(value.expiresAt)
+      || !Number.isSafeInteger(value.ownerId)
+      || !Number.isSafeInteger(value.entitlementOkUntil)
+      || !Number.isSafeInteger(value.gameId)
+      || typeof value.streamType !== "string"
+    ) return null;
+    return value as StreamTokenEntry;
+  } catch {
+    return null;
+  }
+}
+
+function resolveStreamToken(token: string): StreamTokenEntry | null {
+  const cached = streamTokens.get(token);
+  if (cached) return cached;
+  const verified = verifyStreamToken(token);
+  if (verified) streamTokens.set(token, verified);
+  return verified;
+}
+
 // Token TTL: 4 hours.
 //
 // The /stream/:type endpoint redirects ALL requests (full-file and Range seeks)
@@ -2039,8 +2095,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
         // the non-HLS stream token (4 h).  This gives HLS the same
         // post-token-expiry seek window: segment requests remain valid for 1 h
         // after the stream-token TTL (STREAM_TOKEN_TTL_MS) would have expired.
-        const hlsToken = randomUUID();
-        streamTokens.set(hlsToken, {
+        const hlsEntry: StreamTokenEntry = {
           objectPath: "",
           expiresAt: Date.now() + STREAM_SIGNED_URL_TTL_S * 1000,
           ownerId,
@@ -2049,7 +2104,9 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
           streamType: "hls",
           isHls: true,
           hlsDurationMs: game.videoDurationMs,
-        });
+        };
+        const hlsToken = signStreamToken(hlsEntry);
+        streamTokens.set(hlsToken, hlsEntry);
         return void res.json({
           token: hlsToken,
           proxyReady: true,
@@ -2100,8 +2157,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     STREAM_SIGNED_URL_TTL_S,
   );
 
-  const token = randomUUID();
-  streamTokens.set(token, {
+  const streamEntry: StreamTokenEntry = {
     objectPath,
     expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
     ownerId,
@@ -2115,7 +2171,9 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     // Cache the signed URL so /stream/:type can reuse it without a second
     // GCS signing call.
     streamUrl,
-  });
+  };
+  const token = signStreamToken(streamEntry);
+  streamTokens.set(token, streamEntry);
 
   // proxyReady: true  → URL is an H.264 proxy MP4 (safe on all platforms)
   // proxyReady: false → URL is the raw recording (VP9/WebM); iOS cannot play it
@@ -2139,7 +2197,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
  */
 router.get("/games/:gameId/stream/:type", async (req, res) => {
   const token = String(req.query.t ?? "");
-  const entry = streamTokens.get(token);
+  const entry = resolveStreamToken(token);
   if (!entry || Date.now() > entry.expiresAt) {
     return void res.status(401).json({ error: "Invalid or expired stream token" });
   }
@@ -2328,7 +2386,7 @@ async function revalidateHlsEntitlement(entry: StreamTokenEntry, token: string):
  */
 router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
   const token = String(req.query.t ?? "");
-  const entry = streamTokens.get(token);
+  const entry = resolveStreamToken(token);
   if (!entry || !entry.isHls || Date.now() > entry.expiresAt) {
     return void res.status(401).end();
   }
@@ -2400,7 +2458,7 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
  */
 router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
   const token = String(req.query.t ?? "");
-  const entry = streamTokens.get(token);
+  const entry = resolveStreamToken(token);
   if (!entry || !entry.isHls || Date.now() > entry.expiresAt) {
     return void res.status(401).end();
   }

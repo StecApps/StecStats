@@ -49,8 +49,10 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('}, [gameId, player])');
   });
 
-  test('plays highlight and lowlight reels through the stable ranged API stream', () => {
-    expect(gameScreen).toContain("type === 'highlight' || type === 'lowlight'");
-    expect(gameScreen).toContain("stream/${type}?t=${streamToken}&proxy=1");
+  test('downloads iOS highlight and lowlight reels before native playback', () => {
+    expect(gameScreen).toContain("if (Platform.OS !== 'ios') return remoteUrl");
+    expect(gameScreen).toContain('File.downloadFileAsync(remoteUrl, destination');
+    expect(gameScreen).toContain("'highlight',");
+    expect(gameScreen).toContain("getReelPlaybackUrl(gameId, 'lowlight'");
   });
 });
