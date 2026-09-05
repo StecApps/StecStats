@@ -245,8 +245,11 @@ vi.mock("../../lib/videoDuration",      () => ({ scheduleVideoDurationProbe: vi.
 vi.mock("../../lib/highlightGenerator", () => ({
   PROXY_VERSION: 1,
   PROXY_CHUNK_DURATION_SEC: 60,
+  HLS_SEGMENT_DURATION_SEC: 60,
   makeProxyChunkGcsPath: vi.fn(),
+  makeHlsChunkGcsPath: vi.fn(),
   getReadyProxyChunkCount: vi.fn().mockResolvedValue(0),
+  readPlayableHlsSegmentDurations: vi.fn().mockResolvedValue([]),
   readHlsSentinel: vi.fn().mockResolvedValue(null),
   acquireProxyChunkLocally: vi.fn(),
   ensureAllProxyChunksInBackground: vi.fn(),

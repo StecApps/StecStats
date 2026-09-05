@@ -316,6 +316,7 @@ vi.mock("../../lib/videoDuration", () => ({
 vi.mock("../../lib/highlightGenerator", () => ({
   PROXY_VERSION: 1,
   PROXY_CHUNK_DURATION_SEC: 360,
+  HLS_SEGMENT_DURATION_SEC: 60,
   ensureGameProxyInBackground: vi.fn(),
   cancelHighlightGeneration: vi.fn(),
   cancelProxyBuild: vi.fn(),
@@ -324,10 +325,20 @@ vi.mock("../../lib/highlightGenerator", () => ({
   makeProxyChunkGcsPath: vi.fn().mockImplementation(
     (_ownerId: number, _gameId: number, i: number) => `/chunks/${i}`,
   ),
+  makeHlsChunkGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number, i: number) => `/hls-chunks/${i}`,
+  ),
+  makeHlsSegmentMetadataGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number, i: number) => `/hls-meta/${i}`,
+  ),
+  makeHlsSentinelGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number) => `/hls-sentinel`,
+  ),
   getReadyProxyChunkCount: vi.fn().mockImplementation(() => Promise.resolve(hlsChunkCount.value)),
   getPlayableProxyChunkCount: vi.fn().mockImplementation(() =>
     Promise.resolve(hlsChunkCount.value > 0 ? hlsChunkCount.value : 0),
   ),
+  readPlayableHlsSegmentDurations: vi.fn().mockResolvedValue([60, 60]),
   readHlsSentinel: vi.fn().mockImplementation(() => Promise.resolve(hlsSentinel.value)),
   ensureAllProxyChunksInBackground: vi.fn(),
   acquireProxyChunkLocally: vi.fn(),

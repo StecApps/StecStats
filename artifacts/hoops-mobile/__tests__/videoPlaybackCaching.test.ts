@@ -85,6 +85,13 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).not.toContain("if (!signedUrl) return <ActivityIndicator");
   });
 
+  test('mounts the full-game native surface before attaching its source', () => {
+    expect(gameScreen).toContain('setStreamIsHls(result.isHls);');
+    expect(gameScreen).toContain('setStreamUrl(result.url);');
+    expect(gameScreen).not.toContain('setStreamUrl(result.url);\\n            player.replaceAsync');
+    expect(gameScreen).toContain('await player.replaceAsync(playbackSource(streamUrl, streamIsHls));');
+  });
+
   test('does not leave an empty black player while a reel waits for Wi-Fi', () => {
     expect(gameScreen).toContain('Waiting to download');
     expect(gameScreen).toContain('download-highlight-cellular');

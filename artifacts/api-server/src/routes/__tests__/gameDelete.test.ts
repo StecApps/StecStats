@@ -132,6 +132,18 @@ vi.mock("../../lib/videoDuration", () => ({
 
 vi.mock("../../lib/highlightGenerator", () => ({
   PROXY_VERSION: "v5",
+  PROXY_CHUNK_DURATION_SEC: 360,
+  HLS_SEGMENT_DURATION_SEC: 60,
+  makeProxyChunkGcsPath: vi.fn(),
+  makeHlsChunkGcsPath: vi.fn((_ownerId, gameId, i) => `/hls/${gameId}/${i}`),
+  makeHlsSegmentMetadataGcsPath: vi.fn((_ownerId, gameId, i) => `/hls-meta/${gameId}/${i}`),
+  makeHlsSentinelGcsPath: vi.fn((_ownerId, gameId) => `/hls-sentinel/${gameId}`),
+  getReadyProxyChunkCount: vi.fn().mockResolvedValue(-1),
+  getPlayableProxyChunkCount: vi.fn().mockResolvedValue(0),
+  readPlayableHlsSegmentDurations: vi.fn().mockResolvedValue([]),
+  readHlsSentinel: vi.fn().mockResolvedValue(null),
+  acquireProxyChunkLocally: vi.fn(),
+  ensureAllProxyChunksInBackground: vi.fn(),
   ensureGameProxyInBackground: vi.fn(),
   cancelHighlightGeneration: cancelHighlightGenerationMock,
   cancelProxyBuild: cancelProxyBuildMock,
@@ -271,10 +283,10 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     const chunk1Path = `/objects/uploads/${COACH_A.id}/proxy_chunk_vv5_52_1`;
     const mockFileWithSize = { getMetadata: vi.fn().mockResolvedValue([{ size: 50_000 }]) };
 
-    getObjectEntityFileMock
-      .mockResolvedValueOnce(mockFileWithSize)  // chunk 0 exists
-      .mockResolvedValueOnce(mockFileWithSize)  // chunk 1 exists
-      .mockRejectedValueOnce(new Error("Not found")); // chunk 2 missing → stop
+    getObjectEntityFileMock.mockImplementation(async (objectPath: string) => {
+      if (objectPath === chunk0Path || objectPath === chunk1Path) return mockFileWithSize;
+      throw new Error("Not found");
+    });
 
     const res = await deleteGame(52);
     expect(res.status).toBe(204);
@@ -300,9 +312,10 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
 
     const res = await deleteGame(53);
     expect(res.status).toBe(204);
-    // Only the video path should be deleted; no chunk paths.
-    expect(deleteObjectEntityMock).toHaveBeenCalledTimes(1);
+    // Video plus a best-effort HLS sentinel cleanup; no chunk paths.
+    expect(deleteObjectEntityMock).toHaveBeenCalledTimes(2);
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
+    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/hls-sentinel/53");
   });
 
   it("calls deleteObjectEntity only for video when highlight path is null", async () => {
@@ -318,8 +331,9 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     const res = await deleteGame(43);
     expect(res.status).toBe(204);
 
-    expect(deleteObjectEntityMock).toHaveBeenCalledTimes(1);
+    expect(deleteObjectEntityMock).toHaveBeenCalledTimes(2);
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video-only.mp4");
+    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/hls-sentinel/43");
   });
 
   it("does not call deleteObjectEntity when all paths are null", async () => {

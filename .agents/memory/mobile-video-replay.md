@@ -44,3 +44,9 @@ Long-game HLS must become available from consecutive uploaded chunks before the 
 **Why:** Waiting for the full source download and full-game transcode caused many minutes of blank waiting before a long recording became playable.
 
 **How to apply:** Full-game HLS builds should stream their source sequentially from object storage, upload chunks as they finish, and let AVPlayer refresh a growing playlist. Keep the final sentinel authoritative for exact duration/count and ENDLIST.
+
+Film Room HLS playback chunks must use a separate namespace and shorter duration than the six-minute proxy chunks used for reel extraction. A growing playlist may expose a segment only after its media and exact-duration sidecar are both uploaded.
+
+**Why:** Reusing six-minute reel chunks meant a 1.1 GB VP9 game could encode for more than ten minutes without making even the first frame available. Nominal EXTINF values also become invalid when keyframe alignment makes a segment longer than its target.
+
+**How to apply:** Use short playback-only segments, calculate progressive EXTINF and TARGETDURATION from exact sidecars, build recovered sentinels from those sidecars, and sweep media, metadata, and sentinel together when a game is deleted.

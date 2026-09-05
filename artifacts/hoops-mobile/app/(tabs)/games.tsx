@@ -798,12 +798,12 @@ export default function GamesScreen() {
             <Ionicons name="download-outline" size={17} color={colors.primary} />
             <Text style={{ flex: 1, color: colors.foreground, fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>
               {downloads.some((item) => item.status === 'failed')
-                ? `${downloads.filter((item) => item.status === 'downloaded').length} ready · ${downloads.filter((item) => item.status === 'failed').length} failed`
+                ? `${downloads.filter((item) => item.status === 'downloaded').length} reels downloaded · ${downloads.filter((item) => item.status === 'failed').length} failed`
                 : downloads.some((item) => item.status === 'downloading')
-                  ? `${downloads.filter((item) => item.status === 'downloaded').length} of ${downloads.length} ready · ${downloads.filter((item) => item.status === 'downloading').length} downloading`
+                  ? `${downloads.filter((item) => item.status === 'downloaded').length} of ${downloads.length} reels downloaded · ${downloads.filter((item) => item.status === 'downloading').length} downloading`
                   : downloads.some((item) => item.status === 'queued')
-                    ? `${downloads.filter((item) => item.status === 'downloaded').length} of ${downloads.length} ready · ${downloads.filter((item) => item.status === 'queued').length} queued`
-                    : `${downloads.length} of ${downloads.length} reels ready offline`}
+                    ? `${downloads.filter((item) => item.status === 'downloaded').length} of ${downloads.length} reels downloaded · ${downloads.filter((item) => item.status === 'queued').length} queued`
+                    : `${downloads.length} of ${downloads.length} reels downloaded`}
             </Text>
             <TouchableOpacity testID="toggle-reel-cellular-downloads" onPress={() => void setCellularAllowed(!cellularAllowed)}>
               <Text style={{ color: colors.primary, fontSize: 12, fontFamily: 'Inter_700Bold' }}>{cellularAllowed ? 'Cellular on' : 'Wi‑Fi only'}</Text>

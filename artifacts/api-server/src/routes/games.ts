@@ -38,10 +38,15 @@ import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import {
   PROXY_VERSION,
   PROXY_CHUNK_DURATION_SEC,
+  HLS_SEGMENT_DURATION_SEC,
   makeProxyChunkGcsPath,
+  makeHlsChunkGcsPath,
+  makeHlsSegmentMetadataGcsPath,
+  makeHlsSentinelGcsPath,
   getReadyProxyChunkCount,
   getPlayableProxyChunkCount,
   readHlsSentinel,
+  readPlayableHlsSegmentDurations,
   acquireProxyChunkLocally,
   ensureAllProxyChunksInBackground,
   ensureGameProxyInBackground,
@@ -981,6 +986,35 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   deletions.push(sweepProxyChunks().catch((err) =>
     req.log.error({ err, gameId }, "Failed to sweep proxy chunks for deleted game")
   ));
+
+  const sweepPlaybackHls = async () => {
+    let i = 0;
+    while (true) {
+      const chunkPath = makeHlsChunkGcsPath(ownerId, gameId, i);
+      try {
+        const file = await objectStorageService.getObjectEntityFile(chunkPath);
+        const [md] = await file.getMetadata();
+        if (!md || Number(md.size ?? 0) === 0) break;
+        await Promise.all([
+          objectStorageService.deleteObjectEntity(chunkPath),
+          objectStorageService.deleteObjectEntity(
+            makeHlsSegmentMetadataGcsPath(ownerId, gameId, i),
+          ).catch(() => {}),
+        ]);
+        i++;
+      } catch {
+        break;
+      }
+    }
+    await objectStorageService.deleteObjectEntity(
+      makeHlsSentinelGcsPath(ownerId, gameId),
+    ).catch(() => {});
+  };
+  if (game.videoObjectPath) {
+    deletions.push(sweepPlaybackHls().catch((err) =>
+      req.log.error({ err, gameId }, "Failed to sweep playback HLS objects for deleted game")
+    ));
+  }
 
   await Promise.all(deletions);
 
@@ -2113,7 +2147,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
           proxyType: "hls",
           availableDurationSec: Math.min(
             game.videoDurationMs / 1000,
-            playableChunkCount * PROXY_CHUNK_DURATION_SEC,
+            playableChunkCount * HLS_SEGMENT_DURATION_SEC,
           ),
           isComplete: completeChunkCount > 0,
         });
@@ -2406,13 +2440,20 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     ?? await getPlayableProxyChunkCount(
       gameId,
       entry.ownerId,
-      entry.hlsDurationMs ?? PROXY_CHUNK_DURATION_SEC * 1000,
+      entry.hlsDurationMs ?? HLS_SEGMENT_DURATION_SEC * 1000,
     );
   if (chunkCount < 1) {
     return void res.status(503).json({ error: "First video segment not ready — try again shortly" });
   }
   const segmentDurationsSec = sentinel?.segmentDurationsSec
-    ?? Array<number>(chunkCount).fill(PROXY_CHUNK_DURATION_SEC);
+    ?? await readPlayableHlsSegmentDurations(
+      gameId,
+      entry.ownerId,
+      entry.hlsDurationMs ?? HLS_SEGMENT_DURATION_SEC * 1000,
+    );
+  if (segmentDurationsSec.length < chunkCount) {
+    return void res.status(503).json({ error: "Video timing is still being finalized — try again shortly" });
+  }
 
   // #EXT-X-TARGETDURATION must be >= ceil of the longest actual segment
   // (RFC 8216 §4.3.3.1).  Derive from measured durations, not the nominal
@@ -2431,7 +2472,7 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     // happen in practice but guards against corrupt sentinel data).
     const dur = (segmentDurationsSec[i] ?? 0) > 0
       ? segmentDurationsSec[i]!
-      : PROXY_CHUNK_DURATION_SEC;
+      : HLS_SEGMENT_DURATION_SEC;
     lines.push(`#EXTINF:${dur.toFixed(3)},`);
     // Relative URL so AVPlayer resolves it against the playlist base path.
     lines.push(`segment/${i}?t=${token}`);
@@ -2472,7 +2513,7 @@ router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
     return void res.status(403).json({ error: "Subscription required" });
   }
 
-  const chunkGcsPath = makeProxyChunkGcsPath(entry.ownerId, gameId, chunkIndex);
+  const chunkGcsPath = makeHlsChunkGcsPath(entry.ownerId, gameId, chunkIndex);
   let chunk: Awaited<ReturnType<typeof acquireProxyChunkLocally>>;
   try {
     chunk = await acquireProxyChunkLocally(chunkGcsPath);

@@ -673,6 +673,10 @@ export async function acquireSourceVideo(
 // minutes to transcode at real-time speed, then is uploaded to GCS immediately.
 // A server restart loses at most PROXY_CHUNK_DURATION_SEC of progress.
 export const PROXY_CHUNK_DURATION_SEC = 360; // 6 minutes
+// Film Room uses its own short-segment namespace so AVPlayer can start after
+// roughly one minute of source has encoded. Reel extraction keeps the larger
+// six-minute proxy chunks to minimize GCS operations and cross-chunk joins.
+export const HLS_SEGMENT_DURATION_SEC = 60;
 
 /**
  * Quick duration probe for a source video. Used to determine how many chunks
@@ -773,11 +777,13 @@ async function encodeChunksToGcs(
    * GCS and will be built lazily (by a background proxy build or next request).
    * Omit (or pass undefined) to encode the full video as before. */
   maxDurationSec?: number,
+  chunkDurationSec: number = PROXY_CHUNK_DURATION_SEC,
+  chunkPathFactory?: (chunkIndex: number) => string,
 ): Promise<{ actualNumChunks: number; segmentDurationsSec: number[] }> {
   const numChunks = existFlags.length;
-  const gcsChunkPath = (i: number) =>
-    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
-  const startSec = firstMissing * PROXY_CHUNK_DURATION_SEC;
+  const gcsChunkPath = chunkPathFactory ?? ((i: number) =>
+    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`);
+  const startSec = firstMissing * chunkDurationSec;
 
   // When maxDurationSec is set (targeted reel generation), cap the encode at
   // that point in the file.  Add one extra chunk of headroom so that the last
@@ -785,7 +791,7 @@ async function encodeChunksToGcs(
   // For full-game proxy builds (maxDurationSec undefined) there is no cap.
   const encodeLimitSec =
     maxDurationSec != null && maxDurationSec > startSec
-      ? maxDurationSec - startSec + PROXY_CHUNK_DURATION_SEC
+      ? maxDurationSec - startSec + chunkDurationSec
       : null;
 
   logger.info(
@@ -843,7 +849,7 @@ async function encodeChunksToGcs(
     "-c:a", "aac",
     "-b:a", "128k",
     "-f", "segment",
-    "-segment_time", String(PROXY_CHUNK_DURATION_SEC),
+    "-segment_time", String(chunkDurationSec),
     // Start segment numbering at firstMissing so filenames match GCS keys.
     "-segment_start_number", String(firstMissing),
     "-reset_timestamps", "1",
@@ -911,6 +917,10 @@ async function encodeChunksToGcs(
             continue;
           }
         }
+        // Probe before upload/deletion. Playback-HLS metadata is uploaded last,
+        // making it the atomic marker that a chunk and its exact timing are ready.
+        const segDur = await probeSegmentDurationSec(localPath);
+        const actualDurationSec = segDur > 0 ? segDur : chunkDurationSec;
         if (!existFlags[chunkIdx]) {
           if (signal?.aborted) throw new HighlightError("Cancelled");
           await assertOwnerMediaWritesAllowed(ownerId);
@@ -918,14 +928,14 @@ async function encodeChunksToGcs(
           await objectStorageService.uploadLocalFileToObjectPath(
             localPath, gcsChunkPath(chunkIdx), "video/mp4",
           );
+          if (chunkPathFactory) {
+            await writeHlsSegmentMetadata(ownerId, gameId, chunkIdx, actualDurationSec);
+          }
           logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: saved to GCS");
         } else {
           logger.info({ gameId, chunk: chunkIdx }, "Proxy chunk: already in GCS, skipping");
         }
-        // Probe the actual segment duration BEFORE deletion so the HLS
-        // sentinel can store exact EXTINF values (no post-hoc GCS re-download).
-        const segDur = await probeSegmentDurationSec(localPath);
-        segmentDurationsSec.push(segDur > 0 ? segDur : PROXY_CHUNK_DURATION_SEC);
+        segmentDurationsSec.push(actualDurationSec);
         if (deleteAfterUpload) {
           await fs.unlink(localPath).catch(() => {});
         }
@@ -1084,6 +1094,56 @@ async function proxyChunkExistsInGcs(objectPath: string): Promise<boolean> {
  */
 export function makeProxyChunkGcsPath(ownerId: number, gameId: number, chunkIndex: number): string {
   return `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${chunkIndex}`;
+}
+
+/** Playback-only HLS chunks. Never reuse these for reel timestamp extraction. */
+export function makeHlsChunkGcsPath(ownerId: number, gameId: number, chunkIndex: number): string {
+  return `/objects/uploads/${ownerId}/playback_hls_v${PROXY_VERSION}_s${HLS_SEGMENT_DURATION_SEC}_${gameId}_${chunkIndex}`;
+}
+
+/** Written only after its matching playback chunk is complete in GCS. */
+export function makeHlsSegmentMetadataGcsPath(ownerId: number, gameId: number, chunkIndex: number): string {
+  return `/objects/uploads/${ownerId}/playback_hls_meta_v${PROXY_VERSION}_s${HLS_SEGMENT_DURATION_SEC}_${gameId}_${chunkIndex}.json`;
+}
+
+async function hlsSegmentReadyInGcs(
+  ownerId: number,
+  gameId: number,
+  chunkIndex: number,
+): Promise<boolean> {
+  const mediaReady = await proxyChunkExistsInGcs(
+    makeHlsChunkGcsPath(ownerId, gameId, chunkIndex),
+  );
+  if (!mediaReady) return false;
+  try {
+    const metadata = await objectStorageService.getObjectEntityFile(
+      makeHlsSegmentMetadataGcsPath(ownerId, gameId, chunkIndex),
+    );
+    const [md] = await metadata.getMetadata();
+    return Number(md.size ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function writeHlsSegmentMetadata(
+  ownerId: number,
+  gameId: number,
+  chunkIndex: number,
+  durationSec: number,
+): Promise<void> {
+  const tmpFile = path.join(os.tmpdir(), `hls_segment_${gameId}_${chunkIndex}_${Date.now()}.json`);
+  await fs.writeFile(tmpFile, JSON.stringify({ durationSec }));
+  try {
+    await assertOwnerMediaWritesAllowed(ownerId);
+    await objectStorageService.uploadLocalFileToObjectPath(
+      tmpFile,
+      makeHlsSegmentMetadataGcsPath(ownerId, gameId, chunkIndex),
+      "application/json",
+    );
+  } finally {
+    await fs.unlink(tmpFile).catch(() => {});
+  }
 }
 const chunkEnsureInFlight = new Map<string, Promise<string[]>>();
 
@@ -3332,10 +3392,10 @@ export function ensureAllProxyChunksInBackground(
     }
 
     const durationSec = durationMs / 1000;
-    const numChunksGuess = Math.max(1, Math.ceil(durationSec / PROXY_CHUNK_DURATION_SEC));
+    const numChunksGuess = Math.max(1, Math.ceil(durationSec / HLS_SEGMENT_DURATION_SEC));
     const existFlags = await Promise.all(
       Array.from({ length: numChunksGuess }, (_, i) =>
-        proxyChunkExistsInGcs(makeProxyChunkGcsPath(ownerId, gameId, i)),
+        hlsSegmentReadyInGcs(ownerId, gameId, i),
       ),
     );
 
@@ -3346,19 +3406,18 @@ export function ensureAllProxyChunksInBackground(
       let trueCount = numChunksGuess;
       while (
         trueCount < numChunksGuess + 50 &&
-        await proxyChunkExistsInGcs(makeProxyChunkGcsPath(ownerId, gameId, trueCount))
+        await hlsSegmentReadyInGcs(ownerId, gameId, trueCount)
       ) {
         trueCount++;
       }
       logger.info({ gameId, trueCount }, "HLS chunk build: all estimated chunks in GCS — writing sentinel");
-      // We don't have local files to ffprobe for these pre-existing GCS chunks,
-      // so use PROXY_CHUNK_DURATION_SEC as an approximation.  The sentinel is
-      // still authoritative for chunk COUNT; per-chunk EXTINF accuracy is
-      // bounded by one GOP (≤2 s) which AVPlayer tolerates well.
-      await writeHlsSentinel(
-        ownerId, gameId, trueCount,
-        Array<number>(trueCount).fill(PROXY_CHUNK_DURATION_SEC),
+      const recoveredDurations = await readPlayableHlsSegmentDurations(
+        gameId, ownerId, durationMs,
       );
+      if (recoveredDurations.length < trueCount) {
+        throw new Error("Recovered HLS chunks are missing exact duration metadata");
+      }
+      await writeHlsSentinel(ownerId, gameId, trueCount, recoveredDurations.slice(0, trueCount));
       return;
     }
 
@@ -3372,7 +3431,7 @@ export function ensureAllProxyChunksInBackground(
     try {
       // encodeChunksToGcs returns the ACTUAL number of chunks and ffprobe-
       // measured per-segment durations — both stored in the sentinel.
-      const { actualNumChunks, segmentDurationsSec: newDurations } = await withObjectRangeServer(
+      const { actualNumChunks } = await withObjectRangeServer(
         videoObjectPath,
         abortController.signal,
         (srcUrl) => encodeChunksToGcs(
@@ -3381,17 +3440,16 @@ export function ensureAllProxyChunksInBackground(
           /* deleteAfterUpload */ true,
           /* signal */ abortController.signal,
           /* maxDurationSec */ undefined, // encode ALL chunks, no early stop
+          HLS_SEGMENT_DURATION_SEC,
+          (chunkIndex) => makeHlsChunkGcsPath(ownerId, gameId, chunkIndex),
         ),
       );
-      // Prepend approximate durations for any chunks that were already in GCS
-      // (indices 0..firstMissing-1 — we didn't encode them locally so we can't
-      // ffprobe them).  Use PROXY_CHUNK_DURATION_SEC as the approximation.
-      const allDurations = [
-        ...Array<number>(firstMissing).fill(PROXY_CHUNK_DURATION_SEC),
-        ...newDurations,
-      ];
+      const allDurations = await readPlayableHlsSegmentDurations(gameId, ownerId, durationMs);
+      if (allDurations.length < actualNumChunks) {
+        throw new Error("Completed HLS chunks are missing exact duration metadata");
+      }
       await assertOwnerMediaWritesAllowed(ownerId);
-      await writeHlsSentinel(ownerId, gameId, actualNumChunks, allDurations);
+      await writeHlsSentinel(ownerId, gameId, actualNumChunks, allDurations.slice(0, actualNumChunks));
       logger.info({ gameId, actualNumChunks }, "HLS chunk build: complete — sentinel written");
     } finally {
       await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
@@ -3425,8 +3483,8 @@ export function ensureAllProxyChunksInBackground(
 // ---------------------------------------------------------------------------
 
 /** GCS path for the HLS build-completion sentinel for a game. */
-function makeHlsSentinelGcsPath(ownerId: number, gameId: number): string {
-  return `/objects/uploads/${ownerId}/proxy_hls_done_v${PROXY_VERSION}_${gameId}.json`;
+export function makeHlsSentinelGcsPath(ownerId: number, gameId: number): string {
+  return `/objects/uploads/${ownerId}/proxy_hls_done_v${PROXY_VERSION}_s${HLS_SEGMENT_DURATION_SEC}_${gameId}.json`;
 }
 
 /**
@@ -3530,19 +3588,37 @@ export async function getPlayableProxyChunkCount(
 ): Promise<number> {
   const sentinel = await readHlsSentinel(ownerId, gameId);
   if (sentinel) return sentinel.chunkCount;
+  return (await readPlayableHlsSegmentDurations(gameId, ownerId, durationMs)).length;
+}
 
+/**
+ * Exact durations for every consecutive playback segment whose media and
+ * metadata sidecar have both completed uploading.
+ */
+export async function readPlayableHlsSegmentDurations(
+  gameId: number,
+  ownerId: number,
+  durationMs: number,
+): Promise<number[]> {
   const estimatedCount = Math.max(
     1,
-    Math.ceil(durationMs / 1000 / PROXY_CHUNK_DURATION_SEC),
+    Math.ceil(durationMs / 1000 / HLS_SEGMENT_DURATION_SEC),
   );
-  let readyCount = 0;
-  while (
-    readyCount < estimatedCount + 2 &&
-    await proxyChunkExistsInGcs(makeProxyChunkGcsPath(ownerId, gameId, readyCount))
-  ) {
-    readyCount++;
+  const durations: number[] = [];
+  for (let i = 0; i < estimatedCount + 50; i++) {
+    try {
+      const file = await objectStorageService.getObjectEntityFile(
+        makeHlsSegmentMetadataGcsPath(ownerId, gameId, i),
+      );
+      const [buf] = await file.download();
+      const parsed = JSON.parse(buf.toString()) as { durationSec?: unknown };
+      if (typeof parsed.durationSec !== "number" || parsed.durationSec <= 0) break;
+      durations.push(parsed.durationSec);
+    } catch {
+      break;
+    }
   }
-  return readyCount;
+  return durations;
 }
 
 const backgroundHlsBuilds = new Set<number>();

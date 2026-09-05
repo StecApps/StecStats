@@ -596,6 +596,7 @@ const cardStyle = StyleSheet.create({
 function VideoSection({ game, colors }: { game: any; colors: any }) {
   const { getToken } = useAuth();
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [streamIsHls, setStreamIsHls] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // proxyReady=false means the server is still building the H.264 proxy;
   // the raw file (VP9/WebM) is not playable on iOS, so we show a processing
@@ -606,6 +607,8 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const [proxySkipped, setProxySkipped] = useState(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const optimizingStartedAtRef = useRef<number | null>(null);
+  const replaceGenerationRef = useRef(0);
+  const replaceChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -628,8 +631,8 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           setProxyReady(result.proxyReady);
           if (result.proxyReady) {
             optimizingStartedAtRef.current = null;
+            setStreamIsHls(result.isHls);
             setStreamUrl(result.url);
-            player.replaceAsync(playbackSource(result.url, result.isHls));
           } else {
             if (optimizingStartedAtRef.current == null) optimizingStartedAtRef.current = Date.now();
             // Encoding a long recording can take several minutes. Avoid flooding
@@ -653,6 +656,29 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
   }, [game.videoObjectPath, loadStream]);
+
+  // Do not attach the source until streamUrl has caused the VideoView below to
+  // mount. Attaching while this component still renders its loading spinner
+  // leaves AVPlayer with a valid source but no native surface (black crossed-
+  // play screen on iOS).
+  useEffect(() => {
+    if (!streamUrl) return;
+    const generation = ++replaceGenerationRef.current;
+    let cancelled = false;
+    replaceChainRef.current = replaceChainRef.current
+      .catch(() => {})
+      .then(async () => {
+        if (cancelled || generation !== replaceGenerationRef.current) return;
+        await player.replaceAsync(playbackSource(streamUrl, streamIsHls));
+      })
+      .catch(() => {
+        if (!cancelled && generation === replaceGenerationRef.current) setLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+      replaceGenerationRef.current++;
+    };
+  }, [player, streamUrl, streamIsHls]);
 
   if (!game.videoObjectPath) {
     return (
