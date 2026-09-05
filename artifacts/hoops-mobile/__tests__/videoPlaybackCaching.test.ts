@@ -16,7 +16,7 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('const streamUrlCache = new Map<string, CachedStream>()');
     expect(gameScreen).toContain('return getReusableStreamUrl(game.id');
     expect(gameScreen).toContain("await getReusableStreamUrl(gameId, 'highlight'");
-    expect(gameScreen).toContain("return getReusableStreamUrl(gameId, 'lowlight'");
+    expect(gameScreen).toContain("await getReusableStreamUrl(gameId, 'lowlight'");
   });
 
   test('uses a larger LRU cache and a forward buffer for full games', () => {
@@ -52,7 +52,21 @@ describe('saved-video playback caching', () => {
   test('downloads iOS highlight and lowlight reels before native playback', () => {
     expect(gameScreen).toContain("if (Platform.OS !== 'ios') return remoteUrl");
     expect(gameScreen).toContain('File.downloadFileAsync(remoteUrl, destination');
+    expect(gameScreen).toContain('downloaded.size <= 1024');
+    expect(gameScreen).toContain("if (url.startsWith('file:'))");
+    expect(gameScreen).toContain('setSignedUrl(playbackUrl)');
     expect(gameScreen).toContain("'highlight',");
     expect(gameScreen).toContain("getReelPlaybackUrl(gameId, 'lowlight'");
+  });
+
+  test('shows retry controls when either local reel download fails', () => {
+    expect(gameScreen).toContain('testID="retry-highlight-playback"');
+    expect(gameScreen).toContain('testID="retry-lowlight-playback"');
+    expect(gameScreen).toContain('This lowlight could not be downloaded.');
+  });
+
+  test('invalidates local highlight and lowlight files before regeneration', () => {
+    expect(gameScreen.match(/localReelFileCache\.delete\(streamCacheKey\(gameId, 'highlight'\)\)/g)?.length).toBeGreaterThan(0);
+    expect(gameScreen.match(/localReelFileCache\.delete\(streamCacheKey\(gameId, 'lowlight'\)\)/g)?.length).toBeGreaterThan(0);
   });
 });

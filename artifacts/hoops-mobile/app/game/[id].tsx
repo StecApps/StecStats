@@ -117,12 +117,21 @@ async function getReelPlaybackUrl(
 
   const key = streamCacheKey(gameId, type);
   const cachedUri = localReelFileCache.get(key);
-  if (!forceFresh && cachedUri) return cachedUri;
+  if (!forceFresh && cachedUri) {
+    const cachedFile = new File(cachedUri);
+    if (cachedFile.exists && cachedFile.size > 1024) return cachedUri;
+    localReelFileCache.delete(key);
+  }
 
   const destination = new File(Paths.cache, `stecstats-${type}-${gameId}.mp4`);
+  if (forceFresh && destination.exists) destination.delete();
   const downloaded = await File.downloadFileAsync(remoteUrl, destination, {
     idempotent: true,
   });
+  if (!downloaded.exists || downloaded.size <= 1024) {
+    if (downloaded.exists) downloaded.delete();
+    throw new Error(`The ${type} download was incomplete. Please try again.`);
+  }
   localReelFileCache.set(key, downloaded.uri);
   return downloaded.uri;
 }
@@ -155,6 +164,12 @@ async function getReusableStreamUrl(
 }
 
 function playbackSource(url: string, isHls: boolean, allowCaching = true) {
+  if (url.startsWith('file:')) {
+    return {
+      uri: url,
+      useCaching: false,
+    };
+  }
   return {
     uri: url,
     // iOS cannot cache HLS through Expo Video, but progressive MP4 footage,
@@ -775,10 +790,15 @@ const lowlightStartTimes      = new Map<number, number>();
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
   const generateMutation = useGenerateGameLowlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
+  const [playbackLoading, setPlaybackLoading] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const automaticRetryRef = useRef(false);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -808,25 +828,47 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 
   const lowlightReady = lowlight?.status === 'ready';
 
+  const loadLowlightVideo = useCallback(async (forceFresh = false) => {
+    setPlaybackLoading(true);
+    setPlaybackError(null);
+    try {
+      const token = await getTokenRef.current();
+      if (!token) throw new Error('Your session expired. Please sign in again.');
+      if (forceFresh) {
+        streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
+        localReelFileCache.delete(streamCacheKey(gameId, 'lowlight'));
+      }
+      const result = forceFresh
+        ? await fetchStreamUrl(gameId, 'lowlight', token)
+        : await getReusableStreamUrl(gameId, 'lowlight', token);
+      const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', result.url, forceFresh);
+      await player.replaceAsync(playbackSource(playbackUrl, false));
+      setSignedUrl(playbackUrl);
+    } catch (error: any) {
+      setSignedUrl(null);
+      setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+    } finally {
+      setPlaybackLoading(false);
+    }
+  }, [gameId, player]);
+
   useEffect(() => {
     if (!lowlightReady) return;
-    let cancelled = false;
-    getToken()
-      .then((token) => {
-        if (!token || cancelled) return;
-        return getReusableStreamUrl(gameId, 'lowlight', token);
-      })
-      .then((result) => {
-        if (!result || cancelled) return;
-        return getReelPlaybackUrl(gameId, 'lowlight', result.url).then((playbackUrl) => {
-          if (cancelled) return;
-          setSignedUrl(result.url);
-          return player.replaceAsync(playbackSource(playbackUrl, false));
-        });
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [lowlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+    automaticRetryRef.current = false;
+    void loadLowlightVideo();
+  }, [lowlightReady, gameId, loadLowlightVideo]);
+
+  useEffect(() => {
+    const subscription = player.addListener('statusChange', ({ status, error }) => {
+      if (status !== 'error') return;
+      setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+      if (!automaticRetryRef.current) {
+        automaticRetryRef.current = true;
+        void loadLowlightVideo(true);
+      }
+    });
+    return () => subscription.remove();
+  }, [player, loadLowlightVideo]);
 
   async function handleSaveLowlight() {
     if (!signedUrl) return;
@@ -838,6 +880,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     try {
       localReelFileCache.delete(streamCacheKey(gameId, 'lowlight'));
       streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
+      setSignedUrl(null);
       await generateMutation.mutateAsync({ gameId });
       refetch();
     } catch {
@@ -875,7 +918,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           if (Platform.OS === 'ios' && localReelFileCache.has(streamCacheKey(gameId, 'lowlight'))) {
             return;
           }
-          getToken()
+          getTokenRef.current()
             .then((token) => {
               if (!token) return;
               return fetchStreamUrl(gameId, 'lowlight', token);
@@ -883,16 +926,20 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             .then((result) => {
               if (!result) return;
               return getReelPlaybackUrl(gameId, 'lowlight', result.url, true).then((playbackUrl) => {
-                setSignedUrl(result.url);
                 streamUrlCache.set(streamCacheKey(gameId, 'lowlight'), {
                   url: result.url,
                   isHls: result.isHls,
                   expiresAt: Date.now() + STREAM_URL_REUSE_MS,
                 });
-                return player.replaceAsync(playbackSource(playbackUrl, false));
+                return player.replaceAsync(playbackSource(playbackUrl, false)).then(() => {
+                  setSignedUrl(playbackUrl);
+                });
               });
             })
-            .catch(() => {});
+            .catch((error: any) => {
+              setSignedUrl(null);
+              setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+            });
         }
       }
     });
@@ -902,7 +949,30 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   if (!lowlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (lowlight.status === 'ready') {
-    if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
+    if (!signedUrl) {
+      if (playbackError && !playbackLoading) {
+        return (
+          <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
+            <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
+            <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
+              This lowlight could not be downloaded.
+            </Text>
+            <TouchableOpacity
+              testID="retry-lowlight-playback"
+              onPress={() => {
+                automaticRetryRef.current = false;
+                void loadLowlightVideo(true);
+              }}
+              style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+            >
+              <Feather name="refresh-cw" size={15} color="#fff" />
+              <Text style={videoStyle.retryButtonText}>Retry Video</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
+    }
     return (
       <View style={{ flex: 1, backgroundColor: colors.card }}>
         <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
@@ -914,6 +984,11 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             allowsPictureInPicture
             nativeControls
           />
+          {playbackLoading && (
+            <View pointerEvents="none" style={videoStyle.playbackLoading}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          )}
         </ZoomableVideo>
         <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
           <TouchableOpacity
@@ -1097,7 +1172,6 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         result.url,
         forceFresh,
       );
-      setSignedUrl(result.url);
       if (result.proxyReady) {
         streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
           url: result.url,
@@ -1108,7 +1182,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       await player.replaceAsync(
         playbackSource(playbackUrl, false, !disableCaching),
       );
+      setSignedUrl(playbackUrl);
     } catch (error: any) {
+      setSignedUrl(null);
       setPlaybackError(error?.message ?? 'The highlight video could not be loaded.');
     } finally {
       setPlaybackLoading(false);
@@ -1248,6 +1324,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   async function handleRegenerate() {
     if (generateMutation.isPending) return;
     try {
+      localReelFileCache.delete(streamCacheKey(gameId, 'highlight'));
+      streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
+      setSignedUrl(null);
       await generateMutation.mutateAsync({ gameId });
       refetch();
     } catch {
@@ -1271,7 +1350,30 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   if (!highlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (highlight.status === 'ready') {
-    if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
+    if (!signedUrl) {
+      if (playbackError && !playbackLoading) {
+        return (
+          <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
+            <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
+            <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
+              This highlight could not be downloaded.
+            </Text>
+            <TouchableOpacity
+              testID="retry-highlight-playback"
+              onPress={() => {
+                automaticRetryRef.current = false;
+                void loadHighlightVideo(true, true);
+              }}
+              style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+            >
+              <Feather name="refresh-cw" size={15} color="#fff" />
+              <Text style={videoStyle.retryButtonText}>Retry Video</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
+    }
     return (
       <View style={{ flex: 1, backgroundColor: colors.card }}>
         {/* ZoomableVideo from the pinch-to-zoom task wraps only the player */}
