@@ -13,7 +13,7 @@ Expo Video can accept `replaceAsync()` and only report AVPlayer's source failure
 
 **Why:** A valid, fast-start H.264/AAC highlight remained on iOS as a black player with the crossed-out play icon because the delayed native error was ignored.
 
-**How to apply:** Listen for `statusChange: error`; invalidate the reusable signed URL, retry once with a freshly signed URL and iOS caching disabled, then expose a manual retry state instead of leaving the native error screen.
+**How to apply:** Keep the native VideoView mounted while downloading and attaching a source; loading the source before its rendering surface exists can leave a healthy local MP4 black. Listen for `statusChange: error`; invalidate the reusable signed URL, retry once with a freshly signed URL and iOS caching disabled, then expose a manual retry state instead of leaving the native error screen.
 
 iOS highlight/lowlight playback must not stream either directly from a signed GCS URL or through the Replit API proxy.
 

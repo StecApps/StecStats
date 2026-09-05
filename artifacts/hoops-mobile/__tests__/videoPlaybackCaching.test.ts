@@ -75,4 +75,9 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('if (cachedFile.exists && cachedFile.size > 1024)');
     expect(gameScreen).toContain('Downloaded on this device');
   });
+
+  test('keeps the native reel surfaces mounted while local files attach', () => {
+    expect(gameScreen).toContain('{(!signedUrl || playbackLoading) && (');
+    expect(gameScreen).not.toContain("if (!signedUrl) return <ActivityIndicator");
+  });
 });

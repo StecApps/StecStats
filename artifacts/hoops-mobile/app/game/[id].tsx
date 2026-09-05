@@ -1012,48 +1012,46 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   if (!lowlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (lowlight.status === 'ready') {
-    if (!signedUrl) {
-      if (playbackError && !playbackLoading) {
-        return (
-          <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
-            <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
-            <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
-              This lowlight could not be downloaded.
-            </Text>
-            <TouchableOpacity
-              testID="retry-lowlight-playback"
-              onPress={() => {
-                automaticRetryRef.current = false;
-                void loadLowlightVideo(true);
-              }}
-              style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
-            >
-              <Feather name="refresh-cw" size={15} color="#fff" />
-              <Text style={videoStyle.retryButtonText}>Retry Video</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
-      return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
-    }
     return (
       <View style={{ flex: 1, backgroundColor: colors.card }}>
         <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
-          <VideoView
-            player={player}
-            style={{ flex: 1 }}
-            contentFit="contain"
-            allowsFullscreen
-            allowsPictureInPicture
-            nativeControls
-          />
-          {playbackLoading && (
-            <View pointerEvents="none" style={videoStyle.playbackLoading}>
-              <ActivityIndicator color={colors.primary} />
+          {playbackError && !playbackLoading ? (
+            <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
+              <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
+              <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
+                This lowlight could not be downloaded.
+              </Text>
+              <TouchableOpacity
+                testID="retry-lowlight-playback"
+                onPress={() => {
+                  automaticRetryRef.current = false;
+                  void loadLowlightVideo(true);
+                }}
+                style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+              >
+                <Feather name="refresh-cw" size={15} color="#fff" />
+                <Text style={videoStyle.retryButtonText}>Retry Video</Text>
+              </TouchableOpacity>
             </View>
+          ) : (
+            <>
+              <VideoView
+                player={player}
+                style={{ flex: 1 }}
+                contentFit="contain"
+                allowsFullscreen
+                allowsPictureInPicture
+                nativeControls
+              />
+              {(!signedUrl || playbackLoading) && (
+                <View pointerEvents="none" style={videoStyle.playbackLoading}>
+                  <ActivityIndicator color={colors.primary} />
+                </View>
+              )}
+            </>
           )}
         </ZoomableVideo>
-        {Platform.OS === 'ios' && signedUrl.startsWith('file:') && (
+        {Platform.OS === 'ios' && signedUrl?.startsWith('file:') && (
           <View style={videoStyle.downloadedBadge}>
             <Feather name="check-circle" size={14} color={colors.primary} />
             <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
@@ -1431,30 +1429,6 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   if (!highlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (highlight.status === 'ready') {
-    if (!signedUrl) {
-      if (playbackError && !playbackLoading) {
-        return (
-          <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
-            <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
-            <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
-              This highlight could not be downloaded.
-            </Text>
-            <TouchableOpacity
-              testID="retry-highlight-playback"
-              onPress={() => {
-                automaticRetryRef.current = false;
-                void loadHighlightVideo(true, true);
-              }}
-              style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
-            >
-              <Feather name="refresh-cw" size={15} color="#fff" />
-              <Text style={videoStyle.retryButtonText}>Retry Video</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
-      return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
-    }
     return (
       <View style={{ flex: 1, backgroundColor: colors.card }}>
         {/* ZoomableVideo from the pinch-to-zoom task wraps only the player */}
@@ -1487,7 +1461,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
                 allowsPictureInPicture
                 nativeControls
               />
-              {playbackLoading && (
+              {(!signedUrl || playbackLoading) && (
                 <View pointerEvents="none" style={videoStyle.playbackLoading}>
                   <ActivityIndicator color={colors.primary} />
                 </View>
@@ -1495,7 +1469,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </>
           )}
         </ZoomableVideo>
-        {Platform.OS === 'ios' && signedUrl.startsWith('file:') && (
+        {Platform.OS === 'ios' && signedUrl?.startsWith('file:') && (
           <View style={videoStyle.downloadedBadge}>
             <Feather name="check-circle" size={14} color={colors.primary} />
             <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
