@@ -107,23 +107,63 @@ function streamCacheKey(gameId: number, type: 'video' | 'highlight' | 'lowlight'
   return `${gameId}:${type}`;
 }
 
+function reelCacheFile(
+  gameId: number,
+  type: 'highlight' | 'lowlight',
+  objectPath: string,
+) {
+  let hash = 2166136261;
+  for (let i = 0; i < objectPath.length; i += 1) {
+    hash ^= objectPath.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return new File(Paths.cache, `stecstats-${type}-${gameId}-${(hash >>> 0).toString(36)}.mp4`);
+}
+
+function getExistingReelPlaybackUrl(
+  gameId: number,
+  type: 'highlight' | 'lowlight',
+  objectPath: string,
+) {
+  if (Platform.OS !== 'ios') return null;
+  const key = streamCacheKey(gameId, type);
+  const cachedFile = reelCacheFile(gameId, type, objectPath);
+  if (cachedFile.exists && cachedFile.size > 1024) {
+    localReelFileCache.set(key, cachedFile.uri);
+    return cachedFile.uri;
+  }
+  if (cachedFile.exists) cachedFile.delete();
+  localReelFileCache.delete(key);
+  return null;
+}
+
+function deleteLocalReel(
+  gameId: number,
+  type: 'highlight' | 'lowlight',
+  objectPath?: string | null,
+) {
+  localReelFileCache.delete(streamCacheKey(gameId, type));
+  if (!objectPath) return;
+  const cachedFile = reelCacheFile(gameId, type, objectPath);
+  if (cachedFile.exists) cachedFile.delete();
+}
+
 async function getReelPlaybackUrl(
   gameId: number,
   type: 'highlight' | 'lowlight',
+  objectPath: string,
   remoteUrl: string,
   forceFresh = false,
 ) {
   if (Platform.OS !== 'ios') return remoteUrl;
 
   const key = streamCacheKey(gameId, type);
-  const cachedUri = localReelFileCache.get(key);
-  if (!forceFresh && cachedUri) {
-    const cachedFile = new File(cachedUri);
-    if (cachedFile.exists && cachedFile.size > 1024) return cachedUri;
-    localReelFileCache.delete(key);
-  }
+  const cachedUri = !forceFresh
+    ? getExistingReelPlaybackUrl(gameId, type, objectPath)
+    : null;
+  if (cachedUri) return cachedUri;
 
-  const destination = new File(Paths.cache, `stecstats-${type}-${gameId}.mp4`);
+  const destination = reelCacheFile(gameId, type, objectPath);
   if (forceFresh && destination.exists) destination.delete();
   const downloaded = await File.downloadFileAsync(remoteUrl, destination, {
     idempotent: true,
@@ -767,6 +807,17 @@ const videoStyle = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     textAlign: 'center',
   },
+  downloadedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 7,
+  },
+  downloadedText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
   retryButton: {
     minHeight: 42,
     borderRadius: 10,
@@ -832,17 +883,27 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     setPlaybackLoading(true);
     setPlaybackError(null);
     try {
+      const objectPath = lowlight?.lowlightObjectPath;
+      if (!objectPath) throw new Error('The lowlight file is not available.');
+      if (!forceFresh) {
+        const existingUrl = getExistingReelPlaybackUrl(gameId, 'lowlight', objectPath);
+        if (existingUrl) {
+          await player.replaceAsync(existingUrl);
+          setSignedUrl(existingUrl);
+          return;
+        }
+      }
       const token = await getTokenRef.current();
       if (!token) throw new Error('Your session expired. Please sign in again.');
       if (forceFresh) {
         streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
-        localReelFileCache.delete(streamCacheKey(gameId, 'lowlight'));
+        deleteLocalReel(gameId, 'lowlight', objectPath);
       }
       const result = forceFresh
         ? await fetchStreamUrl(gameId, 'lowlight', token)
         : await getReusableStreamUrl(gameId, 'lowlight', token);
-      const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', result.url, forceFresh);
-      await player.replaceAsync(playbackSource(playbackUrl, false));
+      const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.url, forceFresh);
+      await player.replaceAsync(playbackUrl);
       setSignedUrl(playbackUrl);
     } catch (error: any) {
       setSignedUrl(null);
@@ -850,7 +911,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     } finally {
       setPlaybackLoading(false);
     }
-  }, [gameId, player]);
+  }, [gameId, lowlight?.lowlightObjectPath, player]);
 
   useEffect(() => {
     if (!lowlightReady) return;
@@ -878,7 +939,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   async function handleRegenerateLowlight() {
     if (generateMutation.isPending) return;
     try {
-      localReelFileCache.delete(streamCacheKey(gameId, 'lowlight'));
+      deleteLocalReel(gameId, 'lowlight', lowlight?.lowlightObjectPath);
       streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
       setSignedUrl(null);
       await generateMutation.mutateAsync({ gameId });
@@ -925,13 +986,15 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             })
             .then((result) => {
               if (!result) return;
-              return getReelPlaybackUrl(gameId, 'lowlight', result.url, true).then((playbackUrl) => {
+              const objectPath = lowlight?.lowlightObjectPath;
+              if (!objectPath) throw new Error('The lowlight file is not available.');
+              return getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.url, true).then((playbackUrl) => {
                 streamUrlCache.set(streamCacheKey(gameId, 'lowlight'), {
                   url: result.url,
                   isHls: result.isHls,
                   expiresAt: Date.now() + STREAM_URL_REUSE_MS,
                 });
-                return player.replaceAsync(playbackSource(playbackUrl, false)).then(() => {
+                return player.replaceAsync(playbackUrl).then(() => {
                   setSignedUrl(playbackUrl);
                 });
               });
@@ -990,6 +1053,14 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </View>
           )}
         </ZoomableVideo>
+        {Platform.OS === 'ios' && signedUrl.startsWith('file:') && (
+          <View style={videoStyle.downloadedBadge}>
+            <Feather name="check-circle" size={14} color={colors.primary} />
+            <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
+              Downloaded on this device
+            </Text>
+          </View>
+        )}
         <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
           <TouchableOpacity
             testID="save-lowlight-video"
@@ -1156,11 +1227,22 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     setPlaybackLoading(true);
     setPlaybackError(null);
     try {
+      const objectPath = highlight?.highlightObjectPath;
+      if (!objectPath) throw new Error('The highlight file is not available.');
+      if (!forceFresh) {
+        const existingUrl = getExistingReelPlaybackUrl(gameId, 'highlight', objectPath);
+        if (existingUrl) {
+          await player.replaceAsync(existingUrl);
+          setSignedUrl(existingUrl);
+          return;
+        }
+      }
       const token = await getTokenRef.current();
       if (!token) throw new Error('Your session expired. Please sign in again.');
 
       if (forceFresh) {
         streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
+        deleteLocalReel(gameId, 'highlight', objectPath);
       }
       const result = forceFresh
         ? await fetchStreamUrl(gameId, 'highlight', token)
@@ -1169,6 +1251,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       const playbackUrl = await getReelPlaybackUrl(
         gameId,
         'highlight',
+        objectPath,
         result.url,
         forceFresh,
       );
@@ -1179,9 +1262,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           expiresAt: Date.now() + STREAM_URL_REUSE_MS,
         });
       }
-      await player.replaceAsync(
-        playbackSource(playbackUrl, false, !disableCaching),
-      );
+      await player.replaceAsync(playbackUrl);
       setSignedUrl(playbackUrl);
     } catch (error: any) {
       setSignedUrl(null);
@@ -1189,7 +1270,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     } finally {
       setPlaybackLoading(false);
     }
-  }, [gameId, player]);
+  }, [gameId, highlight?.highlightObjectPath, player]);
 
   useEffect(() => {
     if (!highlightReady) return;
@@ -1324,7 +1405,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   async function handleRegenerate() {
     if (generateMutation.isPending) return;
     try {
-      localReelFileCache.delete(streamCacheKey(gameId, 'highlight'));
+      deleteLocalReel(gameId, 'highlight', highlight?.highlightObjectPath);
       streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
       setSignedUrl(null);
       await generateMutation.mutateAsync({ gameId });
@@ -1414,6 +1495,14 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </>
           )}
         </ZoomableVideo>
+        {Platform.OS === 'ios' && signedUrl.startsWith('file:') && (
+          <View style={videoStyle.downloadedBadge}>
+            <Feather name="check-circle" size={14} color={colors.primary} />
+            <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
+              Downloaded on this device
+            </Text>
+          </View>
+        )}
 
         {/* Sharing works without YouTube; YouTube remains an optional destination. */}
         <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>

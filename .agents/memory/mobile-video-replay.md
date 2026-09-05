@@ -19,7 +19,7 @@ iOS highlight/lowlight playback must not stream either directly from a signed GC
 
 **Why:** AVPlayer rejected valid fast-start MP4s when reading GCS signed URLs, while the API byte-range workaround produced valid 206 responses that the production proxy aborted after roughly 1–2 seconds.
 
-**How to apply:** Use the signed GCS URL only as a native file-download source, validate the completed file is non-empty, then give AVPlayer the local URI with automatic content detection and native caching disabled. Save/share the local URI rather than the expiring remote URL. Re-download after regeneration or an explicit retry, and expose download failures instead of swallowing them.
+**How to apply:** Use the signed GCS URL only as a native file-download source, validate the completed file is non-empty, then give AVPlayer the bare local URI with automatic content detection and native caching disabled. Key the on-disk filename by the reel object path so it survives app relaunches without becoming stale after regeneration. Check disk before requesting a stream token, show that the reel is downloaded, and save/share the local URI rather than the expiring remote URL. Re-download after regeneration or an explicit retry, and expose download failures instead of swallowing them.
 
 Keep Clerk's `getToken` function in a ref when a media-loading callback is itself an effect dependency.
 

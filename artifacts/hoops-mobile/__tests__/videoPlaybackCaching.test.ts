@@ -46,7 +46,7 @@ describe('saved-video playback caching', () => {
   test('does not recreate the highlight loader when Clerk refreshes getToken', () => {
     expect(gameScreen).toContain('const getTokenRef = useRef(getToken)');
     expect(gameScreen).toContain('const token = await getTokenRef.current()');
-    expect(gameScreen).toContain('}, [gameId, player])');
+    expect(gameScreen).toContain('}, [gameId, highlight?.highlightObjectPath, player])');
   });
 
   test('downloads iOS highlight and lowlight reels before native playback', () => {
@@ -66,7 +66,13 @@ describe('saved-video playback caching', () => {
   });
 
   test('invalidates local highlight and lowlight files before regeneration', () => {
-    expect(gameScreen.match(/localReelFileCache\.delete\(streamCacheKey\(gameId, 'highlight'\)\)/g)?.length).toBeGreaterThan(0);
-    expect(gameScreen.match(/localReelFileCache\.delete\(streamCacheKey\(gameId, 'lowlight'\)\)/g)?.length).toBeGreaterThan(0);
+    expect(gameScreen).toContain("deleteLocalReel(gameId, 'highlight', highlight?.highlightObjectPath)");
+    expect(gameScreen).toContain("deleteLocalReel(gameId, 'lowlight', lowlight?.lowlightObjectPath)");
+  });
+
+  test('reuses completed reel files after the app relaunches', () => {
+    expect(gameScreen).toContain('function getExistingReelPlaybackUrl(');
+    expect(gameScreen).toContain('if (cachedFile.exists && cachedFile.size > 1024)');
+    expect(gameScreen).toContain('Downloaded on this device');
   });
 });
