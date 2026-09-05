@@ -605,6 +605,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   // to transcode on RAM-backed /tmp). Stop polling and show a static message.
   const [proxySkipped, setProxySkipped] = useState(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const optimizingStartedAtRef = useRef<number | null>(null);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -626,13 +627,16 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           }
           setProxyReady(result.proxyReady);
           if (result.proxyReady) {
+            optimizingStartedAtRef.current = null;
             setStreamUrl(result.url);
             player.replaceAsync(playbackSource(result.url, result.isHls));
           } else {
-            // Proxy not ready yet — poll every 4 s until it is.
+            if (optimizingStartedAtRef.current == null) optimizingStartedAtRef.current = Date.now();
+            // Encoding a long recording can take several minutes. Avoid flooding
+            // the readiness endpoint while the server owns one background build.
             retryTimerRef.current = setTimeout(() => {
               if (!cancelled.value) loadStream(cancelled);
-            }, 4_000);
+            }, 15_000);
           }
         })
         .catch(() => { if (!cancelled.value) setLoadError(true); });
@@ -696,7 +700,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           Optimizing video for playback…
         </Text>
         <Text style={[videoStyle.emptySubText, { color: colors.mutedForeground }]}>
-          This usually takes 1–2 minutes. The page will update automatically.
+          Long recordings can take several minutes. You can leave this screen—the page will update automatically when playable footage is ready.
         </Text>
       </View>
     );
@@ -873,13 +877,17 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     const subscription = player.addListener('statusChange', ({ status, error }) => {
       if (status !== 'error') return;
       setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+      // Never delete a completed local file out from under AVPlayer. A prior
+      // automatic retry did exactly that after a transient native status error,
+      // causing playback to exit partway through and reducing the offline count.
+      if (signedUrl?.startsWith('file:')) return;
       if (!automaticRetryRef.current) {
         automaticRetryRef.current = true;
         void loadLowlightVideo(true);
       }
     });
     return () => subscription.remove();
-  }, [player, loadLowlightVideo]);
+  }, [player, signedUrl, loadLowlightVideo]);
 
   async function handleSaveLowlight() {
     if (!signedUrl) return;
@@ -1265,13 +1273,16 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       if (status !== 'error') return;
       const message = error?.message ?? 'The highlight video could not be loaded.';
       setPlaybackError(message);
+      // The local MP4 is the durable source of truth. Do not invalidate/delete
+      // it while AVPlayer still has the file open after a transient native error.
+      if (signedUrl?.startsWith('file:')) return;
       if (!automaticRetryRef.current) {
         automaticRetryRef.current = true;
         void loadHighlightVideo(true, Platform.OS === 'ios');
       }
     });
     return () => subscription.remove();
-  }, [player, loadHighlightVideo]);
+  }, [player, signedUrl, loadHighlightVideo]);
 
   // When the app returns from background after the 60-second GCS signed URL
   // TTL has elapsed, the player shows a black screen because the URL it holds

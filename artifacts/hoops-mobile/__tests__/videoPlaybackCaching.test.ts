@@ -43,6 +43,10 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('testID="retry-highlight-playback"');
   });
 
+  test('does not delete a completed local reel during a transient player error', () => {
+    expect(gameScreen).toContain("if (signedUrl?.startsWith('file:')) return;");
+  });
+
   test('does not recreate the highlight loader when Clerk refreshes getToken', () => {
     expect(gameScreen).toContain('const getTokenRef = useRef(getToken)');
     expect(gameScreen).toContain('const token = await getTokenRef.current()');

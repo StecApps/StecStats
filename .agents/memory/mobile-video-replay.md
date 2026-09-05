@@ -21,6 +21,12 @@ For iOS reels, “ready on the server” is not the same as “ready to play on 
 
 **How to apply:** Keep the native surface mounted behind an explicit waiting/downloading panel. Attach only the completed account-scoped local file; on cellular, offer a deliberate download-now action rather than showing an empty player.
 
+Completed offline reels belong in the app's document storage, and a transient AVPlayer error must never automatically invalidate the local file it is currently reading.
+
+**Why:** The retry path once deleted an actively playing reel after a native status error, causing partial playback to exit and moving a completed item back into the queue. iOS can also purge cache-directory media.
+
+**How to apply:** Migrate legacy completed cache files into account-scoped document storage on activation. For errors on a `file:` source, preserve the file and show explicit retry rather than deleting it automatically.
+
 iOS highlight/lowlight playback must not stream either directly from a signed GCS URL or through the Replit API proxy.
 
 **Why:** AVPlayer rejected valid fast-start MP4s when reading GCS signed URLs, while the API byte-range workaround produced valid 206 responses that the production proxy aborted after roughly 1–2 seconds.

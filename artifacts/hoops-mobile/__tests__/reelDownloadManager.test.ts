@@ -15,9 +15,16 @@ jest.mock('@react-native-community/netinfo', () => ({
 }));
 jest.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file:///cache/',
+  documentDirectory: 'file:///documents/',
   FileSystemSessionType: { BACKGROUND: 0 },
   getInfoAsync: jest.fn((uri: string) => Promise.resolve({ exists: mockFiles.has(uri), uri, size: mockFiles.get(uri) ?? 0 })),
   deleteAsync: jest.fn((uri: string) => { mockFiles.delete(uri); return Promise.resolve(); }),
+  moveAsync: jest.fn(({ from, to }: { from: string; to: string }) => {
+    const size = mockFiles.get(from);
+    mockFiles.delete(from);
+    if (size != null) mockFiles.set(to, size);
+    return Promise.resolve();
+  }),
   makeDirectoryAsync: jest.fn(() => Promise.resolve()),
   createDownloadResumable: jest.fn((_url: string, uri: string, options: unknown) => {
     const task = { pauseAsync: jest.fn(() => Promise.resolve()), downloadAsync: jest.fn(() => { mockFiles.set(uri, 2048); return Promise.resolve({ uri }); }) };
@@ -58,6 +65,27 @@ describe('ReelDownloadManager behavior', () => {
     const relaunched = new ReelDownloadManager();
     await relaunched.activate('coach-a');
     expect(relaunched.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
+  });
+
+  test('stores durable offline reels outside the purgeable cache directory', async () => {
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a'); manager.setNetworkForTesting('wifi', true);
+    await manager.enqueue(reel()); await flush();
+    expect(manager.get(7, 'highlight', 'reels/one.mp4')?.uri).toContain('file:///documents/reels/');
+  });
+
+  test('migrates previously downloaded cache files into durable storage', async () => {
+    const oldUri = 'file:///cache/reels/old/highlight-7-old.mp4';
+    mockFiles.set(oldUri, 4096);
+    mockStorage.set('@stecstats/reel-downloads/v1/coach-a', JSON.stringify([{
+      ...reel(), status: 'downloaded', requestedAt: 1, uri: oldUri,
+    }]));
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a');
+    const migrated = manager.get(7, 'highlight', 'reels/one.mp4');
+    expect(migrated?.uri).toContain('file:///documents/reels/');
+    expect(mockFiles.has(oldUri)).toBe(false);
+    expect(FileSystem.moveAsync).toHaveBeenCalled();
   });
 
   test('isolates accounts and ignores an old transfer callback', async () => {

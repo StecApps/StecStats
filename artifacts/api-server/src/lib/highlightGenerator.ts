@@ -2,6 +2,8 @@ import { spawn } from "child_process";
 import { promises as fs, createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
 import { randomUUID } from "crypto";
+import { createServer } from "http";
+import type { AddressInfo } from "net";
 import os from "os";
 import path from "path";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
@@ -18,6 +20,60 @@ import { ObjectStorageService } from "./objectStorage";
 import { logger } from "./logger";
 
 const objectStorageService = new ObjectStorageService();
+
+/**
+ * Expose one private GCS object to ffmpeg through a loopback-only HTTP server.
+ * ffmpeg needs a seekable input for MP4/WebM probing, while production GCS
+ * signed-URL Range reads have been unreliable. Each Range is fulfilled through
+ * the authenticated GCS SDK without buffering the full recording in /tmp.
+ */
+async function withObjectRangeServer<T>(
+  objectPath: string,
+  signal: AbortSignal,
+  work: (url: string) => Promise<T>,
+): Promise<T> {
+  const file = await objectStorageService.getObjectEntityFile(objectPath);
+  const [metadata] = await file.getMetadata();
+  const size = Number(metadata.size ?? 0);
+  if (!Number.isFinite(size) || size <= 0) throw new Error("Source video has no readable size");
+
+  const server = createServer((req, res) => {
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405).end();
+      return;
+    }
+    const match = /^bytes=(\d+)-(\d*)$/i.exec(String(req.headers.range ?? ""));
+    const start = match ? Math.min(Number(match[1]), size - 1) : 0;
+    const requestedEnd = match?.[2] ? Number(match[2]) : size - 1;
+    const end = Math.max(start, Math.min(requestedEnd, size - 1));
+    const partial = Boolean(match);
+    res.writeHead(partial ? 206 : 200, {
+      "Accept-Ranges": "bytes",
+      "Content-Type": String(metadata.contentType ?? "application/octet-stream"),
+      "Content-Length": String(end - start + 1),
+      ...(partial ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}),
+    });
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    pipeline(file.createReadStream({ start, end }), res).catch((err) => res.destroy(err));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const abort = () => server.close();
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    const address = server.address() as AddressInfo;
+    return await work(`http://127.0.0.1:${address.port}/source`);
+  } finally {
+    signal.removeEventListener("abort", abort);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
 
 // Separate per-game abort controllers for highlight vs lowlight jobs.
 // Using a shared map caused the second job to overwrite the first's
@@ -3313,24 +3369,19 @@ export function ensureAllProxyChunksInBackground(
     );
     await fs.mkdir(workDir, { recursive: true });
     logger.info({ gameId, firstMissing, numChunksGuess }, "HLS chunk build: starting background encode");
-    // Stream the source directly from GCS for the HLS-only build. Waiting for
-    // acquireSourceVideo to download a multi-GB game before starting ffmpeg
-    // added many minutes before chunk zero could become playable. The encoder
-    // reads from the beginning sequentially, so it does not depend on the
-    // unreliable mid-file signed-URL Range behavior.
-    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
-      videoObjectPath,
-      6 * 60 * 60,
-    );
     try {
       // encodeChunksToGcs returns the ACTUAL number of chunks and ffprobe-
       // measured per-segment durations — both stored in the sentinel.
-      const { actualNumChunks, segmentDurationsSec: newDurations } = await encodeChunksToGcs(
-        gameId, ownerId, srcUrl, workDir,
-        existFlags, firstMissing,
-        /* deleteAfterUpload */ true,
-        /* signal */ abortController.signal,
-        /* maxDurationSec */ undefined, // encode ALL chunks, no early stop
+      const { actualNumChunks, segmentDurationsSec: newDurations } = await withObjectRangeServer(
+        videoObjectPath,
+        abortController.signal,
+        (srcUrl) => encodeChunksToGcs(
+          gameId, ownerId, srcUrl, workDir,
+          existFlags, firstMissing,
+          /* deleteAfterUpload */ true,
+          /* signal */ abortController.signal,
+          /* maxDurationSec */ undefined, // encode ALL chunks, no early stop
+        ),
       );
       // Prepend approximate durations for any chunks that were already in GCS
       // (indices 0..firstMissing-1 — we didn't encode them locally so we can't

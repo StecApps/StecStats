@@ -23,6 +23,7 @@ type Listener = () => void;
 const MIN_COMPLETE_BYTES = 1024;
 const MANIFEST_PREFIX = '@stecstats/reel-downloads/v1/';
 const PREFERENCE_KEY = '@stecstats/reel-downloads/cellular';
+const REEL_STORAGE_ROOT = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
 
 function hash(value: string) {
   let h = 2166136261;
@@ -50,7 +51,9 @@ export class ReelDownloadManager {
   private manifestKey() { return `${MANIFEST_PREFIX}${this.accountId}`; }
   private uriFor(entry: Pick<ReelDownload, 'gameId' | 'type' | 'objectPath'>) {
     // The account directory prevents one coach's file URI being handed to another.
-    return `${FileSystem.cacheDirectory}reels/${hash(this.accountId ?? 'signed-out')}/${entry.type}-${entry.gameId}-${hash(entry.objectPath)}.mp4`;
+    // Reels are user-requested offline media, not disposable cache data. Keeping
+    // them in Documents prevents iOS from purging a file between download and play.
+    return `${REEL_STORAGE_ROOT}reels/${hash(this.accountId ?? 'signed-out')}/${entry.type}-${entry.gameId}-${hash(entry.objectPath)}.mp4`;
   }
   private emit() { this.listeners.forEach((listener) => listener()); }
   subscribe(listener: Listener) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
@@ -92,7 +95,13 @@ export class ReelDownloadManager {
       // A manifest alone is never proof of completion: interrupted .part files and
       // zero-byte responses are discarded and re-queued only with a fresh URL.
       if (entry.status === 'downloaded' && info.exists && (info.size ?? 0) > MIN_COMPLETE_BYTES) {
-        this.entries.set(key(entry.gameId, entry.type, entry.objectPath), { ...entry, uri: info.uri });
+        const durableUri = this.uriFor(entry);
+        if (info.uri !== durableUri) {
+          await FileSystem.makeDirectoryAsync(`${REEL_STORAGE_ROOT}reels/${hash(accountId)}`, { intermediates: true });
+          await FileSystem.deleteAsync(durableUri, { idempotent: true }).catch(() => undefined);
+          await FileSystem.moveAsync({ from: info.uri, to: durableUri });
+        }
+        this.entries.set(key(entry.gameId, entry.type, entry.objectPath), { ...entry, uri: durableUri });
       } else {
         await FileSystem.deleteAsync(info.uri, { idempotent: true }).catch(() => undefined);
         // A queued/downloading record means the app or OS interrupted it. Keep
@@ -222,7 +231,7 @@ export class ReelDownloadManager {
     let task: ReturnType<typeof FileSystem.createDownloadResumable> | null = null;
     this.active += 1; entry.status = 'downloading'; await this.persist(); this.emit();
     try {
-      await FileSystem.makeDirectoryAsync(`${FileSystem.cacheDirectory}reels/${hash(accountAtStart)}`, { intermediates: true });
+      await FileSystem.makeDirectoryAsync(`${REEL_STORAGE_ROOT}reels/${hash(accountAtStart)}`, { intermediates: true });
       // createDownloadResumable is used rather than File.downloadFileAsync so iOS
       // receives an NSURLSession background transfer. iOS may finish it after the
       // app backgrounds; force-quitting cancels system-managed transfers.
