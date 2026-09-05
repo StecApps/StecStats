@@ -677,6 +677,9 @@ export const PROXY_CHUNK_DURATION_SEC = 360; // 6 minutes
 // roughly one minute of source has encoded. Reel extraction keeps the larger
 // six-minute proxy chunks to minimize GCS operations and cross-chunk joins.
 export const HLS_SEGMENT_DURATION_SEC = 60;
+// Yield the global ffmpeg queue after two playback segments so one long game
+// cannot block every other game's first playable segment for tens of minutes.
+const HLS_FFMPEG_BATCH_DURATION_SEC = HLS_SEGMENT_DURATION_SEC * 2;
 
 /**
  * Quick duration probe for a source video. Used to determine how many chunks
@@ -779,6 +782,9 @@ async function encodeChunksToGcs(
   maxDurationSec?: number,
   chunkDurationSec: number = PROXY_CHUNK_DURATION_SEC,
   chunkPathFactory?: (chunkIndex: number) => string,
+  /** Direct ffmpeg duration cap for a fairness batch. Unlike maxDurationSec,
+   * this is relative to this invocation and adds no extra chunk headroom. */
+  encodeDurationSec?: number,
 ): Promise<{ actualNumChunks: number; segmentDurationsSec: number[] }> {
   const numChunks = existFlags.length;
   const gcsChunkPath = chunkPathFactory ?? ((i: number) =>
@@ -808,15 +814,18 @@ async function encodeChunksToGcs(
   // than issuing a mid-file Range: bytes= request.  For local file inputs,
   // keep the fast pre-input seek (lseek is O(1) on disk).
   const isUrlSource = srcPath.startsWith("http");
+  const isSeekableLoopbackSource = /^http:\/\/127\.0\.0\.1(?::\d+)?\//.test(srcPath);
+  const useFastInputSeek = firstMissing > 0 && (!isUrlSource || isSeekableLoopbackSource);
+  const outputDurationSec = encodeDurationSec ?? encodeLimitSec;
   const ffmpegArgs = [
     "-y",
-    ...((!isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
+    ...(useFastInputSeek ? ["-ss", String(startSec)] : []),
     "-i", srcPath,
     // Slow (decode-and-discard) seek for URL sources — avoids range requests.
-    ...((isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
+    ...((isUrlSource && !isSeekableLoopbackSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
     // Stop encoding early when only a subset of chunks is needed (reel-targeted
     // build).  Full-game builds (encodeLimitSec === null) have no -t flag.
-    ...(encodeLimitSec != null ? ["-t", String(Math.ceil(encodeLimitSec))] : []),
+    ...(outputDurationSec != null ? ["-t", String(Math.ceil(outputDurationSec))] : []),
     "-c:v", "libx264",
     "-preset", "ultrafast",
     "-crf", "33",
@@ -862,7 +871,7 @@ async function encodeChunksToGcs(
   // segment (whose entry appears in the list when ffmpeg opens it but is
   // only fully flushed when ffmpeg exits) is safe to upload.
   let ffmpegDone = false;
-  const ffmpegPromise = runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000).finally(
+  const ffmpegPromise = runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000, signal).finally(
     () => { ffmpegDone = true; },
   );
 
@@ -1539,7 +1548,11 @@ function run(cmd: string, args: string[], timeoutMs: number = PROCESS_TIMEOUT_MS
 // at a time, globally, regardless of how many reel jobs are in flight.
 let _ffmpegQueueTail: Promise<void> = Promise.resolve();
 
-function runFfmpegQueued(args: string[], timeoutMs?: number): Promise<string> {
+function runFfmpegQueued(
+  args: string[],
+  timeoutMs?: number,
+  signal?: AbortSignal,
+): Promise<string> {
   let unlock!: () => void;
   const token = new Promise<void>((r) => { unlock = r; });
   const prev = _ffmpegQueueTail;
@@ -1548,7 +1561,10 @@ function runFfmpegQueued(args: string[], timeoutMs?: number): Promise<string> {
   // always preempts it for healthchecks/API calls, but ffmpeg still gets
   // plenty of CPU between requests. -n 19 was too aggressive — the download
   // process starved ffmpeg so badly that encoding took >20 min per chunk.
-  return prev.then(() => run("nice", ["-n", "10", "ffmpeg", ...args], timeoutMs)).finally(unlock);
+  return prev.then(() => {
+    if (signal?.aborted) throw new HighlightError("Cancelled");
+    return run("nice", ["-n", "10", "ffmpeg", ...args], timeoutMs);
+  }).finally(unlock);
 }
 
 // Module-level reel-generation serializer.
@@ -3429,21 +3445,36 @@ export function ensureAllProxyChunksInBackground(
     await fs.mkdir(workDir, { recursive: true });
     logger.info({ gameId, firstMissing, numChunksGuess }, "HLS chunk build: starting background encode");
     try {
-      // encodeChunksToGcs returns the ACTUAL number of chunks and ffprobe-
-      // measured per-segment durations — both stored in the sentinel.
-      const { actualNumChunks } = await withObjectRangeServer(
+      // Encode in small batches. Each invocation releases the global ffmpeg
+      // queue so another requested game can produce its first playable segment
+      // instead of waiting behind this game's entire transcode.
+      const actualNumChunks = await withObjectRangeServer(
         videoObjectPath,
         abortController.signal,
-        (srcUrl) => encodeChunksToGcs(
-          gameId, ownerId, srcUrl, workDir,
-          existFlags, firstMissing,
-          /* deleteAfterUpload */ true,
-          /* signal */ abortController.signal,
-          /* maxDurationSec */ undefined, // encode ALL chunks, no early stop
-          HLS_SEGMENT_DURATION_SEC,
-          (chunkIndex) => makeHlsChunkGcsPath(ownerId, gameId, chunkIndex),
-        ),
+        async (srcUrl) => {
+          let nextMissing = firstMissing;
+          while (true) {
+            if (abortController.signal.aborted) throw new HighlightError("Cancelled");
+            logger.info(
+              { gameId, firstMissing: nextMissing },
+              "HLS chunk build: waiting for bounded ffmpeg batch",
+            );
+            const batch = await encodeChunksToGcs(
+              gameId, ownerId, srcUrl, workDir,
+              existFlags, nextMissing,
+              /* deleteAfterUpload */ true,
+              /* signal */ abortController.signal,
+              /* maxDurationSec */ undefined,
+              HLS_SEGMENT_DURATION_SEC,
+              (chunkIndex) => makeHlsChunkGcsPath(ownerId, gameId, chunkIndex),
+              HLS_FFMPEG_BATCH_DURATION_SEC,
+            );
+            if (batch.actualNumChunks === nextMissing) return nextMissing;
+            nextMissing = batch.actualNumChunks;
+          }
+        },
       );
+      if (abortController.signal.aborted) throw new HighlightError("Cancelled");
       const allDurations = await readPlayableHlsSegmentDurations(gameId, ownerId, durationMs);
       if (allDurations.length < actualNumChunks) {
         throw new Error("Completed HLS chunks are missing exact duration metadata");

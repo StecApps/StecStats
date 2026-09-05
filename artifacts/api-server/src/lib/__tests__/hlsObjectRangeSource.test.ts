@@ -22,4 +22,20 @@ describe("long-game HLS source access", () => {
     );
     expect(hlsBuilder).not.toContain("getObjectEntitySignedURL");
   });
+
+  it("yields the global ffmpeg queue between bounded HLS batches", () => {
+    const hlsBuilder = source.slice(
+      source.indexOf("export function ensureAllProxyChunksInBackground"),
+      source.indexOf("// ---------------------------------------------------------------------------\\n// HLS build-completion sentinel"),
+    );
+    expect(hlsBuilder).toContain("HLS_FFMPEG_BATCH_DURATION_SEC");
+    expect(hlsBuilder).toContain("while (true)");
+    expect(hlsBuilder).toContain("batch.actualNumChunks === nextMissing");
+  });
+
+  it("uses fast pre-input seeking for the authenticated loopback source", () => {
+    expect(source).toContain("isSeekableLoopbackSource");
+    expect(source).toContain("useFastInputSeek");
+    expect(source).toContain("runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000, signal)");
+  });
 });

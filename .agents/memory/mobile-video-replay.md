@@ -50,3 +50,9 @@ Film Room HLS playback chunks must use a separate namespace and shorter duration
 **Why:** Reusing six-minute reel chunks meant a 1.1 GB VP9 game could encode for more than ten minutes without making even the first frame available. Nominal EXTINF values also become invalid when keyframe alignment makes a segment longer than its target.
 
 **How to apply:** Use short playback-only segments, calculate progressive EXTINF and TARGETDURATION from exact sidecars, build recovered sentinels from those sidecars, and sweep media, metadata, and sentinel together when a game is deleted.
+
+Long-game playback encodes must yield the global ffmpeg serializer in bounded batches; segment size alone does not provide fairness when one ffmpeg process still encodes the full game.
+
+**Why:** A 34-minute HLS build held the sole ffmpeg slot continuously, so a second game logged that its build started but could not produce any segment until the first entire transcode ended.
+
+**How to apply:** Run a small number of playback segments per ffmpeg invocation, rejoin the queue between batches, and use fast pre-input seeking only for the authenticated loopback Range source. Detect EOF with a zero-output batch before writing the final sentinel.
