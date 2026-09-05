@@ -54,6 +54,7 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('reelDownloadManager.enqueue({ gameId, type, objectPath, url: remoteUrl }, true)');
     expect(gameScreen).toContain('reelDownloadManager.get(gameId, type, objectPath)');
     expect(gameScreen).toContain("if (url.startsWith('file:'))");
+    expect(gameScreen).toContain('return null;');
     expect(gameScreen).toContain('setSignedUrl(playbackUrl)');
     expect(gameScreen).toContain("'highlight',");
     expect(gameScreen).toContain("getReelPlaybackUrl(gameId, 'lowlight'");
@@ -78,5 +79,12 @@ describe('saved-video playback caching', () => {
   test('keeps the native reel surfaces mounted while local files attach', () => {
     expect(gameScreen).toContain('{(!signedUrl || playbackLoading) && (');
     expect(gameScreen).not.toContain("if (!signedUrl) return <ActivityIndicator");
+  });
+
+  test('does not leave an empty black player while a reel waits for Wi-Fi', () => {
+    expect(gameScreen).toContain('Waiting to download');
+    expect(gameScreen).toContain('download-highlight-cellular');
+    expect(gameScreen).toContain('download-lowlight-cellular');
+    expect(gameScreen).toContain('The video will appear here when it is ready.');
   });
 });

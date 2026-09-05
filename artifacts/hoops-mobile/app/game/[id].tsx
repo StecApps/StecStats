@@ -117,10 +117,12 @@ async function getReelPlaybackUrl(
   if (forceFresh) await reelDownloadManager.invalidate(gameId, type, objectPath);
   const existing = reelDownloadManager.get(gameId, type, objectPath);
   if (existing?.status === 'downloaded' && existing.uri) return existing.uri;
-  // Playback remains available from the short-lived signed URL while the shared
-  // manager prefetches it. The manager owns validation, persistence and retries.
+  // iOS reel playback is local-only. The production proxy can abort progressive
+  // playback after a few seconds, and an expired signed URL leaves AVPlayer black.
+  // Keep the native surface mounted, but do not attach media until the background
+  // manager has produced a complete local file.
   await reelDownloadManager.enqueue({ gameId, type, objectPath, url: remoteUrl }, true);
-  return remoteUrl;
+  return null;
 }
 
 async function getReusableStreamUrl(
@@ -740,8 +742,11 @@ const videoStyle = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    paddingHorizontal: 32,
+    gap: 10,
   },
+  waitingTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
+  waitingText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 19, maxWidth: 300 },
   playbackError: {
     flex: 1,
     alignItems: 'center',
@@ -788,7 +793,7 @@ const lowlightStartTimes      = new Map<number, number>();
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
-  const { downloads } = useReelDownloads();
+  const { downloads, cellularAllowed, setCellularAllowed } = useReelDownloads();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
@@ -844,6 +849,10 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         ? await fetchStreamUrl(gameId, 'lowlight', token)
         : await getReusableStreamUrl(gameId, 'lowlight', token);
       const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.url, forceFresh);
+      if (!playbackUrl) {
+        setSignedUrl(null);
+        return;
+      }
       await player.replaceAsync(playbackUrl);
       setSignedUrl(playbackUrl);
     } catch (error: any) {
@@ -858,7 +867,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     if (!lowlightReady) return;
     automaticRetryRef.current = false;
     void loadLowlightVideo();
-  }, [lowlightReady, gameId, loadLowlightVideo]);
+  }, [lowlightReady, gameId, lowlightDownload?.status, lowlightDownload?.uri, loadLowlightVideo]);
 
   useEffect(() => {
     const subscription = player.addListener('statusChange', ({ status, error }) => {
@@ -985,8 +994,36 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
                 nativeControls
               />
               {(!signedUrl || playbackLoading) && (
-                <View pointerEvents="none" style={videoStyle.playbackLoading}>
-                  <ActivityIndicator color={colors.primary} />
+                <View style={[videoStyle.playbackLoading, { backgroundColor: colors.background }]}>
+                  {lowlightDownload?.status === 'downloading' || playbackLoading ? (
+                    <>
+                      <ActivityIndicator color={colors.primary} />
+                      <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Downloading lowlights…</Text>
+                      <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>The video will appear here when it is ready.</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Feather name="wifi-off" size={28} color={colors.mutedForeground} />
+                      <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Waiting to download</Text>
+                      <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>
+                        Connect to Wi‑Fi, or download now using cellular data.
+                      </Text>
+                      {!cellularAllowed && (
+                        <TouchableOpacity
+                          testID="download-lowlight-cellular"
+                          onPress={async () => {
+                            await setCellularAllowed(true);
+                            automaticRetryRef.current = false;
+                            void loadLowlightVideo(true);
+                          }}
+                          style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+                        >
+                          <Feather name="download" size={15} color="#fff" />
+                          <Text style={videoStyle.retryButtonText}>Download now</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
                 </View>
               )}
             </>
@@ -1101,7 +1138,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 type PrivacyStatus = 'public' | 'unlisted' | 'private';
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
-  const { downloads } = useReelDownloads();
+  const { downloads, cellularAllowed, setCellularAllowed } = useReelDownloads();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const router = useRouter();
@@ -1188,6 +1225,10 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         result.url,
         forceFresh,
       );
+      if (!playbackUrl) {
+        setSignedUrl(null);
+        return;
+      }
       if (result.proxyReady) {
         streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
           url: result.url,
@@ -1213,7 +1254,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       if (cancelled) return;
     });
     return () => { cancelled = true; };
-  }, [highlightReady, gameId, loadHighlightVideo]);
+  }, [highlightReady, gameId, highlightDownload?.status, highlightDownload?.uri, loadHighlightVideo]);
 
   // AVPlayer can reject a signed source after Expo Video has accepted it, so
   // replaceAsync resolving is not sufficient proof that playback is available.
@@ -1397,8 +1438,36 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
                 nativeControls
               />
               {(!signedUrl || playbackLoading) && (
-                <View pointerEvents="none" style={videoStyle.playbackLoading}>
-                  <ActivityIndicator color={colors.primary} />
+                <View style={[videoStyle.playbackLoading, { backgroundColor: colors.background }]}>
+                  {highlightDownload?.status === 'downloading' || playbackLoading ? (
+                    <>
+                      <ActivityIndicator color={colors.primary} />
+                      <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Downloading highlights…</Text>
+                      <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>The video will appear here when it is ready.</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Feather name="wifi-off" size={28} color={colors.mutedForeground} />
+                      <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Waiting to download</Text>
+                      <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>
+                        Connect to Wi‑Fi, or download now using cellular data.
+                      </Text>
+                      {!cellularAllowed && (
+                        <TouchableOpacity
+                          testID="download-highlight-cellular"
+                          onPress={async () => {
+                            await setCellularAllowed(true);
+                            automaticRetryRef.current = false;
+                            void loadHighlightVideo(true, Platform.OS === 'ios');
+                          }}
+                          style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+                        >
+                          <Feather name="download" size={15} color="#fff" />
+                          <Text style={videoStyle.retryButtonText}>Download now</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
                 </View>
               )}
             </>

@@ -15,6 +15,12 @@ Expo Video can accept `replaceAsync()` and only report AVPlayer's source failure
 
 **How to apply:** Keep the native VideoView mounted while downloading and attaching a source; loading the source before its rendering surface exists can leave a healthy local MP4 black. Listen for `statusChange: error`; invalidate the reusable signed URL, retry once with a freshly signed URL and iOS caching disabled, then expose a manual retry state instead of leaving the native error screen.
 
+For iOS reels, “ready on the server” is not the same as “ready to play on this phone.” Do not attach the temporary remote URL while a persistent download is queued or paused by a Wi‑Fi-only preference.
+
+**Why:** Production progressive streams can be cut off and signed URLs can expire while queued, leaving AVPlayer as a blank black surface even though the reel file itself is healthy.
+
+**How to apply:** Keep the native surface mounted behind an explicit waiting/downloading panel. Attach only the completed account-scoped local file; on cellular, offer a deliberate download-now action rather than showing an empty player.
+
 iOS highlight/lowlight playback must not stream either directly from a signed GCS URL or through the Replit API proxy.
 
 **Why:** AVPlayer rejected valid fast-start MP4s when reading GCS signed URLs, while the API byte-range workaround produced valid 206 responses that the production proxy aborted after roughly 1–2 seconds.

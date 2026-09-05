@@ -771,27 +771,6 @@ export default function GamesScreen() {
 
       {/* ── Pending upload recovery ───────────────────────────────────── */}
       <PendingUploadBanner key={bannerKey} onDismiss={() => setBannerKey((k) => k + 1)} />
-      {Platform.OS !== 'web' && (
-        <View style={{ marginHorizontal: 16, marginBottom: 10, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Ionicons name="download-outline" size={18} color={colors.primary} />
-            <Text style={{ flex: 1, color: colors.foreground, fontSize: 13, fontFamily: 'Inter_600SemiBold' }}>
-              {downloads.filter((item) => item.status === 'failed').length
-                ? `${downloads.filter((item) => item.status === 'failed').length} reel download${downloads.filter((item) => item.status === 'failed').length === 1 ? '' : 's'} failed — open that game to retry`
-                : `${downloads.filter((item) => item.status === 'downloaded').length} reels ready offline`}
-            </Text>
-            <TouchableOpacity testID="toggle-reel-cellular-downloads" onPress={() => void setCellularAllowed(!cellularAllowed)}>
-              <Text style={{ color: colors.primary, fontSize: 12, fontFamily: 'Inter_700Bold' }}>{cellularAllowed ? 'Cellular on' : 'Wi‑Fi only'}</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={{ color: colors.mutedForeground, fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 5 }}>
-            {cellularAllowed
-              ? 'Reels can download on Wi‑Fi or cellular in the background. iOS cancels transfers if you force-quit the app.'
-              : 'Reels download automatically on Wi‑Fi and pause on cellular until you opt in. iOS cancels transfers if you force-quit the app.'}
-          </Text>
-        </View>
-      )}
-
       {/* ── Page header ──────────────────────────────────────────────── */}
       <View style={styles.header}>
         <View>
@@ -813,6 +792,23 @@ export default function GamesScreen() {
           <Feather name="plus" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
+      {Platform.OS !== 'web' && downloads.length > 0 && (
+        <View style={{ marginHorizontal: 16, marginBottom: 10, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Ionicons name="download-outline" size={17} color={colors.primary} />
+            <Text style={{ flex: 1, color: colors.foreground, fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>
+              {downloads.some((item) => item.status === 'failed')
+                ? `${downloads.filter((item) => item.status === 'failed').length} download failed`
+                : downloads.some((item) => item.status === 'downloading')
+                  ? 'Downloading reels for offline playback'
+                  : `${downloads.filter((item) => item.status === 'downloaded').length} reels ready offline`}
+            </Text>
+            <TouchableOpacity testID="toggle-reel-cellular-downloads" onPress={() => void setCellularAllowed(!cellularAllowed)}>
+              <Text style={{ color: colors.primary, fontSize: 12, fontFamily: 'Inter_700Bold' }}>{cellularAllowed ? 'Cellular on' : 'Wi‑Fi only'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* ── Unified filter card ──────────────────────────────────────── */}
       {/* All filter controls live inside one glass card so the screen
