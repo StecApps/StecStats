@@ -49,10 +49,10 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('}, [gameId, highlight?.highlightObjectPath, player])');
   });
 
-  test('downloads iOS highlight and lowlight reels before native playback', () => {
-    expect(gameScreen).toContain("if (Platform.OS !== 'ios') return remoteUrl");
-    expect(gameScreen).toContain('File.downloadFileAsync(remoteUrl, destination');
-    expect(gameScreen).toContain('downloaded.size <= 1024');
+  test('delegates highlight and lowlight downloads to the shared persistent manager', () => {
+    expect(gameScreen).toContain("import { reelDownloadManager, useReelDownloads }");
+    expect(gameScreen).toContain('reelDownloadManager.enqueue({ gameId, type, objectPath, url: remoteUrl }, true)');
+    expect(gameScreen).toContain('reelDownloadManager.get(gameId, type, objectPath)');
     expect(gameScreen).toContain("if (url.startsWith('file:'))");
     expect(gameScreen).toContain('setSignedUrl(playbackUrl)');
     expect(gameScreen).toContain("'highlight',");
@@ -65,14 +65,13 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('This lowlight could not be downloaded.');
   });
 
-  test('invalidates local highlight and lowlight files before regeneration', () => {
-    expect(gameScreen).toContain("deleteLocalReel(gameId, 'highlight', highlight?.highlightObjectPath)");
-    expect(gameScreen).toContain("deleteLocalReel(gameId, 'lowlight', lowlight?.lowlightObjectPath)");
+  test('invalidates shared highlight and lowlight cache entries before regeneration', () => {
+    expect(gameScreen).toContain("reelDownloadManager.invalidate(gameId, 'highlight', highlight?.highlightObjectPath)");
+    expect(gameScreen).toContain("reelDownloadManager.invalidate(gameId, 'lowlight', lowlight?.lowlightObjectPath)");
   });
 
-  test('reuses completed reel files after the app relaunches', () => {
-    expect(gameScreen).toContain('function getExistingReelPlaybackUrl(');
-    expect(gameScreen).toContain('if (cachedFile.exists && cachedFile.size > 1024)');
+  test('surfaces completed reel files from the shared cache', () => {
+    expect(gameScreen).toContain("existing?.status === 'downloaded' && existing.uri");
     expect(gameScreen).toContain('Downloaded on this device');
   });
 

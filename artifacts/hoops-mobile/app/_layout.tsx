@@ -33,6 +33,7 @@ import { SubscriptionProvider, initializeRevenueCat } from '@/lib/revenuecat';
 import { useRevenueCatAuthSync } from '@/lib/useRevenueCatAuthSync';
 import { PendingPhotoRetry } from '@/components/PendingPhotoRetry';
 import { useOfflineQueueSync } from '@/lib/useOfflineQueueSync';
+import { ReelDownloadProvider } from '@/lib/reelDownloadManager';
 
 SplashScreen.preventAutoHideAsync();
 import { Alert, Platform } from 'react-native';
@@ -229,8 +230,9 @@ function AuthGate() {
 }
 
 function RootLayoutNav() {
+  const { userId, isSignedIn, getToken } = useAuth();
   return (
-    <>
+    <ReelDownloadProvider accountId={isSignedIn ? userId : null} getToken={getToken}>
       <ApiAuthSetup />
       <AuthGate />
       <PushNotificationSetup />
@@ -251,7 +253,7 @@ function RootLayoutNav() {
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
       </Stack>
-    </>
+    </ReelDownloadProvider>
   );
 }
 

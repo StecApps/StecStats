@@ -75,6 +75,8 @@
   "dependencies": {
     "@clerk/expo": "^4.6.1",
     "@expo-google-fonts/teko": "^0.4.1",
+    "@react-native-community/netinfo": "11.4.1",
+    "expo": "~54.0.37",
     "expo-apple-authentication": "^8.0.8",
     "expo-auth-session": "^7.0.11",
     "expo-camera": "^17.0.10",
@@ -86,7 +88,6 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-purchases": "^10.6.0",
-    "react-native-webrtc": "^124.0.8",
-    "expo": "~54.0.37"
+    "react-native-webrtc": "^124.0.8"
   }
 }

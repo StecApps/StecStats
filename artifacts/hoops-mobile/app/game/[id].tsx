@@ -33,9 +33,9 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { saveReviewVideo } from '@/lib/saveReviewVideo';
 import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
-import { File, Paths } from 'expo-file-system';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
+import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -100,52 +100,10 @@ type CachedStream = {
 // cache is keyed by source URL, so minting a new signed URL on every tab visit
 // made already-buffered bytes look like a completely different video.
 const streamUrlCache = new Map<string, CachedStream>();
-const localReelFileCache = new Map<string, string>();
 const STREAM_URL_REUSE_MS = 4.5 * 60 * 60_000;
 
 function streamCacheKey(gameId: number, type: 'video' | 'highlight' | 'lowlight') {
   return `${gameId}:${type}`;
-}
-
-function reelCacheFile(
-  gameId: number,
-  type: 'highlight' | 'lowlight',
-  objectPath: string,
-) {
-  let hash = 2166136261;
-  for (let i = 0; i < objectPath.length; i += 1) {
-    hash ^= objectPath.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return new File(Paths.cache, `stecstats-${type}-${gameId}-${(hash >>> 0).toString(36)}.mp4`);
-}
-
-function getExistingReelPlaybackUrl(
-  gameId: number,
-  type: 'highlight' | 'lowlight',
-  objectPath: string,
-) {
-  if (Platform.OS !== 'ios') return null;
-  const key = streamCacheKey(gameId, type);
-  const cachedFile = reelCacheFile(gameId, type, objectPath);
-  if (cachedFile.exists && cachedFile.size > 1024) {
-    localReelFileCache.set(key, cachedFile.uri);
-    return cachedFile.uri;
-  }
-  if (cachedFile.exists) cachedFile.delete();
-  localReelFileCache.delete(key);
-  return null;
-}
-
-function deleteLocalReel(
-  gameId: number,
-  type: 'highlight' | 'lowlight',
-  objectPath?: string | null,
-) {
-  localReelFileCache.delete(streamCacheKey(gameId, type));
-  if (!objectPath) return;
-  const cachedFile = reelCacheFile(gameId, type, objectPath);
-  if (cachedFile.exists) cachedFile.delete();
 }
 
 async function getReelPlaybackUrl(
@@ -155,25 +113,14 @@ async function getReelPlaybackUrl(
   remoteUrl: string,
   forceFresh = false,
 ) {
-  if (Platform.OS !== 'ios') return remoteUrl;
-
-  const key = streamCacheKey(gameId, type);
-  const cachedUri = !forceFresh
-    ? getExistingReelPlaybackUrl(gameId, type, objectPath)
-    : null;
-  if (cachedUri) return cachedUri;
-
-  const destination = reelCacheFile(gameId, type, objectPath);
-  if (forceFresh && destination.exists) destination.delete();
-  const downloaded = await File.downloadFileAsync(remoteUrl, destination, {
-    idempotent: true,
-  });
-  if (!downloaded.exists || downloaded.size <= 1024) {
-    if (downloaded.exists) downloaded.delete();
-    throw new Error(`The ${type} download was incomplete. Please try again.`);
-  }
-  localReelFileCache.set(key, downloaded.uri);
-  return downloaded.uri;
+  if (Platform.OS === 'web') return remoteUrl;
+  if (forceFresh) await reelDownloadManager.invalidate(gameId, type, objectPath);
+  const existing = reelDownloadManager.get(gameId, type, objectPath);
+  if (existing?.status === 'downloaded' && existing.uri) return existing.uri;
+  // Playback remains available from the short-lived signed URL while the shared
+  // manager prefetches it. The manager owns validation, persistence and retries.
+  await reelDownloadManager.enqueue({ gameId, type, objectPath, url: remoteUrl }, true);
+  return remoteUrl;
 }
 
 async function getReusableStreamUrl(
@@ -841,6 +788,7 @@ const lowlightStartTimes      = new Map<number, number>();
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
+  const { downloads } = useReelDownloads();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
@@ -878,6 +826,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }, [lowlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lowlightReady = lowlight?.status === 'ready';
+  const lowlightDownload = downloads.find((item) => item.gameId === gameId && item.type === 'lowlight' && item.objectPath === lowlight?.lowlightObjectPath);
 
   const loadLowlightVideo = useCallback(async (forceFresh = false) => {
     setPlaybackLoading(true);
@@ -885,19 +834,11 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     try {
       const objectPath = lowlight?.lowlightObjectPath;
       if (!objectPath) throw new Error('The lowlight file is not available.');
-      if (!forceFresh) {
-        const existingUrl = getExistingReelPlaybackUrl(gameId, 'lowlight', objectPath);
-        if (existingUrl) {
-          await player.replaceAsync(existingUrl);
-          setSignedUrl(existingUrl);
-          return;
-        }
-      }
       const token = await getTokenRef.current();
       if (!token) throw new Error('Your session expired. Please sign in again.');
       if (forceFresh) {
         streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
-        deleteLocalReel(gameId, 'lowlight', objectPath);
+        await reelDownloadManager.invalidate(gameId, 'lowlight', objectPath);
       }
       const result = forceFresh
         ? await fetchStreamUrl(gameId, 'lowlight', token)
@@ -939,7 +880,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   async function handleRegenerateLowlight() {
     if (generateMutation.isPending) return;
     try {
-      deleteLocalReel(gameId, 'lowlight', lowlight?.lowlightObjectPath);
+      await reelDownloadManager.invalidate(gameId, 'lowlight', lowlight?.lowlightObjectPath);
       streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
       setSignedUrl(null);
       await generateMutation.mutateAsync({ gameId });
@@ -976,7 +917,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         const bg = lowlightBgAtRef.current;
         lowlightBgAtRef.current = null;
         if (bg !== null && Date.now() - bg > 50_000) {
-          if (Platform.OS === 'ios' && localReelFileCache.has(streamCacheKey(gameId, 'lowlight'))) {
+          if (reelDownloadManager.get(gameId, 'lowlight', lowlight?.lowlightObjectPath ?? '')?.status === 'downloaded') {
             return;
           }
           getTokenRef.current()
@@ -1051,11 +992,11 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </>
           )}
         </ZoomableVideo>
-        {Platform.OS === 'ios' && signedUrl?.startsWith('file:') && (
+        {Platform.OS !== 'web' && lowlightDownload && (
           <View style={videoStyle.downloadedBadge}>
-            <Feather name="check-circle" size={14} color={colors.primary} />
+            <Feather name={lowlightDownload.status === 'failed' ? 'alert-circle' : lowlightDownload.status === 'downloaded' ? 'check-circle' : 'download'} size={14} color={colors.primary} />
             <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
-              Downloaded on this device
+              {lowlightDownload.status === 'downloaded' ? 'Downloaded on this device' : lowlightDownload.status === 'failed' ? 'Download failed — tap Retry Video' : `${lowlightDownload.status === 'downloading' ? 'Downloading' : 'Queued'} for offline playback`}
             </Text>
           </View>
         )}
@@ -1160,6 +1101,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 type PrivacyStatus = 'public' | 'unlisted' | 'private';
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
+  const { downloads } = useReelDownloads();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const router = useRouter();
@@ -1217,6 +1159,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   // be seeked without freezing — signed object-storage URLs don't support
   // Range requests reliably in production.
   const highlightReady = highlight?.status === 'ready';
+  const highlightDownload = downloads.find((item) => item.gameId === gameId && item.type === 'highlight' && item.objectPath === highlight?.highlightObjectPath);
 
   const loadHighlightVideo = useCallback(async (
     forceFresh = false,
@@ -1227,20 +1170,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     try {
       const objectPath = highlight?.highlightObjectPath;
       if (!objectPath) throw new Error('The highlight file is not available.');
-      if (!forceFresh) {
-        const existingUrl = getExistingReelPlaybackUrl(gameId, 'highlight', objectPath);
-        if (existingUrl) {
-          await player.replaceAsync(existingUrl);
-          setSignedUrl(existingUrl);
-          return;
-        }
-      }
       const token = await getTokenRef.current();
       if (!token) throw new Error('Your session expired. Please sign in again.');
 
       if (forceFresh) {
         streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
-        deleteLocalReel(gameId, 'highlight', objectPath);
+        await reelDownloadManager.invalidate(gameId, 'highlight', objectPath);
       }
       const result = forceFresh
         ? await fetchStreamUrl(gameId, 'highlight', token)
@@ -1403,7 +1338,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   async function handleRegenerate() {
     if (generateMutation.isPending) return;
     try {
-      deleteLocalReel(gameId, 'highlight', highlight?.highlightObjectPath);
+      await reelDownloadManager.invalidate(gameId, 'highlight', highlight?.highlightObjectPath);
       streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
       setSignedUrl(null);
       await generateMutation.mutateAsync({ gameId });
@@ -1469,11 +1404,11 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </>
           )}
         </ZoomableVideo>
-        {Platform.OS === 'ios' && signedUrl?.startsWith('file:') && (
+        {Platform.OS !== 'web' && highlightDownload && (
           <View style={videoStyle.downloadedBadge}>
-            <Feather name="check-circle" size={14} color={colors.primary} />
+            <Feather name={highlightDownload.status === 'failed' ? 'alert-circle' : highlightDownload.status === 'downloaded' ? 'check-circle' : 'download'} size={14} color={colors.primary} />
             <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
-              Downloaded on this device
+              {highlightDownload.status === 'downloaded' ? 'Downloaded on this device' : highlightDownload.status === 'failed' ? 'Download failed — tap Retry Video' : `${highlightDownload.status === 'downloading' ? 'Downloading' : 'Queued'} for offline playback`}
             </Text>
           </View>
         )}
