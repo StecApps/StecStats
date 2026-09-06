@@ -250,7 +250,9 @@ const MAX_SEGMENT_SEC = 300;
 //      lag; 2 s tail captures the play completing after the button press.
 // v10 = orientation-aware reel clips: portrait proxy chunks now produce portrait
 //       output instead of being forced into a landscape 1280×720 box.
-export const GENERATOR_VERSION = 10;
+// v11 = final reel concat rebuilds one continuous CFR H.264/AAC timeline instead
+//       of stream-copying TS timestamp discontinuities that stall iOS AVPlayer.
+export const GENERATOR_VERSION = 11;
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
@@ -2579,8 +2581,9 @@ export async function concatSegments(
     //
     // Input 0: MPEG-TS segments via concat demuxer.
     // Input 1: music track looped for the full reel duration.
-    // Video is stream-copied; audio is decoded, mixed, and re-encoded to AAC
-    // (so aac_adtstoasc is not needed — we're not copying TS audio packets).
+    // Re-encode the final timeline rather than stream-copying independently
+    // timestamp-reset TS clips. AVPlayer can seek across copied discontinuities
+    // but stalls/turns black when normal playback reaches the first one.
     const concatArgs = [
       "-y",
       "-f", "concat", "-safe", "0", "-i", listPath,
@@ -2591,23 +2594,25 @@ export async function concatSegments(
       // Blend original game audio (weight 1) with background music (weight 0.2).
       // duration=first trims the music to the video length.
       concatArgs.push(
-        "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.2[aout]",
-        "-map", "0:v",
+        "-filter_complex", "[0:v]setpts=N/(30*TB)[vout];[0:a]asetpts=N/SR/TB[game];[1:a]asetpts=N/SR/TB[music];[game][music]amix=inputs=2:duration=first:weights=1 0.2[aout]",
+        "-map", "[vout]",
         "-map", "[aout]",
       );
     } else {
       // No source audio — music only, trimmed to video length.
       concatArgs.push(
-        "-filter_complex", "[1:a]volume=0.3[aout]",
-        "-map", "0:v",
+        "-filter_complex", "[0:v]setpts=N/(30*TB)[vout];[1:a]asetpts=N/SR/TB,volume=0.3[aout]",
+        "-map", "[vout]",
         "-map", "[aout]",
       );
     }
 
     concatArgs.push(
-      "-c:v", "copy",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+      "-profile:v", "main", "-pix_fmt", "yuv420p", "-r", "30",
       "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
       "-shortest",
+      "-avoid_negative_ts", "make_zero",
       "-movflags", "+faststart",
       outPath,
     );
@@ -2616,16 +2621,31 @@ export async function concatSegments(
     return;
   }
 
-  // No music: plain stream-copy concat.
+  // No music: rebuild one continuous CFR timeline. Stream-copying separately
+  // encoded TS clips leaves discontinuities that iOS exposes as a 10–15 second
+  // playback stall even though manual seeking still works.
   const concatArgs = [
     "-y",
     "-f", "concat",
     "-safe", "0",
     "-i", listPath,
-    "-c", "copy",
+    "-filter:v", "setpts=N/(30*TB)",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    "-profile:v", "main", "-pix_fmt", "yuv420p", "-r", "30",
   ];
-  if (hasAudio) concatArgs.push("-bsf:a", "aac_adtstoasc");
-  concatArgs.push("-movflags", "+faststart", outPath);
+  if (hasAudio) {
+    concatArgs.push(
+      "-filter:a", "asetpts=N/SR/TB",
+      "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
+    );
+  } else {
+    concatArgs.push("-an");
+  }
+  concatArgs.push(
+    "-avoid_negative_ts", "make_zero",
+    "-movflags", "+faststart",
+    outPath,
+  );
   await runFfmpegQueued(concatArgs);
 }
 

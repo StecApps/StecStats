@@ -1,16 +1,16 @@
 ---
 name: TS segment absolute timestamps
-description: ffmpeg fast-seek (-ss before -i) inherits source stream PTS; TS output keeps the absolute timestamp, breaking iOS Safari playback when concatenated into MP4.
+description: iOS needs reset TS inputs plus a freshly encoded continuous final timeline; stream-copy concat can remain seekable but stall at clip boundaries.
 ---
 
 ## Rule
-When encoding MPEG-TS clip segments with ffmpeg's fast-seek (`-ss` before `-i`), always add `-reset_timestamps 1` to the segment encode args. Without it the output TS file inherits the source stream's absolute PTS (e.g. seeking to 402s → PTS ≈ 36M ticks at 90 kHz). When those segments are concatenated into MP4, iOS Safari sees an initial PTS of hundreds of seconds and refuses to play the file silently (video appears broken/black, server logs show repeated range-request cycles that abort after ~1 s).
+When encoding MPEG-TS clip segments with ffmpeg's fast-seek (`-ss` before `-i`), add `-reset_timestamps 1`. When assembling multiple independently rendered segments, do not stream-copy them into the final MP4: rebuild one zero-based CFR H.264/AAC timeline with `setpts`/`asetpts`.
 
-**Why:** iOS Safari's H.264 decoder is strict about initial PTS. A valid-looking moov atom with a huge start timestamp is treated as an unsupported file, not a seek target.
+**Why:** iOS is strict about both initial PTS and boundary continuity. A stream-copy concat can look complete, report the full duration, and seek to the end while normal AVPlayer playback stalls or turns black at the first 10–15 second clip boundary.
 
-**How to apply:** Add to every `ffmpeg` segment encode that outputs `-f mpegts`:
+**How to apply:** Reset every MPEG-TS segment:
 ```
 args.push("-reset_timestamps", "1");
 args.push("-f", "mpegts", segPath);
 ```
-The concat demuxer handles the resulting per-segment-0-based timestamps correctly, offsetting each subsequent segment by the previous segment's duration.
+For the final MP4, normalize video with `setpts=N/(fps*TB)`, audio with `asetpts=N/SR/TB`, re-encode to H.264 Main/yuv420p plus AAC, generate CFR timestamps, avoid negative timestamps, and use `+faststart`. Test deliberately offset input PTS, frame count/duration, and decode through EOF.
