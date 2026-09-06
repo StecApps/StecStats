@@ -832,7 +832,11 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [elapsedSec, setElapsedSec] = useState(0);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
   const automaticRetryRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const sourceAttachGenerationRef = useRef(0);
+  const sourceAttachChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -864,34 +868,70 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const lowlightDownload = downloads.find((item) => item.gameId === gameId && item.type === 'lowlight' && item.objectPath === lowlight?.lowlightObjectPath);
 
   const loadLowlightVideo = useCallback(async (forceFresh = false) => {
+    const loadGeneration = ++loadGenerationRef.current;
+    const isCurrentLoad = () => loadGeneration === loadGenerationRef.current;
     setPlaybackLoading(true);
     setPlaybackError(null);
     try {
       const objectPath = lowlight?.lowlightObjectPath;
       if (!objectPath) throw new Error('The lowlight file is not available.');
       const token = await getTokenRef.current();
+      if (!isCurrentLoad()) return;
       if (!token) throw new Error('Your session expired. Please sign in again.');
       if (forceFresh) {
         streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
         await reelDownloadManager.invalidate(gameId, 'lowlight', objectPath);
+        if (!isCurrentLoad()) return;
       }
       const result = forceFresh
         ? await fetchStreamUrl(gameId, 'lowlight', token)
         : await getReusableStreamUrl(gameId, 'lowlight', token);
+      if (!isCurrentLoad()) return;
       const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.url, forceFresh);
+      if (!isCurrentLoad()) return;
       if (!playbackUrl) {
         setSignedUrl(null);
+        setPlaybackLoading(false);
         return;
       }
-      await player.replaceAsync(playbackUrl);
       setSignedUrl(playbackUrl);
+      setSourceAttachRequest({ url: playbackUrl, id: loadGeneration });
     } catch (error: any) {
+      if (!isCurrentLoad()) return;
       setSignedUrl(null);
       setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
-    } finally {
       setPlaybackLoading(false);
     }
   }, [gameId, lowlight?.lowlightObjectPath, player]);
+
+  useEffect(() => () => {
+    loadGenerationRef.current++;
+    sourceAttachGenerationRef.current++;
+  }, [lowlight?.lowlightObjectPath]);
+
+  // Commit the local URI first so React has mounted the native VideoView before
+  // AVPlayer receives the source. Serialize replacements so a stale async load
+  // can never overwrite the latest requested reel.
+  useEffect(() => {
+    if (!sourceAttachRequest) return;
+    const generation = sourceAttachRequest.id;
+    sourceAttachGenerationRef.current = generation;
+    let cancelled = false;
+    sourceAttachChainRef.current = sourceAttachChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        await player.replaceAsync(sourceAttachRequest.url);
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        setPlaybackLoading(false);
+      })
+      .catch((error: any) => {
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+        setPlaybackLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [player, sourceAttachRequest]);
 
   useEffect(() => {
     if (!lowlightReady) return;
@@ -963,35 +1003,13 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           if (reelDownloadManager.get(gameId, 'lowlight', lowlight?.lowlightObjectPath ?? '')?.status === 'downloaded') {
             return;
           }
-          getTokenRef.current()
-            .then((token) => {
-              if (!token) return;
-              return fetchStreamUrl(gameId, 'lowlight', token);
-            })
-            .then((result) => {
-              if (!result) return;
-              const objectPath = lowlight?.lowlightObjectPath;
-              if (!objectPath) throw new Error('The lowlight file is not available.');
-              return getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.url, true).then((playbackUrl) => {
-                streamUrlCache.set(streamCacheKey(gameId, 'lowlight'), {
-                  url: result.url,
-                  isHls: result.isHls,
-                  expiresAt: Date.now() + STREAM_URL_REUSE_MS,
-                });
-                return player.replaceAsync(playbackUrl).then(() => {
-                  setSignedUrl(playbackUrl);
-                });
-              });
-            })
-            .catch((error: any) => {
-              setSignedUrl(null);
-              setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
-            });
+          automaticRetryRef.current = false;
+          void loadLowlightVideo(true);
         }
       }
     });
     return () => sub.remove();
-  }, [lowlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lowlightReady, gameId, loadLowlightVideo]);
 
   if (!lowlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
@@ -1191,7 +1209,11 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [sharingClip, setSharingClip] = useState(false);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
   const automaticRetryRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const sourceAttachGenerationRef = useRef(0);
+  const sourceAttachChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -1236,21 +1258,26 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     forceFresh = false,
     disableCaching = false,
   ) => {
+    const loadGeneration = ++loadGenerationRef.current;
+    const isCurrentLoad = () => loadGeneration === loadGenerationRef.current;
     setPlaybackLoading(true);
     setPlaybackError(null);
     try {
       const objectPath = highlight?.highlightObjectPath;
       if (!objectPath) throw new Error('The highlight file is not available.');
       const token = await getTokenRef.current();
+      if (!isCurrentLoad()) return;
       if (!token) throw new Error('Your session expired. Please sign in again.');
 
       if (forceFresh) {
         streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
         await reelDownloadManager.invalidate(gameId, 'highlight', objectPath);
+        if (!isCurrentLoad()) return;
       }
       const result = forceFresh
         ? await fetchStreamUrl(gameId, 'highlight', token)
         : await getReusableStreamUrl(gameId, 'highlight', token);
+      if (!isCurrentLoad()) return;
 
       const playbackUrl = await getReelPlaybackUrl(
         gameId,
@@ -1259,8 +1286,10 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         result.url,
         forceFresh,
       );
+      if (!isCurrentLoad()) return;
       if (!playbackUrl) {
         setSignedUrl(null);
+        setPlaybackLoading(false);
         return;
       }
       if (result.proxyReady) {
@@ -1270,15 +1299,44 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           expiresAt: Date.now() + STREAM_URL_REUSE_MS,
         });
       }
-      await player.replaceAsync(playbackUrl);
       setSignedUrl(playbackUrl);
+      setSourceAttachRequest({ url: playbackUrl, id: loadGeneration });
     } catch (error: any) {
+      if (!isCurrentLoad()) return;
       setSignedUrl(null);
       setPlaybackError(error?.message ?? 'The highlight video could not be loaded.');
-    } finally {
       setPlaybackLoading(false);
     }
   }, [gameId, highlight?.highlightObjectPath, player]);
+
+  useEffect(() => () => {
+    loadGenerationRef.current++;
+    sourceAttachGenerationRef.current++;
+  }, [highlight?.highlightObjectPath]);
+
+  // Attach only after the local URI state has committed and the native surface
+  // exists. The serialized generation guard ensures the newest local source wins
+  // if download discovery, tab navigation, and a manual retry overlap.
+  useEffect(() => {
+    if (!sourceAttachRequest) return;
+    const generation = sourceAttachRequest.id;
+    sourceAttachGenerationRef.current = generation;
+    let cancelled = false;
+    sourceAttachChainRef.current = sourceAttachChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        await player.replaceAsync(sourceAttachRequest.url);
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        setPlaybackLoading(false);
+      })
+      .catch((error: any) => {
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        setPlaybackError(error?.message ?? 'The highlight video could not be loaded.');
+        setPlaybackLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [player, sourceAttachRequest]);
 
   useEffect(() => {
     if (!highlightReady) return;
@@ -1324,6 +1382,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         const bg = highlightBgAtRef.current;
         highlightBgAtRef.current = null;
         if (bg !== null && Date.now() - bg > 50_000) {
+          if (reelDownloadManager.get(gameId, 'highlight', highlight?.highlightObjectPath ?? '')?.status === 'downloaded') {
+            return;
+          }
           automaticRetryRef.current = false;
           void loadHighlightVideo(true);
         }

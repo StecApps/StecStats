@@ -85,6 +85,20 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).not.toContain("if (!signedUrl) return <ActivityIndicator");
   });
 
+  test('commits local reel state before serialized native source attachment', () => {
+    expect(gameScreen).toContain('const loadGeneration = ++loadGenerationRef.current;');
+    expect(gameScreen).toContain('setSourceAttachRequest({ url: playbackUrl, id: loadGeneration })');
+    expect(gameScreen).toContain('sourceAttachChainRef.current = sourceAttachChainRef.current');
+    expect(gameScreen).toContain('generation !== sourceAttachGenerationRef.current');
+    expect(gameScreen).not.toContain('await player.replaceAsync(playbackUrl);');
+  });
+
+  test('rejects stale reel load completions and uses the guarded resume path', () => {
+    expect(gameScreen).toContain('const isCurrentLoad = () => loadGeneration === loadGenerationRef.current;');
+    expect(gameScreen).toContain('if (!isCurrentLoad()) return;');
+    expect(gameScreen).not.toContain('return player.replaceAsync(playbackUrl)');
+  });
+
   test('mounts the full-game native surface before attaching its source', () => {
     expect(gameScreen).toContain('setStreamIsHls(result.isHls);');
     expect(gameScreen).toContain('setStreamUrl(result.url);');

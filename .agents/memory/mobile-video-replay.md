@@ -27,6 +27,12 @@ Completed offline reels belong in the app's document storage, and a transient AV
 
 **How to apply:** Migrate legacy completed cache files into account-scoped document storage on activation. For errors on a `file:` source, preserve the file and show explicit retry rather than deleting it automatically.
 
+A completed local reel download must be committed to React state before attaching it to Expo Video, and load generations must be assigned when each async load starts.
+
+**Why:** A valid 56 MB H.264/AAC reel with visible decoded frames still rendered as an empty black native surface. Overlapping discovery, retry, and resume loads could also finish out of order and attach an obsolete URI.
+
+**How to apply:** Commit a unique source request first, attach it in a serialized post-commit effect, reject stale success and error completions after every await, and route background resume through that same guarded loader.
+
 iOS highlight/lowlight playback must not stream either directly from a signed GCS URL or through the Replit API proxy.
 
 **Why:** AVPlayer rejected valid fast-start MP4s when reading GCS signed URLs, while the API byte-range workaround produced valid 206 responses that the production proxy aborted after roughly 1–2 seconds.
