@@ -33,6 +33,18 @@ A completed local reel download must be committed to React state before attachin
 
 **How to apply:** Commit a unique source request first, attach it in a serialized post-commit effect, reject stale success and error completions after every await, and route background resume through that same guarded loader.
 
+Reel downloads must write to a `.part` path and atomically promote only after HTTP status and expected byte count are verified.
+
+**Why:** Writing an NSURLSession download directly into the final MP4 let AVPlayer open changing bytes, report only the first seconds, and keep stale duration state. Background resume also invalidated active transfers and restarted them at zero.
+
+**How to apply:** Never attach the transfer destination. Preserve active background tasks across screen/app lifecycle changes; only explicit failed-download retry should start a new transfer.
+
+An unfinished HLS build must be re-triggerable from playlist refreshes, and an unproxied short recording is not playable on iOS.
+
+**Why:** A process-local fire-and-forget encoder stopped after autoscale/restart while the client reused its cached playlist token, so no endpoint resumed it. Short games were simultaneously returning raw incompatible media as ready.
+
+**How to apply:** Put the source object path in portable HLS token state, idempotently resume on unfinished playlist reads, and return `proxyReady=false` until short-game proxy media exists.
+
 iOS highlight/lowlight playback must not stream either directly from a signed GCS URL or through the Replit API proxy.
 
 **Why:** AVPlayer rejected valid fast-start MP4s when reading GCS signed URLs, while the API byte-range workaround produced valid 206 responses that the production proxy aborted after roughly 1–2 seconds.

@@ -112,4 +112,8 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('download-lowlight-cellular');
     expect(gameScreen).toContain('The video will appear here when it is ready.');
   });
+
+  test('does not restart reel downloads when the app backgrounds', () => {
+    expect(gameScreen).not.toContain("AppState.addEventListener('change'");
+  });
 });

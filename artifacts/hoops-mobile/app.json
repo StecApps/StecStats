@@ -69,6 +69,13 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "StecStats accesses your photo library when you choose to save game videos.",
+          "savePhotosPermission": "StecStats saves game recordings, highlights, and lowlights to your Photos library."
+        }
+      ],
+      [
         "expo-video",
         {
           "supportsBackgroundPlayback": false,

@@ -243,6 +243,7 @@ vi.mock("fs", async () => {
 // Real imports (after mocks)
 // ---------------------------------------------------------------------------
 import gamesRouter from "../games";
+import { ensureAllProxyChunksInBackground } from "../../lib/highlightGenerator";
 
 // ---------------------------------------------------------------------------
 // Test server
@@ -413,6 +414,12 @@ describe("GET /api/games/:gameId/hls/playlist.m3u8 — M3U8 correctness", () => 
     expect(text).toContain("#EXTINF:61.250,");
     expect(text).not.toContain("#EXT-X-ENDLIST");
     expect(text.match(/^segment\//gm)).toHaveLength(1);
+    expect(ensureAllProxyChunksInBackground).toHaveBeenCalledWith(
+      LONG_GAME_ID,
+      COACH.id,
+      expect.any(String),
+      expect.any(Number),
+    );
   });
 });
 

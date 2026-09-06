@@ -5,9 +5,14 @@ jest.mock('react-native', () => ({
   Alert: { alert: jest.fn() },
   Share: { share: jest.fn() },
 }));
+jest.mock('expo-media-library', () => ({
+  requestPermissionsAsync: jest.fn(),
+  saveToLibraryAsync: jest.fn(),
+}));
 
 import { Alert, Share } from 'react-native';
 import { saveReviewVideo } from '@/lib/saveReviewVideo';
+import * as MediaLibrary from 'expo-media-library';
 
 const gameScreen = fs.readFileSync(
   path.resolve(__dirname, '../app/game/[id].tsx'),
@@ -48,11 +53,23 @@ describe('mobile game-video parity', () => {
   describe('native save contract', () => {
     const share = Share.share as jest.Mock;
     const alert = Alert.alert as jest.Mock;
+    const requestPermissions = MediaLibrary.requestPermissionsAsync as jest.Mock;
+    const saveToLibrary = MediaLibrary.saveToLibraryAsync as jest.Mock;
 
     beforeEach(() => {
       share.mockReset();
       alert.mockReset();
       share.mockResolvedValue({ action: 'sharedAction' });
+      requestPermissions.mockReset();
+      saveToLibrary.mockReset();
+      requestPermissions.mockResolvedValue({ granted: true });
+    });
+
+    test('saves a completed local reel directly to Photos', async () => {
+      await saveReviewVideo('file:///documents/reels/highlight.mp4', 'Game Highlights');
+      expect(saveToLibrary).toHaveBeenCalledWith('file:///documents/reels/highlight.mp4');
+      expect(alert).toHaveBeenCalledWith('Video Saved', 'Game Highlights was saved to Photos.');
+      expect(share).not.toHaveBeenCalled();
     });
 
     test.each([

@@ -17,11 +17,18 @@ export type ReelDownload = {
   error?: string;
   requestedAt: number;
   priority?: number;
+  sizeBytes?: number;
+  expectedBytes?: number;
+  bytesWritten?: number;
 };
 
 type Listener = () => void;
 const MIN_COMPLETE_BYTES = 1024;
-const MANIFEST_PREFIX = '@stecstats/reel-downloads/v1/';
+// v1 wrote an active download directly into the final .mp4 path. AVPlayer
+// could therefore open a truncated file and keep reporting only its first few
+// seconds even after the transfer changed underneath it. Start clean once.
+const MANIFEST_PREFIX = '@stecstats/reel-downloads/v2/';
+const LEGACY_MANIFEST_PREFIX = '@stecstats/reel-downloads/v1/';
 const PREFERENCE_KEY = '@stecstats/reel-downloads/cellular';
 const REEL_STORAGE_ROOT = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
 
@@ -55,6 +62,9 @@ export class ReelDownloadManager {
     // them in Documents prevents iOS from purging a file between download and play.
     return `${REEL_STORAGE_ROOT}reels/${hash(this.accountId ?? 'signed-out')}/${entry.type}-${entry.gameId}-${hash(entry.objectPath)}.mp4`;
   }
+  private partialUriFor(entry: Pick<ReelDownload, 'gameId' | 'type' | 'objectPath'>) {
+    return `${this.uriFor(entry)}.part`;
+  }
   private emit() { this.listeners.forEach((listener) => listener()); }
   subscribe(listener: Listener) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   snapshot() { return [...this.entries.values()]; }
@@ -78,6 +88,22 @@ export class ReelDownloadManager {
     }
     this.watchNetwork();
     this.cellularAllowed = (await AsyncStorage.getItem(PREFERENCE_KEY)) === 'true';
+    const legacyKey = `${LEGACY_MANIFEST_PREFIX}${accountId}`;
+    const legacyRaw = await AsyncStorage.getItem(legacyKey);
+    if (legacyRaw) {
+      try {
+        const legacy = JSON.parse(legacyRaw) as ReelDownload[];
+        if (Array.isArray(legacy)) {
+          await Promise.all(legacy.flatMap((entry) => [
+            entry?.uri ? FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => undefined) : Promise.resolve(),
+            entry?.objectPath ? FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined) : Promise.resolve(),
+          ]));
+        }
+      } catch {
+        // The obsolete manifest is discarded even when it is malformed.
+      }
+      await AsyncStorage.removeItem(legacyKey);
+    }
     const raw = await AsyncStorage.getItem(this.manifestKey());
     let persisted: ReelDownload[] = [];
     try {
@@ -94,7 +120,8 @@ export class ReelDownloadManager {
       const info = await FileSystem.getInfoAsync(entry.uri ?? this.uriFor(entry));
       // A manifest alone is never proof of completion: interrupted .part files and
       // zero-byte responses are discarded and re-queued only with a fresh URL.
-      if (entry.status === 'downloaded' && info.exists && (info.size ?? 0) > MIN_COMPLETE_BYTES) {
+      const sizeMatches = entry.expectedBytes == null || (info.exists && info.size === entry.expectedBytes);
+      if (entry.status === 'downloaded' && info.exists && (info.size ?? 0) > MIN_COMPLETE_BYTES && sizeMatches) {
         const durableUri = this.uriFor(entry);
         if (info.uri !== durableUri) {
           await FileSystem.makeDirectoryAsync(`${REEL_STORAGE_ROOT}reels/${hash(accountId)}`, { intermediates: true });
@@ -104,6 +131,7 @@ export class ReelDownloadManager {
         this.entries.set(key(entry.gameId, entry.type, entry.objectPath), { ...entry, uri: durableUri });
       } else {
         await FileSystem.deleteAsync(info.uri, { idempotent: true }).catch(() => undefined);
+        await FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined);
         // A queued/downloading record means the app or OS interrupted it. Keep
         // an explicit retryable state rather than silently dropping the reel.
         this.entries.set(key(entry.gameId, entry.type, entry.objectPath), {
@@ -184,6 +212,7 @@ export class ReelDownloadManager {
       await task.pauseAsync().catch(() => undefined);
     }
     if (entry?.uri) await FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => undefined);
+    await FileSystem.deleteAsync(this.partialUriFor({ gameId, type, objectPath }), { idempotent: true }).catch(() => undefined);
     await this.persist(); this.emit();
   }
   async discover(token: string) {
@@ -232,10 +261,22 @@ export class ReelDownloadManager {
     this.active += 1; entry.status = 'downloading'; await this.persist(); this.emit();
     try {
       await FileSystem.makeDirectoryAsync(`${REEL_STORAGE_ROOT}reels/${hash(accountAtStart)}`, { intermediates: true });
+      const partialUri = this.partialUriFor(entry);
+      await FileSystem.deleteAsync(partialUri, { idempotent: true }).catch(() => undefined);
       // createDownloadResumable is used rather than File.downloadFileAsync so iOS
       // receives an NSURLSession background transfer. iOS may finish it after the
       // app backgrounds; force-quitting cancels system-managed transfers.
-      task = FileSystem.createDownloadResumable(entry.url, entry.uri!, { sessionType: FileSystemSessionType.BACKGROUND });
+      task = FileSystem.createDownloadResumable(
+        entry.url,
+        partialUri,
+        { sessionType: FileSystemSessionType.BACKGROUND },
+        ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+          if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) return;
+          entry.bytesWritten = totalBytesWritten;
+          if (totalBytesExpectedToWrite > 0) entry.expectedBytes = totalBytesExpectedToWrite;
+          this.emit();
+        },
+      );
       this.tasks.set(id, task);
       const result = await task.downloadAsync();
       const isCurrent = this.accountId === accountAtStart &&
@@ -245,15 +286,34 @@ export class ReelDownloadManager {
         if (result?.uri) await FileSystem.deleteAsync(result.uri, { idempotent: true }).catch(() => undefined);
         return;
       }
-      const info = result && await FileSystem.getInfoAsync(result.uri);
+      if (!result || result.status < 200 || result.status >= 300) {
+        throw new Error(`Download failed with status ${result?.status ?? 'unknown'}`);
+      }
+      const info = await FileSystem.getInfoAsync(result.uri);
       if (!info?.exists || (info.size ?? 0) <= MIN_COMPLETE_BYTES) throw new Error('Download was incomplete');
-      entry.status = 'downloaded'; entry.uri = result!.uri;
+      const contentRange = Object.entries(result.headers).find(([name]) => name.toLowerCase() === 'content-range')?.[1];
+      const contentLength = Object.entries(result.headers).find(([name]) => name.toLowerCase() === 'content-length')?.[1];
+      const expectedFromResponse = Number(contentRange?.match(/\/(\d+)$/)?.[1] ?? contentLength ?? 0);
+      const expectedBytes = entry.expectedBytes && entry.expectedBytes > 0
+        ? entry.expectedBytes
+        : expectedFromResponse;
+      if (expectedBytes > 0 && info.size !== expectedBytes) {
+        throw new Error(`Download was incomplete (${info.size ?? 0} of ${expectedBytes} bytes)`);
+      }
+      // Promote only a verified complete transfer. The final URI never points
+      // at bytes that are still changing underneath AVPlayer.
+      await FileSystem.deleteAsync(entry.uri!, { idempotent: true }).catch(() => undefined);
+      await FileSystem.moveAsync({ from: result.uri, to: entry.uri! });
+      entry.status = 'downloaded';
+      entry.sizeBytes = info.size;
+      entry.expectedBytes = expectedBytes > 0 ? expectedBytes : info.size;
+      entry.bytesWritten = info.size;
     } catch (error: any) {
       if (this.accountId === accountAtStart &&
           this.generations.get(id) === generation &&
           this.entries.get(id) === entry) {
         entry.status = 'failed'; entry.error = error?.message ?? 'Download failed';
-        if (entry.uri) await FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => undefined);
+        await FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined);
       }
     } finally {
       // activate() resets bookkeeping for the new account. A late callback from

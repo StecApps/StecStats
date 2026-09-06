@@ -27,7 +27,7 @@ jest.mock('expo-file-system/legacy', () => ({
   }),
   makeDirectoryAsync: jest.fn(() => Promise.resolve()),
   createDownloadResumable: jest.fn((_url: string, uri: string, options: unknown) => {
-    const task = { pauseAsync: jest.fn(() => Promise.resolve()), downloadAsync: jest.fn(() => { mockFiles.set(uri, 2048); return Promise.resolve({ uri }); }) };
+    const task = { pauseAsync: jest.fn(() => Promise.resolve()), downloadAsync: jest.fn(() => { mockFiles.set(uri, 2048); return Promise.resolve({ uri, status: 200, headers: { 'content-length': '2048' } }); }) };
     mockTasks.push(task); return task;
   }),
 }));
@@ -74,7 +74,7 @@ describe('ReelDownloadManager behavior', () => {
     expect(manager.get(7, 'highlight', 'reels/one.mp4')?.uri).toContain('file:///documents/reels/');
   });
 
-  test('migrates previously downloaded cache files into durable storage', async () => {
+  test('discards v1 files that may have been exposed before download completion', async () => {
     const oldUri = 'file:///cache/reels/old/highlight-7-old.mp4';
     mockFiles.set(oldUri, 4096);
     mockStorage.set('@stecstats/reel-downloads/v1/coach-a', JSON.stringify([{
@@ -82,10 +82,9 @@ describe('ReelDownloadManager behavior', () => {
     }]));
     const manager = new ReelDownloadManager();
     await manager.activate('coach-a');
-    const migrated = manager.get(7, 'highlight', 'reels/one.mp4');
-    expect(migrated?.uri).toContain('file:///documents/reels/');
+    expect(manager.get(7, 'highlight', 'reels/one.mp4')).toBeUndefined();
     expect(mockFiles.has(oldUri)).toBe(false);
-    expect(FileSystem.moveAsync).toHaveBeenCalled();
+    expect(mockStorage.has('@stecstats/reel-downloads/v1/coach-a')).toBe(false);
   });
 
   test('isolates accounts and ignores an old transfer callback', async () => {
@@ -98,7 +97,7 @@ describe('ReelDownloadManager behavior', () => {
     });
     await manager.enqueue(reel()); await flush();
     await manager.activate('coach-b');
-    finish({ uri: 'file:///cache/late.mp4' }); mockFiles.set('file:///cache/late.mp4', 4096); await flush();
+    finish({ uri: 'file:///cache/late.mp4', status: 200, headers: { 'content-length': '4096' } } as any); mockFiles.set('file:///cache/late.mp4', 4096); await flush();
     expect(mockTasks[0].pauseAsync).toHaveBeenCalled();
     expect(manager.snapshot()).toEqual([]);
     expect(mockFiles.has('file:///cache/late.mp4')).toBe(false);
@@ -121,8 +120,8 @@ describe('ReelDownloadManager behavior', () => {
     let releaseCoachA!: (value: string | null) => void;
     const coachARead = new Promise<string | null>((resolve) => { releaseCoachA = resolve; });
     storage.getItem.mockImplementation((storageKey: string) => {
-      if (storageKey === '@stecstats/reel-downloads/v1/coach-a') return coachARead;
-      if (storageKey === '@stecstats/reel-downloads/v1/coach-b') return Promise.resolve('[]');
+      if (storageKey === '@stecstats/reel-downloads/v2/coach-a') return coachARead;
+      if (storageKey === '@stecstats/reel-downloads/v2/coach-b') return Promise.resolve('[]');
       return Promise.resolve(null);
     });
     const manager = new ReelDownloadManager();
@@ -147,7 +146,7 @@ describe('ReelDownloadManager behavior', () => {
   test('cleans partial files, exposes failure, and retries with background options', async () => {
     const manager = new ReelDownloadManager(); await manager.activate('coach-a'); manager.setNetworkForTesting('wifi', true);
     (FileSystem.createDownloadResumable as jest.Mock).mockImplementationOnce((_u, uri) => ({
-      pauseAsync: jest.fn(), downloadAsync: jest.fn(() => { mockFiles.set(uri, 10); return Promise.resolve({ uri }); }),
+      pauseAsync: jest.fn(), downloadAsync: jest.fn(() => { mockFiles.set(uri, 10); return Promise.resolve({ uri, status: 200, headers: { 'content-length': '2048' } }); }),
     }));
     await manager.enqueue(reel()); await flush();
     expect(manager.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('failed');
@@ -189,7 +188,7 @@ describe('ReelDownloadManager behavior', () => {
     expect(FileSystem.createDownloadResumable).toHaveBeenCalledTimes(1);
     expect(manager.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloading');
     const uri = manager.get(7, 'highlight', 'reels/one.mp4')!.uri!;
-    mockFiles.set(uri, 2048); finish({ uri }); await flush();
+    mockFiles.set(`${uri}.part`, 2048); finish({ uri: `${uri}.part`, status: 200, headers: { 'content-length': '2048' } } as any); await flush();
     expect(manager.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
   });
 
@@ -208,15 +207,15 @@ describe('ReelDownloadManager behavior', () => {
     await manager.invalidate(7, 'highlight', 'reels/one.mp4');
     expect(pauseAsync).toHaveBeenCalled();
     expect(manager.get(7, 'highlight', 'reels/one.mp4')).toBeUndefined();
-    mockFiles.set(uri, 4096); finish({ uri }); await flush();
+    mockFiles.set(`${uri}.part`, 4096); finish({ uri: `${uri}.part`, status: 200, headers: { 'content-length': '4096' } } as any); await flush();
     expect(manager.get(7, 'highlight', 'reels/one.mp4')).toBeUndefined();
     expect(mockFiles.has(uri)).toBe(false);
   });
 
   test('recovers malformed and interrupted persisted manifests as safe retryable failures', async () => {
-    mockStorage.set('@stecstats/reel-downloads/v1/coach-a', '{bad json');
+    mockStorage.set('@stecstats/reel-downloads/v2/coach-a', '{bad json');
     const malformed = new ReelDownloadManager(); await expect(malformed.activate('coach-a')).resolves.toBeUndefined();
-    mockStorage.set('@stecstats/reel-downloads/v1/coach-b', JSON.stringify([{ ...reel(), status: 'downloading', requestedAt: 1, uri: 'file:///cache/partial' }]));
+    mockStorage.set('@stecstats/reel-downloads/v2/coach-b', JSON.stringify([{ ...reel(), status: 'downloading', requestedAt: 1, uri: 'file:///cache/partial' }]));
     mockFiles.set('file:///cache/partial', 99);
     const interrupted = new ReelDownloadManager(); await interrupted.activate('coach-b');
     expect(interrupted.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('failed');

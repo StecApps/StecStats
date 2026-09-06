@@ -379,6 +379,7 @@ vi.mock("fs", async () => {
 // Real imports (after mocks are registered)
 // ---------------------------------------------------------------------------
 import gamesRouter from "../games";
+import { ensureGameProxyInBackground } from "../../lib/highlightGenerator";
 
 // ---------------------------------------------------------------------------
 // Express app shared across all tests
@@ -414,6 +415,18 @@ beforeEach(() => {
   hlsChunkCount.value = -1;
   hlsSentinel.value = null;
   vi.useRealTimers();
+});
+
+describe("GET /api/games/:gameId/stream-token/video — proxy readiness", () => {
+  it("does not label an unproxied short recording playable on iOS", async () => {
+    gameFinderMode.value = "game-b";
+    const res = await fetch(`${baseUrl}/api/games/${GAME_B_ID}/stream-token/video`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { proxyReady: boolean; streamUrl?: string };
+    expect(body.proxyReady).toBe(false);
+    expect(body.streamUrl).toBeUndefined();
+    expect(ensureGameProxyInBackground).toHaveBeenCalledWith(GAME_B_ID, COACH_A.id);
+  });
 });
 
 afterEach(() => {

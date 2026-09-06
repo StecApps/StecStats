@@ -2130,7 +2130,9 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
         // post-token-expiry seek window: segment requests remain valid for 1 h
         // after the stream-token TTL (STREAM_TOKEN_TTL_MS) would have expired.
         const hlsEntry: StreamTokenEntry = {
-          objectPath: "",
+          // Keep the source path in the portable token so playlist refreshes on
+          // a replacement server instance can resume an interrupted HLS build.
+          objectPath: game.videoObjectPath,
           expiresAt: Date.now() + STREAM_SIGNED_URL_TTL_S * 1000,
           ownerId,
           entitlementOkUntil: Date.now() + STREAM_ENTITLEMENT_RECHECK_MS,
@@ -2157,8 +2159,14 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
       return void res.json({ token: randomUUID(), proxyReady: false, proxySkipped: false });
     }
 
-    if (!hasValidProxy) ensureGameProxyInBackground(gameId, ownerId);
-    objectPath = hasValidProxy ? game.videoProxyObjectPath! : game.videoObjectPath;
+    if (!hasValidProxy) {
+      // iOS cannot play the raw WebM/fMP4 recording reliably. Previously we
+      // started the proxy build but immediately returned the raw source as
+      // proxyReady=true, producing the black Film Room seen on shorter games.
+      ensureGameProxyInBackground(gameId, ownerId);
+      return void res.json({ token: randomUUID(), proxyReady: false, proxySkipped: false });
+    }
+    objectPath = game.videoProxyObjectPath!;
   } else if (type === "highlight") {
     if (game.highlightStatus !== "ready" || !game.highlightObjectPath) {
       return void res.status(404).json({ error: "No highlight available" });
@@ -2436,6 +2444,17 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
   // The sentinel is written by ensureAllProxyChunksInBackground only after
   // every chunk is safely in GCS, so its presence alone confirms readiness.
   const sentinel = await readHlsSentinel(entry.ownerId, gameId);
+  if (!sentinel && entry.objectPath && entry.hlsDurationMs) {
+    // The original fire-and-forget worker can disappear on deploy/autoscale.
+    // AVPlayer refreshes an EVENT playlist while watching, so every refresh is
+    // also a durable opportunity to resume from the first missing GCS segment.
+    ensureAllProxyChunksInBackground(
+      gameId,
+      entry.ownerId,
+      entry.objectPath,
+      entry.hlsDurationMs,
+    );
+  }
   const chunkCount = sentinel?.chunkCount
     ?? await getPlayableProxyChunkCount(
       gameId,
