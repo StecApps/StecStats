@@ -364,10 +364,43 @@ paths:
     delete:
       operationId: deleteGame
       tags: [games]
-      summary: Delete a game
+      summary: Delete a game while retaining its original uploaded master film
+      description: Highlights, lowlights, HLS and proxy derivatives are removed. Original game-film masters are retained; permanent account deletion/privacy erasure is the explicit exception.
       responses:
         "204":
           description: Deleted
+
+  /games/{gameId}/video:
+    parameters:
+      - name: gameId
+        in: path
+        required: true
+        schema:
+          type: integer
+    patch:
+      operationId: attachGameVideo
+      tags: [games]
+      summary: Attach an uploaded master film to a game
+      description: Owner-scoped and idempotent. Repeating the same attachment does not reset generated derivatives. Replacing footage retains the prior master; only account deletion/privacy erasure removes retained masters.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GameVideoAttachment"
+      responses:
+        "200":
+          description: Master film attached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+        "404":
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /teams/{teamId}/highlight:
     parameters:
@@ -1079,6 +1112,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GameEvent"
+
+    GameVideoAttachment:
+      type: object
+      required: [videoObjectPath]
+      properties:
+        videoObjectPath:
+          type: string
+          description: Server-issued uploaded object path for the retained master film.
+
+    OkResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
 
     ImportGameRow:
       type: object

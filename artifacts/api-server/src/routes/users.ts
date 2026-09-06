@@ -3,6 +3,7 @@ import {
   db,
   feedbackTable,
   gamesTable,
+  retainedGameFilmsTable,
   playersTable,
   purchaseEventsTable,
   teamsTable,
@@ -197,7 +198,12 @@ router.delete("/users/me", requireAuth, async (req, res) => {
     // idempotent but not atomic, so failures intentionally leave the durable
     // deletion barrier in place; retrying this endpoint sweeps the namespace
     // again without exposing a partially-cleaned account.
-    await objectStorageService.deleteObjectEntityPrefix(`/objects/uploads/${user.id}/`);
+    // Privacy/account erasure is the explicit exception to game-film
+    // retention; remove retained masters together with the account.
+    await objectStorageService.deleteObjectEntityPrefix(
+      `/objects/uploads/${user.id}/`,
+      { allowRetainedMasterDeletion: true },
+    );
 
     // Complete the local transaction before removing the Clerk identity. A
     // database failure must leave the caller's sign-in identity intact so they
@@ -211,6 +217,7 @@ router.delete("/users/me", requireAuth, async (req, res) => {
       // Game event and stat rows cascade from games. Delete games first so
       // player/team deletion cannot leave cross-references behind.
       await tx.delete(gamesTable).where(eq(gamesTable.ownerId, user.id));
+      await tx.delete(retainedGameFilmsTable).where(eq(retainedGameFilmsTable.ownerId, user.id));
       await tx.delete(playersTable).where(eq(playersTable.ownerId, user.id));
       await tx.delete(teamsTable).where(eq(teamsTable.ownerId, user.id));
       // Keep a scrubbed tombstone until Clerk removal succeeds. It prevents

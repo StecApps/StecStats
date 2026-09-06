@@ -101,6 +101,7 @@ vi.mock("@workspace/db", () => {
   const GAMES_T = "gamesTable";
   const FEEDBACK_T = "feedbackTable";
   const PURCHASE_EVENTS_T = "purchaseEventsTable";
+  const RETAINED_GAME_FILMS_T = "retainedGameFilmsTable";
   const whereResult = vi.fn().mockResolvedValue(undefined);
   const tx = {
     delete: vi.fn(() => ({ where: whereResult })),
@@ -150,6 +151,7 @@ vi.mock("@workspace/db", () => {
     gamesTable: GAMES_T,
     feedbackTable: FEEDBACK_T,
     purchaseEventsTable: PURCHASE_EVENTS_T,
+    retainedGameFilmsTable: RETAINED_GAME_FILMS_T,
   };
 });
 
@@ -366,7 +368,10 @@ describe("DELETE /api/users/me — account deletion", () => {
     const res = await deleteMe();
 
     expect(res.status).toBe(204);
-    expect(mockDeleteObjectPrefix).toHaveBeenCalledWith("/objects/uploads/1/");
+    expect(mockDeleteObjectPrefix).toHaveBeenCalledWith(
+      "/objects/uploads/1/",
+      { allowRetainedMasterDeletion: true },
+    );
     expect(mockDeleteClerkUser).toHaveBeenCalledWith("clerk_coach_a");
   });
 

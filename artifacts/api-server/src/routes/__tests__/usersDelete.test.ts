@@ -114,6 +114,7 @@ vi.mock("@workspace/db", () => ({
   teamsTable: { ownerId: "owner_id" },
   feedbackTable: { userId: "user_id" },
   purchaseEventsTable: { userId: "user_id" },
+  retainedGameFilmsTable: { ownerId: "owner_id" },
 }));
 
 import usersRouter from "../users";
@@ -173,10 +174,13 @@ describe("DELETE /users/me", () => {
     const response = await fetch(`${baseUrl}/api/users/me`, { method: "DELETE" });
 
     expect(response.status).toBe(204);
-    expect(deleteOwnerUploadNamespaceMock).toHaveBeenCalledWith("/objects/uploads/41/");
+    expect(deleteOwnerUploadNamespaceMock).toHaveBeenCalledWith(
+      "/objects/uploads/41/",
+      { allowRetainedMasterDeletion: true },
+    );
     expect(cancelOwnerMediaDeletionMock).toHaveBeenCalledWith(41, [77]);
     expect(revokeTokenMock).toHaveBeenCalledWith("encrypted-youtube-token");
-    expect(transactionDeleteMock).toHaveBeenCalledTimes(5);
+    expect(transactionDeleteMock).toHaveBeenCalledTimes(6);
     expect(transactionUpdateMock).toHaveBeenCalledTimes(1);
     expect(deleteClerkUserMock).toHaveBeenCalledWith("clerk-delete-test");
   });

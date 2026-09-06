@@ -251,6 +251,7 @@ vi.mock("@workspace/db", () => {
       lowlightStartedAt: "lowlight_started_at",
       createdAt: "created_at",
     },
+    retainedGameFilmsTable: { objectPath: "retained_object_path", ownerId: "retained_owner_id" },
     teamsTable: { id: "id", ownerId: "owner_id", name: "name" },
     playersTable: { id: "id", ownerId: "owner_id", name: "name" },
     playerGameStatsTable: {

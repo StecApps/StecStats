@@ -14,6 +14,7 @@ import {
   playersTable,
   teamsTable,
   gameEventsTable,
+  retainedGameFilmsTable,
   usersTable,
 } from "@workspace/db";
 import {
@@ -35,6 +36,7 @@ import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
+import { retainGameMasterFilm } from "../lib/gameFilmRetention";
 import {
   PROXY_VERSION,
   PROXY_CHUNK_DURATION_SEC,
@@ -746,6 +748,10 @@ router.post("/games", requireAuth, async (req, res) => {
       );
     }
 
+    if (videoObjectPath) {
+      await retainGameMasterFilm(tx, ownerId, createdGame.id, videoObjectPath);
+    }
+
     if (videoObjectPath) scheduleVideoDurationProbe(createdGame.id, videoObjectPath);
 
     return createdGame;
@@ -847,6 +853,21 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
   }
 
   await db.transaction(async (tx) => {
+    // Record masters before changing active linkage. This is deliberately
+    // before the UPDATE so a transaction rollback cannot expose an untracked
+    // outgoing master to generic cleanup.
+    if (existing.videoObjectPath && videoObjectPath !== existing.videoObjectPath) {
+      await retainGameMasterFilm(
+        tx,
+        ownerId,
+        gameId,
+        objectStorageService.normalizeObjectEntityPath(existing.videoObjectPath),
+      );
+    }
+    if (videoObjectPath && videoObjectPath !== existing.videoObjectPath) {
+      await retainGameMasterFilm(tx, ownerId, gameId, videoObjectPath);
+    }
+
     await tx
       .update(gamesTable)
       .set({
@@ -910,7 +931,7 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = DeleteGameParams.parse(req.params);
   const ownerId = req.appUser!.id;
 
-  // Fetch the game first so we can clean up its GCS objects after deletion.
+  // Fetch the game first so we can clean up replaceable derivatives after deletion.
   const game = await db.query.gamesTable.findFirst({
     where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
     columns: {
@@ -933,12 +954,26 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   cancelHighlightGeneration(gameId);
   cancelProxyBuild(gameId);
 
+  // Cover legacy games created before the retention ledger existed. This is
+  // intentionally written before the hard delete, so a failed delete leaves
+  // the master protected and a retry remains idempotent.
+  if (game.videoObjectPath) {
+    const masterPath = objectStorageService.normalizeObjectEntityPath(game.videoObjectPath);
+    await db.insert(retainedGameFilmsTable)
+      .values({ ownerId, originalGameId: gameId, objectPath: masterPath })
+      .onConflictDoNothing();
+  }
+
   // Delete the DB row first so concurrent requests can no longer reference it.
   await db
     .delete(gamesTable)
     .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
 
-  // Delete GCS blobs in parallel. Normalize paths first so legacy rows that
+  // Delete replaceable derivative blobs in parallel. The original video is a
+  // retained master and is deliberately omitted; its durable retention-ledger
+  // record continues protecting it after this row is hard-deleted. Account
+  // deletion/privacy erasure is the documented exception.
+  // Normalize paths first so legacy rows that
   // stored an absolute GCS URL (instead of /objects/...) are handled correctly.
   // Log errors but don't fail the response — the row is already gone and the
   // blob is orphaned at worst, not cross-accessible.
@@ -954,7 +989,6 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
     );
   };
 
-  deleteIfPresent(game.videoObjectPath, "video");
   deleteIfPresent(game.highlightObjectPath, "highlight");
   deleteIfPresent(game.lowlightObjectPath, "lowlight");
   deleteIfPresent(game.videoProxyObjectPath, "proxy");
@@ -1151,6 +1185,20 @@ router.post("/games/merge", requireAuth, async (req, res) => {
   const mergedVideoDurationMs = cumulative > 0 ? cumulative : null;
 
   await db.transaction(async (tx) => {
+    // A merge can later replace the primary path (or hide donor rows). Record
+    // every source master before either operation so no merge path can make
+    // coach footage eligible for generic cleanup.
+    for (const game of games) {
+      if (game.videoObjectPath) {
+        await retainGameMasterFilm(
+          tx,
+          ownerId,
+          game.id,
+          objectStorageService.normalizeObjectEntityPath(game.videoObjectPath),
+        );
+      }
+    }
+
     // Update primary game — clear stale reels, update scores + duration.
     await tx
       .update(gamesTable)
@@ -1228,10 +1276,21 @@ router.post("/games/merge", requireAuth, async (req, res) => {
   } else if (gamesWithVideo.length === 1 && gamesWithVideo[0].id !== primaryGameId) {
     // Only a secondary had video — adopt it onto the primary.
     const donor = gamesWithVideo[0];
-    await db
-      .update(gamesTable)
-      .set({ videoObjectPath: donor.videoObjectPath, videoDurationMs: donor.videoDurationMs })
-      .where(eq(gamesTable.id, primaryGameId));
+    await db.transaction(async (tx) => {
+      // The merge transaction above retains this too; repeat safely here so
+      // this overwrite remains protected if merge implementation changes.
+      if (donor.videoObjectPath) {
+        await retainGameMasterFilm(tx, ownerId, donor.id, donor.videoObjectPath);
+      }
+      const primary = games.find((game) => game.id === primaryGameId);
+      if (primary?.videoObjectPath) {
+        await retainGameMasterFilm(tx, ownerId, primaryGameId, primary.videoObjectPath);
+      }
+      await tx
+        .update(gamesTable)
+        .set({ videoObjectPath: donor.videoObjectPath, videoDurationMs: donor.videoDurationMs })
+        .where(and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)));
+    });
     if (donor.videoObjectPath) scheduleVideoDurationProbe(primaryGameId, donor.videoObjectPath);
   }
 
@@ -1249,7 +1308,7 @@ router.post("/games/merge", requireAuth, async (req, res) => {
  * the source container (WebM or MP4).  The output is the same format as the
  * first input file.
  */
-async function startBackgroundVideoConcat(
+export async function startBackgroundVideoConcat(
   primaryGameId: number,
   ownerId: number,
   orderedGames: Array<{ id: number; videoObjectPath: string | null; videoDurationMs: number | null }>,
@@ -1322,7 +1381,7 @@ async function startBackgroundVideoConcat(
     // (after the slow upload) and clean up if the game is gone.
     const stillExists = await db.query.gamesTable.findFirst({
       columns: { id: true },
-      where: eq(gamesTable.id, primaryGameId),
+      where: and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)),
     });
     if (!stillExists) {
       log.warn(
@@ -1341,15 +1400,34 @@ async function startBackgroundVideoConcat(
       return;
     }
 
-    await db
-      .update(gamesTable)
-      .set({
-        videoObjectPath: newObjectPath,
-        videoProxyObjectPath: null,
-        videoProxyVersion: null,
-        videoDurationMs: null, // will be probed
-      })
-      .where(eq(gamesTable.id, primaryGameId));
+    await db.transaction(async (tx) => {
+      // Re-read inside the transaction: protect source masters and only
+      // attach the new film while the primary still belongs to this owner.
+      const primary = await tx.query.gamesTable.findFirst({
+        where: and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)),
+      });
+      if (!primary) return;
+
+      if (primary.videoObjectPath) {
+        await retainGameMasterFilm(tx, ownerId, primaryGameId, primary.videoObjectPath);
+      }
+      for (const game of orderedGames) {
+        if (game.videoObjectPath) {
+          await retainGameMasterFilm(tx, ownerId, game.id, game.videoObjectPath);
+        }
+      }
+      // Ledger insert precedes the overwrite in this same transaction.
+      await retainGameMasterFilm(tx, ownerId, primaryGameId, newObjectPath);
+      await tx
+        .update(gamesTable)
+        .set({
+          videoObjectPath: newObjectPath,
+          videoProxyObjectPath: null,
+          videoProxyVersion: null,
+          videoDurationMs: null, // will be probed
+        })
+        .where(and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)));
+    });
 
     scheduleVideoDurationProbe(primaryGameId, newObjectPath);
     log.info({ primaryGameId, newObjectPath }, "merge-video: done");
@@ -1505,23 +1583,39 @@ router.patch("/games/:gameId/video", requireAuth, async (req, res) => {
     }
   }
 
-  await db
-    .update(gamesTable)
-    .set({
-      videoObjectPath,
-      highlightObjectPath: null,
-      highlightStatus: "idle",
-      highlightError: null,
-      highlightStartedAt: null,
-      lowlightObjectPath: null,
-      lowlightStatus: "idle",
-      lowlightError: null,
-      lowlightStartedAt: null,
-      videoDurationMs: null,
-    })
-    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
-
-  scheduleVideoDurationProbe(gameId, videoObjectPath);
+  // A replay of an already-completed background upload must not invalidate
+  // derivatives or enqueue another duration probe.
+  if (videoObjectPath !== game.videoObjectPath) {
+    await db.transaction(async (tx) => {
+      // Retain before changing active linkage; onConflict makes upload
+      // retries safe.
+      if (game.videoObjectPath) {
+        await retainGameMasterFilm(
+          tx,
+          ownerId,
+          gameId,
+          objectStorageService.normalizeObjectEntityPath(game.videoObjectPath),
+        );
+      }
+      await retainGameMasterFilm(tx, ownerId, gameId, videoObjectPath);
+      await tx
+        .update(gamesTable)
+        .set({
+          videoObjectPath,
+          highlightObjectPath: null,
+          highlightStatus: "idle",
+          highlightError: null,
+          highlightStartedAt: null,
+          lowlightObjectPath: null,
+          lowlightStatus: "idle",
+          lowlightError: null,
+          lowlightStartedAt: null,
+          videoDurationMs: null,
+        })
+        .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+    });
+    scheduleVideoDurationProbe(gameId, videoObjectPath);
+  }
 
   req.log.info({ gameId, videoObjectPath }, "game video attached via background upload");
   res.json({ ok: true });
@@ -1833,16 +1927,22 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
           // definitively proved don't apply. Clearing reels here caused
           // users to lose their generated reels after pressing Repair when
           // the video was already a single continuous recording.
-          await db
-            .update(gamesTable)
-            .set({
-              videoObjectPath:      sourceObjectPath,
-              videoProxyObjectPath: null,
-              videoProxyVersion:    null,
-              videoHalf2StartMs:    null,
-              videoHalftimeGapMs:   null,
-            })
-            .where(eq(gamesTable.id, gameId));
+          await db.transaction(async (tx) => {
+            if (game.videoObjectPath) {
+              await retainGameMasterFilm(tx, ownerId, gameId, game.videoObjectPath);
+            }
+            await retainGameMasterFilm(tx, ownerId, gameId, sourceObjectPath);
+            await tx
+              .update(gamesTable)
+              .set({
+                videoObjectPath:      sourceObjectPath,
+                videoProxyObjectPath: null,
+                videoProxyVersion:    null,
+                videoHalf2StartMs:    null,
+                videoHalftimeGapMs:   null,
+              })
+              .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+          });
           scheduleVideoDurationProbe(gameId, sourceObjectPath);
           log.info({ gameId }, "repair-video: done (single WebM metadata reset)");
           return; // skip the upload step below; tmpDir cleanup runs in finally
@@ -1872,21 +1972,28 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       "video/mp4",
     );
 
-    await db
-      .update(gamesTable)
-      .set({
-        videoObjectPath: newObjectPath,
-        videoProxyObjectPath: null,       // force proxy rebuild from repaired video
-        videoProxyVersion: null,
-        highlightStatus: "idle",
-        highlightObjectPath: null,
-        lowlightStatus: "idle",
-        lowlightObjectPath: null,
-        videoHalf2StartMs,
-        videoHalftimeGapMs,
-        videoDurationMs: null,
-      })
-      .where(eq(gamesTable.id, gameId));
+    await db.transaction(async (tx) => {
+      if (game.videoObjectPath) {
+        await retainGameMasterFilm(tx, ownerId, gameId, game.videoObjectPath);
+      }
+      // Keep repaired output as a master before it becomes the active path.
+      await retainGameMasterFilm(tx, ownerId, gameId, newObjectPath);
+      await tx
+        .update(gamesTable)
+        .set({
+          videoObjectPath: newObjectPath,
+          videoProxyObjectPath: null,       // force proxy rebuild from repaired video
+          videoProxyVersion: null,
+          highlightStatus: "idle",
+          highlightObjectPath: null,
+          lowlightStatus: "idle",
+          lowlightObjectPath: null,
+          videoHalf2StartMs,
+          videoHalftimeGapMs,
+          videoDurationMs: null,
+        })
+        .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+    });
 
     scheduleVideoDurationProbe(gameId, newObjectPath);
 

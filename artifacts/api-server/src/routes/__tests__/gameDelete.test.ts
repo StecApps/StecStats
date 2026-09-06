@@ -1,12 +1,11 @@
 /**
  * DELETE /games/:gameId — GCS blob cleanup regression test
  *
- * Verifies that deleting a game also triggers deleteObjectEntity() for
- * video, highlight, lowlight, and proxy paths, cancels in-flight reel/proxy
- * jobs, and sweeps any proxy chunks stored in GCS.
+ * Verifies that deleting a game retains its original video master while
+ * cleaning replaceable highlight, lowlight, proxy and HLS derivatives.
  *
  * Covers:
- *   - Blob cleanup is attempted for video + highlight + lowlight + proxy paths
+ *   - Master video is never passed to blob cleanup and is entered in retention
  *   - Normalized /objects/... paths and legacy absolute GCS URLs both work
  *   - Deleting a non-existent (or foreign) game returns 204 without blob cleanup
  *   - A game with no video paths returns 204 without attempting blob deletion
@@ -88,6 +87,9 @@ vi.mock("@workspace/db", () => ({
       gameEventsTable: { findMany: vi.fn().mockResolvedValue([]) },
     },
     delete: dbDeleteMock,
+    insert: vi.fn().mockReturnValue({
+      values: vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn().mockResolvedValue(undefined) }),
+    }),
     update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
   },
   gamesTable: {
@@ -98,6 +100,7 @@ vi.mock("@workspace/db", () => ({
     lowlightObjectPath: "lowlight_object_path",
     videoProxyObjectPath: "video_proxy_object_path",
   },
+  retainedGameFilmsTable: { objectPath: "object_path", ownerId: "owner_id" },
   playerGameStatsTable: { gameId: "game_id" },
   gameEventsTable: { gameId: "game_id" },
   teamsTable: {},
@@ -206,7 +209,7 @@ function deleteGame(gameId: number) {
 // ---------------------------------------------------------------------------
 
 describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
-  it("calls deleteObjectEntity for both video and highlight paths when both are set", async () => {
+  it("retains the video master and deletes the highlight derivative", async () => {
     findFirstMock.mockResolvedValueOnce({
       id: 42,
       ownerId: COACH_A.id,
@@ -219,7 +222,7 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     const res = await deleteGame(42);
     expect(res.status).toBe(204);
 
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/highlight.mp4");
   });
 
@@ -236,7 +239,7 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     const res = await deleteGame(50);
     expect(res.status).toBe(204);
 
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/highlight.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/lowlight.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/proxy.mp4");
@@ -312,13 +315,13 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
 
     const res = await deleteGame(53);
     expect(res.status).toBe(204);
-    // Video plus a best-effort HLS sentinel cleanup; no chunk paths.
-    expect(deleteObjectEntityMock).toHaveBeenCalledTimes(2);
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
+    // Best-effort HLS sentinel cleanup; no chunk paths or master deletion.
+    expect(deleteObjectEntityMock).toHaveBeenCalledTimes(1);
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/hls-sentinel/53");
   });
 
-  it("calls deleteObjectEntity only for video when highlight path is null", async () => {
+  it("does not delete a video-only master when no derivative path is present", async () => {
     findFirstMock.mockResolvedValueOnce({
       id: 43,
       ownerId: COACH_A.id,
@@ -331,8 +334,8 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     const res = await deleteGame(43);
     expect(res.status).toBe(204);
 
-    expect(deleteObjectEntityMock).toHaveBeenCalledTimes(2);
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video-only.mp4");
+    expect(deleteObjectEntityMock).toHaveBeenCalledTimes(1);
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith("/objects/uploads/1/video-only.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/hls-sentinel/43");
   });
 
@@ -359,7 +362,7 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     expect(deleteObjectEntityMock).not.toHaveBeenCalled();
   });
 
-  it("normalizes a legacy absolute GCS URL before calling deleteObjectEntity", async () => {
+  it("normalizes a legacy absolute GCS URL before retaining it", async () => {
     const legacyUrl =
       "https://storage.googleapis.com/my-bucket/private/uploads/1/legacy-video.mp4";
     const normalizedPath = "/objects/uploads/1/legacy-video.mp4";
@@ -381,15 +384,15 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     expect(res.status).toBe(204);
 
     expect(normalizePathMock).toHaveBeenCalledWith(legacyUrl);
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith(normalizedPath);
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith(normalizedPath);
   });
 
-  it("still returns 204 when deleteObjectEntity throws (best-effort cleanup)", async () => {
+  it("still returns 204 when derivative cleanup throws (best-effort cleanup)", async () => {
     findFirstMock.mockResolvedValueOnce({
       id: 46,
       ownerId: COACH_A.id,
-      videoObjectPath: "/objects/uploads/1/fail-video.mp4",
-      highlightObjectPath: null,
+      videoObjectPath: "/objects/uploads/1/master.mp4",
+      highlightObjectPath: "/objects/uploads/1/fail-highlight.mp4",
       lowlightObjectPath: null,
       videoProxyObjectPath: null,
     });

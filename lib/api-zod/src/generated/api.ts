@@ -775,13 +775,31 @@ export const UpdateGameResponse = zod.object({
 
 
 /**
- * @summary Delete a game
+ * Highlights, lowlights, HLS and proxy derivatives are removed. Original game-film masters are retained; permanent account deletion/privacy erasure is the explicit exception.
+ * @summary Delete a game while retaining its original uploaded master film
  */
 export const DeleteGameParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
 export const DeleteGameResponse = zod.void()
+
+
+/**
+ * Owner-scoped and idempotent. Repeating the same attachment does not reset generated derivatives. Replacing footage retains the prior master; only account deletion/privacy erasure removes retained masters.
+ * @summary Attach an uploaded master film to a game
+ */
+export const AttachGameVideoParams = zod.object({
+  "gameId": zod.coerce.number()
+})
+
+export const AttachGameVideoBody = zod.object({
+  "videoObjectPath": zod.string().describe('Server-issued uploaded object path for the retained master film.')
+})
+
+export const AttachGameVideoResponse = zod.object({
+  "ok": zod.boolean()
+})
 
 
 /**

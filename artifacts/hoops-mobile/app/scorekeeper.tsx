@@ -11,19 +11,14 @@ import {
 } from '@/lib/offlineQueue';
 import { useAutosaveDraft } from '@/lib/useAutosaveDraft';
 
-export const PENDING_UPLOAD_KEY = 'stec:pending-mobile-upload';
-export type PendingUpload = {
-  uris: string[];
-  teamId: number;
-  teamName: string;
-  opponent: string;
-  date: string;
-  teamScore: number;
-  opponentScore: number;
-  stats: Record<number, StatLine>;
-  events: GameEvent[];
-  savedAt: string;
-};
+export { PENDING_UPLOAD_KEY } from '@/lib/pendingMasterUpload';
+export type { PendingUpload } from '@/lib/pendingMasterUpload';
+import { PENDING_UPLOAD_KEY, type PendingUpload } from '@/lib/pendingMasterUpload';
+import {
+  tryAcquirePendingMasterLease,
+  releasePendingMasterLease,
+  updatePendingMasterUpload,
+} from '@/lib/pendingMasterUpload';
 import {
   View,
   Text,
@@ -1182,19 +1177,35 @@ export default function ScorekeeperScreen() {
     // locally.  Video requires a working upload connection so we offer
     // stats-only or cancellation.
     if (!isOnlineRef.current) {
+      if (recordVideo) {
+        // Finalize an active camera segment before persisting the offline marker.
+        // Otherwise End Game while offline would queue only prior flip segments.
+        if (recordingStartedRef.current) {
+          cameraRef.current?.stopRecording();
+          setIsRecording(false);
+          try {
+            const result = await recordingPromiseRef.current;
+            if (result?.uri) recordedUrisRef.current.push(result.uri);
+          } catch { /* the already-recorded segments remain recoverable */ }
+        }
+      }
       if (recordVideo && recordedUrisRef.current.length > 0) {
-        Alert.alert(
-          'No connection',
-          'Video upload requires a connection. Save stats now without video, or wait until you\'re back online.',
-          [
-            { text: 'Wait', style: 'cancel' },
-            {
-              text: 'Save stats only',
-              style: 'default',
-              onPress: () => { setSaving(true); doSaveGame(null); },
-            },
-          ],
-        );
+        const clientId = generateClientId();
+        try {
+          await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify({
+            uris: recordedUrisRef.current,
+            teamId: Number(teamId), teamName: teamName as string,
+            opponent: opponent as string, date: date as string,
+            teamScore, opponentScore, stats, events, clientId,
+            savedAt: new Date().toISOString(),
+          } satisfies PendingUpload));
+          await clearDraft();
+          Alert.alert('Game saved for upload', 'Your full-game recording is safely queued and will upload automatically on cellular or Wi-Fi.', [
+            { text: 'OK', onPress: () => router.replace('/(tabs)/games' as any) },
+          ]);
+        } catch {
+          Alert.alert('Could not save recording', 'Storage could not save this recording for retry. Keep this screen open and try End Game again.');
+        }
       } else {
         setSaving(true);
         doSaveGame(null);
@@ -1206,9 +1217,14 @@ export default function ScorekeeperScreen() {
     // object, so a subsequent attempt's fresh token can never un-cancel us.
     const attemptToken = { cancelled: false };
     uploadAttemptRef.current = attemptToken;
+    // Acquire before writing the marker. The global foreground/relaunch worker
+    // sees this same lease and cannot duplicate this foreground master upload.
+    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease();
+    if (recordVideo && !ownsPendingMasterLease) return;
     setSaving(true);
     try {
       let videoObjectPath: string | null = null;
+      let pendingClientId: string | undefined;
       if (recordVideo) {
         // Stop the active recording and capture its URI into the array
         if (recordingStartedRef.current) {
@@ -1234,6 +1250,8 @@ export default function ScorekeeperScreen() {
           // Persist video URIs + game data now — before any bytes are sent.
           // If the upload is cancelled or the app is killed, the games tab can
           // offer recovery so nothing is permanently lost.
+          const clientId = generateClientId();
+          pendingClientId = clientId;
           await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify({
             uris,
             teamId: Number(teamId),
@@ -1244,6 +1262,7 @@ export default function ScorekeeperScreen() {
             opponentScore,
             stats,
             events,
+            clientId,
             savedAt: new Date().toISOString(),
           } satisfies PendingUpload)).catch(() => {/* non-fatal */});
 
@@ -1284,6 +1303,7 @@ export default function ScorekeeperScreen() {
             );
             if (attemptToken.cancelled) return;
             uploadedPaths.push(p);
+            await updatePendingMasterUpload({ uploadedPaths });
           }
 
           if (attemptToken.cancelled) return;
@@ -1322,6 +1342,7 @@ export default function ScorekeeperScreen() {
             videoObjectPath = concatResult.videoObjectPath;
             setUploadProgress(100);
           }
+          await updatePendingMasterUpload({ uploadedPaths, videoObjectPath: videoObjectPath! });
 
           setUploadProgress(null);
           // Guard: if cancel was pressed just as the last upload finished, honour
@@ -1343,11 +1364,13 @@ export default function ScorekeeperScreen() {
           return;
         }
       }
-      await doSaveGame(videoObjectPath);
+      await doSaveGame(videoObjectPath, pendingClientId);
     } catch (err: any) {
       setUploadProgress(null);
       Alert.alert('Save failed', err?.message ?? 'Could not save game');
       setSaving(false);
+    } finally {
+      if (ownsPendingMasterLease) releasePendingMasterLease();
     }
   }
 
@@ -1378,17 +1401,28 @@ export default function ScorekeeperScreen() {
       queuedAt: new Date().toISOString(),
     });
     await clearDraft();
-    await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
+    // A recorded master has its own durable upload marker. Never delete it
+    // while queuing stats after a network failure.
+    if (!recordVideo) await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
   }
 
-  function doSaveGame(videoObjectPath: string | null) {
+  async function doSaveGame(videoObjectPath: string | null, existingClientId?: string) {
     // Generate ONE stable ID for this entire save attempt.  The same ID is:
     //   • sent in the online POST body so the server stores it as client_game_id
     //   • used by onNetworkFailure when queuing locally after a dropped response
     //   • used by the offline-only path below
     // This ensures a retry of a queued game finds the already-created server row
     // via ON CONFLICT DO NOTHING instead of inserting a duplicate.
-    const saveClientId = generateClientId();
+    // If a coach elects to save stats while a recorded master is pending, use
+    // the marker's same idempotency key. The recovery worker's POST then finds
+    // this exact game and PATCH attaches the master rather than making a twin.
+    let markerClientId: string | undefined;
+    if (recordVideo && !videoObjectPath && !existingClientId) {
+      try {
+        markerClientId = (JSON.parse(await AsyncStorage.getItem(PENDING_UPLOAD_KEY) ?? '{}') as PendingUpload).clientId;
+      } catch { /* preserve the normal new-game fallback */ }
+    }
+    const saveClientId = existingClientId ?? markerClientId ?? generateClientId();
 
     // ── Offline path: queue locally and navigate back ─────────────────────
     // Only available for stats-only saves (no video) — video upload requires
@@ -1432,6 +1466,28 @@ export default function ScorekeeperScreen() {
         await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
         await clearDraft();
         router.replace(path as any);
+      },
+      // Both server endpoints are idempotent: a retry sees an existing
+      // processing job instead of creating a duplicate.  This runs only after
+      // create-game confirms the master is attached.
+      onVideoAttached: async (gameId) => {
+        if (!videoObjectPath) return;
+        // Durable foreground transition: a crash after server linkage but
+        // before navigation leaves the worker with the exact game/path.
+        await updatePendingMasterUpload({ gameId, videoObjectPath });
+        const token = await getToken();
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
+        const responses = await Promise.all([
+          fetch(`${API_BASE}/api/games/${gameId}/highlight`, { method: 'POST', headers, body: '{}' }),
+          fetch(`${API_BASE}/api/games/${gameId}/lowlight`, { method: 'POST', headers, body: '{}' }),
+        ]);
+        // A video attachment is the durability boundary. Generation can be
+        // requested independently by Film Room if a non-network server error
+        // prevents a particular reel from starting.
+        void responses;
       },
       setSaving,
       // If the network drops between tapping "End Game" and the POST completing,

@@ -314,6 +314,15 @@ export interface GameUpdate {
   events: GameEvent[];
 }
 
+export interface GameVideoAttachment {
+  /** Server-issued uploaded object path for the retained master film. */
+  videoObjectPath: string;
+}
+
+export interface OkResponse {
+  ok: boolean;
+}
+
 export type ImportGameRowResult = typeof ImportGameRowResult[keyof typeof ImportGameRowResult];
 
 

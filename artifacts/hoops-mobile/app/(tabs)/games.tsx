@@ -17,207 +17,17 @@ import {
   Animated,
 } from 'react-native';
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useListTeams, useListTeamGames, useListAllGames, useListPlayers, useCreateGame, useRequestUploadUrl, useDeleteGame } from '@workspace/api-client-react';
+import { useListTeams, useListTeamGames, useListAllGames, useListPlayers, useDeleteGame } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@clerk/expo';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
-import { uploadVideoFile } from '@/lib/uploadVideoFile';
-import { saveGame } from '@/lib/saveGame';
 import { generateClientId, loadQueuedGames, type QueuedGame } from '@/lib/offlineQueue';
-import { PENDING_UPLOAD_KEY, type PendingUpload } from '@/app/scorekeeper';
 import { ScreenGlow, BasketballWatermark } from '@/lib/ScreenBackground';
 import { useReelDownloads } from '@/lib/reelDownloadManager';
-
-// ─── Pending upload recovery banner ────────────────────────────────────────
-export function PendingUploadBanner({ onDismiss }: { onDismiss: () => void }) {
-  const colors = useColors();
-  const { getToken } = useAuth();
-  const createGame = useCreateGame();
-  const requestUploadUrl = useRequestUploadUrl();
-  const qc = useQueryClient();
-  const [pending, setPending] = useState<PendingUpload | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState<number | null>(null);
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
-  const cancelRef = useRef({ cancelled: false });
-
-  useEffect(() => {
-    AsyncStorage.getItem(PENDING_UPLOAD_KEY)
-      .then((raw) => { if (raw) setPending(JSON.parse(raw) as PendingUpload); })
-      .catch(() => {});
-  }, []);
-
-  if (!pending) return null;
-
-  const gameDate = pending.date ? new Date(pending.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-
-  async function handleRetryUpload() {
-    if (!pending || uploading) return;
-    setUploading(true);
-    cancelRef.current = { cancelled: false };
-    try {
-      const uploadedPaths: string[] = [];
-      const uris = pending.uris;
-      setProgress(0);
-      for (let i = 0; i < uris.length; i++) {
-        const segStart = Math.round((i / uris.length) * 90);
-        const segEnd   = Math.round(((i + 1) / uris.length) * 90);
-        const path = await uploadVideoFile(
-          uris[i],
-          (body) => requestUploadUrl.mutateAsync({ data: body }),
-          (pct) => setProgress(segStart + Math.round((pct / 100) * (segEnd - segStart))),
-          xhrRef,
-          cancelRef.current,
-        );
-        if (cancelRef.current.cancelled) return;
-        uploadedPaths.push(path);
-      }
-      setProgress(95);
-
-      let videoObjectPath = uploadedPaths[0];
-      if (uploadedPaths.length > 1) {
-        const token = await getToken();
-        const domain = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : '';
-        const res = await fetch(`${domain}/api/storage/concat-segments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-          body: JSON.stringify({ segmentPaths: uploadedPaths }),
-        });
-        const { videoObjectPath: merged } = await res.json();
-        videoObjectPath = merged;
-      }
-
-      setProgress(null);
-      await saveGame(videoObjectPath, {
-        players: Object.keys(pending.stats).map((id) => ({ id: Number(id) })),
-        stats: pending.stats as any,
-        teamScore: pending.teamScore,
-        opponentScore: pending.opponentScore,
-        teamId: pending.teamId,
-        opponent: pending.opponent,
-        date: pending.date,
-        events: pending.events,
-        clientId: generateClientId(),
-        createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
-        invalidateQueries: (opts) => qc.invalidateQueries(opts),
-        routerReplace: async () => {
-          await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
-          setPending(null);
-          onDismiss();
-        },
-        setSaving: setUploading,
-      });
-    } catch (err: any) {
-      if (!cancelRef.current.cancelled) {
-        Alert.alert('Upload failed', err?.message ?? 'Could not upload video. Try again or save without video.');
-      }
-      setProgress(null);
-      setUploading(false);
-    }
-  }
-
-  async function handleSaveWithoutVideo() {
-    if (!pending || uploading) return;
-    setUploading(true);
-    await saveGame(null, {
-      players: Object.keys(pending.stats).map((id) => ({ id: Number(id) })),
-      stats: pending.stats as any,
-      teamScore: pending.teamScore,
-      opponentScore: pending.opponentScore,
-      teamId: pending.teamId,
-      opponent: pending.opponent,
-      date: pending.date,
-      events: pending.events,
-      clientId: generateClientId(),
-      createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
-      invalidateQueries: (opts) => qc.invalidateQueries(opts),
-      routerReplace: async () => {
-        await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
-        setPending(null);
-        onDismiss();
-      },
-      setSaving: setUploading,
-    });
-  }
-
-  async function handleDismiss() {
-    Alert.alert(
-      'Discard recording?',
-      'This will delete the unsaved game and recording permanently.',
-      [
-        { text: 'Keep it', style: 'cancel' },
-        {
-          text: 'Discard', style: 'destructive',
-          onPress: async () => {
-            await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
-            setPending(null);
-            onDismiss();
-          },
-        },
-      ],
-    );
-  }
-
-  return (
-    <View style={{
-      marginHorizontal: 16, marginBottom: 10, borderRadius: 12, overflow: 'hidden',
-      borderWidth: 1, borderColor: 'rgba(255,83,26,0.4)',
-      backgroundColor: 'rgba(255,83,26,0.10)',
-    }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 }}>
-        <Ionicons name="cloud-upload-outline" size={20} color={colors.primary} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.foreground, fontWeight: '600', fontSize: 13 }}>
-            Unsaved recording
-          </Text>
-          <Text style={{ color: colors.mutedForeground, fontSize: 12, marginTop: 1 }}>
-            {pending.teamName} vs {pending.opponent}{gameDate ? ` · ${gameDate}` : ''}{' '}
-            · {pending.teamScore}–{pending.opponentScore}
-          </Text>
-        </View>
-        {!uploading && (
-          <TouchableOpacity onPress={handleDismiss} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="close" size={18} color={colors.mutedForeground} />
-          </TouchableOpacity>
-        )}
-      </View>
-      {progress !== null && (
-        <View style={{ height: 3, backgroundColor: 'rgba(255,83,26,0.15)', marginHorizontal: 12, borderRadius: 2, marginBottom: 10 }}>
-          <View style={{ height: 3, width: `${progress}%`, backgroundColor: colors.primary, borderRadius: 2 }} />
-        </View>
-      )}
-      {!uploading ? (
-        <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }}>
-          <TouchableOpacity
-            onPress={handleRetryUpload}
-            style={{ flex: 1, backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 8, alignItems: 'center' }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Resume upload</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSaveWithoutVideo}
-            style={{ flex: 1, borderRadius: 8, paddingVertical: 8, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}
-          >
-            <Text style={{ color: colors.mutedForeground, fontWeight: '600', fontSize: 13 }}>Save without video</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 12 }}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-            {progress !== null ? `Uploading… ${progress}%` : 'Saving game…'}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
-}
 
 // ─── Glare overlays ────────────────────────────────────────────────────────
 function GlareOverlay({ intensity = 0.08 }: { intensity?: number }) {
@@ -733,8 +543,6 @@ export default function GamesScreen() {
   // Always allow switching — "All Teams" is always available, even with a single team
   const canSwitchTeam = (teams?.length ?? 0) >= 1;
 
-  const [bannerKey, setBannerKey] = useState(0);
-
   // ── Offline queue ──────────────────────────────────────────────────────────
   const [queuedGames, setQueuedGames] = useState<QueuedGame[]>([]);
   const [selectedQueuedGame, setSelectedQueuedGame] = useState<QueuedGame | null>(null);
@@ -769,8 +577,6 @@ export default function GamesScreen() {
       <ScreenGlow primary={colors.primary} />
       <BasketballWatermark color={colors.primary} />
 
-      {/* ── Pending upload recovery ───────────────────────────────────── */}
-      <PendingUploadBanner key={bannerKey} onDismiss={() => setBannerKey((k) => k + 1)} />
       {/* ── Page header ──────────────────────────────────────────────── */}
       <View style={styles.header}>
         <View>

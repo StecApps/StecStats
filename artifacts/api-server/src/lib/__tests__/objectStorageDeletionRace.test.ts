@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   dbUpdateMock,
   findOwnerMock,
+  findGameMock,
+  findRetainedFilmMock,
   bucketMock,
   fileMock,
   setAclMock,
@@ -18,6 +20,8 @@ const {
   return {
     dbUpdateMock: vi.fn(),
     findOwnerMock: vi.fn(),
+    findGameMock: vi.fn(),
+    findRetainedFilmMock: vi.fn(),
     bucketMock: vi.fn(() => ({ file: vi.fn(() => fileMock) })),
     fileMock,
     setAclMock: vi.fn(),
@@ -27,9 +31,15 @@ const {
 vi.mock("@workspace/db", () => ({
   db: {
     update: dbUpdateMock,
-    query: { usersTable: { findFirst: findOwnerMock } },
+    query: {
+      usersTable: { findFirst: findOwnerMock },
+      gamesTable: { findFirst: findGameMock },
+      retainedGameFilmsTable: { findFirst: findRetainedFilmMock },
+    },
   },
   usersTable: { id: "id", deletionStatus: "deletion_status" },
+  gamesTable: { videoObjectPath: "video_object_path" },
+  retainedGameFilmsTable: { objectPath: "object_path" },
 }));
 
 vi.mock("@google-cloud/storage", () => ({
@@ -53,6 +63,8 @@ describe("direct upload capability during account deletion", () => {
     process.env.PRIVATE_OBJECT_DIR = "/bucket/private";
     dbUpdateMock.mockReset();
     findOwnerMock.mockReset().mockResolvedValue({ deletionStatus: "active" });
+    findGameMock.mockReset().mockResolvedValue(undefined);
+    findRetainedFilmMock.mockReset().mockResolvedValue(undefined);
     bucketMock.mockClear();
     fileMock.save.mockReset().mockResolvedValue(undefined);
     fileMock.delete.mockReset().mockResolvedValue(undefined);
@@ -103,5 +115,14 @@ describe("direct upload capability during account deletion", () => {
 
     expect(fileMock.delete).toHaveBeenCalledTimes(1);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("refuses generic deletion of a master referenced by a game row", async () => {
+    findGameMock.mockResolvedValue({ id: 77 });
+
+    await new ObjectStorageService().deleteObjectEntity("/objects/uploads/41/object");
+
+    expect(fileMock.delete).not.toHaveBeenCalled();
+    expect(findRetainedFilmMock).toHaveBeenCalled();
   });
 });

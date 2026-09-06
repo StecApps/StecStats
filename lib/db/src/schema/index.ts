@@ -7,3 +7,4 @@ export * from "./live-sessions";
 export * from "./users";
 export * from "./feedback";
 export * from "./purchase-events";
+export * from "./retained-game-films";

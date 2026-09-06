@@ -3,8 +3,8 @@ import { Readable, pipeline as streamPipeline } from "stream";
 import { createReadStream } from "fs";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
-import { and, eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { and, eq, like } from "drizzle-orm";
+import { db, gamesTable, retainedGameFilmsTable, usersTable } from "@workspace/db";
 
 import {
   ObjectAclPolicy,
@@ -47,6 +47,25 @@ export class ObjectNotFoundError extends Error {
 
 export class ObjectStorageService {
   constructor() {}
+
+  /**
+   * A game row protects its currently linked master and the retention ledger
+   * protects every original master after that row is replaced or deleted.
+   * Account/privacy erasure is the only caller allowed to bypass this check.
+   */
+  private async isRetainedGameMaster(objectPath: string): Promise<boolean> {
+    const [currentGame, retainedFilm] = await Promise.all([
+      db.query.gamesTable.findFirst({
+        where: eq(gamesTable.videoObjectPath, objectPath),
+        columns: { id: true },
+      }),
+      db.query.retainedGameFilmsTable.findFirst({
+        where: eq(retainedGameFilmsTable.objectPath, objectPath),
+        columns: { id: true },
+      }),
+    ]);
+    return !!currentGame || !!retainedFilm;
+  }
 
   /**
    * Last-line write barrier for all private account upload paths. Route-level
@@ -361,8 +380,12 @@ export class ObjectStorageService {
    * Delete an object entity from GCS by its /objects/... path.
    * If the object does not exist this is a no-op (idempotent).
    */
-  async deleteObjectEntity(objectPath: string): Promise<void> {
+  async deleteObjectEntity(
+    objectPath: string,
+    options: { allowRetainedMasterDeletion?: boolean } = {},
+  ): Promise<void> {
     if (!objectPath.startsWith("/objects/")) return;
+    if (!options.allowRetainedMasterDeletion && await this.isRetainedGameMaster(objectPath)) return;
     const entityId = objectPath.slice("/objects/".length);
     let entityDir = this.getPrivateObjectDir();
     if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
@@ -384,7 +407,10 @@ export class ObjectStorageService {
    * deletion uses this in addition to removing paths referenced by database
    * rows, so abandoned uploads and intermediate video chunks are not retained.
    */
-  async deleteOwnerUploadNamespace(ownerId: number): Promise<void> {
+  async deleteOwnerUploadNamespace(
+    ownerId: number,
+    options: { allowRetainedMasterDeletion?: boolean } = {},
+  ): Promise<void> {
     const privateObjectDir = this.getPrivateObjectDir();
     const { bucketName, objectName: privatePrefix } = parseObjectPath(privateObjectDir);
     const prefixBase = privatePrefix.replace(/\/+$/, "");
@@ -395,6 +421,8 @@ export class ObjectStorageService {
     await Promise.all(
       files.map(async (file) => {
         try {
+          const objectPath = `/objects/${file.name.slice(prefixBase.length + 1)}`;
+          if (!options.allowRetainedMasterDeletion && await this.isRetainedGameMaster(objectPath)) return;
           await file.delete();
         } catch (err: any) {
           // A concurrent cleanup may already have removed the file.
@@ -410,17 +438,34 @@ export class ObjectStorageService {
    * account is permanently deleted to remove abandoned uploads as well as the
    * media paths still referenced by database rows.
    */
-  async deleteObjectEntityPrefix(objectPrefix: string): Promise<void> {
+  async deleteObjectEntityPrefix(
+    objectPrefix: string,
+    options: { allowRetainedMasterDeletion?: boolean } = {},
+  ): Promise<void> {
     if (!objectPrefix.startsWith("/objects/")) return;
     const entityId = objectPrefix.slice("/objects/".length);
     let entityDir = this.getPrivateObjectDir();
     if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
     const fullPath = `${entityDir}${entityId}`;
     const { bucketName, objectName } = parseObjectPath(fullPath);
+    const { objectName: privatePrefix } = parseObjectPath(this.getPrivateObjectDir());
     const bucket = objectStorageClient.bucket(bucketName);
     const [files] = await bucket.getFiles({ prefix: objectName });
+    const retainedPaths = options.allowRetainedMasterDeletion
+      ? new Set<string>()
+      : new Set(
+          (await db.query.retainedGameFilmsTable.findMany({
+            where: like(retainedGameFilmsTable.objectPath, `${objectPrefix}%`),
+            columns: { objectPath: true },
+          })).map((film) => film.objectPath),
+        );
 
     for (const file of files) {
+      const objectPath = `/objects/${file.name.slice(privatePrefix.replace(/\/+$/, "").length + 1)}`;
+      if (!options.allowRetainedMasterDeletion &&
+          (retainedPaths.has(objectPath) || await this.isRetainedGameMaster(objectPath))) {
+        continue;
+      }
       try {
         await file.delete();
       } catch (err: any) {

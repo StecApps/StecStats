@@ -47,6 +47,8 @@ export interface SaveGameDeps {
    * If omitted the generic alert is shown as before.
    */
   onNetworkFailure?: () => Promise<void> | void;
+  /** Runs only after the server has acknowledged the game/video attachment. */
+  onVideoAttached?: (gameId: number) => Promise<void> | void;
 }
 
 const defaultLine = (): StatLine => ({
@@ -114,6 +116,9 @@ export async function saveGame(
         ...(videoObjectPath ? { videoObjectPath } : {}),
       },
     });
+    if (videoObjectPath && deps.onVideoAttached) {
+      await deps.onVideoAttached(game.id);
+    }
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await invalidateQueries({ queryKey: ['listTeamGames'] });
     routerReplace(`/game/${game.id}`);

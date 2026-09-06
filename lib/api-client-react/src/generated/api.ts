@@ -28,12 +28,14 @@ import type {
   Game,
   GameInput,
   GameUpdate,
+  GameVideoAttachment,
   HealthStatus,
   HighlightStatus,
   ImportInput,
   ImportResult,
   LowlightStatus,
   MergeGamesInput,
+  OkResponse,
   Player,
   PlayerInput,
   PlayerSummary,
@@ -1647,7 +1649,8 @@ export const getDeleteGameUrl = (gameId: number,) => {
 }
 
 /**
- * @summary Delete a game
+ * Highlights, lowlights, HLS and proxy derivatives are removed. Original game-film masters are retained; permanent account deletion/privacy erasure is the explicit exception.
+ * @summary Delete a game while retaining its original uploaded master film
  */
 export const deleteGame = async (gameId: number, options?: RequestInit): Promise<void> => {
 
@@ -1696,7 +1699,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteGameMutationError = ErrorType<unknown>
 
     /**
- * @summary Delete a game
+ * @summary Delete a game while retaining its original uploaded master film
  */
 export const useDeleteGame = <TError = ErrorType<unknown>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGame>>, TError,{gameId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1707,6 +1710,79 @@ export const useDeleteGame = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteGameMutationOptions(options));
+    }
+
+export const getAttachGameVideoUrl = (gameId: number,) => {
+
+
+
+
+  return `/api/games/${gameId}/video`
+}
+
+/**
+ * Owner-scoped and idempotent. Repeating the same attachment does not reset generated derivatives. Replacing footage retains the prior master; only account deletion/privacy erasure removes retained masters.
+ * @summary Attach an uploaded master film to a game
+ */
+export const attachGameVideo = async (gameId: number,
+    gameVideoAttachment: GameVideoAttachment, options?: RequestInit): Promise<OkResponse> => {
+
+  return customFetch<OkResponse>(getAttachGameVideoUrl(gameId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(gameVideoAttachment)
+  }
+);}
+
+
+
+
+
+export const getAttachGameVideoMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attachGameVideo>>, TError,{gameId: number;data: BodyType<GameVideoAttachment>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof attachGameVideo>>, TError,{gameId: number;data: BodyType<GameVideoAttachment>}, TContext> => {
+
+const mutationKey = ['attachGameVideo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof attachGameVideo>>, {gameId: number;data: BodyType<GameVideoAttachment>}> = (props) => {
+          const {gameId,data} = props ?? {};
+
+          return  attachGameVideo(gameId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AttachGameVideoMutationResult = NonNullable<Awaited<ReturnType<typeof attachGameVideo>>>
+    export type AttachGameVideoMutationBody = BodyType<GameVideoAttachment>
+    export type AttachGameVideoMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Attach an uploaded master film to a game
+ */
+export const useAttachGameVideo = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attachGameVideo>>, TError,{gameId: number;data: BodyType<GameVideoAttachment>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof attachGameVideo>>,
+        TError,
+        {gameId: number;data: BodyType<GameVideoAttachment>},
+        TContext
+      > => {
+      return useMutation(getAttachGameVideoMutationOptions(options));
     }
 
 export const getGetTeamHighlightUrl = (teamId: number,) => {
