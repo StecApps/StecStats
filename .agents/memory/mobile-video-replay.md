@@ -45,6 +45,12 @@ Downloaded Expo Video reels must attach as explicit uncached progressive file so
 
 **How to apply:** Pass local files through the typed playback-source helper, track the currently attached URI, skip identical replacements, and clear that identity before explicit retry/regeneration because those reuse the same deterministic path.
 
+Native player teardown errors must never trigger destructive media retry while a reel download is queued or active.
+
+**Why:** Leaving a game can make an empty Expo Video player emit `status:error` just before listener cleanup. Treating that as a bad remote source called force-fresh, paused the background transfer, deleted its partial file, and restarted at zero.
+
+**How to apply:** Before any player-error retry, require a non-empty attached source and exclude queued/downloading manager states. Navigation teardown should only detach UI; download ownership stays with the root singleton manager.
+
 An unfinished HLS build must be re-triggerable from playlist refreshes, and an unproxied short recording is not playable on iOS.
 
 **Why:** A process-local fire-and-forget encoder stopped after autoscale/restart while the client reused its cached playlist token, so no endpoint resumed it. Short games were simultaneously returning raw incompatible media as ready.

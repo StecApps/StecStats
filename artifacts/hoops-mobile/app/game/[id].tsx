@@ -951,6 +951,13 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     const subscription = player.addListener('statusChange', ({ status, error }) => {
       if (status !== 'error') return;
       setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+      // An empty player can emit a teardown error as this screen unmounts.
+      // While the reel is still queued/downloading there is no attached source
+      // to repair; forceFresh here would cancel the background transfer, delete
+      // its .part file, and restart from byte zero when the game is reopened.
+      if (!signedUrl ||
+          lowlightDownload?.status === 'queued' ||
+          lowlightDownload?.status === 'downloading') return;
       // Never delete a completed local file out from under AVPlayer. A prior
       // automatic retry did exactly that after a transient native status error,
       // causing playback to exit partway through and reducing the offline count.
@@ -961,7 +968,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       }
     });
     return () => subscription.remove();
-  }, [player, signedUrl, loadLowlightVideo]);
+  }, [player, signedUrl, lowlightDownload?.status, loadLowlightVideo]);
 
   async function handleSaveLowlight() {
     if (!signedUrl) return;
@@ -1349,6 +1356,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       if (status !== 'error') return;
       const message = error?.message ?? 'The highlight video could not be loaded.';
       setPlaybackError(message);
+      // Ignore native player teardown errors until there is a real attached
+      // source. Retrying an empty/downloading player is destructive because
+      // forceFresh invalidates the active background download and its .part.
+      if (!signedUrl ||
+          highlightDownload?.status === 'queued' ||
+          highlightDownload?.status === 'downloading') return;
       // The local MP4 is the durable source of truth. Do not invalidate/delete
       // it while AVPlayer still has the file open after a transient native error.
       if (signedUrl?.startsWith('file:')) return;
@@ -1358,7 +1371,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       }
     });
     return () => subscription.remove();
-  }, [player, signedUrl, loadHighlightVideo]);
+  }, [player, signedUrl, highlightDownload?.status, loadHighlightVideo]);
 
   async function handleYoutubeUpload() {
     if (!uploadTitle.trim() || uploading) return;

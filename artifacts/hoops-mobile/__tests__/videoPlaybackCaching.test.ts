@@ -136,4 +136,11 @@ describe('saved-video playback caching', () => {
   test('does not restart reel downloads when the app backgrounds', () => {
     expect(gameScreen).not.toContain("AppState.addEventListener('change'");
   });
+
+  test('does not let player teardown errors cancel active reel downloads', () => {
+    expect(gameScreen).toContain("lowlightDownload?.status === 'downloading'");
+    expect(gameScreen).toContain("highlightDownload?.status === 'downloading'");
+    expect(gameScreen.match(/if \(!signedUrl \|\|/g)).toHaveLength(2);
+    expect(gameScreen).toContain("forceFresh invalidates the active background download");
+  });
 });
