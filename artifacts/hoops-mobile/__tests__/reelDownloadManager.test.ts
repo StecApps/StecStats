@@ -8,7 +8,7 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn((key: string, value: string) => { mockStorage.set(key, value); return Promise.resolve(); }),
   removeItem: jest.fn((key: string) => { mockStorage.delete(key); return Promise.resolve(); }),
 }));
-jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+jest.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 jest.mock('@react-native-community/netinfo', () => ({
   __esModule: true,
   default: { addEventListener: jest.fn((listener) => { mockNetworkListener = listener; return jest.fn(); }) },
@@ -27,12 +27,36 @@ jest.mock('expo-file-system/legacy', () => ({
   }),
   makeDirectoryAsync: jest.fn(() => Promise.resolve()),
   createDownloadResumable: jest.fn((_url: string, uri: string, options: unknown) => {
-    const task = { pauseAsync: jest.fn(() => Promise.resolve()), downloadAsync: jest.fn(() => { mockFiles.set(uri, 2048); return Promise.resolve({ uri, status: 200, headers: { 'content-length': '2048' } }); }) };
+    const task = { pauseAsync: jest.fn(() => Promise.resolve({ resumeData: 'resume-token' })), downloadAsync: jest.fn(() => { mockFiles.set(uri, 2048); return Promise.resolve({ uri, status: 200, headers: { 'content-length': '2048' } }); }) };
     mockTasks.push(task); return task;
   }),
 }));
+jest.mock('expo-file-system', () => ({
+  File: class MockFile {
+    uri: string;
+    constructor(uri: string) { this.uri = uri; }
+    get exists() { return mockFiles.has(this.uri); }
+    create() { mockFiles.set(this.uri, 0); }
+    open() {
+      let offset = 0;
+      return {
+        get offset() { return offset; },
+        set offset(value: number | null) { offset = value ?? 0; },
+        writeBytes: (bytes: Uint8Array) => {
+          const size = mockFiles.get(this.uri) ?? 0;
+          mockFiles.set(this.uri, Math.max(size, offset + bytes.byteLength));
+          offset += bytes.byteLength;
+        },
+        close: jest.fn(),
+      };
+    }
+  },
+}));
+jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
 import * as FileSystem from 'expo-file-system/legacy';
+import { fetch as expoFetch } from 'expo/fetch';
+import { Platform } from 'react-native';
 import { ReelDownloadManager } from '@/lib/reelDownloadManager';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -40,6 +64,7 @@ const reel = (objectPath = 'reels/one.mp4') => ({ gameId: 7, type: 'highlight' a
 
 beforeEach(() => {
   mockStorage.clear(); mockFiles.clear(); mockTasks.splice(0); mockNetworkListener = undefined;
+  Platform.OS = 'android';
   jest.clearAllMocks();
   const storage = jest.requireMock('@react-native-async-storage/async-storage');
   storage.getItem.mockImplementation((storageKey: string) => Promise.resolve(mockStorage.get(storageKey) ?? null));
@@ -65,6 +90,82 @@ describe('ReelDownloadManager behavior', () => {
     const relaunched = new ReelDownloadManager();
     await relaunched.activate('coach-a');
     expect(relaunched.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
+  });
+
+  test('resumes retained partial bytes after process recreation with a refreshed signed URL', async () => {
+    Platform.OS = 'ios';
+    const first = new ReelDownloadManager();
+    await first.activate('coach-a');
+    let reads = 0;
+    (expoFetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: (name: string) => name.toLowerCase() === 'content-length' ? '4194304' : null },
+      body: { getReader: () => ({
+        read: jest.fn(() => {
+          reads += 1;
+          if (reads === 1) return Promise.resolve({ done: false, value: new Uint8Array(2097152) });
+          return new Promise(() => undefined);
+        }),
+        cancel: jest.fn(),
+      }) },
+    });
+    first.setNetworkForTesting('wifi', true);
+    await first.enqueue(reel());
+    await flush();
+    const finalUri = first.get(7, 'highlight', 'reels/one.mp4')!.uri!;
+    await flush();
+    expect(mockFiles.get(`${finalUri}.part`)).toBe(2097152);
+
+    const relaunched = new ReelDownloadManager();
+    await relaunched.activate('coach-a');
+    relaunched.setNetworkForTesting('wifi', true);
+    await flush();
+    expect(mockFiles.get(`${finalUri}.part`)).toBe(2097152);
+    expect(expoFetch).toHaveBeenCalledTimes(1);
+
+    (expoFetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 206,
+      headers: { get: (name: string) => {
+        if (name.toLowerCase() === 'content-range') return 'bytes 2097152-4194303/4194304';
+        if (name.toLowerCase() === 'content-length') return '2097152';
+        return null;
+      } },
+      body: { getReader: () => ({
+        read: jest.fn()
+          .mockResolvedValueOnce({ done: false, value: new Uint8Array(2097152) })
+          .mockResolvedValueOnce({ done: true }),
+        cancel: jest.fn(),
+      }) },
+    });
+    await relaunched.enqueue({ ...reel(), url: 'https://signed/fresh-token' });
+    await flush();
+    const resumeCall = (expoFetch as jest.Mock).mock.calls[1];
+    expect(resumeCall[0]).toBe('https://signed/fresh-token');
+    expect(resumeCall[1].headers).toEqual({ Range: 'bytes=2097152-' });
+    expect(relaunched.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
+    expect(mockFiles.get(finalUri)).toBe(4194304);
+  });
+
+  test('never restores another account resumable transfer', async () => {
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a');
+    await manager.enqueue(reel());
+    const entry = manager.get(7, 'highlight', 'reels/one.mp4')!;
+    entry.status = 'queued';
+    entry.resumeData = 'coach-a-resume';
+    entry.needsUrlRefresh = true;
+    mockFiles.set(`${entry.uri}.part`, 4096);
+    await manager.persist();
+
+    const relaunched = new ReelDownloadManager();
+    await relaunched.activate('coach-b');
+    relaunched.setNetworkForTesting('wifi', true);
+    await relaunched.enqueue(reel());
+    await flush();
+    expect((FileSystem.createDownloadResumable as jest.Mock).mock.calls.at(-1)?.[4]).toBeUndefined();
+    expect((FileSystem.createDownloadResumable as jest.Mock).mock.calls.at(-1)?.[1]).not.toBe(`${entry.uri}.part`);
   });
 
   test('stores durable offline reels outside the purgeable cache directory', async () => {
@@ -219,6 +320,7 @@ describe('ReelDownloadManager behavior', () => {
     mockFiles.set('file:///cache/partial', 99);
     const interrupted = new ReelDownloadManager(); await interrupted.activate('coach-b');
     expect(interrupted.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('failed');
-    expect(mockFiles.has('file:///cache/partial')).toBe(false);
+    // A corrupted manifest must not be able to delete an arbitrary persisted URI.
+    expect(mockFiles.has('file:///cache/partial')).toBe(true);
   });
 });

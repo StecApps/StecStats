@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { File } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 import { FileSystemSessionType } from 'expo-file-system/legacy';
+import { fetch as expoFetch } from 'expo/fetch';
 import NetInfo, { type NetInfoStateType } from '@react-native-community/netinfo';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
@@ -20,6 +22,8 @@ export type ReelDownload = {
   sizeBytes?: number;
   expectedBytes?: number;
   bytesWritten?: number;
+  resumeData?: string;
+  needsUrlRefresh?: boolean;
 };
 
 type Listener = () => void;
@@ -45,6 +49,7 @@ export class ReelDownloadManager {
   private accountId: string | null = null;
   private entries = new Map<string, ReelDownload>();
   private tasks = new Map<string, ReturnType<typeof FileSystem.createDownloadResumable>>();
+  private controllers = new Map<string, AbortController>();
   private generations = new Map<string, number>();
   private listeners = new Set<Listener>();
   private active = 0;
@@ -80,7 +85,9 @@ export class ReelDownloadManager {
   private async activateNow(accountId: string | null) {
     if (accountId === this.accountId) return;
     // Never allow a completed callback from the old account to update the new one.
-    for (const task of this.tasks.values()) { await task.pauseAsync().catch(() => undefined); }
+    await this.pauseActiveDownloads();
+    for (const controller of this.controllers.values()) controller.abort();
+    this.controllers.clear();
     this.tasks.clear(); this.generations.clear(); this.active = 0; this.entries.clear(); this.accountId = accountId;
     if (!accountId) {
       this.unsubscribeNetwork?.(); this.unsubscribeNetwork = null;
@@ -117,21 +124,38 @@ export class ReelDownloadManager {
       await AsyncStorage.removeItem(this.manifestKey());
     }
     for (const entry of persisted) {
-      const info = await FileSystem.getInfoAsync(entry.uri ?? this.uriFor(entry));
+      // Never trust a persisted URI when changing identities. Recompute every
+      // path from the currently active account and the reel identity.
+      const durableUri = this.uriFor(entry);
+      const info = await FileSystem.getInfoAsync(durableUri);
       // A manifest alone is never proof of completion: interrupted .part files and
       // zero-byte responses are discarded and re-queued only with a fresh URL.
       const sizeMatches = entry.expectedBytes == null || (info.exists && info.size === entry.expectedBytes);
       if (entry.status === 'downloaded' && info.exists && (info.size ?? 0) > MIN_COMPLETE_BYTES && sizeMatches) {
-        const durableUri = this.uriFor(entry);
-        if (info.uri !== durableUri) {
-          await FileSystem.makeDirectoryAsync(`${REEL_STORAGE_ROOT}reels/${hash(accountId)}`, { intermediates: true });
-          await FileSystem.deleteAsync(durableUri, { idempotent: true }).catch(() => undefined);
-          await FileSystem.moveAsync({ from: info.uri, to: durableUri });
-        }
         this.entries.set(key(entry.gameId, entry.type, entry.objectPath), { ...entry, uri: durableUri });
       } else {
+        const partialUri = this.partialUriFor(entry);
+        const partialInfo = await FileSystem.getInfoAsync(partialUri);
+        const partialBytes = partialInfo.exists ? partialInfo.size ?? 0 : 0;
+        const hasNativeResume = typeof entry.resumeData === 'string' && entry.resumeData.length > 0;
+        const hasRangeResume = Platform.OS === 'ios' && partialBytes > 0;
+        if (hasNativeResume || hasRangeResume) {
+          // iOS streams into the account-scoped .part file so a fresh signed URL
+          // can continue with HTTP Range. Other platforms use the native token.
+          // Wait for discovery/playback to replace the expired signed URL before
+          // resuming after a process relaunch.
+          this.entries.set(key(entry.gameId, entry.type, entry.objectPath), {
+            ...entry,
+            uri: this.uriFor(entry),
+            status: 'queued',
+            bytesWritten: partialBytes,
+            needsUrlRefresh: true,
+            error: undefined,
+          });
+          continue;
+        }
         await FileSystem.deleteAsync(info.uri, { idempotent: true }).catch(() => undefined);
-        await FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined);
+        await FileSystem.deleteAsync(partialUri, { idempotent: true }).catch(() => undefined);
         // A queued/downloading record means the app or OS interrupted it. Keep
         // an explicit retryable state rather than silently dropping the reel.
         this.entries.set(key(entry.gameId, entry.type, entry.objectPath), {
@@ -171,6 +195,36 @@ export class ReelDownloadManager {
     if (!this.accountId) return;
     await AsyncStorage.setItem(this.manifestKey(), JSON.stringify(this.snapshot()));
   }
+  async pauseActiveDownloads() {
+    if (!this.accountId || this.tasks.size === 0) return;
+    await Promise.all([...this.tasks.entries()].map(async ([id, task]) => {
+      const entry = this.entries.get(id);
+      if (!entry || entry.status !== 'downloading') return;
+      // Retire the in-flight completion before pausing so its catch handler cannot
+      // delete the resumable bytes after this checkpoint has been persisted.
+      this.generations.set(id, (this.generations.get(id) ?? 0) + 1);
+      const paused = await task.pauseAsync().catch(() => undefined);
+      if (this.entries.get(id) !== entry) return;
+      if (!paused?.resumeData) {
+        entry.status = 'failed';
+        entry.error = 'Download could not be saved for resume. Retry when connected.';
+        entry.resumeData = undefined;
+        this.tasks.delete(id);
+        if (Platform.OS !== 'ios') {
+          await FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined);
+        }
+        return;
+      }
+      const partialInfo = await FileSystem.getInfoAsync(this.partialUriFor(entry));
+      entry.resumeData = paused.resumeData;
+      entry.bytesWritten = partialInfo.exists ? partialInfo.size : entry.bytesWritten;
+      entry.status = 'queued';
+      entry.error = undefined;
+      this.tasks.delete(id);
+    }));
+    await this.persist();
+    this.emit();
+  }
   async enqueue(input: Omit<ReelDownload, 'status' | 'requestedAt'>, priority = false) {
     if (!this.accountId || Platform.OS === 'web') return;
     const id = key(input.gameId, input.type, input.objectPath);
@@ -180,7 +234,10 @@ export class ReelDownloadManager {
       // Discovery and an opened game can request the same reel concurrently.
       // Keep the existing transfer object; only queued work may adopt a newer
       // signed URL, and either state may be promoted in queue priority.
-      if (current.status === 'queued') current.url = input.url;
+      if (current.status === 'queued') {
+        current.url = input.url;
+        current.needsUrlRefresh = false;
+      }
       if (priority) current.priority = 1;
       await this.persist(); this.emit();
       if (current.status === 'queued') this.pump(priority ? id : undefined);
@@ -196,7 +253,9 @@ export class ReelDownloadManager {
     const entry = this.get(gameId, type, objectPath);
     if (!entry || entry.status === 'queued' || entry.status === 'downloading') return entry;
     entry.status = 'queued'; entry.error = undefined; entry.requestedAt = Date.now();
+    entry.resumeData = undefined; entry.needsUrlRefresh = false;
     await FileSystem.deleteAsync(entry.uri!, { idempotent: true }).catch(() => undefined);
+    await FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined);
     await this.persist(); this.emit(); this.pump(key(gameId, type, objectPath));
   }
   async invalidate(gameId: number, type: ReelType, objectPath?: string | null) {
@@ -211,6 +270,8 @@ export class ReelDownloadManager {
       this.tasks.delete(id);
       await task.pauseAsync().catch(() => undefined);
     }
+    this.controllers.get(id)?.abort();
+    this.controllers.delete(id);
     if (entry?.uri) await FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => undefined);
     await FileSystem.deleteAsync(this.partialUriFor({ gameId, type, objectPath }), { idempotent: true }).catch(() => undefined);
     await this.persist(); this.emit();
@@ -246,9 +307,9 @@ export class ReelDownloadManager {
   private pump(priorityId?: string) {
     if (!this.canDownload()) return;
     while (this.active < this.concurrency) {
-      const next = priorityId ? this.entries.get(priorityId) : [...this.entries.values()].filter((e) => e.status === 'queued').sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.requestedAt - b.requestedAt)[0];
+      const next = priorityId ? this.entries.get(priorityId) : [...this.entries.values()].filter((e) => e.status === 'queued' && !e.needsUrlRefresh).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.requestedAt - b.requestedAt)[0];
       priorityId = undefined;
-      if (!next || next.status !== 'queued') return;
+      if (!next || next.status !== 'queued' || next.needsUrlRefresh) return;
       void this.download(next);
     }
   }
@@ -258,27 +319,38 @@ export class ReelDownloadManager {
     const generation = (this.generations.get(id) ?? 0) + 1;
     this.generations.set(id, generation);
     let task: ReturnType<typeof FileSystem.createDownloadResumable> | null = null;
+    let controller: AbortController | null = null;
     this.active += 1; entry.status = 'downloading'; await this.persist(); this.emit();
     try {
       await FileSystem.makeDirectoryAsync(`${REEL_STORAGE_ROOT}reels/${hash(accountAtStart)}`, { intermediates: true });
       const partialUri = this.partialUriFor(entry);
-      await FileSystem.deleteAsync(partialUri, { idempotent: true }).catch(() => undefined);
+      if (!entry.resumeData && Platform.OS !== 'ios') {
+        await FileSystem.deleteAsync(partialUri, { idempotent: true }).catch(() => undefined);
+      }
       // createDownloadResumable is used rather than File.downloadFileAsync so iOS
       // receives an NSURLSession background transfer. iOS may finish it after the
       // app backgrounds; force-quitting cancels system-managed transfers.
-      task = FileSystem.createDownloadResumable(
-        entry.url,
-        partialUri,
-        { sessionType: FileSystemSessionType.BACKGROUND },
-        ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
-          if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) return;
-          entry.bytesWritten = totalBytesWritten;
-          if (totalBytesExpectedToWrite > 0) entry.expectedBytes = totalBytesExpectedToWrite;
-          this.emit();
-        },
-      );
-      this.tasks.set(id, task);
-      const result = await task.downloadAsync();
+      let result: { uri: string; status: number; headers: Record<string, string> } | undefined;
+      if (Platform.OS === 'ios') {
+        controller = new AbortController();
+        this.controllers.set(id, controller);
+        result = await this.downloadRange(entry, partialUri, id, generation, controller.signal);
+      } else {
+        task = FileSystem.createDownloadResumable(
+          entry.url,
+          partialUri,
+          { sessionType: FileSystemSessionType.BACKGROUND },
+          ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+            if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) return;
+            entry.bytesWritten = totalBytesWritten;
+            if (totalBytesExpectedToWrite > 0) entry.expectedBytes = totalBytesExpectedToWrite;
+            this.emit();
+          },
+          entry.resumeData,
+        );
+        this.tasks.set(id, task);
+        result = await task.downloadAsync();
+      }
       const isCurrent = this.accountId === accountAtStart &&
         this.generations.get(id) === generation &&
         this.entries.get(id) === entry;
@@ -308,6 +380,8 @@ export class ReelDownloadManager {
       entry.sizeBytes = info.size;
       entry.expectedBytes = expectedBytes > 0 ? expectedBytes : info.size;
       entry.bytesWritten = info.size;
+      entry.resumeData = undefined;
+      entry.needsUrlRefresh = false;
     } catch (error: any) {
       if (this.accountId === accountAtStart &&
           this.generations.get(id) === generation &&
@@ -320,10 +394,75 @@ export class ReelDownloadManager {
       // the old account must not delete its task or decrement its active count.
       if (this.accountId === accountAtStart) {
         if (task && this.tasks.get(id) === task) this.tasks.delete(id);
+        if (controller && this.controllers.get(id) === controller) this.controllers.delete(id);
         this.active = Math.max(0, this.active - 1);
         await this.persist(); this.emit(); this.pump();
       }
     }
+  }
+  private async downloadRange(
+    entry: ReelDownload,
+    partialUri: string,
+    id: string,
+    generation: number,
+    signal: AbortSignal,
+  ) {
+    const existing = await FileSystem.getInfoAsync(partialUri);
+    const offset = existing.exists ? existing.size ?? 0 : 0;
+    const response = await expoFetch(entry.url, {
+      headers: offset > 0 ? { Range: `bytes=${offset}-` } : undefined,
+      signal,
+    });
+    const contentRange = response.headers.get('content-range');
+    if (response.status === 416) {
+      const total = Number(contentRange?.match(/\*\/(\d+)$/)?.[1] ?? -1);
+      if (offset > 0 && total === offset) {
+        return { uri: partialUri, status: 206, headers: { 'content-range': `bytes 0-${offset - 1}/${offset}` } };
+      }
+    }
+    if (!response.ok) throw new Error(`Download failed with status ${response.status}`);
+    if (offset > 0) {
+      const rangeStart = Number(contentRange?.match(/^bytes\s+(\d+)-/i)?.[1] ?? -1);
+      if (response.status !== 206 || rangeStart !== offset) {
+        throw new Error('Download server did not accept the saved byte range');
+      }
+    }
+    const expectedBytes = Number(contentRange?.match(/\/(\d+)$/)?.[1] ?? response.headers.get('content-length') ?? 0);
+    if (!existing.exists) new File(partialUri).create();
+    const handle = new File(partialUri).open();
+    handle.offset = offset;
+    let bytesWritten = offset;
+    let lastPersisted = offset;
+    try {
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Download response had no body');
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        handle.writeBytes(value);
+        bytesWritten += value.byteLength;
+        if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) {
+          await reader.cancel();
+          return undefined;
+        }
+        entry.bytesWritten = bytesWritten;
+        if (expectedBytes > 0) entry.expectedBytes = expectedBytes;
+        this.emit();
+        if (bytesWritten - lastPersisted >= 1024 * 1024) {
+          lastPersisted = bytesWritten;
+          await this.persist();
+        }
+      }
+    } finally {
+      handle.close();
+    }
+    await this.persist();
+    const headers: Record<string, string> = {};
+    if (contentRange) headers['content-range'] = contentRange;
+    const contentLength = response.headers.get('content-length');
+    if (contentLength) headers['content-length'] = contentLength;
+    return { uri: partialUri, status: response.status, headers };
   }
 }
 

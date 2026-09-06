@@ -141,3 +141,4 @@
 - [Expo React type isolation](expo-react-type-isolation.md) — never globally override React type versions across web and Expo; Expo Launch requires its SDK-compatible types in the mobile importer.
 - [Metro image-size advisory](metro-image-size-advisory.md) — no safe upstream release exists; keep Metro on the bounded local parser until upstream publishes a patched version.
 - [Autoscaled media stream tokens](autoscaled-media-stream-tokens.md) — process-local tokens fail when mint and playback hit different instances; sign portable tokens and use memory only as a cache.
+- [iOS DownloadResumable signed URLs](ios-download-resumable-signed-urls.md) — resume blobs own temp bytes and embed the old request; use an app-owned Range file when URLs must refresh.
