@@ -69,6 +69,10 @@ router.get("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   }
 
   const { eligibleMoments, onFilmMoments } = await getLowlightCoverage(game);
+  // Match the highlight status endpoint: generated-media state must never be
+  // served from the deployment edge cache or mobile can keep seeing an old
+  // ready/processing response after invalidation or regeneration.
+  res.setHeader("Cache-Control", "no-store");
   res.json({
     status: normalizeStatus(lowlightStatus),
     lowlightObjectPath: lowlightObjectPath ?? null,

@@ -44,7 +44,10 @@ describe('saved-video playback caching', () => {
   });
 
   test('does not delete a completed local reel during a transient player error', () => {
-    expect(gameScreen).toContain("if (signedUrl?.startsWith('file:')) return;");
+    expect(gameScreen.match(/if \(signedUrl\.startsWith\('file:'\)\)/g)).toHaveLength(2);
+    expect(gameScreen).toContain('void loadHighlightVideo();');
+    expect(gameScreen).toContain('void loadLowlightVideo();');
+    expect(gameScreen).toContain('do not call forceFresh');
   });
 
   test('does not recreate the highlight loader when Clerk refreshes getToken', () => {
@@ -142,5 +145,16 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("highlightDownload?.status === 'downloading'");
     expect(gameScreen.match(/if \(!signedUrl \|\|/g)).toHaveLength(2);
     expect(gameScreen).toContain("forceFresh invalidates the active background download");
+  });
+
+  test('ignores empty native-player errors while a reel is still downloading', () => {
+    const lowlightGuard = gameScreen.indexOf("lowlightDownload?.status === 'downloading'");
+    const lowlightError = gameScreen.indexOf("setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.'", lowlightGuard);
+    const highlightGuard = gameScreen.indexOf("highlightDownload?.status === 'downloading'");
+    const highlightError = gameScreen.indexOf("setPlaybackError(message);", highlightGuard);
+    expect(lowlightGuard).toBeGreaterThan(-1);
+    expect(lowlightError).toBeGreaterThan(lowlightGuard);
+    expect(highlightGuard).toBeGreaterThan(-1);
+    expect(highlightError).toBeGreaterThan(highlightGuard);
   });
 });

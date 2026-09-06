@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import {
   saveDraft,
   clearDraft,
   resolveDraft,
   queueGame,
-  checkConnectivity,
   generateClientId,
   type ScorekeeperDraft,
 } from '@/lib/offlineQueue';
@@ -72,6 +72,7 @@ import { makeUploadStallHandler } from '@/lib/uploadStallAlert';
 import { concatSegmentsWithTimeout } from '@/lib/concatSegmentsWithTimeout';
 import { fetchIceServers } from '@/lib/fetchIceServers';
 import { drainPendingViewers } from '@/lib/drainPendingViewers';
+import { startLiveSession } from '@/lib/startLiveSession';
 import {
   BITRATE_LADDER,
   initialBitrateState,
@@ -118,10 +119,12 @@ export default function ScorekeeperScreen() {
   const requestUploadUrlMutation = useRequestUploadUrl();
 
   const { data: players, isLoading: playersLoading, refetch: refetchPlayers } = useListPlayers({
-    // Poll every 30 s so a player rename done in another tab or device is picked
-    // up without requiring the coach to reload or leave the screen.
+    // Camera recording is deliberately free of background roster requests.
+    // On some physical Android devices a React Query refresh at 30 seconds
+    // coincided with the camera/network native modules becoming unresponsive.
+    // Focus refresh still keeps the roster current before recording begins.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    query: { refetchInterval: 30_000 } as any,
+    query: { refetchInterval: recordVideo ? false : 30_000 } as any,
   });
 
   // Refetch the player list whenever this screen comes into focus so that
@@ -178,7 +181,6 @@ export default function ScorekeeperScreen() {
   const [isOnline, setIsOnline] = useState(true);
   // Mirror in a ref so async callbacks read the latest value without stale closures.
   const isOnlineRef = useRef(true);
-  const connectivityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [opponentScore, setOpponentScore] = useState(0);
   // Manual quick-score adjustment for our team (on top of auto-calculated player stats).
   // Coaches can tap +1/+2/+3 in the camera overlay to credit untracked points quickly.
@@ -303,6 +305,10 @@ export default function ScorekeeperScreen() {
   const [isLive, setIsLive] = useState(false);
   const [liveLoading, setLiveLoading] = useState(false);
   const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
+  // A timed-out POST may still have committed server-side. Reuse this ID on
+  // retries so the server returns that same session instead of creating a
+  // second invite link.
+  const liveStartRequestIdRef = useRef<string | null>(null);
   // Pulsing animation for the LIVE badge
   const livePulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -355,14 +361,14 @@ export default function ScorekeeperScreen() {
 
     setLiveLoading(true);
     try {
-      const token = await getToken();
-      const res = await fetch(`${API_BASE}/api/live/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ opponent: opponent as string, teamName: teamName as string }),
+      const requestId = liveStartRequestIdRef.current ?? generateClientId();
+      liveStartRequestIdRef.current = requestId;
+      const res = await startLiveSession({
+        apiBase: API_BASE,
+        opponent: opponent as string,
+        teamName: teamName as string,
+        requestId,
+        getToken,
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -376,6 +382,7 @@ export default function ScorekeeperScreen() {
       const { code } = await res.json();
       setLiveCode(code);
       setIsLive(true);
+      liveStartRequestIdRef.current = null;
       setShowGoLiveSheet(true);
       connectBroadcasterWs(code, teamScore, opponentScore);
     } catch (err: any) {
@@ -580,6 +587,9 @@ export default function ScorekeeperScreen() {
   }
 
   async function stopLiveBroadcast(code: string) {
+    // An intentional stop begins a new idempotency lifecycle. A future
+    // broadcast must not resume this invite code.
+    liveStartRequestIdRef.current = null;
     // Dismiss the go-live sheet first so it doesn't linger open while the
     // stop sequence runs (handles the case where handleSave calls us directly
     // without the sheet's own dismiss-then-stop button handler).
@@ -808,6 +818,23 @@ export default function ScorekeeperScreen() {
   async function startRecording() {
     if (!cameraRef.current || recordingStartedRef.current) return;
     if (!cameraPermission?.granted || !micPermission?.granted) return;
+    // Most Android camera HALs cannot service expo-camera and WebRTC capture at
+    // the same time. Trying to keep both sessions open can wedge the camera
+    // service (and, on affected devices, the RN UI) after several seconds.
+    // Recording takes priority; the live session continues score-only.
+    if (Platform.OS === 'android' && webrtcStreamRef.current) {
+      webrtcCameraFailedRef.current = true;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+      if (liveCode) {
+        broadcastWsSend({
+          type: 'join-broadcaster',
+          code: liveCode,
+          hasVideo: false,
+          videoMode: 'none',
+        });
+      }
+    }
     recordingStartedRef.current = true;
     const myGen = ++recordingGenerationRef.current;
     setIsRecording(true);
@@ -931,6 +958,21 @@ export default function ScorekeeperScreen() {
       stopWebRtcStream();
       return;
     }
+    // Avoid opening a second native camera session while expo-camera is
+    // recording. Android camera implementations commonly serialize or deadlock
+    // competing clients; viewers still receive the live scoreboard and link.
+    if (Platform.OS === 'android' && recordingStartedRef.current) {
+      webrtcCameraFailedRef.current = true;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+      broadcastWsSend({
+        type: 'join-broadcaster',
+        code: liveCode,
+        hasVideo: false,
+        videoMode: 'none',
+      });
+      return;
+    }
     // Open the camera stream for WebRTC broadcast.
     // expo-camera (CameraView) and react-native-webrtc both access the camera —
     // iOS 16+ supports simultaneous sessions cleanly.
@@ -1033,31 +1075,21 @@ export default function ScorekeeperScreen() {
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
     : '';
 
-  // ── Connectivity polling ───────────────────────────────────────────────────
-  // Probe the API's health endpoint every 5 s. On transition online→offline or
-  // offline→online, update state and (on recovery) kick off queued-game sync.
+  // ── Connectivity state ─────────────────────────────────────────────────────
+  // NetInfo uses native network-change notifications (and its web equivalent),
+  // avoiding periodic HTTP work while the camera is recording. Queue recovery
+  // remains owned app-wide by useOfflineQueueSync in _layout.tsx.
   useEffect(() => {
-    let mounted = true;
-
-    async function probe() {
-      const online = await checkConnectivity(API_BASE);
-      if (!mounted) return;
-      const wasOnline = isOnlineRef.current;
+    return NetInfo.addEventListener((state) => {
+      // Preserve the last known value while NetInfo is still determining the
+      // connection. A connected transport counts as online unless NetInfo has
+      // positively determined that the internet is unreachable.
+      if (state.isConnected === null) return;
+      const online = state.isConnected && state.isInternetReachable !== false;
       isOnlineRef.current = online;
       setIsOnline(online);
-      // Sync is handled app-level via useOfflineQueueSync in _layout.tsx
-    }
-
-    probe(); // immediate first check
-    connectivityIntervalRef.current = setInterval(probe, 5_000);
-    return () => {
-      mounted = false;
-      if (connectivityIntervalRef.current) {
-        clearInterval(connectivityIntervalRef.current);
-        connectivityIntervalRef.current = null;
-      }
-    };
-  }, [API_BASE]); // eslint-disable-line react-hooks/exhaustive-deps
+    });
+  }, []);
 
   // ── Draft autosave ─────────────────────────────────────────────────────────
   // Debounced: waits 2 s after the last change before writing to AsyncStorage,

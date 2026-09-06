@@ -92,6 +92,67 @@ describe('ReelDownloadManager behavior', () => {
     expect(relaunched.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
   });
 
+  test('recovers an atomically promoted final file when the completion manifest write was interrupted', async () => {
+    mockStorage.set('@stecstats/reel-downloads/v2/coach-a', JSON.stringify([{
+      ...reel(),
+      status: 'downloading',
+      requestedAt: 1,
+      expectedBytes: 4096,
+      bytesWritten: 4096,
+    }]));
+    const seed = new ReelDownloadManager();
+    await seed.activate('coach-a');
+    const finalUri = seed.get(7, 'highlight', 'reels/one.mp4')!.uri!;
+
+    // Recreate the crash boundary: moveAsync completed, but AsyncStorage still
+    // contains the preceding "downloading" snapshot.
+    mockFiles.set(finalUri, 4096);
+    const relaunched = new ReelDownloadManager();
+    await relaunched.activate('coach-a');
+
+    expect(relaunched.get(7, 'highlight', 'reels/one.mp4')).toMatchObject({
+      status: 'downloaded',
+      uri: finalUri,
+      sizeBytes: 4096,
+    });
+    expect(mockFiles.has(finalUri)).toBe(true);
+  });
+
+  test('serializes manifest writes so stale download progress cannot overwrite completion', async () => {
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a');
+    await manager.enqueue(reel());
+    const entry = manager.get(7, 'highlight', 'reels/one.mp4')!;
+    const storage = jest.requireMock('@react-native-async-storage/async-storage');
+    let releaseProgress!: () => void;
+    let writeCount = 0;
+    storage.setItem.mockImplementation((storageKey: string, value: string) => {
+      writeCount += 1;
+      if (writeCount === 1) {
+        return new Promise<void>((resolve) => {
+          releaseProgress = () => {
+            mockStorage.set(storageKey, value);
+            resolve();
+          };
+        });
+      }
+      mockStorage.set(storageKey, value);
+      return Promise.resolve();
+    });
+
+    entry.status = 'downloading';
+    const progressWrite = manager.persist();
+    await flush();
+    entry.status = 'downloaded';
+    const completionWrite = manager.persist();
+    await flush();
+    expect(writeCount).toBe(1);
+
+    releaseProgress();
+    await Promise.all([progressWrite, completionWrite]);
+    expect(JSON.parse(mockStorage.get('@stecstats/reel-downloads/v2/coach-a')!)[0].status).toBe('downloaded');
+  });
+
   test('resumes retained partial bytes after process recreation with a refreshed signed URL', async () => {
     Platform.OS = 'ios';
     const first = new ReelDownloadManager();

@@ -59,6 +59,10 @@ export class ReelDownloadManager {
   private connected = false;
   private unsubscribeNetwork: (() => void) | null = null;
   private activationChain: Promise<void> = Promise.resolve();
+  // AsyncStorage writes are asynchronous native operations. Without ordering,
+  // an older "downloading" snapshot can finish after the completion snapshot
+  // and make a valid reel look interrupted on the next launch.
+  private persistenceChain: Promise<void> = Promise.resolve();
 
   private manifestKey() { return `${MANIFEST_PREFIX}${this.accountId}`; }
   private uriFor(entry: Pick<ReelDownload, 'gameId' | 'type' | 'objectPath'>) {
@@ -131,8 +135,23 @@ export class ReelDownloadManager {
       // A manifest alone is never proof of completion: interrupted .part files and
       // zero-byte responses are discarded and re-queued only with a fresh URL.
       const sizeMatches = entry.expectedBytes == null || (info.exists && info.size === entry.expectedBytes);
-      if (entry.status === 'downloaded' && info.exists && (info.size ?? 0) > MIN_COMPLETE_BYTES && sizeMatches) {
-        this.entries.set(key(entry.gameId, entry.type, entry.objectPath), { ...entry, uri: durableUri });
+      if (info.exists && (info.size ?? 0) > MIN_COMPLETE_BYTES && sizeMatches) {
+        // The v2 final path is written only by atomically promoting a verified
+        // .part file. It can therefore be newer than the manifest when the OS
+        // kills the process between moveAsync and the final AsyncStorage write.
+        // Recover it instead of deleting good offline media and downloading it
+        // again merely because the persisted status is stale.
+        this.entries.set(key(entry.gameId, entry.type, entry.objectPath), {
+          ...entry,
+          uri: durableUri,
+          status: 'downloaded',
+          sizeBytes: info.size,
+          expectedBytes: entry.expectedBytes ?? info.size,
+          bytesWritten: info.size,
+          resumeData: undefined,
+          needsUrlRefresh: false,
+          error: undefined,
+        });
       } else {
         const partialUri = this.partialUriFor(entry);
         const partialInfo = await FileSystem.getInfoAsync(partialUri);
@@ -193,7 +212,13 @@ export class ReelDownloadManager {
   }
   async persist() {
     if (!this.accountId) return;
-    await AsyncStorage.setItem(this.manifestKey(), JSON.stringify(this.snapshot()));
+    const manifestKey = this.manifestKey();
+    const snapshot = JSON.stringify(this.snapshot());
+    const write = this.persistenceChain
+      .catch(() => undefined)
+      .then(() => AsyncStorage.setItem(manifestKey, snapshot));
+    this.persistenceChain = write;
+    await write;
   }
   async pauseActiveDownloads() {
     if (!this.accountId || this.tasks.size === 0) return;

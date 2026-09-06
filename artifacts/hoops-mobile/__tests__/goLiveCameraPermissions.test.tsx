@@ -81,6 +81,13 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(() => ({ invalidateQueries: jest.fn() })),
 }));
 
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: jest.fn(() => jest.fn()),
+  },
+}));
+
 jest.mock('@/hooks/useColors', () => ({
   useColors: jest.fn(() => ({
     background: '#000', foreground: '#fff', primary: '#f97316',
@@ -128,6 +135,27 @@ jest.mock('expo-camera', () => ({
   CameraView:               () => null,
   useCameraPermissions:     jest.fn(() => [{ granted: false }, jest.fn()]),
   useMicrophonePermissions: jest.fn(() => [{ granted: false }, jest.fn()]),
+}));
+
+// Scorekeeper only needs a pinch builder and pass-through wrappers here. Mock
+// the public API rather than React Native's NativeModules registry so this test
+// remains independent of RNGestureHandler's native bridge.
+jest.mock('react-native-gesture-handler', () => {
+  const passThrough = ({ children }: any) => children ?? null;
+  const pinch: any = {};
+  pinch.onStart = jest.fn(() => pinch);
+  pinch.onUpdate = jest.fn(() => pinch);
+  return {
+    GestureHandlerRootView: passThrough,
+    GestureDetector: passThrough,
+    Gesture: { Pinch: jest.fn(() => pinch) },
+  };
+});
+
+// These are the only reanimated APIs used by ScorekeeperScreen's pinch state.
+jest.mock('react-native-reanimated', () => ({
+  useSharedValue: jest.fn((initial: unknown) => ({ value: initial })),
+  runOnJS: jest.fn((fn: (...args: any[]) => unknown) => fn),
 }));
 
 // ── react-native — hand-rolled host-component mock ───────────────────────────

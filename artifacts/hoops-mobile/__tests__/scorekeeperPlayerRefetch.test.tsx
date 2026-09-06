@@ -42,6 +42,13 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(() => ({ invalidateQueries: jest.fn() })),
 }));
 
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: jest.fn(() => jest.fn()),
+  },
+}));
+
 jest.mock('@/hooks/useColors', () => ({
   useColors: jest.fn(() => ({
     background: '#000', foreground: '#fff', primary: '#f97316',
