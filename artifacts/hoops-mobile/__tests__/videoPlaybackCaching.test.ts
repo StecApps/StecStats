@@ -91,6 +91,26 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('sourceAttachChainRef.current = sourceAttachChainRef.current');
     expect(gameScreen).toContain('generation !== sourceAttachGenerationRef.current');
     expect(gameScreen).not.toContain('await player.replaceAsync(playbackUrl);');
+    expect(gameScreen).toContain('await player.replaceAsync(playbackSource(sourceAttachRequest.url, false));');
+  });
+
+  test('does not replace a reel source that is already attached and playing', () => {
+    expect(gameScreen).toContain('const attachedSourceRef = useRef<string | null>(null);');
+    expect(gameScreen).toContain('if (attachedSourceRef.current === sourceAttachRequest.url)');
+    expect(gameScreen).toContain('attachedSourceRef.current = sourceAttachRequest.url;');
+  });
+
+  test('allows an explicit retry to reattach a new file at the same local URI', () => {
+    expect(gameScreen.match(/if \(forceFresh\) \{\s+attachedSourceRef\.current = null;/g)).toHaveLength(2);
+    expect(gameScreen.match(/async function handleRegenerate[\s\S]*?attachedSourceRef\.current = null;/g)).toHaveLength(2);
+  });
+
+  test('declares local MP4 reels as uncached progressive video', () => {
+    expect(gameScreen).toMatch(/if \(url\.startsWith\('file:'\)\) \{[\s\S]*?useCaching: false,[\s\S]*?contentType: 'progressive'/);
+  });
+
+  test('fills the reel player instead of showing black contain bars', () => {
+    expect(gameScreen.match(/contentFit="cover"/g)).toHaveLength(2);
   });
 
   test('rejects stale reel load completions and uses the guarded resume path', () => {

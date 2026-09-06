@@ -156,6 +156,7 @@ function playbackSource(url: string, isHls: boolean, allowCaching = true) {
     return {
       uri: url,
       useCaching: false,
+      contentType: 'progressive' as const,
     };
   }
   return {
@@ -836,6 +837,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const loadGenerationRef = useRef(0);
   const sourceAttachGenerationRef = useRef(0);
   const sourceAttachChainRef = useRef<Promise<void>>(Promise.resolve());
+  const attachedSourceRef = useRef<string | null>(null);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -878,6 +880,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       if (!isCurrentLoad()) return;
       if (!token) throw new Error('Your session expired. Please sign in again.');
       if (forceFresh) {
+        attachedSourceRef.current = null;
         streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
         await reelDownloadManager.invalidate(gameId, 'lowlight', objectPath);
         if (!isCurrentLoad()) return;
@@ -906,6 +909,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   useEffect(() => () => {
     loadGenerationRef.current++;
     sourceAttachGenerationRef.current++;
+    attachedSourceRef.current = null;
   }, [lowlight?.lowlightObjectPath]);
 
   // Commit the local URI first so React has mounted the native VideoView before
@@ -920,8 +924,13 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       .catch(() => undefined)
       .then(async () => {
         if (cancelled || generation !== sourceAttachGenerationRef.current) return;
-        await player.replaceAsync(sourceAttachRequest.url);
+        if (attachedSourceRef.current === sourceAttachRequest.url) {
+          setPlaybackLoading(false);
+          return;
+        }
+        await player.replaceAsync(playbackSource(sourceAttachRequest.url, false));
         if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        attachedSourceRef.current = sourceAttachRequest.url;
         setPlaybackLoading(false);
       })
       .catch((error: any) => {
@@ -962,6 +971,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   async function handleRegenerateLowlight() {
     if (generateMutation.isPending) return;
     try {
+      attachedSourceRef.current = null;
       await reelDownloadManager.invalidate(gameId, 'lowlight', lowlight?.lowlightObjectPath);
       streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
       setSignedUrl(null);
@@ -1014,7 +1024,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
               <VideoView
                 player={player}
                 style={{ flex: 1 }}
-                contentFit="contain"
+                contentFit="cover"
                 allowsFullscreen
                 allowsPictureInPicture
                 nativeControls
@@ -1188,6 +1198,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const loadGenerationRef = useRef(0);
   const sourceAttachGenerationRef = useRef(0);
   const sourceAttachChainRef = useRef<Promise<void>>(Promise.resolve());
+  const attachedSourceRef = useRef<string | null>(null);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -1244,6 +1255,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       if (!token) throw new Error('Your session expired. Please sign in again.');
 
       if (forceFresh) {
+        attachedSourceRef.current = null;
         streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
         await reelDownloadManager.invalidate(gameId, 'highlight', objectPath);
         if (!isCurrentLoad()) return;
@@ -1286,6 +1298,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   useEffect(() => () => {
     loadGenerationRef.current++;
     sourceAttachGenerationRef.current++;
+    attachedSourceRef.current = null;
   }, [highlight?.highlightObjectPath]);
 
   // Attach only after the local URI state has committed and the native surface
@@ -1300,8 +1313,13 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       .catch(() => undefined)
       .then(async () => {
         if (cancelled || generation !== sourceAttachGenerationRef.current) return;
-        await player.replaceAsync(sourceAttachRequest.url);
+        if (attachedSourceRef.current === sourceAttachRequest.url) {
+          setPlaybackLoading(false);
+          return;
+        }
+        await player.replaceAsync(playbackSource(sourceAttachRequest.url, false));
         if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        attachedSourceRef.current = sourceAttachRequest.url;
         setPlaybackLoading(false);
       })
       .catch((error: any) => {
@@ -1426,6 +1444,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   async function handleRegenerate() {
     if (generateMutation.isPending) return;
     try {
+      attachedSourceRef.current = null;
       await reelDownloadManager.invalidate(gameId, 'highlight', highlight?.highlightObjectPath);
       streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
       setSignedUrl(null);
@@ -1479,7 +1498,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
               <VideoView
                 player={player}
                 style={{ flex: 1 }}
-                contentFit="contain"
+                contentFit="cover"
                 allowsFullscreen
                 allowsPictureInPicture
                 nativeControls

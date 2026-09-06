@@ -39,6 +39,12 @@ Reel downloads must write to a `.part` path and atomically promote only after HT
 
 **How to apply:** Never attach the transfer destination. Preserve active background tasks across screen/app lifecycle changes; only explicit failed-download retry should start a new transfer.
 
+Downloaded Expo Video reels must attach as explicit uncached progressive file sources, and repeated state updates must not replace the same source while it is playing.
+
+**Why:** A complete local MP4 could seek to its end but stall during sequential playback when attached as an ambiguous bare URI; duplicate attachment requests could also reset AVPlayer mid-play.
+
+**How to apply:** Pass local files through the typed playback-source helper, track the currently attached URI, skip identical replacements, and clear that identity before explicit retry/regeneration because those reuse the same deterministic path.
+
 An unfinished HLS build must be re-triggerable from playlist refreshes, and an unproxied short recording is not playable on iOS.
 
 **Why:** A process-local fire-and-forget encoder stopped after autoscale/restart while the client reused its cached playlist token, so no endpoint resumed it. Short games were simultaneously returning raw incompatible media as ready.
