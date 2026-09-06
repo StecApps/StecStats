@@ -19,6 +19,19 @@ jest.mock('expo-file-system/legacy', () => ({
   makeDirectoryAsync: jest.fn(() => Promise.resolve()),
   createDownloadResumable: jest.fn(),
 }));
+jest.mock('expo-file-system', () => ({
+  File: class MockFile {
+    create() {}
+    open() {
+      return {
+        offset: 0,
+        writeBytes: jest.fn(),
+        close: jest.fn(),
+      };
+    }
+  },
+}));
+jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
 import { ReelDownloadProvider, reelDownloadManager } from '@/lib/reelDownloadManager';
 
@@ -27,7 +40,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 describe('ReelDownloadProvider auth lifecycle', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  test('activates the signed-in account before initial discovery', async () => {
+  test('activates the signed-in account without scanning every game for reels', async () => {
     const calls: string[] = [];
     jest.spyOn(reelDownloadManager, 'activate').mockImplementation(async (accountId) => {
       calls.push(`activate:${accountId}`);
@@ -49,10 +62,11 @@ describe('ReelDownloadProvider auth lifecycle', () => {
       await flush();
     });
 
-    expect(calls).toEqual(['activate:coach-a', 'token', 'discover:coach-token']);
+    expect(calls).toEqual(['activate:coach-a']);
+    expect(getToken).not.toHaveBeenCalled();
   });
 
-  test('does not discover for an account replaced while its token is pending', async () => {
+  test('switches accounts without starting global reel discovery', async () => {
     let releaseFirst!: (token: string | null) => void;
     const firstToken = new Promise<string | null>((resolve) => { releaseFirst = resolve; });
     const getTokenA = jest.fn(() => firstToken);
@@ -82,7 +96,9 @@ describe('ReelDownloadProvider auth lifecycle', () => {
       await flush();
     });
 
-    expect(discover).toHaveBeenCalledTimes(1);
-    expect(discover).toHaveBeenCalledWith('token-b');
+    expect(discover).not.toHaveBeenCalled();
+    expect(getTokenA).not.toHaveBeenCalled();
+    expect(getTokenB).not.toHaveBeenCalled();
+    expect(reelDownloadManager.activate).toHaveBeenCalledWith('coach-b');
   });
 });

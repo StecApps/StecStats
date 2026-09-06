@@ -86,3 +86,9 @@ Long-game playback encodes must yield the global ffmpeg serializer in bounded ba
 **Why:** A 34-minute HLS build held the sole ffmpeg slot continuously, so a second game logged that its build started but could not produce any segment until the first entire transcode ended.
 
 **How to apply:** Run a small number of playback segments per ffmpeg invocation, rejoin the queue between batches, and use fast pre-input seeking only for the authenticated loopback Range source. Detect EOF with a zero-output batch before writing the final sentinel.
+
+Do not scan the game history for ready Highlight/Lowlight reels when the mobile app activates.
+
+**Why:** Fetching both reel statuses for up to 30 games produced waves of roughly 60 requests, automatically queued unrelated downloads, competed with current-game Film Room preparation, and made the app appear stuck.
+
+**How to apply:** Account activation may restore existing download metadata, but only the game/tab the coach opens may request a reel status, stream token, or local download. Automatic master-film upload is separate and must remain app-wide.

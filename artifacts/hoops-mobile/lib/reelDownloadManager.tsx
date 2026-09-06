@@ -471,7 +471,6 @@ type ContextValue = { downloads: ReelDownload[]; cellularAllowed: boolean; setCe
 const ReelDownloadContext = createContext<ContextValue | null>(null);
 export function ReelDownloadProvider({
   accountId,
-  getToken,
   children,
 }: {
   accountId: string | null;
@@ -488,18 +487,14 @@ export function ReelDownloadProvider({
       setCellular(reelDownloadManager.isCellularAllowed());
     };
     const unsubscribe = reelDownloadManager.subscribe(syncSnapshot);
-    void reelDownloadManager.activate(accountId).then(async () => {
+    void reelDownloadManager.activate(accountId).then(() => {
       syncSnapshot();
-      if (!cancelled && accountId && getToken) {
-        const token = await getToken();
-        if (!cancelled && token) await reelDownloadManager.discover(token);
-      }
     });
     return () => {
       cancelled = true;
       unsubscribe();
     };
-  }, [accountId, getToken]);
+  }, [accountId]);
   return <ReelDownloadContext.Provider value={useMemo(() => ({ downloads, cellularAllowed, setCellularAllowed: (v) => reelDownloadManager.setCellularAllowed(v) }), [downloads, cellularAllowed])}>{children}</ReelDownloadContext.Provider>;
 }
 export function useReelDownloads() {
