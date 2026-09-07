@@ -3,6 +3,7 @@ import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { db, gamesTable } from "@workspace/db";
 
 export type ReelKind = "highlight" | "lowlight";
+type ReelLeaseDb = Pick<typeof db, "update">;
 
 export const REEL_LEASE_MS = 10 * 60 * 1000;
 
@@ -33,6 +34,7 @@ export async function claimReelLease(
   kind: ReelKind,
   extra: Record<string, unknown> = {},
   now?: Date,
+  database: ReelLeaseDb = db,
 ): Promise<ReelLease | null> {
   const token = randomUUID();
   const startedAtValue = now ?? sql<Date>`NOW()`;
@@ -55,7 +57,7 @@ export async function claimReelLease(
         lowlightLeaseExpiresAt: leaseExpiresAtValue,
         ...extra,
       };
-  const rows = await db
+  const rows = await database
     .update(gamesTable)
     .set(values)
     .where(
@@ -115,9 +117,10 @@ export async function updateReelIfOwner(
   kind: ReelKind,
   token: string,
   values: Record<string, unknown>,
+  database: ReelLeaseDb = db,
 ): Promise<boolean> {
   const c = columnsFor(kind);
-  const rows = await db
+  const rows = await database
     .update(gamesTable)
     .set(values)
     .where(
