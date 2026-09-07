@@ -35,6 +35,7 @@ import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
+import { reelProgressText } from '@/lib/reelProgressText';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -888,23 +889,6 @@ const videoStyle = StyleSheet.create({
     overflow: 'hidden',
   },
 });
-
-function reelProgressText(progress: {
-  progressStage?: 'proxy' | 'clips' | 'finalizing' | 'ready' | null;
-  progressCompleted?: number | null;
-  progressTotal?: number | null;
-}): string {
-  const completed = progress.progressCompleted;
-  const total = progress.progressTotal;
-  if (progress.progressStage === 'proxy' && completed != null && total != null) {
-    return `Preparing source video · ${completed} of ${total} chunks`;
-  }
-  if (progress.progressStage === 'clips' && completed != null && total != null) {
-    return `Building reel · ${completed} of ${total} clips`;
-  }
-  if (progress.progressStage === 'finalizing') return 'Finalizing video';
-  return 'Waiting for server progress';
-}
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
