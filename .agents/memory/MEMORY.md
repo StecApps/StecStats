@@ -146,5 +146,5 @@
 - [Autoscaled background-job leases](autoscaled-background-job-leases.md) — long media jobs need DB-time leases and run-token fencing; process-local in-flight state is only an optimization.
 - [Queued reel progress semantics](queued-reel-progress.md) — waiting for a media slot is queued, not processing; start progress time only after token-fenced slot acquisition.
 - [GitHub workflow scope for TestFlight](github-workflow-scope.md) — repo-only tokens cannot push Actions files; verify workflow scope or trigger the same EAS build directly.
-- [Expo Video segmented reel endings](expo-video-segmented-reel-endings.md) — iOS may reach a local MP4’s final frame without emitting playToEnd; advance using validated manifest duration too.
+- [iOS continuous Highlight playback](expo-video-segmented-reel-endings.md) — prefer the rebuilt combined MP4; Expo source swaps can halt at 20-second clip boundaries.
 - [TestFlight build-number continuity](testflight-build-number-continuity.md) — keep local 8-digit iOS numbering; EAS remote counters like 82 sort below existing 202608xx builds.

@@ -1,10 +1,10 @@
 ---
-name: Expo Video segmented reel endings
-description: Reliable handoff between standalone local MP4 clips on iOS.
+name: iOS continuous Highlight playback
+description: Why iPhone Highlight playback uses the rebuilt combined MP4 rather than source-swapped standalone clips.
 ---
 
-For segmented iOS reel playback, do not rely exclusively on Expo Video's `playToEnd` event. Keep that listener, but also compare the server-validated clip duration during `timeUpdate` and when `playingChange` reports stopped. Trigger the same guarded advance exactly once.
+Prefer the single combined Highlight MP4 on iOS once the generator has rebuilt it as one continuous CFR H.264/AAC timeline. Keep standalone clips as a dormant fallback or for other workflows, but do not source-swap them during normal iPhone playback.
 
-**Why:** A production iPhone played a complete, independently validated 20-second MP4 to its final frame but remained on that clip. The stored clip and combined reel were complete; Expo Video did not reliably deliver the handoff event.
+**Why:** Production iPhones repeatedly stopped after 20–40 seconds even though five standalone clips and the full 102-second reel were complete. `playToEnd`, final `timeUpdate`, and terminal `playingChange` fallbacks could not make Expo source replacement reliable across clip boundaries.
 
-**How to apply:** Use a shared, idempotent advance path for `playToEnd`, the final `timeUpdate`, and a stopped player whose live `currentTime` is at the validated end. Reset the guard on source attachment and explicitly autoplay the next downloaded clip.
+**How to apply:** Use the combined reel for playback, offline download, and duration. Preserve the generator's continuous-timeline re-encode and validate the final MP4 before upload; do not regress to stream-copying discontinuous segment timestamps.
