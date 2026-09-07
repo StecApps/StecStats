@@ -2,6 +2,9 @@ name: Build and submit iOS to TestFlight
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - task-735-release-sync
 
 permissions:
   contents: read
