@@ -11,7 +11,9 @@ const highlightSection = gameScreen.slice(
 );
 
 describe('segmented iOS Highlight playback', () => {
-  test('prefers a non-empty playbackVersion 1 manifest only on iOS', () => {
+  test('prefers the continuous combined reel while retaining segmented fallback code', () => {
+    expect(highlightSection).toContain('const enableSegmentedIosHighlights = false');
+    expect(highlightSection).toContain('enableSegmentedIosHighlights &&');
     expect(highlightSection).toContain("Platform.OS === 'ios'");
     expect(highlightSection).toContain('highlight?.playbackVersion === 1');
     expect(highlightSection).toContain('segmentedClips.length > 0');

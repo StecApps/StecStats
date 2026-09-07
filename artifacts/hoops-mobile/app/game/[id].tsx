@@ -1289,7 +1289,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     () => [...(highlight?.clips ?? [])].sort((a, b) => a.index - b.index),
     [highlight?.clips],
   );
+  // Generator v11+ rebuilds the combined reel as one continuous CFR H.264/AAC
+  // timeline. Prefer that single file on iOS: replacing local sources between
+  // standalone clips still halts at 20-second boundaries on physical devices.
+  const enableSegmentedIosHighlights = false;
   const usesSegmentedPlayback =
+    enableSegmentedIosHighlights &&
     Platform.OS === 'ios' &&
     highlight?.playbackVersion === 1 &&
     segmentedClips.length > 0;
