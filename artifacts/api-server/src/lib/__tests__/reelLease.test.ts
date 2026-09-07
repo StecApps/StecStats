@@ -100,6 +100,7 @@ import {
   REEL_LEASE_MS,
   resumeReelJob,
   updateReelIfOwner,
+  updateReelProgressIfOwner,
 } from "../reelLease";
 
 beforeEach(() => {
@@ -126,7 +127,7 @@ describe("database-owned reel leases", () => {
       ]);
 
       expect([first, second].filter(Boolean)).toHaveLength(1);
-      expect(row.value[`${kind}Status`]).toBe(kind === "highlight" ? "queued" : "processing");
+      expect(row.value[`${kind}Status`]).toBe("queued");
       expect(row.value[`${kind}LeaseExpiresAt`]).toEqual(
         new Date(now.getTime() + REEL_LEASE_MS),
       );
@@ -151,7 +152,7 @@ describe("database-owned reel leases", () => {
 
       const invalidated = await invalidateOutdatedReadyReel(42, kind, 10);
       expect(invalidated).toBe(false);
-      expect(row.value[`${kind}Status`]).toBe(kind === "highlight" ? "queued" : "processing");
+      expect(row.value[`${kind}Status`]).toBe("queued");
       expect(row.value[`${kind}RunToken`]).toBe(lease!.token);
     },
   );
@@ -159,6 +160,9 @@ describe("database-owned reel leases", () => {
   it.each(["highlight", "lowlight"] as const)(
     "fences a timed-out %s worker before a retry starts",
     async (kind) => {
+      row.value[`${kind}ProgressStage`] = "clips";
+      row.value[`${kind}ProgressCompleted`] = 3;
+      row.value[`${kind}ProgressTotal`] = 5;
       const first = await claimReelLease(
         42,
         kind,
@@ -166,6 +170,9 @@ describe("database-owned reel leases", () => {
         new Date("2026-09-07T12:00:00Z"),
       );
       expect(first).not.toBeNull();
+      expect(row.value[`${kind}ProgressStage`]).toBeNull();
+      expect(row.value[`${kind}ProgressCompleted`]).toBeNull();
+      expect(row.value[`${kind}ProgressTotal`]).toBeNull();
 
       const timedOut = await updateReelIfOwner(42, kind, first!.token, {
         [`${kind}Status`]: "failed",
@@ -223,6 +230,30 @@ describe("database-owned reel leases", () => {
       expect(oldPublished).toBe(false);
       expect(newPublished).toBe(true);
       expect(row.value[`${kind}ObjectPath`]).toBe("/new-run.mp4");
+    },
+  );
+
+  it.each(["highlight", "lowlight"] as const)(
+    "persists %s progress only for the current run token",
+    async (kind) => {
+      const lease = await claimReelLease(
+        42,
+        kind,
+        {},
+        new Date("2026-09-07T12:00:00Z"),
+      );
+
+      expect(await updateReelProgressIfOwner(
+        42, kind, lease!.token, "proxy", 2, 5,
+      )).toBe(true);
+      expect(row.value[`${kind}ProgressStage`]).toBe("proxy");
+      expect(row.value[`${kind}ProgressCompleted`]).toBe(2);
+      expect(row.value[`${kind}ProgressTotal`]).toBe(5);
+
+      expect(await updateReelProgressIfOwner(
+        42, kind, "stale-token", "clips", 4, 4,
+      )).toBe(false);
+      expect(row.value[`${kind}ProgressStage`]).toBe("proxy");
     },
   );
 

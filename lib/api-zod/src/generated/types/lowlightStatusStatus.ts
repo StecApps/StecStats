@@ -11,6 +11,7 @@ export type LowlightStatusStatus = typeof LowlightStatusStatus[keyof typeof Lowl
 
 export const LowlightStatusStatus = {
   idle: 'idle',
+  queued: 'queued',
   processing: 'processing',
   ready: 'ready',
   failed: 'failed',

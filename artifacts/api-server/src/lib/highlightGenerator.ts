@@ -18,6 +18,7 @@ import {
 import {
   markReelEncodingStarted,
   startReelLeaseHeartbeat,
+  updateReelProgressIfOwner,
   updateReelIfOwner,
 } from "./reelLease";
 import { sendExpoPush } from "./expoPush";
@@ -858,6 +859,7 @@ async function encodeChunksToGcs(
   /** Direct ffmpeg duration cap for a fairness batch. Unlike maxDurationSec,
    * this is relative to this invocation and adds no extra chunk headroom. */
   encodeDurationSec?: number,
+  onChunkComplete?: (chunkIndex: number) => Promise<void>,
 ): Promise<{ actualNumChunks: number; segmentDurationsSec: number[] }> {
   const numChunks = existFlags.length;
   const gcsChunkPath = chunkPathFactory ?? ((i: number) =>
@@ -1018,6 +1020,7 @@ async function encodeChunksToGcs(
           logger.info({ gameId, chunk: chunkIdx }, "Proxy chunk: already in GCS, skipping");
         }
         segmentDurationsSec.push(actualDurationSec);
+        await onChunkComplete?.(chunkIdx);
         if (deleteAfterUpload) {
           await fs.unlink(localPath).catch(() => {});
         }
@@ -1227,7 +1230,19 @@ async function writeHlsSegmentMetadata(
     await fs.unlink(tmpFile).catch(() => {});
   }
 }
-const chunkEnsureInFlight = new Map<string, Promise<string[]>>();
+interface ChunkEnsureSubscriber {
+  signal?: AbortSignal;
+  onProgress?: (completed: number, total: number) => Promise<void>;
+  onAbort?: () => void;
+}
+
+interface ChunkEnsureEntry {
+  controller: AbortController;
+  subscribers: Set<ChunkEnsureSubscriber>;
+  promise: Promise<string[]>;
+}
+
+const chunkEnsureInFlight = new Map<string, ChunkEnsureEntry>();
 
 /**
  * Ensure every proxy chunk for a game exists in GCS and return their object
@@ -1246,15 +1261,70 @@ function ensureProxyChunksInGcs(
    * the last chunk they need pass this so the encoder stops early rather than
    * transcoding the entire game. Omit for full-game builds. */
   maxChunkNeeded?: number,
+  onProgress?: (completed: number, total: number) => Promise<void>,
 ): Promise<string[]> {
   const key = `${gameId}:${maxChunkNeeded ?? "all"}`;
-  const inFlight = chunkEnsureInFlight.get(key);
-  if (inFlight) return inFlight;
-  const p = doEnsureProxyChunksInGcs(gameId, ownerId, game, signal, maxChunkNeeded).finally(() => {
-    chunkEnsureInFlight.delete(key);
+  let entry = chunkEnsureInFlight.get(key);
+  if (!entry) {
+    const controller = new AbortController();
+    entry = {
+      controller,
+      subscribers: new Set(),
+      promise: Promise.resolve([]),
+    };
+    chunkEnsureInFlight.set(key, entry);
+    const capturedEntry = entry;
+    const fanOutProgress = async (completed: number, total: number): Promise<void> => {
+      await Promise.all([...capturedEntry.subscribers].map(async (subscriber) => {
+        if (!subscriber.signal?.aborted) {
+          await subscriber.onProgress?.(completed, total);
+        }
+      }));
+    };
+    entry.promise = doEnsureProxyChunksInGcs(
+      gameId, ownerId, game, controller.signal, maxChunkNeeded, fanOutProgress,
+    ).finally(() => {
+      for (const subscriber of capturedEntry.subscribers) {
+        if (subscriber.onAbort) {
+          subscriber.signal?.removeEventListener("abort", subscriber.onAbort);
+        }
+      }
+      capturedEntry.subscribers.clear();
+      if (chunkEnsureInFlight.get(key) === capturedEntry) {
+        chunkEnsureInFlight.delete(key);
+      }
+    });
+  }
+
+  const subscriber: ChunkEnsureSubscriber = { signal, onProgress };
+  entry.subscribers.add(subscriber);
+  if (signal) {
+    subscriber.onAbort = () => {
+      entry!.subscribers.delete(subscriber);
+      if (entry!.subscribers.size === 0) entry!.controller.abort();
+    };
+    if (signal.aborted) subscriber.onAbort();
+    else signal.addEventListener("abort", subscriber.onAbort, { once: true });
+  }
+
+  if (signal?.aborted) {
+    return Promise.reject(new HighlightError("Cancelled"));
+  }
+  if (!signal) return entry.promise;
+  let rejectWaiter: (() => void) | undefined;
+  const aborted = new Promise<string[]>((_, reject) => {
+    rejectWaiter = () => reject(new HighlightError("Cancelled"));
+    signal.addEventListener("abort", rejectWaiter, { once: true });
   });
-  chunkEnsureInFlight.set(key, p);
-  return p;
+  return Promise.race([
+    entry.promise,
+    aborted,
+  ]).finally(() => {
+    entry!.subscribers.delete(subscriber);
+    if (subscriber.onAbort) signal.removeEventListener("abort", subscriber.onAbort);
+    if (rejectWaiter) signal.removeEventListener("abort", rejectWaiter);
+    if (entry!.subscribers.size === 0) entry!.controller.abort();
+  });
 }
 
 async function doEnsureProxyChunksInGcs(
@@ -1263,6 +1333,7 @@ async function doEnsureProxyChunksInGcs(
   game: { videoObjectPath: string | null; videoDurationMs: number | null },
   signal?: AbortSignal,
   maxChunkNeeded?: number,
+  onProgress?: (completed: number, total: number) => Promise<void>,
 ): Promise<string[]> {
   const durationMs = game.videoDurationMs ?? 0;
   if (durationMs <= 0) {
@@ -1284,6 +1355,11 @@ async function doEnsureProxyChunksInGcs(
     ),
   );
   const chunkPlan = planProxyChunkBuild(existFlags, maxChunkNeeded);
+  const progressTotal = chunkPlan.requiredChunkCount;
+  const completedChunks = new Set(
+    existFlags.slice(0, progressTotal).flatMap((exists, index) => exists ? [index] : []),
+  );
+  await onProgress?.(completedChunks.size, progressTotal);
 
   if (maxChunkNeeded != null && chunkPlan.firstMissing === -1) {
     logger.info(
@@ -1370,6 +1446,13 @@ async function doEnsureProxyChunksInGcs(
           true,
           rangeSignal,
           maxDurationSec,
+          PROXY_CHUNK_DURATION_SEC,
+          undefined,
+          undefined,
+          async (chunkIndex) => {
+            if (chunkIndex < progressTotal) completedChunks.add(chunkIndex);
+            await onProgress?.(completedChunks.size, progressTotal);
+          },
         ),
       ));
       localController?.abort();
@@ -1377,7 +1460,12 @@ async function doEnsureProxyChunksInGcs(
       const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
       try {
         ({ actualNumChunks } = await encodeChunksToGcs(
-          gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal, maxDurationSec,
+          gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal,
+          maxDurationSec, PROXY_CHUNK_DURATION_SEC, undefined, undefined,
+          async (chunkIndex) => {
+            if (chunkIndex < progressTotal) completedChunks.add(chunkIndex);
+            await onProgress?.(completedChunks.size, progressTotal);
+          },
         ));
       } finally {
         release();
@@ -1758,6 +1846,9 @@ async function setGameStatus(
       ...(status !== "ready"
         ? { highlightClipManifest: null, highlightPlaybackVersion: null }
         : {}),
+      highlightProgressStage: status === "ready" ? "ready" : null,
+      highlightProgressCompleted: status === "ready" ? 1 : null,
+      highlightProgressTotal: status === "ready" ? 1 : null,
       ...extra,
       highlightRunToken: null,
       highlightLeaseExpiresAt: null,
@@ -1773,6 +1864,9 @@ async function setGameLowlightStatus(
   return updateReelIfOwner(gameId, "lowlight", runToken, {
       lowlightStatus: status,
       ...(status === "ready" ? { lowlightGeneratorVersion: GENERATOR_VERSION } : {}),
+      lowlightProgressStage: status === "ready" ? "ready" : null,
+      lowlightProgressCompleted: status === "ready" ? 1 : null,
+      lowlightProgressTotal: status === "ready" ? 1 : null,
       ...extra,
       lowlightRunToken: null,
       lowlightLeaseExpiresAt: null,
@@ -1974,6 +2068,7 @@ async function renderGameSegments(
   // Peak tmpfs usage stays at ~2 chunks (~550 MB) no matter how long the
   // game is — the full-proxy concat needed ~2.8 GB and was OOM-killed.
   chunkedSrc?: { chunkObjectPaths: string[]; signal?: AbortSignal },
+  onClipComplete?: (completed: number, total: number) => Promise<void>,
 ): Promise<{ segPaths: string[]; hasAudio: boolean }> {
   const chunked = chunkedSrc != null && chunkedSrc.chunkObjectPaths.length > 0;
   if (!chunked && srcPath == null) {
@@ -2262,6 +2357,7 @@ async function renderGameSegments(
   }
 
   let segments = buildSegments(eligible, duration, nameById, offsetMs, half2StartMs, halftimeGapMs);
+  await onClipComplete?.(0, segments.length);
   if (segments.length === 0) return { segPaths: [], hasAudio };
 
   // Chunked mode: pre-compute which chunk indices contain ≥1 segment using
@@ -2636,6 +2732,7 @@ async function renderGameSegments(
               await renderOne(seg, segIdx, { path: await ensureChunk(ci), seek: localSeek }),
             );
           }
+          await onClipComplete?.(segPaths.length, segments.length);
           segIdx++;
         }
 
@@ -2673,9 +2770,19 @@ async function renderGameSegments(
 
   // Process in ordered batches — results within each batch are parallel but
   // the overall array order matches segment order for the concat step.
+  let completedRenders = 0;
+  let progressPublication = Promise.resolve();
   for (let b = 0; b < segments.length; b += RENDER_CONCURRENCY) {
     const batch = segments.slice(b, b + RENDER_CONCURRENCY);
-    const results = await Promise.all(batch.map((seg, j) => renderOne(seg, b + j)));
+    const results = await Promise.all(batch.map(async (seg, j) => {
+      const result = await renderOne(seg, b + j);
+      const completed = ++completedRenders;
+      progressPublication = progressPublication.then(() =>
+        onClipComplete?.(completed, segments.length),
+      );
+      await progressPublication;
+      return result;
+    }));
     segPaths.push(...results);
   }
 
@@ -3098,6 +3205,11 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
     try {
       const chunkObjectPaths = await ensureProxyChunksInGcs(
         gameId, game.ownerId, game, ac.signal, highlightMaxChunkNeeded,
+        (completed, total) =>
+          updateReelProgressIfOwner(gameId, "highlight", runToken, "proxy", completed, total)
+            .then((owned) => {
+              if (!owned) ac.abort();
+            }),
       );
       highlightChunksConfirmed = true;
       rendered = await renderGameSegments(
@@ -3107,6 +3219,11 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
         game.videoHalftimeGapMs ?? undefined,
         game.videoDurationMs ?? undefined,
         { chunkObjectPaths, signal: ac.signal },
+        (completed, total) =>
+          updateReelProgressIfOwner(gameId, "highlight", runToken, "clips", completed, total)
+            .then((owned) => {
+              if (!owned) ac.abort();
+            }),
       );
     } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
@@ -3130,6 +3247,12 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
           game.videoHalf2StartMs ?? undefined,
           game.videoHalftimeGapMs ?? undefined,
           game.videoDurationMs ?? undefined,
+          undefined,
+          (completed, total) =>
+            updateReelProgressIfOwner(gameId, "highlight", runToken, "clips", completed, total)
+              .then((owned) => {
+                if (!owned) ac.abort();
+              }),
         );
       } finally {
         release();
@@ -3144,6 +3267,7 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
     // concatSegments) so the track plays continuously across all clips without
     // resetting at each boundary, and no intermediate file is written to disk.
     const outPath = path.join(tmpDir, "highlight.mp4");
+    await updateReelProgressIfOwner(gameId, "highlight", runToken, "finalizing", 0, 1);
     await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath, ac.signal);
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
 
@@ -3297,6 +3421,9 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
     reelMarkedActive = true;
     cancelHlsBuild(gameId);
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
+    if (!await markReelEncodingStarted(gameId, "lowlight", runToken)) {
+      throw new HighlightError("Cancelled");
+    }
 
     // Cut clips directly from individual proxy chunks in GCS — same bounded
     // tmpfs reasoning as generateHighlight. Concurrent highlight + lowlight
@@ -3329,6 +3456,11 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
     try {
       const chunkObjectPaths = await ensureProxyChunksInGcs(
         gameId, game.ownerId, game, ac.signal, lowlightMaxChunkNeeded,
+        (completed, total) =>
+          updateReelProgressIfOwner(gameId, "lowlight", runToken, "proxy", completed, total)
+            .then((owned) => {
+              if (!owned) ac.abort();
+            }),
       );
       lowlightChunksConfirmed = true;
       rendered = await renderGameSegments(
@@ -3338,6 +3470,11 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
         game.videoHalftimeGapMs ?? undefined,
         game.videoDurationMs ?? undefined,
         { chunkObjectPaths, signal: ac.signal },
+        (completed, total) =>
+          updateReelProgressIfOwner(gameId, "lowlight", runToken, "clips", completed, total)
+            .then((owned) => {
+              if (!owned) ac.abort();
+            }),
       );
     } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
@@ -3360,6 +3497,12 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
           game.videoHalf2StartMs ?? undefined,
           game.videoHalftimeGapMs ?? undefined,
           game.videoDurationMs ?? undefined,
+          undefined,
+          (completed, total) =>
+            updateReelProgressIfOwner(gameId, "lowlight", runToken, "clips", completed, total)
+              .then((owned) => {
+                if (!owned) ac.abort();
+              }),
         );
       } finally {
         release();
@@ -3374,6 +3517,7 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
     // concatSegments) so the track plays continuously across all clips without
     // resetting at each boundary, and no intermediate file is written to disk.
     const outPath = path.join(tmpDir, "lowlight.mp4");
+    await updateReelProgressIfOwner(gameId, "lowlight", runToken, "finalizing", 0, 1);
     await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath, ac.signal);
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
 

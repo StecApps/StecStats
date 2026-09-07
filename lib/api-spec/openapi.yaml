@@ -1300,7 +1300,22 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: When active encoding started. Null while status is "queued"; used by the client to estimate progress while status is "processing".
+          description: When active encoding started. Null while status is "queued".
+        progressStage:
+          type: string
+          enum: [proxy, clips, finalizing, ready]
+          nullable: true
+          description: Current durable server work stage. Null when no measurable work is active.
+        progressCompleted:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Durable work units completed in the current stage.
+        progressTotal:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Total work units in the current stage.
         eligibleMoments:
           type: integer
           description: Number of qualifying moments (made shots, rebounds, assists, steals, blocks).
@@ -1343,14 +1358,29 @@ components:
       properties:
         status:
           type: string
-          enum: [idle, processing, ready, failed]
+          enum: [idle, queued, processing, ready, failed]
         lowlightObjectPath: { type: string, nullable: true }
         error: { type: string, nullable: true }
         startedAt:
           type: string
           format: date-time
           nullable: true
-          description: When the current/most-recent generation run started.
+          description: When active encoding started. Null while status is "queued".
+        progressStage:
+          type: string
+          enum: [proxy, clips, finalizing, ready]
+          nullable: true
+          description: Current durable server work stage. Null when no measurable work is active.
+        progressCompleted:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Durable work units completed in the current stage.
+        progressTotal:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Total work units in the current stage.
         eligibleMoments:
           type: integer
           description: Number of qualifying moments (missed shots and turnovers).

@@ -83,6 +83,9 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
   let highlightObjectPath = game.highlightObjectPath;
   let highlightStartedAt = game.highlightStartedAt;
   let highlightPlaybackVersion = game.highlightPlaybackVersion;
+  let progressStage = game.highlightProgressStage;
+  let progressCompleted = game.highlightProgressCompleted;
+  let progressTotal = game.highlightProgressTotal;
   if (
     highlightStatus === "ready" &&
     (game.highlightGeneratorVersion ?? 0) < GENERATOR_VERSION
@@ -104,6 +107,9 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       highlightObjectPath = null;
       highlightStartedAt = null;
       highlightPlaybackVersion = null;
+      progressStage = null;
+      progressCompleted = null;
+      progressTotal = null;
     }
   }
 
@@ -134,6 +140,9 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       highlightObjectPath: highlightObjectPath ?? null,
       error: highlightError ?? null,
       startedAt: highlightStartedAt?.toISOString() ?? null,
+      progressStage: progressStage ?? null,
+      progressCompleted: progressCompleted ?? null,
+      progressTotal: progressTotal ?? null,
       eligibleMoments,
       onFilmMoments,
       musicTrack: game.highlightMusicTrack ?? null,
@@ -178,6 +187,9 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
   const musicTrackPath = musicTrackId ? getMusicTrackPath(musicTrackId) : undefined;
 
   let startedAt = game.highlightStartedAt;
+  let currentProgressStage = game.highlightProgressStage;
+  let currentProgressCompleted = game.highlightProgressCompleted;
+  let currentProgressTotal = game.highlightProgressTotal;
   const captured = await db.transaction((tx) =>
     captureAndInvalidateHighlight(
       tx,
@@ -196,6 +208,9 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       highlightError: null,
       highlightMusicTrack: musicTrackId ?? null,
       highlightNotificationSent: false,
+      highlightProgressStage: null,
+      highlightProgressCompleted: null,
+      highlightProgressTotal: null,
     },
     musicTrackPath ?? undefined,
     highlightRunner,
@@ -213,6 +228,9 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
     });
     responseStatus = normalizeStatus(current?.highlightStatus ?? game.highlightStatus);
     startedAt = current?.highlightStartedAt ?? game.highlightStartedAt;
+    currentProgressStage = current?.highlightProgressStage ?? null;
+    currentProgressCompleted = current?.highlightProgressCompleted ?? null;
+    currentProgressTotal = current?.highlightProgressTotal ?? null;
   }
 
   res.status(202).json(
@@ -221,6 +239,9 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       highlightObjectPath: captured ? null : (game.highlightObjectPath ?? null),
       error: null,
       startedAt: startedAt?.toISOString() ?? null,
+      progressStage: lease ? null : (currentProgressStage ?? null),
+      progressCompleted: lease ? null : (currentProgressCompleted ?? null),
+      progressTotal: lease ? null : (currentProgressTotal ?? null),
       eligibleMoments,
       musicTrack: musicTrackId ?? game.highlightMusicTrack ?? null,
       playbackVersion: null,
@@ -283,6 +304,9 @@ router.delete("/games/:gameId/highlight", requireAuth, async (req, res) => {
         highlightStatus: "failed",
         highlightError: "Generation was cancelled",
         highlightStartedAt: null,
+        highlightProgressStage: null,
+        highlightProgressCompleted: null,
+        highlightProgressTotal: null,
       },
     ),
   );

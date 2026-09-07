@@ -35,7 +35,7 @@ function sqlText(value: unknown): string {
 describe("boot-time schema additions", () => {
   beforeEach(() => executeMock.mockClear());
 
-  it("idempotently creates both segmented Highlight playback columns", async () => {
+  it("idempotently creates reel playback and progress columns", async () => {
     await applyReelLeaseSchemaAdditions();
     const statements = executeMock.mock.calls.map(([query]) => sqlText(query));
 
@@ -45,5 +45,12 @@ describe("boot-time schema additions", () => {
     expect(statements.some((statement) =>
       statement.includes("ADD COLUMN IF NOT EXISTS highlight_playback_version integer"),
     )).toBe(true);
+    for (const kind of ["highlight", "lowlight"]) {
+      for (const field of ["stage text", "completed integer", "total integer"]) {
+        expect(statements.some((statement) =>
+          statement.includes(`ADD COLUMN IF NOT EXISTS ${kind}_progress_${field}`),
+        )).toBe(true);
+      }
+    }
   });
 });

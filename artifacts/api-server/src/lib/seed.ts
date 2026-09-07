@@ -68,11 +68,17 @@ export async function applyVideoOffsetFixes(): Promise<void> {
           highlightStatus: null,
           highlightError: null,
           highlightStartedAt: null,
+          highlightProgressStage: null,
+          highlightProgressCompleted: null,
+          highlightProgressTotal: null,
           highlightGeneratorVersion: null,
           lowlightObjectPath: null,
           lowlightStatus: null,
           lowlightError: null,
           lowlightStartedAt: null,
+          lowlightProgressStage: null,
+          lowlightProgressCompleted: null,
+          lowlightProgressTotal: null,
           lowlightGeneratorVersion: null,
         })
         .where(and(eq(gamesTable.id, fix.gameId), replaceable))
@@ -145,5 +151,11 @@ export async function applyReelLeaseSchemaAdditions(): Promise<void> {
   // with a partially upgraded Highlight schema.
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_clip_manifest jsonb`);
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_playback_version integer`);
-  logger.info("Database-owned game reel lease and playback columns are ready");
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_progress_stage text`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_progress_completed integer`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_progress_total integer`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_progress_stage text`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_progress_completed integer`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_progress_total integer`);
+  logger.info("Database-owned game reel lease, playback, and progress columns are ready");
 }

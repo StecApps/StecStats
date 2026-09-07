@@ -468,6 +468,19 @@ export const HighlightStatusStatus = {
   failed: 'failed',
 } as const;
 
+/**
+ * Current durable server work stage. Null when no measurable work is active.
+ */
+export type HighlightStatusProgressStage = typeof HighlightStatusProgressStage[keyof typeof HighlightStatusProgressStage] | null;
+
+
+export const HighlightStatusProgressStage = {
+  proxy: 'proxy',
+  clips: 'clips',
+  finalizing: 'finalizing',
+  ready: 'ready',
+} as const;
+
 export interface HighlightClip {
   /** @minimum 0 */
   index: number;
@@ -481,8 +494,20 @@ export interface HighlightStatus {
   status: HighlightStatusStatus;
   highlightObjectPath?: string | null;
   error?: string | null;
-  /** When active encoding started. Null while status is "queued"; used by the client to estimate progress while status is "processing". */
+  /** When active encoding started. Null while status is "queued". */
   startedAt?: string | null;
+  /** Current durable server work stage. Null when no measurable work is active. */
+  progressStage?: HighlightStatusProgressStage;
+  /**
+     * Durable work units completed in the current stage.
+     * @minimum 0
+     */
+  progressCompleted?: number | null;
+  /**
+     * Total work units in the current stage.
+     * @minimum 0
+     */
+  progressTotal?: number | null;
   /** Number of qualifying moments (made shots, rebounds, assists, steals, blocks). */
   eligibleMoments: number;
   /** How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown. */
@@ -502,17 +527,43 @@ export type LowlightStatusStatus = typeof LowlightStatusStatus[keyof typeof Lowl
 
 export const LowlightStatusStatus = {
   idle: 'idle',
+  queued: 'queued',
   processing: 'processing',
   ready: 'ready',
   failed: 'failed',
+} as const;
+
+/**
+ * Current durable server work stage. Null when no measurable work is active.
+ */
+export type LowlightStatusProgressStage = typeof LowlightStatusProgressStage[keyof typeof LowlightStatusProgressStage] | null;
+
+
+export const LowlightStatusProgressStage = {
+  proxy: 'proxy',
+  clips: 'clips',
+  finalizing: 'finalizing',
+  ready: 'ready',
 } as const;
 
 export interface LowlightStatus {
   status: LowlightStatusStatus;
   lowlightObjectPath?: string | null;
   error?: string | null;
-  /** When the current/most-recent generation run started. */
+  /** When active encoding started. Null while status is "queued". */
   startedAt?: string | null;
+  /** Current durable server work stage. Null when no measurable work is active. */
+  progressStage?: LowlightStatusProgressStage;
+  /**
+     * Durable work units completed in the current stage.
+     * @minimum 0
+     */
+  progressCompleted?: number | null;
+  /**
+     * Total work units in the current stage.
+     * @minimum 0
+     */
+  progressTotal?: number | null;
   /** Number of qualifying moments (missed shots and turnovers). */
   eligibleMoments: number;
   /** How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown. */

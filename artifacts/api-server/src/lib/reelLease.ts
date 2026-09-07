@@ -27,12 +27,18 @@ function timeoutFailureValues(kind: ReelKind): Record<string, unknown> {
         highlightLeaseExpiresAt: null,
         highlightClipManifest: null,
         highlightPlaybackVersion: null,
+        highlightProgressStage: null,
+        highlightProgressCompleted: null,
+        highlightProgressTotal: null,
       }
     : {
         lowlightStatus: "failed",
         lowlightError: "Generation timed out — tap Try Again to rebuild.",
         lowlightRunToken: null,
         lowlightLeaseExpiresAt: null,
+        lowlightProgressStage: null,
+        lowlightProgressCompleted: null,
+        lowlightProgressTotal: null,
       };
 }
 
@@ -153,13 +159,19 @@ export async function claimReelLease(
         highlightLeaseExpiresAt: leaseExpiresAtValue,
         highlightClipManifest: null,
         highlightPlaybackVersion: null,
+        highlightProgressStage: null,
+        highlightProgressCompleted: null,
+        highlightProgressTotal: null,
         ...extra,
       }
     : {
-        lowlightStatus: "processing",
-        lowlightStartedAt: startedAtValue,
+        lowlightStatus: "queued",
+        lowlightStartedAt: null,
         lowlightRunToken: token,
         lowlightLeaseExpiresAt: leaseExpiresAtValue,
+        lowlightProgressStage: null,
+        lowlightProgressCompleted: null,
+        lowlightProgressTotal: null,
         ...extra,
       };
   const rows = await database
@@ -277,6 +289,38 @@ export async function updateReelIfOwner(
   return rows.length > 0;
 }
 
+export type ReelProgressStage = "proxy" | "clips" | "finalizing";
+
+export async function updateReelProgressIfOwner(
+  gameId: number,
+  kind: ReelKind,
+  token: string,
+  stage: ReelProgressStage,
+  completed: number,
+  total: number,
+  database: ReelLeaseDb = db,
+): Promise<boolean> {
+  const safeTotal = Math.max(0, Math.trunc(total));
+  const safeCompleted = Math.min(safeTotal, Math.max(0, Math.trunc(completed)));
+  return updateReelIfOwner(
+    gameId,
+    kind,
+    token,
+    kind === "highlight"
+      ? {
+          highlightProgressStage: stage,
+          highlightProgressCompleted: safeCompleted,
+          highlightProgressTotal: safeTotal,
+        }
+      : {
+          lowlightProgressStage: stage,
+          lowlightProgressCompleted: safeCompleted,
+          lowlightProgressTotal: safeTotal,
+        },
+    database,
+  );
+}
+
 export async function invalidateReelLease(
   gameId: number,
   kind: ReelKind,
@@ -303,6 +347,9 @@ export async function invalidateOutdatedReadyReel(
         highlightError: null,
         highlightObjectPath: null,
         highlightStartedAt: null,
+        highlightProgressStage: null,
+        highlightProgressCompleted: null,
+        highlightProgressTotal: null,
         highlightRunToken: null,
         highlightLeaseExpiresAt: null,
         highlightClipManifest: null,
@@ -313,6 +360,9 @@ export async function invalidateOutdatedReadyReel(
         lowlightError: null,
         lowlightObjectPath: null,
         lowlightStartedAt: null,
+        lowlightProgressStage: null,
+        lowlightProgressCompleted: null,
+        lowlightProgressTotal: null,
         lowlightRunToken: null,
         lowlightLeaseExpiresAt: null,
       };

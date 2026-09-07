@@ -35,10 +35,6 @@ import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
-import {
-  getGenerationElapsedSec,
-  resolveGenerationStartedAtMs,
-} from '@/lib/reelGenerationProgress';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -893,10 +889,22 @@ const videoStyle = StyleSheet.create({
   },
 });
 
-// Module-level maps so processing start times survive tab-switches/remounts.
-// Separate maps for highlight vs lowlight so they don't interfere.
-const processingStartTimes    = new Map<number, number>();
-const lowlightStartTimes      = new Map<number, number>();
+function reelProgressText(progress: {
+  progressStage?: 'proxy' | 'clips' | 'finalizing' | 'ready' | null;
+  progressCompleted?: number | null;
+  progressTotal?: number | null;
+}): string {
+  const completed = progress.progressCompleted;
+  const total = progress.progressTotal;
+  if (progress.progressStage === 'proxy' && completed != null && total != null) {
+    return `Preparing source video · ${completed} of ${total} chunks`;
+  }
+  if (progress.progressStage === 'clips' && completed != null && total != null) {
+    return `Building reel · ${completed} of ${total} clips`;
+  }
+  if (progress.progressStage === 'finalizing') return 'Finalizing video';
+  return 'Waiting for server progress';
+}
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
@@ -906,7 +914,6 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
   const generateMutation = useGenerateGameLowlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
@@ -920,32 +927,10 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 
   // Poll every 3 s while generating
   useEffect(() => {
-    if (lowlight?.status !== 'processing') return;
+    if (lowlight?.status !== 'queued' && lowlight?.status !== 'processing') return;
     const timer = setInterval(() => refetch(), 3000);
     return () => clearInterval(timer);
   }, [lowlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // The server timestamp is the source of truth. A local clock restarted every
-  // time polling briefly lost its response, making one continuous generation
-  // appear to jump back to 0%. The map is only a fallback for older responses
-  // that omit startedAt.
-  useEffect(() => {
-    if (!lowlight) return;
-    if (lowlight.status !== 'processing') {
-      lowlightStartTimes.delete(gameId);
-      setElapsedSec(0);
-      return;
-    }
-    const startedAtMs = resolveGenerationStartedAtMs(
-      lowlight.startedAt,
-      lowlightStartTimes.get(gameId),
-    );
-    lowlightStartTimes.set(gameId, startedAtMs);
-    const getElapsed = () => getGenerationElapsedSec(startedAtMs);
-    setElapsedSec(getElapsed());
-    const t = setInterval(() => setElapsedSec(getElapsed()), 1000);
-    return () => clearInterval(t);
-  }, [lowlight?.status, lowlight?.startedAt, gameId]);
 
   const lowlightReady = lowlight?.status === 'ready';
   const lowlightDownload = downloads.find((item) => item.gameId === gameId && item.type === 'lowlight' && item.objectPath === lowlight?.lowlightObjectPath);
@@ -1198,12 +1183,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     );
   }
 
-  if (lowlight.status === 'processing') {
-    const mins = Math.floor(elapsedSec / 60);
-    const secs = elapsedSec % 60;
-    const elapsed = mins > 0
-      ? `${mins}m ${String(secs).padStart(2, '0')}s`
-      : `${secs}s`;
+  if (lowlight.status === 'queued' || lowlight.status === 'processing') {
     return (
       <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
         <ActivityIndicator color={colors.destructive ?? '#ef4444'} size="large" />
@@ -1211,7 +1191,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           Preparing Lowlight video…
         </Text>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
-          Processing on the server · {elapsed} elapsed
+          {lowlight.status === 'queued' ? 'Waiting for an available video worker' : reelProgressText(lowlight)}
         </Text>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }]}>
           You can leave this screen. We’ll notify you when it’s ready.
@@ -1271,7 +1251,6 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
 
   // YouTube upload state — seed from the highlight response so the link
   // persists across remounts (the URL is persisted in the DB on the server).
@@ -1317,26 +1296,6 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     const timer = setInterval(() => refetch(), 3000);
     return () => clearInterval(timer);
   }, [highlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Match Lowlights: use the persisted server start time so polling gaps,
-  // remounts, and tab switches cannot restart the visible progress clock.
-  useEffect(() => {
-    if (!highlight) return;
-    if (highlight.status !== 'processing') {
-      processingStartTimes.delete(gameId);
-      setElapsedSec(0);
-      return;
-    }
-    const startedAtMs = resolveGenerationStartedAtMs(
-      highlight.startedAt,
-      processingStartTimes.get(gameId),
-    );
-    processingStartTimes.set(gameId, startedAtMs);
-    const getElapsed = () => getGenerationElapsedSec(startedAtMs);
-    setElapsedSec(getElapsed());
-    const t = setInterval(() => setElapsedSec(getElapsed()), 1000);
-    return () => clearInterval(t);
-  }, [highlight?.status, highlight?.startedAt, gameId]);
 
   // Use the stream-token approach (from the seek-fix task) so the video can
   // be seeked without freezing — signed object-storage URLs don't support
@@ -2111,11 +2070,6 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }
 
   if (highlight.status === 'processing') {
-    const mins = Math.floor(elapsedSec / 60);
-    const secs = elapsedSec % 60;
-    const elapsed = mins > 0
-      ? `${mins}m ${String(secs).padStart(2, '0')}s`
-      : `${secs}s`;
     return (
       <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -2123,7 +2077,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           Preparing Highlight video…
         </Text>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
-          Processing on the server · {elapsed} elapsed
+          {reelProgressText(highlight)}
         </Text>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }]}>
           You can leave this screen. We’ll notify you when it’s ready.

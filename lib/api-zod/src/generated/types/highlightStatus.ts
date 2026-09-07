@@ -6,14 +6,27 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { HighlightClip } from './highlightClip';
+import type { HighlightStatusProgressStage } from './highlightStatusProgressStage';
 import type { HighlightStatusStatus } from './highlightStatusStatus';
 
 export interface HighlightStatus {
   status: HighlightStatusStatus;
   highlightObjectPath?: string | null;
   error?: string | null;
-  /** When active encoding started. Null while status is "queued"; used by the client to estimate progress while status is "processing". */
+  /** When active encoding started. Null while status is "queued". */
   startedAt?: Date | null;
+  /** Current durable server work stage. Null when no measurable work is active. */
+  progressStage?: HighlightStatusProgressStage;
+  /**
+     * Durable work units completed in the current stage.
+     * @minimum 0
+     */
+  progressCompleted?: number | null;
+  /**
+     * Total work units in the current stage.
+     * @minimum 0
+     */
+  progressTotal?: number | null;
   /** Number of qualifying moments (made shots, rebounds, assists, steals, blocks). */
   eligibleMoments: number;
   /** How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown. */

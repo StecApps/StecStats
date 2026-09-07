@@ -809,6 +809,10 @@ export const GetTeamHighlightParams = zod.object({
   "teamId": zod.coerce.number()
 })
 
+export const getTeamHighlightResponseProgressCompletedMin = 0;
+
+export const getTeamHighlightResponseProgressTotalMin = 0;
+
 export const getTeamHighlightResponseClipsItemIndexMin = 0;
 
 
@@ -818,7 +822,10 @@ export const GetTeamHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\"; used by the client to estimate progress while status is \"processing\".'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\".'),
+  "progressStage": zod.enum(['proxy', 'clips', 'finalizing', 'ready']).nullish().describe('Current durable server work stage. Null when no measurable work is active.'),
+  "progressCompleted": zod.number().min(getTeamHighlightResponseProgressCompletedMin).nullish().describe('Durable work units completed in the current stage.'),
+  "progressTotal": zod.number().min(getTeamHighlightResponseProgressTotalMin).nullish().describe('Total work units in the current stage.'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
@@ -842,6 +849,10 @@ export const GenerateTeamHighlightParams = zod.object({
   "teamId": zod.coerce.number()
 })
 
+export const generateTeamHighlightResponseProgressCompletedMin = 0;
+
+export const generateTeamHighlightResponseProgressTotalMin = 0;
+
 export const generateTeamHighlightResponseClipsItemIndexMin = 0;
 
 
@@ -851,7 +862,10 @@ export const GenerateTeamHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\"; used by the client to estimate progress while status is \"processing\".'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\".'),
+  "progressStage": zod.enum(['proxy', 'clips', 'finalizing', 'ready']).nullish().describe('Current durable server work stage. Null when no measurable work is active.'),
+  "progressCompleted": zod.number().min(generateTeamHighlightResponseProgressCompletedMin).nullish().describe('Durable work units completed in the current stage.'),
+  "progressTotal": zod.number().min(generateTeamHighlightResponseProgressTotalMin).nullish().describe('Total work units in the current stage.'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
@@ -872,6 +886,10 @@ export const GetGameHighlightParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
+export const getGameHighlightResponseProgressCompletedMin = 0;
+
+export const getGameHighlightResponseProgressTotalMin = 0;
+
 export const getGameHighlightResponseClipsItemIndexMin = 0;
 
 
@@ -881,7 +899,10 @@ export const GetGameHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\"; used by the client to estimate progress while status is \"processing\".'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\".'),
+  "progressStage": zod.enum(['proxy', 'clips', 'finalizing', 'ready']).nullish().describe('Current durable server work stage. Null when no measurable work is active.'),
+  "progressCompleted": zod.number().min(getGameHighlightResponseProgressCompletedMin).nullish().describe('Durable work units completed in the current stage.'),
+  "progressTotal": zod.number().min(getGameHighlightResponseProgressTotalMin).nullish().describe('Total work units in the current stage.'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
@@ -905,6 +926,10 @@ export const GenerateGameHighlightParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
+export const generateGameHighlightResponseProgressCompletedMin = 0;
+
+export const generateGameHighlightResponseProgressTotalMin = 0;
+
 export const generateGameHighlightResponseClipsItemIndexMin = 0;
 
 
@@ -914,7 +939,10 @@ export const GenerateGameHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\"; used by the client to estimate progress while status is \"processing\".'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\".'),
+  "progressStage": zod.enum(['proxy', 'clips', 'finalizing', 'ready']).nullish().describe('Current durable server work stage. Null when no measurable work is active.'),
+  "progressCompleted": zod.number().min(generateGameHighlightResponseProgressCompletedMin).nullish().describe('Durable work units completed in the current stage.'),
+  "progressTotal": zod.number().min(generateGameHighlightResponseProgressTotalMin).nullish().describe('Total work units in the current stage.'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
@@ -951,11 +979,20 @@ export const GetGameLowlightParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
+export const getGameLowlightResponseProgressCompletedMin = 0;
+
+export const getGameLowlightResponseProgressTotalMin = 0;
+
+
+
 export const GetGameLowlightResponse = zod.object({
-  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "lowlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started.'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\".'),
+  "progressStage": zod.enum(['proxy', 'clips', 'finalizing', 'ready']).nullish().describe('Current durable server work stage. Null when no measurable work is active.'),
+  "progressCompleted": zod.number().min(getGameLowlightResponseProgressCompletedMin).nullish().describe('Durable work units completed in the current stage.'),
+  "progressTotal": zod.number().min(getGameLowlightResponseProgressTotalMin).nullish().describe('Total work units in the current stage.'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (missed shots and turnovers).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.')
@@ -972,11 +1009,20 @@ export const GenerateGameLowlightParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
+export const generateGameLowlightResponseProgressCompletedMin = 0;
+
+export const generateGameLowlightResponseProgressTotalMin = 0;
+
+
+
 export const GenerateGameLowlightResponse = zod.object({
-  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "lowlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started.'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\".'),
+  "progressStage": zod.enum(['proxy', 'clips', 'finalizing', 'ready']).nullish().describe('Current durable server work stage. Null when no measurable work is active.'),
+  "progressCompleted": zod.number().min(generateGameLowlightResponseProgressCompletedMin).nullish().describe('Durable work units completed in the current stage.'),
+  "progressTotal": zod.number().min(generateGameLowlightResponseProgressTotalMin).nullish().describe('Total work units in the current stage.'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (missed shots and turnovers).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.')

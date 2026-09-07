@@ -412,7 +412,7 @@ async function resumeOrphanedJobs(): Promise<void> {
       WHERE
         (highlight_status IN ('queued', 'processing') AND (highlight_lease_expires_at IS NULL OR highlight_lease_expires_at < NOW()))
         OR
-        (lowlight_status  = 'processing' AND (lowlight_lease_expires_at IS NULL OR lowlight_lease_expires_at < NOW()))
+        (lowlight_status IN ('queued', 'processing') AND (lowlight_lease_expires_at IS NULL OR lowlight_lease_expires_at < NOW()))
     `);
     for (const row of rows.rows) {
       const gameId = Number(row.id);
@@ -420,7 +420,7 @@ async function resumeOrphanedJobs(): Promise<void> {
         logger.info({ gameId }, "Resuming orphaned highlight job after restart");
         void resumeHighlightJob(gameId);
       }
-      if (row.lowlight_status === "processing") {
+      if (row.lowlight_status === "queued" || row.lowlight_status === "processing") {
         logger.info({ gameId }, "Resuming orphaned lowlight job after restart");
         void resumeLowlightJob(gameId);
       }

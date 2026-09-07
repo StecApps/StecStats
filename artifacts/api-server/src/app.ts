@@ -28,7 +28,9 @@ app.post("/api/admin/games/:gameId/cancel-reels", express.json(), async (req, re
   if (!Number.isInteger(gameId)) { res.status(400).json({ error: "Invalid gameId" }); return; }
   await db.update(gamesTable).set({
     highlightStatus: null, highlightStartedAt: null, highlightError: null,
+    highlightProgressStage: null, highlightProgressCompleted: null, highlightProgressTotal: null,
     lowlightStatus: null, lowlightStartedAt: null, lowlightError: null,
+    lowlightProgressStage: null, lowlightProgressCompleted: null, lowlightProgressTotal: null,
   }).where(eq(gamesTable.id, gameId));
   logger.info({ gameId }, "Admin: reel jobs cancelled");
   res.json({ ok: true });

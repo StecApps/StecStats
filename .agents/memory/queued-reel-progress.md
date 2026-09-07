@@ -3,8 +3,8 @@ name: Queued reel progress semantics
 description: How media-worker queue time, encoding progress, and lease takeover should be represented.
 ---
 
-Represent a reel waiting for a media-worker slot as `queued`, with no encoding start time. Change it to `processing` and set the start time only after the run-token owner acquires a slot. An expired lease takeover must return to `queued` before starting a fresh progress clock.
+Represent a reel waiting for a media-worker slot as `queued`, with no encoding start time or progress counters. Change it to `processing` only after the run-token owner acquires a slot. Persist only server-observed work units (proxy chunks, rendered clips, finalization), and reset progress atomically whenever a new run token is claimed.
 
-**Why:** Queue time is not encoding progress. Reusing an old or pre-slot timestamp makes progress appear frozen or falsely advanced, especially after cross-instance recovery.
+**Why:** Queue time is not encoding progress, elapsed time is not completed work, and carrying counters across lease takeover makes a new worker appear further along than it really is.
 
-**How to apply:** Any reel status API, polling UI, lease heartbeat, cancellation path, or startup recovery query must treat both `queued` and `processing` as active, while progress estimates must use only the `processing` start time.
+**How to apply:** Status APIs and polling UIs treat `queued` and `processing` as active, display only persisted stage counters, fence every progress write by run token, and clear/finalize counters on all terminal and invalidation paths.
