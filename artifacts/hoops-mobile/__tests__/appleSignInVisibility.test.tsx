@@ -37,7 +37,7 @@ jest.mock('@clerk/expo/legacy', () => ({
 }));
 
 const mockStartSSOFlow = jest.fn();
-jest.mock('@clerk/expo', () => ({
+jest.mock('@clerk/expo/experimental', () => ({
   useSSO: jest.fn(() => ({
     startSSOFlow: mockStartSSOFlow,
   })),
@@ -226,10 +226,11 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
     expect(wasAppleButtonRendered()).toBe(true);
   });
 
-  test('Apple button uses Clerk Apple OAuth directly', async () => {
+  test('Apple button uses Clerk Core 3 OAuth so existing sessions activate', async () => {
     mockStartSSOFlow.mockClear();
     mockStartSSOFlow.mockResolvedValue({
       createdSessionId: null,
+      authSessionResult: { type: 'success', url: 'stecstats://sso-callback' },
     });
     MockAppleButton.mockClear();
 
@@ -249,7 +250,7 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
     mockStartSSOFlow.mockClear();
     let resolveFallback!: (value: {
       createdSessionId: null;
-      setActive: undefined;
+      authSessionResult: { type: 'cancel' };
     }) => void;
     mockStartSSOFlow.mockImplementationOnce(
       () =>
@@ -279,7 +280,7 @@ describe('AuthScreen — Apple button on real iOS build (isAvailableAsync = true
     await act(async () => {
       resolveFallback({
         createdSessionId: null,
-        setActive: undefined,
+        authSessionResult: { type: 'cancel' },
       });
       await firstPress;
     });

@@ -11,7 +11,7 @@ import {
   ScrollView,
   useColorScheme,
 } from 'react-native';
-import { useSSO } from '@clerk/expo';
+import { useSSO } from '@clerk/expo/experimental';
 import { useSignIn, useSignUp } from '@clerk/expo/legacy';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -60,14 +60,19 @@ export default function AuthScreen() {
       // oauth_token_apple exchange rejects or mis-parses production iOS
       // tokens. Use the configured OAuth flow directly instead of attempting
       // that broken native exchange first.
+      // Core 3 finalizes newly created sessions and also activates an existing
+      // session when this Apple identity has signed in before. The legacy SSO
+      // hook only exposed createdSessionId, so returning users could complete
+      // Apple's sheet and then remain silently stuck on this screen.
       const result = await startSSOFlow({ strategy: 'oauth_apple' });
-      if (result.createdSessionId && result.setActive) {
-        await withAuthTimeout(
-          result.setActive({ session: result.createdSessionId }),
-          'opening your account',
-        );
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const authResultType = result.authSessionResult?.type;
+      if (authResultType === 'cancel' || authResultType === 'dismiss') {
+        return;
       }
+      if (authResultType !== 'success') {
+        throw new Error('Apple Sign-In did not complete. Please try again.');
+      }
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       if (err?.code === 'ERR_REQUEST_CANCELED') return;
       setError(
