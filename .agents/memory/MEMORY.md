@@ -144,3 +144,4 @@
 - [iOS DownloadResumable signed URLs](ios-download-resumable-signed-urls.md) — resume blobs own temp bytes and embed the old request; use an app-owned Range file when URLs must refresh.
 - [Master game-film retention](master-game-film-retention.md) — original film is durable; reels/proxies are replaceable, and account erasure is the only normal retention bypass.
 - [Autoscaled background-job leases](autoscaled-background-job-leases.md) — long media jobs need DB-time leases and run-token fencing; process-local in-flight state is only an optimization.
+- [GitHub workflow scope for TestFlight](github-workflow-scope.md) — repo-only tokens cannot push Actions files; verify workflow scope or trigger the same EAS build directly.
