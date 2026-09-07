@@ -26,9 +26,12 @@ describe('segmented iOS Highlight playback', () => {
     expect(highlightSection).not.toContain('setSourceAttachRequest({ url: currentClip.streamUrl');
   });
 
-  test('advances in manifest order explicitly on playToEnd', () => {
+  test('advances in manifest order on playToEnd or the validated duration fallback', () => {
     expect(highlightSection).toContain('.sort((a, b) => a.index - b.index)');
     expect(highlightSection).toContain("player.addListener('playToEnd'");
+    expect(highlightSection).toContain('const advanceSegmentedClip = () =>');
+    expect(highlightSection).toContain('const expectedEnd = (currentClip?.durationMs ?? 0) / 1000');
+    expect(highlightSection).toContain('currentTime >= expectedEnd - 0.15');
     expect(highlightSection).toContain('setCurrentClipPosition((position) => position + 1)');
     expect(highlightSection).toContain('shouldAutoPlayRef.current = true');
   });

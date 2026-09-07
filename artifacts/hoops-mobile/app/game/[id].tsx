@@ -1478,10 +1478,36 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   // fullscreen playback even though the downloaded MP4 is still valid.
   useEffect(() => {
     player.timeUpdateEventInterval = 0.5;
+    const advanceSegmentedClip = () => {
+      if (
+        !usesSegmentedPlayback ||
+        reachedEndRef.current ||
+        currentClipPosition >= segmentedClips.length - 1
+      ) {
+        return false;
+      }
+      reachedEndRef.current = true;
+      shouldAutoPlayRef.current = true;
+      attachedSourceRef.current = null;
+      setPlaybackError(null);
+      setPlaybackInterrupted(false);
+      setCurrentClipPosition((position) => position + 1);
+      return true;
+    };
     const timeSubscription = player.addListener('timeUpdate', ({ currentTime }) => {
       if (Number.isFinite(currentTime)) {
         playbackPositionRef.current = currentTime;
         if (currentTime > 0.25) playbackStartedRef.current = true;
+        // AVPlayer occasionally reaches the final frame of a local MP4 without
+        // Expo Video forwarding playToEnd. Use the server-validated manifest
+        // duration as a guarded fallback so segmented playback still advances.
+        const expectedEnd = (currentClip?.durationMs ?? 0) / 1000;
+        if (
+          expectedEnd > 0 &&
+          currentTime >= expectedEnd - 0.15
+        ) {
+          advanceSegmentedClip();
+        }
       }
       if (Number.isFinite(player.duration) && player.duration > 0) {
         playbackDurationRef.current = player.duration;
@@ -1508,17 +1534,11 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       }
     });
     const endSubscription = player.addListener('playToEnd', () => {
+      if (advanceSegmentedClip()) return;
       reachedEndRef.current = true;
       if (Number.isFinite(player.duration) && player.duration > 0) {
         playbackDurationRef.current = player.duration;
         playbackPositionRef.current = player.duration;
-      }
-      if (usesSegmentedPlayback && currentClipPosition < segmentedClips.length - 1) {
-        shouldAutoPlayRef.current = true;
-        attachedSourceRef.current = null;
-        setPlaybackError(null);
-        setPlaybackInterrupted(false);
-        setCurrentClipPosition((position) => position + 1);
       }
     });
     return () => {
@@ -1526,7 +1546,14 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       playingSubscription.remove();
       endSubscription.remove();
     };
-  }, [player, usesSegmentedPlayback, segmentedClips, currentClipPosition, gameId]);
+  }, [
+    player,
+    usesSegmentedPlayback,
+    segmentedClips,
+    currentClipPosition,
+    currentClip?.durationMs,
+    gameId,
+  ]);
 
   // AVPlayer can reject a signed source after Expo Video has accepted it, so
   // replaceAsync resolving is not sufficient proof that playback is available.
