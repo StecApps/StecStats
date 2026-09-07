@@ -15,17 +15,18 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { getMusicTrackPath } from "../lib/musicTracks";
 import {
-  claimReelLease,
+  cancelReelJob,
   invalidateOutdatedReadyReel,
-  invalidateReelLease,
-  updateReelIfOwner,
+  launchReelJob,
+  resumeReelJob,
 } from "../lib/reelLease";
 
 const router: IRouter = Router();
 
-// Guards against launching a second generation while one is already running
-// for the same game (survives concurrent requests within this process).
-const inFlight = new Set<number>();
+const highlightRunner = {
+  generate: generateHighlight,
+  cancelRun: cancelHighlightRun,
+};
 
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
@@ -124,39 +125,19 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
   const musicTrackPath = musicTrackId ? getMusicTrackPath(musicTrackId) : undefined;
 
   let startedAt = game.highlightStartedAt;
-  const lease = await claimReelLease(gameId, "highlight", {
-    highlightError: null,
-    highlightMusicTrack: musicTrackId ?? null,
-    highlightNotificationSent: false,
-  });
+  const lease = await launchReelJob(
+    gameId,
+    "highlight",
+    {
+      highlightError: null,
+      highlightMusicTrack: musicTrackId ?? null,
+      highlightNotificationSent: false,
+    },
+    musicTrackPath ?? undefined,
+    highlightRunner,
+  );
   if (lease) {
-    inFlight.add(gameId);
     startedAt = lease.startedAt;
-
-    // Fire-and-forget: generation continues after the response is sent.
-    // Hard timeout — download (~2 min) + proxy (22 chunks × ~3 min at nice -n 19)
-    // + segment encoding + upload. 2-hr game = ~70 min; give 130 min buffer.
-    const MAX_JOB_MS = 130 * 60 * 1000;
-    void Promise.race([
-      generateHighlight(gameId, musicTrackPath ?? undefined, lease.token),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
-    ])
-      .catch(async (err) => {
-        // Only stamp the timeout message when the watchdog actually fired —
-        // any other failure already wrote a specific error in generateHighlight.
-        if ((err as Error)?.message !== "timeout") return;
-        try {
-          await updateReelIfOwner(gameId, "highlight", lease.token, {
-            highlightStatus: "failed",
-            highlightError: "Generation timed out — tap Try Again to rebuild.",
-            highlightRunToken: null,
-            highlightLeaseExpiresAt: null,
-          });
-        } catch { /* best-effort */ } finally {
-          cancelHighlightRun(gameId, lease.token);
-        }
-      })
-      .finally(() => inFlight.delete(gameId));
   }
 
   res.status(202).json(
@@ -176,31 +157,7 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
  * Called at startup for processing games with no current owner.
  */
 export async function resumeHighlightJob(gameId: number): Promise<void> {
-  if (inFlight.has(gameId)) return;
-  const lease = await claimReelLease(gameId, "highlight");
-  if (!lease) return;
-  inFlight.add(gameId);
-  const MAX_JOB_MS = 130 * 60 * 1000;
-  void Promise.race([
-    generateHighlight(gameId, undefined, lease.token),
-    new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
-  ])
-    .catch(async (err) => {
-      // Only stamp the timeout message when the watchdog actually fired —
-      // any other failure already wrote a specific error in generateHighlight.
-      if ((err as Error)?.message !== "timeout") return;
-      try {
-        await updateReelIfOwner(gameId, "highlight", lease.token, {
-          highlightStatus: "failed",
-          highlightError: "Generation timed out — tap Try Again to rebuild.",
-          highlightRunToken: null,
-          highlightLeaseExpiresAt: null,
-        });
-      } catch { /* best-effort */ } finally {
-        cancelHighlightRun(gameId, lease.token);
-      }
-    })
-    .finally(() => inFlight.delete(gameId));
+  await resumeReelJob(gameId, "highlight", highlightRunner);
 }
 
 router.delete("/games/:gameId/highlight", requireAuth, async (req, res) => {
@@ -210,17 +167,15 @@ router.delete("/games/:gameId/highlight", requireAuth, async (req, res) => {
   });
   if (!game) { res.status(404).json({ error: "Game not found" }); return; }
 
-  cancelHighlightJob(gameId);
-  inFlight.delete(gameId);
   // Use "failed" (not null) so the status is never "processing" at the
   // moment of an OOM kill — the auto-resume query only picks up
   // "processing" games, so "failed" breaks the infinite restart loop.
-  await invalidateReelLease(gameId, "highlight", {
-      highlightStatus: "failed",
-      highlightStartedAt: null,
-      highlightObjectPath: null,
-      highlightError: "Generation was cancelled",
-    });
+  await cancelReelJob(gameId, "highlight", cancelHighlightJob, {
+    highlightStatus: "failed",
+    highlightStartedAt: null,
+    highlightObjectPath: null,
+    highlightError: "Generation was cancelled",
+  });
 
   res.json({ ok: true });
 });

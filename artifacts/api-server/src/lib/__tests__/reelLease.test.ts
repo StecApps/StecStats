@@ -85,10 +85,13 @@ vi.mock("drizzle-orm", () => ({
 }));
 
 import {
+  cancelReelJob,
   claimReelLease,
   invalidateOutdatedReadyReel,
   invalidateReelLease,
+  launchReelJob,
   REEL_LEASE_MS,
+  resumeReelJob,
   updateReelIfOwner,
 } from "../reelLease";
 
@@ -236,6 +239,87 @@ describe("database-owned reel leases", () => {
       expect(published).toBe(false);
       expect(row.value[`${kind}RunToken`]).toBeNull();
       expect(row.value[`${kind}ObjectPath`]).toBeUndefined();
+    },
+  );
+});
+
+describe("shared reel job orchestration", () => {
+  it.each(["highlight", "lowlight"] as const)(
+    "applies the same token-fenced watchdog and cleanup to %s jobs",
+    async (kind) => {
+      vi.useFakeTimers();
+      const generate = vi.fn(() => new Promise<void>(() => undefined));
+      const cancelRun = vi.fn();
+
+      await launchReelJob(42, kind, {}, undefined, { generate, cancelRun });
+      await vi.advanceTimersByTimeAsync(130 * 60 * 1000);
+
+      expect(row.value[`${kind}Status`]).toBe("failed");
+      expect(row.value[`${kind}Error`]).toBe(
+        "Generation timed out — tap Try Again to rebuild.",
+      );
+      expect(row.value[`${kind}RunToken`]).toBeNull();
+      expect(row.value[`${kind}LeaseExpiresAt`]).toBeNull();
+      expect(cancelRun).toHaveBeenCalledWith(42, expect.any(String));
+
+      row.value[`${kind}Status`] = "failed";
+      await resumeReelJob(42, kind, { generate, cancelRun });
+      expect(generate).toHaveBeenCalledTimes(2);
+      await cancelReelJob(42, kind, vi.fn(), {
+        [`${kind}Status`]: "failed",
+      });
+      vi.useRealTimers();
+    },
+  );
+
+  it.each(["highlight", "lowlight"] as const)(
+    "cancels and invalidates %s jobs through the shared path",
+    async (kind) => {
+      const cancelAllRuns = vi.fn();
+      await cancelReelJob(42, kind, cancelAllRuns, {
+        [`${kind}Status`]: "failed",
+        [`${kind}Error`]: "Generation was cancelled",
+      });
+
+      expect(cancelAllRuns).toHaveBeenCalledWith(42);
+      expect(row.value[`${kind}Status`]).toBe("failed");
+      expect(row.value[`${kind}RunToken`]).toBeNull();
+      expect(row.value[`${kind}LeaseExpiresAt`]).toBeNull();
+    },
+  );
+
+  it.each(["highlight", "lowlight"] as const)(
+    "does not let late %s cleanup unprotect a newer retry",
+    async (kind) => {
+      let finishOldRun!: () => void;
+      let finishNewRun!: () => void;
+      const generate = vi
+        .fn()
+        .mockImplementationOnce(
+          () => new Promise<void>((resolve) => { finishOldRun = resolve; }),
+        )
+        .mockImplementationOnce(
+          () => new Promise<void>((resolve) => { finishNewRun = resolve; }),
+        );
+      const runner = { generate, cancelRun: vi.fn() };
+
+      await launchReelJob(42, kind, {}, undefined, runner);
+      await Promise.resolve();
+      await cancelReelJob(42, kind, vi.fn(), {
+        [`${kind}Status`]: "failed",
+      });
+      await launchReelJob(42, kind, {}, undefined, runner);
+      await Promise.resolve();
+
+      finishOldRun();
+      await Promise.resolve();
+      await Promise.resolve();
+      await resumeReelJob(42, kind, runner);
+
+      expect(generate).toHaveBeenCalledTimes(2);
+      finishNewRun();
+      await Promise.resolve();
+      await Promise.resolve();
     },
   );
 });

@@ -26,7 +26,7 @@ const {
   dbUpdateMock,
   countEligibleMock,
   generateHighlightMock,
-  claimReelLeaseMock,
+  launchReelJobMock,
 } = vi.hoisted(() => {
   const currentUser = {
     value: { id: 7, clerkUserId: "clerk_coach", email: "coach@example.com" } as {
@@ -43,7 +43,7 @@ const {
   const findFirstMock = vi.fn();
   const countEligibleMock = vi.fn().mockResolvedValue(3);
   const generateHighlightMock = vi.fn().mockResolvedValue(undefined);
-  const claimReelLeaseMock = vi.fn();
+  const launchReelJobMock = vi.fn();
 
   return {
     currentUser,
@@ -53,7 +53,7 @@ const {
     dbUpdateMock,
     countEligibleMock,
     generateHighlightMock,
-    claimReelLeaseMock,
+    launchReelJobMock,
   };
 });
 
@@ -113,10 +113,10 @@ vi.mock("../../lib/musicTracks", () => ({
 }));
 
 vi.mock("../../lib/reelLease", () => ({
-  claimReelLease: claimReelLeaseMock,
+  launchReelJob: launchReelJobMock,
+  resumeReelJob: vi.fn(),
+  cancelReelJob: vi.fn(),
   invalidateOutdatedReadyReel: vi.fn().mockResolvedValue(false),
-  invalidateReelLease: vi.fn(),
-  updateReelIfOwner: vi.fn(),
 }));
 
 vi.mock("drizzle-orm", async (importActual) => {
@@ -182,7 +182,7 @@ beforeEach(() => {
   dbUpdateMock.mockReturnValue({ set: dbUpdateSetMock });
   countEligibleMock.mockResolvedValue(3);
   generateHighlightMock.mockResolvedValue(undefined);
-  claimReelLeaseMock.mockResolvedValue({
+  launchReelJobMock.mockResolvedValue({
     token: "00000000-0000-4000-8000-000000000001",
     startedAt: new Date(),
     leaseExpiresAt: new Date(Date.now() + 600_000),
@@ -203,10 +203,12 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
 
     // The DB update must include highlightNotificationSent: false so the new
     // reel triggers a fresh notification when it completes.
-    expect(claimReelLeaseMock).toHaveBeenCalledWith(
+    expect(launchReelJobMock).toHaveBeenCalledWith(
       99,
       "highlight",
       expect.objectContaining({ highlightNotificationSent: false }),
+      undefined,
+      expect.objectContaining({ generate: generateHighlightMock }),
     );
   });
 
@@ -217,10 +219,12 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
 
     await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
 
-    expect(claimReelLeaseMock).toHaveBeenCalledWith(
+    expect(launchReelJobMock).toHaveBeenCalledWith(
       99,
       "highlight",
       expect.objectContaining({ highlightNotificationSent: false }),
+      undefined,
+      expect.any(Object),
     );
   });
 
@@ -231,10 +235,12 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
 
     await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
 
-    expect(claimReelLeaseMock).toHaveBeenCalledWith(
+    expect(launchReelJobMock).toHaveBeenCalledWith(
       99,
       "highlight",
       expect.objectContaining({ highlightNotificationSent: false }),
+      undefined,
+      expect.any(Object),
     );
   });
 
@@ -243,12 +249,14 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
 
     await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
 
-    expect(claimReelLeaseMock).toHaveBeenCalledWith(
+    expect(launchReelJobMock).toHaveBeenCalledWith(
       99,
       "highlight",
       expect.objectContaining({
         highlightNotificationSent: false,
       }),
+      undefined,
+      expect.any(Object),
     );
   });
 
@@ -262,7 +270,7 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
       }),
     );
 
-    claimReelLeaseMock.mockResolvedValueOnce(null);
+    launchReelJobMock.mockResolvedValueOnce(null);
     const res = await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
     // Should still 202 but without re-triggering the job
     expect(res.status).toBe(202);

@@ -6,6 +6,107 @@ export type ReelKind = "highlight" | "lowlight";
 type ReelLeaseDb = Pick<typeof db, "update">;
 
 export const REEL_LEASE_MS = 10 * 60 * 1000;
+const REEL_JOB_TIMEOUT_MS = 130 * 60 * 1000;
+const inFlightReelJobs = new Map<string, string>();
+
+export interface ReelJobRunner {
+  generate: (gameId: number, musicTrackPath: string | undefined, token: string) => Promise<void>;
+  cancelRun: (gameId: number, token: string) => void;
+}
+
+function reelJobKey(gameId: number, kind: ReelKind): string {
+  return `${kind}:${gameId}`;
+}
+
+function timeoutFailureValues(kind: ReelKind): Record<string, unknown> {
+  return kind === "highlight"
+    ? {
+        highlightStatus: "failed",
+        highlightError: "Generation timed out — tap Try Again to rebuild.",
+        highlightRunToken: null,
+        highlightLeaseExpiresAt: null,
+      }
+    : {
+        lowlightStatus: "failed",
+        lowlightError: "Generation timed out — tap Try Again to rebuild.",
+        lowlightRunToken: null,
+        lowlightLeaseExpiresAt: null,
+      };
+}
+
+function runClaimedReelJob(
+  gameId: number,
+  kind: ReelKind,
+  token: string,
+  musicTrackPath: string | undefined,
+  runner: ReelJobRunner,
+): void {
+  const key = reelJobKey(gameId, kind);
+  inFlightReelJobs.set(key, token);
+  let watchdog: NodeJS.Timeout | undefined;
+  const timeout = new Promise<void>((_, reject) => {
+    watchdog = setTimeout(() => reject(new Error("timeout")), REEL_JOB_TIMEOUT_MS);
+    watchdog.unref();
+  });
+
+  const generation = Promise.resolve().then(() =>
+    runner.generate(gameId, musicTrackPath, token),
+  );
+  void Promise.race([generation, timeout])
+    .catch(async (error) => {
+      if ((error as Error)?.message !== "timeout") return;
+      try {
+        await updateReelIfOwner(gameId, kind, token, timeoutFailureValues(kind));
+      } catch {
+        // The watchdog is best-effort; token fencing still prevents stale publication.
+      } finally {
+        runner.cancelRun(gameId, token);
+      }
+    })
+    .finally(() => {
+      if (watchdog) clearTimeout(watchdog);
+      if (inFlightReelJobs.get(key) === token) {
+        inFlightReelJobs.delete(key);
+      }
+    });
+}
+
+export async function launchReelJob(
+  gameId: number,
+  kind: ReelKind,
+  extra: Record<string, unknown>,
+  musicTrackPath: string | undefined,
+  runner: ReelJobRunner,
+): Promise<ReelLease | null> {
+  const lease = await claimReelLease(gameId, kind, extra);
+  if (lease) {
+    runClaimedReelJob(gameId, kind, lease.token, musicTrackPath, runner);
+  }
+  return lease;
+}
+
+export async function resumeReelJob(
+  gameId: number,
+  kind: ReelKind,
+  runner: ReelJobRunner,
+): Promise<void> {
+  if (inFlightReelJobs.has(reelJobKey(gameId, kind))) return;
+  const lease = await claimReelLease(gameId, kind);
+  if (lease) {
+    runClaimedReelJob(gameId, kind, lease.token, undefined, runner);
+  }
+}
+
+export async function cancelReelJob(
+  gameId: number,
+  kind: ReelKind,
+  cancelAllRuns: (gameId: number) => void,
+  values: Record<string, unknown>,
+): Promise<void> {
+  cancelAllRuns(gameId);
+  inFlightReelJobs.delete(reelJobKey(gameId, kind));
+  await invalidateReelLease(gameId, kind, values);
+}
 
 function columnsFor(kind: ReelKind) {
   return kind === "highlight"

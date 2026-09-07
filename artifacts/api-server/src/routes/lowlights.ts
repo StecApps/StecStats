@@ -15,15 +15,18 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { getMusicTrackPath } from "../lib/musicTracks";
 import {
-  claimReelLease,
+  cancelReelJob,
   invalidateOutdatedReadyReel,
-  invalidateReelLease,
-  updateReelIfOwner,
+  launchReelJob,
+  resumeReelJob,
 } from "../lib/reelLease";
 
 const router: IRouter = Router();
 
-const inFlight = new Set<number>();
+const lowlightRunner = {
+  generate: generateLowlight,
+  cancelRun: cancelLowlightRun,
+};
 function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
   if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
   return "idle";
@@ -110,36 +113,19 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   const musicTrackPath = musicTrackId ? getMusicTrackPath(musicTrackId) : undefined;
 
   let startedAt = game.lowlightStartedAt;
-  const lease = await claimReelLease(gameId, "lowlight", {
-    lowlightError: null,
-    lowlightMusicTrack: musicTrackId ?? null,
-    lowlightNotificationSent: false,
-  });
+  const lease = await launchReelJob(
+    gameId,
+    "lowlight",
+    {
+      lowlightError: null,
+      lowlightMusicTrack: musicTrackId ?? null,
+      lowlightNotificationSent: false,
+    },
+    musicTrackPath ?? undefined,
+    lowlightRunner,
+  );
   if (lease) {
-    inFlight.add(gameId);
     startedAt = lease.startedAt;
-    // Hard timeout — 2-hr game: download + proxy (nice -n 19) + encode + upload
-    const MAX_JOB_MS = 130 * 60 * 1000;
-    void Promise.race([
-      generateLowlight(gameId, musicTrackPath ?? undefined, lease.token),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
-    ])
-      .catch(async (err) => {
-        // Only stamp the timeout message when the watchdog actually fired —
-        // any other failure already wrote a specific error in generateLowlight.
-        if ((err as Error)?.message !== "timeout") return;
-        try {
-          await updateReelIfOwner(gameId, "lowlight", lease.token, {
-            lowlightStatus: "failed",
-            lowlightError: "Generation timed out — tap Try Again to rebuild.",
-            lowlightRunToken: null,
-            lowlightLeaseExpiresAt: null,
-          });
-        } catch { /* best-effort */ } finally {
-          cancelLowlightRun(gameId, lease.token);
-        }
-      })
-      .finally(() => inFlight.delete(gameId));
   }
 
   res.status(202).json({
@@ -156,31 +142,7 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
  * Atomically claim and re-trigger a lowlight job whose database lease expired.
  */
 export async function resumeLowlightJob(gameId: number): Promise<void> {
-  if (inFlight.has(gameId)) return;
-  const lease = await claimReelLease(gameId, "lowlight");
-  if (!lease) return;
-  inFlight.add(gameId);
-  const MAX_JOB_MS = 130 * 60 * 1000;
-  void Promise.race([
-    generateLowlight(gameId, undefined, lease.token),
-    new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
-  ])
-    .catch(async (err) => {
-      // Only stamp the timeout message when the watchdog actually fired —
-      // any other failure already wrote a specific error in generateLowlight.
-      if ((err as Error)?.message !== "timeout") return;
-      try {
-        await updateReelIfOwner(gameId, "lowlight", lease.token, {
-          lowlightStatus: "failed",
-          lowlightError: "Generation timed out — tap Try Again to rebuild.",
-          lowlightRunToken: null,
-          lowlightLeaseExpiresAt: null,
-        });
-      } catch { /* best-effort */ } finally {
-        cancelLowlightRun(gameId, lease.token);
-      }
-    })
-    .finally(() => inFlight.delete(gameId));
+  await resumeReelJob(gameId, "lowlight", lowlightRunner);
 }
 
 router.delete("/games/:gameId/lowlight", requireAuth, async (req, res) => {
@@ -190,14 +152,12 @@ router.delete("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   });
   if (!game) { res.status(404).json({ error: "Game not found" }); return; }
 
-  cancelLowlightJob(gameId);
-  inFlight.delete(gameId);
-  await invalidateReelLease(gameId, "lowlight", {
-      lowlightStatus: "failed",
-      lowlightStartedAt: null,
-      lowlightObjectPath: null,
-      lowlightError: "Generation was cancelled",
-    });
+  await cancelReelJob(gameId, "lowlight", cancelLowlightJob, {
+    lowlightStatus: "failed",
+    lowlightStartedAt: null,
+    lowlightObjectPath: null,
+    lowlightError: "Generation was cancelled",
+  });
 
   res.json({ ok: true });
 });
