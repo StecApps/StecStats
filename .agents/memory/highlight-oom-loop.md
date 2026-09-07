@@ -17,8 +17,10 @@ description: Why highlight/lowlight jobs must never build the full local proxy, 
 - Cancel/DELETE handlers set status `"failed"` (never `null`) so auto-resume can't re-trigger a crashed job even if the process died before a cleanup write.
 - Highlight and lowlight keep SEPARATE AbortController maps — a shared map made Cancel abort the wrong job's signal.
 
-**Critical: never fall back to raw source when chunks are confirmed in GCS.**
-GCS chunk downloads in production can be extremely slow (~80 KB/s observed — 278 MB chunk takes ~1 hour). If the per-process timeout (30 min) fires during chunk extraction AND chunks are confirmed in GCS, the handler must throw a clean HighlightError ("Please try again") and stop — NOT start downloading the 1.36 GB raw source. Two concurrent raw-source downloads = 2.7 GB on a 2 GB tmpfs = OOM. Track this with a `chunksConfirmed` flag set after `ensureProxyChunksInGcs` returns successfully; check it before every raw-source fallback.
+**Critical: long reels must never fall back to a full local raw source.**
+For long games, targeted proxy encoding must read the master through an authenticated loopback Range server backed by the object-storage SDK. Each completed proxy chunk is uploaded immediately and survives restarts. Do not download the entire master into tmpfs first, even when no proxy chunk has been confirmed yet: one observed 1.06 GB master took about 15 minutes to download before rendering began, and every restart repeated that cost. If the bounded chunk pipeline fails, preserve uploaded chunks and return a retryable error instead of starting a raw-source fallback.
+
+Targeted chunk planning includes only the final needed chunk plus one boundary-headroom chunk. Missing chunks later in the game must not trigger ffmpeg work. Full-game proxy builds keep their duration cap; only targeted, restart-resumable builds bypass it.
 
 **GCS download speed is the bottleneck for long games.** A 34-min game with 6 ×~250 MB chunks at 290 KB/s average = 86+ min of downloads for two concurrent jobs (highlight + lowlight), far over the 30-min per-process timeout. Two fixes address this:
 

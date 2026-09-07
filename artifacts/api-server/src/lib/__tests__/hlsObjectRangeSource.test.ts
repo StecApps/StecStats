@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { planProxyChunkBuild } from "../reelChunkPlan";
 
 describe("long-game HLS source access", () => {
   const source = fs.readFileSync(
@@ -37,5 +38,57 @@ describe("long-game HLS source access", () => {
     expect(source).toContain("isSeekableLoopbackSource");
     expect(source).toContain("useFastInputSeek");
     expect(source).toContain("runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000, signal)");
+  });
+
+  it("also streams targeted long-game reel chunks without downloading the full master", () => {
+    const targetedChunkBuilder = source.slice(
+      source.indexOf("async function doEnsureProxyChunksInGcs"),
+      source.indexOf("const proxyLocalCache"),
+    );
+    expect(targetedChunkBuilder).toContain(
+      "maxChunkNeeded == null && durSec > MAX_INLINE_FULL_PROXY_DURATION_SEC",
+    );
+    expect(targetedChunkBuilder).toContain("await withObjectRangeServer(");
+    expect(targetedChunkBuilder).toContain("game.videoObjectPath");
+    expect(targetedChunkBuilder).not.toContain(
+      "effectiveDurSec > MAX_INLINE_PROXY_DURATION_SEC",
+    );
+  });
+
+  it("never falls a long reel back to a full tmpfs master download", () => {
+    const highlightGenerator = source.slice(
+      source.indexOf("export async function generateHighlight"),
+      source.indexOf("export async function generateLowlight"),
+    );
+    const lowlightGenerator = source.slice(
+      source.indexOf("export async function generateLowlight"),
+      source.indexOf("export async function generateTeamHighlight"),
+    );
+    expect(highlightGenerator).toContain(
+      "highlightChunksConfirmed || rawSourceFallbackIsUnsafe(game)",
+    );
+    expect(lowlightGenerator).toContain(
+      "lowlightChunksConfirmed || rawSourceFallbackIsUnsafe(game)",
+    );
+  });
+
+  it("does no work when the targeted range and boundary headroom already exist", () => {
+    expect(planProxyChunkBuild(
+      [true, true, true, true, true, true, false],
+      4,
+    )).toEqual({
+      requiredChunkCount: 6,
+      firstMissing: -1,
+    });
+  });
+
+  it("ignores missing chunks after the targeted boundary headroom", () => {
+    expect(planProxyChunkBuild(
+      [true, true, true, true, false, true, false],
+      4,
+    )).toEqual({
+      requiredChunkCount: 6,
+      firstMissing: 4,
+    });
   });
 });

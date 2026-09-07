@@ -23,6 +23,7 @@ import {
 import { sendExpoPush } from "./expoPush";
 import { ObjectStorageService } from "./objectStorage";
 import { logger } from "./logger";
+import { planProxyChunkBuild } from "./reelChunkPlan";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -37,20 +38,46 @@ async function withObjectRangeServer<T>(
   signal: AbortSignal,
   work: (url: string) => Promise<T>,
 ): Promise<T> {
+  if (signal.aborted) throw new HighlightError("Cancelled");
   const file = await objectStorageService.getObjectEntityFile(objectPath);
   const [metadata] = await file.getMetadata();
   const size = Number(metadata.size ?? 0);
   if (!Number.isFinite(size) || size <= 0) throw new Error("Source video has no readable size");
+  if (signal.aborted) throw new HighlightError("Cancelled");
 
+  const sourceToken = randomUUID();
+  const sourcePath = `/source/${sourceToken}`;
+  const activeStreams = new Set<ReturnType<typeof file.createReadStream>>();
   const server = createServer((req, res) => {
+    if (req.url !== sourcePath) {
+      res.writeHead(404).end();
+      return;
+    }
     if (req.method !== "GET" && req.method !== "HEAD") {
       res.writeHead(405).end();
       return;
     }
-    const match = /^bytes=(\d+)-(\d*)$/i.exec(String(req.headers.range ?? ""));
-    const start = match ? Math.min(Number(match[1]), size - 1) : 0;
+    const rangeHeader = req.headers.range;
+    const match = rangeHeader == null
+      ? null
+      : /^bytes=(\d+)-(\d*)$/i.exec(String(rangeHeader));
+    if (rangeHeader != null && !match) {
+      res.writeHead(416, { "Content-Range": `bytes */${size}` }).end();
+      return;
+    }
+    const start = match ? Number(match[1]) : 0;
     const requestedEnd = match?.[2] ? Number(match[2]) : size - 1;
-    const end = Math.max(start, Math.min(requestedEnd, size - 1));
+    if (
+      !Number.isSafeInteger(start)
+      || !Number.isSafeInteger(requestedEnd)
+      || start < 0
+      || start >= size
+      || requestedEnd < start
+    ) {
+      res.writeHead(416, { "Content-Range": `bytes */${size}` }).end();
+      return;
+    }
+    const end = Math.min(requestedEnd, size - 1);
     const partial = Boolean(match);
     res.writeHead(partial ? 206 : 200, {
       "Accept-Ranges": "bytes",
@@ -62,20 +89,31 @@ async function withObjectRangeServer<T>(
       res.end();
       return;
     }
-    pipeline(file.createReadStream({ start, end }), res).catch((err) => res.destroy(err));
+    const readStream = file.createReadStream({ start, end });
+    activeStreams.add(readStream);
+    readStream.once("close", () => activeStreams.delete(readStream));
+    pipeline(readStream, res).catch((err) => res.destroy(err));
   });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
   });
-  const abort = () => server.close();
+  const abort = () => {
+    for (const stream of activeStreams) {
+      stream.destroy(new HighlightError("Cancelled"));
+    }
+  };
   signal.addEventListener("abort", abort, { once: true });
   try {
+    if (signal.aborted) throw new HighlightError("Cancelled");
     const address = server.address() as AddressInfo;
-    return await work(`http://127.0.0.1:${address.port}/source`);
+    return await work(`http://127.0.0.1:${address.port}${sourcePath}`);
   } finally {
     signal.removeEventListener("abort", abort);
+    for (const stream of activeStreams) {
+      stream.destroy();
+    }
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }
@@ -698,6 +736,12 @@ export async function acquireSourceVideo(
 // minutes to transcode at real-time speed, then is uploaded to GCS immediately.
 // A server restart loses at most PROXY_CHUNK_DURATION_SEC of progress.
 export const PROXY_CHUNK_DURATION_SEC = 360; // 6 minutes
+// Full inline proxy builds are still capped because they can monopolize the
+// encoder for longer than a reel lease. Targeted reel builds are exempt: they
+// stream through the authenticated loopback Range server, upload each completed
+// chunk immediately, and resume from GCS after a restart without storing the
+// full master recording in tmpfs.
+const MAX_INLINE_FULL_PROXY_DURATION_SEC = 1200;
 // Film Room uses its own short-segment namespace so AVPlayer can start after
 // roughly one minute of source has encoded. Reel extraction keeps the larger
 // six-minute proxy chunks to minimize GCS operations and cross-chunk joins.
@@ -1235,6 +1279,18 @@ async function doEnsureProxyChunksInGcs(
       proxyChunkExistsInGcs(gcsChunkPath(i)),
     ),
   );
+  const chunkPlan = planProxyChunkBuild(existFlags, maxChunkNeeded);
+
+  if (maxChunkNeeded != null && chunkPlan.firstMissing === -1) {
+    logger.info(
+      { gameId, count: chunkPlan.requiredChunkCount, maxChunkNeeded },
+      "Proxy chunks: targeted range already present in GCS",
+    );
+    return Array.from(
+      { length: chunkPlan.requiredChunkCount },
+      (_, i) => gcsChunkPath(i),
+    );
+  }
 
   if (existFlags.every(Boolean)) {
     // Probe past the estimate to discover the TRUE chunk count (the duration-
@@ -1255,35 +1311,22 @@ async function doEnsureProxyChunksInGcs(
     throw new HighlightError("Game has no recorded video");
   }
 
-  // Duration gate: building proxy chunks requires transcoding the full source
-  // (libx264 re-encode of a VP8/WebM source). On the production container the
-  // CPU throughput is roughly 0.35× real-time, so a 33-min game takes ~94 min
-  // to transcode — exceeding PROCESS_TIMEOUT_MS and causing a stale timeout.
-  //
-  // For long videos, skip the inline proxy build and let the caller fall back
-  // to parallel-download + direct source extraction (which now completes in
-  // ~10–15 min thanks to the parallel range downloader).  The proxy path still
-  // runs for shorter games where it finishes well within the timeout, and any
-  // game whose chunks are ALREADY fully in GCS (existFlags.every(Boolean)) is
-  // served from cache regardless of duration (handled above).
-  //
-  // EXCEPTION: when maxChunkNeeded is set, only a subset of chunks are built.
-  // The effective encode duration is (maxChunkNeeded+1) * PROXY_CHUNK_DURATION_SEC
-  // which is often well under the timeout even for long games.
-  const MAX_INLINE_PROXY_DURATION_SEC = 1200; // 20 minutes (full-game limit)
+  // Full-game proxy builds remain capped so one request cannot monopolize the
+  // encoder for longer than the job watchdog. Targeted reel builds deliberately
+  // bypass this gate: their completed chunks are durable in GCS, so a restart
+  // resumes at firstMissing instead of repeating the whole game.
   const durSec = durationMs / 1000;
-  const effectiveDurSec =
-    maxChunkNeeded != null
-      ? Math.min(durSec, (maxChunkNeeded + 1) * PROXY_CHUNK_DURATION_SEC)
-      : durSec;
-  if (effectiveDurSec > MAX_INLINE_PROXY_DURATION_SEC) {
+  if (maxChunkNeeded == null && durSec > MAX_INLINE_FULL_PROXY_DURATION_SEC) {
     throw new HighlightError(
       `Video is ${Math.round(durSec / 60)} min — too long for inline proxy build ` +
-      `(limit ${MAX_INLINE_PROXY_DURATION_SEC / 60} min). Using direct source extraction.`,
+      `(limit ${MAX_INLINE_FULL_PROXY_DURATION_SEC / 60} min).`,
     );
   }
 
-  const firstMissing = existFlags.findIndex((e) => !e);
+  const firstMissing = chunkPlan.firstMissing;
+  if (firstMissing < 0) {
+    throw new HighlightError("Could not identify a missing proxy chunk");
+  }
   // When the caller only needs a subset of chunks, tell the encoder to stop
   // after the last needed chunk. This prevents encoding the entire game when
   // all highlight moments are in the first few minutes.
@@ -1302,21 +1345,48 @@ async function doEnsureProxyChunksInGcs(
   );
   await fs.mkdir(workDir, { recursive: true });
   try {
-    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
     let actualNumChunks: number;
-    try {
-      // deleteAfterUpload: local chunk files are removed as soon as each one
-      // is safely in GCS — extraction re-downloads only the chunks it needs.
-      ({ actualNumChunks } = await encodeChunksToGcs(
-        gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal, maxDurationSec,
+    if (maxChunkNeeded != null) {
+      // Long targeted reel builds must never download the complete master into
+      // RAM-backed /tmp. The loopback server translates ffmpeg Range requests
+      // into authenticated GCS SDK reads while encodeChunksToGcs durably
+      // uploads and deletes each completed proxy chunk.
+      const localController = signal == null ? new AbortController() : null;
+      const rangeSignal = signal ?? localController!.signal;
+      ({ actualNumChunks } = await withObjectRangeServer(
+        game.videoObjectPath,
+        rangeSignal,
+        (sourceUrl) => encodeChunksToGcs(
+          gameId,
+          ownerId,
+          sourceUrl,
+          workDir,
+          existFlags,
+          firstMissing,
+          true,
+          rangeSignal,
+          maxDurationSec,
+        ),
       ));
-    } finally {
-      release();
+      localController?.abort();
+    } else {
+      const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
+      try {
+        ({ actualNumChunks } = await encodeChunksToGcs(
+          gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal, maxDurationSec,
+        ));
+      } finally {
+        release();
+      }
     }
     return Array.from({ length: actualNumChunks }, (_, i) => gcsChunkPath(i));
   } finally {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+function rawSourceFallbackIsUnsafe(game: { videoDurationMs: number | null }): boolean {
+  return (game.videoDurationMs ?? 0) / 1000 > MAX_INLINE_FULL_PROXY_DURATION_SEC;
 }
 
 const proxyLocalCache = new Map<number, SourceVideoEntry>();
@@ -3032,11 +3102,12 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
       );
     } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
-      if (highlightChunksConfirmed) {
-        // Chunks are confirmed in GCS — raw-source fallback would OOM the server.
-        // Surface a retryable error; chunks stay in GCS for the next attempt.
+      if (highlightChunksConfirmed || rawSourceFallbackIsUnsafe(game)) {
+        // Chunks are confirmed, or this is a long game whose full master must
+        // never be downloaded into tmpfs. Surface a retryable error; any proxy
+        // chunks already uploaded remain durable for the next attempt.
         logger.error({ err: chunkErr, gameId },
-          "Highlight: chunk extraction failed with chunks confirmed — refusing raw-source fallback to prevent OOM");
+          "Highlight: chunk pipeline failed — refusing unsafe raw-source fallback");
         throw new HighlightError(
           "Highlight generation timed out. Please try again.",
         );
@@ -3257,11 +3328,11 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
       );
     } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
-      if (lowlightChunksConfirmed) {
-        // Same OOM-prevention guard as generateHighlight: chunks exist in GCS,
-        // refuse raw-source fallback, fail cleanly for user to retry.
+      if (lowlightChunksConfirmed || rawSourceFallbackIsUnsafe(game)) {
+        // Same bounded-memory rule as generateHighlight: long games and
+        // confirmed chunks must never fall back to a full local master.
         logger.error({ err: chunkErr, gameId },
-          "Lowlight: chunk extraction failed with chunks confirmed — refusing raw-source fallback to prevent OOM");
+          "Lowlight: chunk pipeline failed — refusing unsafe raw-source fallback");
         throw new HighlightError(
           "Lowlight generation timed out. Please try again.",
         );
