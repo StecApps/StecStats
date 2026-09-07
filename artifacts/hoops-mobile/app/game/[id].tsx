@@ -35,6 +35,10 @@ import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
+import {
+  getGenerationElapsedSec,
+  resolveGenerationStartedAtMs,
+} from '@/lib/reelGenerationProgress';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -848,22 +852,27 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => clearInterval(timer);
   }, [lowlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Elapsed-seconds counter, survives tab switches via module-level map
+  // The server timestamp is the source of truth. A local clock restarted every
+  // time polling briefly lost its response, making one continuous generation
+  // appear to jump back to 0%. The map is only a fallback for older responses
+  // that omit startedAt.
   useEffect(() => {
-    if (lowlight?.status !== 'processing') {
+    if (!lowlight) return;
+    if (lowlight.status !== 'processing') {
       lowlightStartTimes.delete(gameId);
       setElapsedSec(0);
       return;
     }
-    if (!lowlightStartTimes.has(gameId)) {
-      lowlightStartTimes.set(gameId, Date.now());
-    }
-    const getElapsed = () =>
-      Math.floor((Date.now() - (lowlightStartTimes.get(gameId) ?? Date.now())) / 1000);
+    const startedAtMs = resolveGenerationStartedAtMs(
+      lowlight.startedAt,
+      lowlightStartTimes.get(gameId),
+    );
+    lowlightStartTimes.set(gameId, startedAtMs);
+    const getElapsed = () => getGenerationElapsedSec(startedAtMs);
     setElapsedSec(getElapsed());
     const t = setInterval(() => setElapsedSec(getElapsed()), 1000);
     return () => clearInterval(t);
-  }, [lowlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lowlight?.status, lowlight?.startedAt, gameId]);
 
   const lowlightReady = lowlight?.status === 'ready';
   const lowlightDownload = downloads.find((item) => item.gameId === gameId && item.type === 'lowlight' && item.objectPath === lowlight?.lowlightObjectPath);
@@ -1230,22 +1239,25 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => clearInterval(timer);
   }, [highlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drive the elapsed-seconds counter while processing.
-  // Use the module-level map so navigating away and back doesn't reset the clock.
+  // Match Lowlights: use the persisted server start time so polling gaps,
+  // remounts, and tab switches cannot restart the visible progress clock.
   useEffect(() => {
-    if (highlight?.status !== 'processing') {
+    if (!highlight) return;
+    if (highlight.status !== 'processing') {
       processingStartTimes.delete(gameId);
       setElapsedSec(0);
       return;
     }
-    if (!processingStartTimes.has(gameId)) {
-      processingStartTimes.set(gameId, Date.now());
-    }
-    const getElapsed = () => Math.floor((Date.now() - (processingStartTimes.get(gameId) ?? Date.now())) / 1000);
+    const startedAtMs = resolveGenerationStartedAtMs(
+      highlight.startedAt,
+      processingStartTimes.get(gameId),
+    );
+    processingStartTimes.set(gameId, startedAtMs);
+    const getElapsed = () => getGenerationElapsedSec(startedAtMs);
     setElapsedSec(getElapsed());
     const t = setInterval(() => setElapsedSec(getElapsed()), 1000);
     return () => clearInterval(t);
-  }, [highlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [highlight?.status, highlight?.startedAt, gameId]);
 
   // Use the stream-token approach (from the seek-fix task) so the video can
   // be seeked without freezing — signed object-storage URLs don't support
