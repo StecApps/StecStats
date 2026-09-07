@@ -894,6 +894,8 @@ async function encodeChunksToGcs(
   const outputDurationSec = encodeDurationSec ?? encodeLimitSec;
   const ffmpegArgs = [
     "-y",
+    "-progress", "pipe:1",
+    "-nostats",
     ...(useFastInputSeek ? ["-ss", String(startSec)] : []),
     "-i", srcPath,
     // Slow (decode-and-discard) seek for URL sources — avoids range requests.
@@ -946,7 +948,45 @@ async function encodeChunksToGcs(
   // segment (whose entry appears in the list when ffmpeg opens it but is
   // only fully flushed when ffmpeg exits) is safe to upload.
   let ffmpegDone = false;
-  const ffmpegPromise = runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000, signal).finally(
+  let progressBuffer = "";
+  let lastMediaTimeUs = -1;
+  let lastLoggedMediaMinute = -1;
+  const ffmpegPromise = runFfmpegQueued(
+    ffmpegArgs,
+    90 * 60 * 1000,
+    signal,
+    {
+      // Playback HLS is opportunistic background work. Reel proxy generation
+      // is foreground work requested by the coach and must not be starved.
+      niceLevel: chunkPathFactory ? 10 : 0,
+      // A live lease only proves Node is alive. Kill FFmpeg when its own media
+      // clock stops so a wedged GCS read cannot occupy the worker indefinitely.
+      stallTimeoutMs: 5 * 60 * 1000,
+      onStdout: (chunk) => {
+        progressBuffer += chunk;
+        const lines = progressBuffer.split(/\r?\n/);
+        progressBuffer = lines.pop() ?? "";
+        let advanced = false;
+        for (const line of lines) {
+          const match = /^out_time_(?:us|ms)=(\d+)$/.exec(line.trim());
+          if (!match) continue;
+          const mediaTimeUs = Number(match[1]);
+          if (!Number.isFinite(mediaTimeUs) || mediaTimeUs <= lastMediaTimeUs) continue;
+          lastMediaTimeUs = mediaTimeUs;
+          advanced = true;
+          const mediaMinute = Math.floor(mediaTimeUs / 60_000_000);
+          if (mediaMinute > lastLoggedMediaMinute) {
+            lastLoggedMediaMinute = mediaMinute;
+            logger.info(
+              { gameId, mediaTimeSec: Math.round(mediaTimeUs / 1_000_000), firstMissing },
+              "Proxy: ffmpeg media clock advancing",
+            );
+          }
+        }
+        return advanced;
+      },
+    },
+  ).finally(
     () => { ffmpegDone = true; },
   );
 
@@ -1712,6 +1752,10 @@ function run(
   args: string[],
   timeoutMs: number = PROCESS_TIMEOUT_MS,
   signal?: AbortSignal,
+  options?: {
+    stallTimeoutMs?: number;
+    onStdout?: (chunk: string) => boolean;
+  },
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -1721,6 +1765,7 @@ function run(
     const child = spawn(cmd, args);
     let stderr = "";
     let stdout = "";
+    let lastProgressAt = Date.now();
     const abort = () => {
       child.kill("SIGKILL");
       reject(new HighlightError("Cancelled"));
@@ -1728,13 +1773,28 @@ function run(
     signal?.addEventListener("abort", abort, { once: true });
     const cleanup = () => {
       clearTimeout(timer);
+      if (stallTimer) clearInterval(stallTimer);
       signal?.removeEventListener("abort", abort);
     };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error(`${cmd} process timed out after ${timeoutMs / 1000}s`));
     }, timeoutMs);
-    child.stdout.on("data", (d) => (stdout += d.toString()));
+    const stallTimer = options?.stallTimeoutMs
+      ? setInterval(() => {
+          if (Date.now() - lastProgressAt >= options.stallTimeoutMs!) {
+            child.kill("SIGKILL");
+            reject(new Error(
+              `${cmd} media progress stalled for ${Math.round(options.stallTimeoutMs! / 60_000)} minutes`,
+            ));
+          }
+        }, 30_000)
+      : null;
+    child.stdout.on("data", (d) => {
+      const chunk = d.toString();
+      stdout += chunk;
+      if (options?.onStdout?.(chunk)) lastProgressAt = Date.now();
+    });
     child.stderr.on("data", (d) => (stderr += d.toString()));
     child.on("error", (err) => { cleanup(); reject(err); });
     child.on("close", (code) => {
@@ -1757,18 +1817,29 @@ function runFfmpegQueued(
   args: string[],
   timeoutMs?: number,
   signal?: AbortSignal,
+  options?: {
+    niceLevel?: number;
+    stallTimeoutMs?: number;
+    onStdout?: (chunk: string) => boolean;
+  },
 ): Promise<string> {
   let unlock!: () => void;
   const token = new Promise<void>((r) => { unlock = r; });
   const prev = _ffmpegQueueTail;
   _ffmpegQueueTail = token;
-  // nice -n 10: ffmpeg runs at reduced OS priority so Node's event loop
-  // always preempts it for healthchecks/API calls, but ffmpeg still gets
-  // plenty of CPU between requests. -n 19 was too aggressive — the download
-  // process starved ffmpeg so badly that encoding took >20 min per chunk.
+  // Background playback work stays at reduced priority, while user-requested
+  // reel work can opt into normal priority. Even nice -n 10 can starve on a
+  // single-vCPU production worker under frequent mobile polling.
+  const niceLevel = options?.niceLevel ?? 10;
   return prev.then(() => {
     if (signal?.aborted) throw new HighlightError("Cancelled");
-    return run("nice", ["-n", "10", "ffmpeg", ...args], timeoutMs, signal);
+    return run(
+      "nice",
+      ["-n", String(niceLevel), "ffmpeg", ...args],
+      timeoutMs,
+      signal,
+      options,
+    );
   }).finally(unlock);
 }
 

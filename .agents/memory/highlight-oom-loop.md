@@ -17,6 +17,7 @@ description: Why highlight/lowlight jobs must never build the full local proxy, 
 - Cancel/DELETE handlers set status `"failed"` (never `null`) so auto-resume can't re-trigger a crashed job even if the process died before a cleanup write.
 - Highlight and lowlight keep SEPARATE AbortController maps — a shared map made Cancel abort the wrong job's signal.
 - A same-game HLS playback encode must yield to an active Highlight/Lowlight job. Abort HLS when the reel gets the media slot and suppress HLS restarts until the reel releases it; uploaded HLS chunks remain resumable.
+- User-requested reel proxy encoding runs at normal OS priority; reduced priority is only for opportunistic playback HLS. Track FFmpeg's media clock and kill a process whose clock does not advance for five minutes—a renewing DB lease proves Node is alive, not that encoding is moving.
 
 **Critical: long reels must never fall back to a full local raw source.**
 For long games, targeted proxy encoding must read the master through an authenticated loopback Range server backed by the object-storage SDK. Each completed proxy chunk is uploaded immediately and survives restarts. Do not download the entire master into tmpfs first, even when no proxy chunk has been confirmed yet: one observed 1.06 GB master took about 15 minutes to download before rendering began, and every restart repeated that cost. If the bounded chunk pipeline fails, preserve uploaded chunks and return a retryable error instead of starting a raw-source fallback.

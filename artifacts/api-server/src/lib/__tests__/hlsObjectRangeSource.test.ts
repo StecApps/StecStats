@@ -37,7 +37,9 @@ describe("long-game HLS source access", () => {
   it("uses fast pre-input seeking for the authenticated loopback source", () => {
     expect(source).toContain("isSeekableLoopbackSource");
     expect(source).toContain("useFastInputSeek");
-    expect(source).toContain("runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000, signal)");
+    expect(source).toContain('"Proxy: ffmpeg media clock advancing"');
+    expect(source).toContain("stallTimeoutMs: 5 * 60 * 1000");
+    expect(source).toContain("niceLevel: chunkPathFactory ? 10 : 0");
   });
 
   it("also streams targeted long-game reel chunks without downloading the full master", () => {
