@@ -91,4 +91,13 @@ describe("long-game HLS source access", () => {
       firstMissing: 4,
     });
   });
+
+  it("stops same-game HLS encoding while a reel owns the media worker", () => {
+    expect(source).toContain("activeReelGames.add(gameId)");
+    expect(source).toContain("cancelHlsBuild(gameId)");
+    expect(source).toContain("activeReelGames.has(gameId)");
+    expect(source).toContain(
+      "if (reelMarkedActive) activeReelGames.delete(gameId)",
+    );
+  });
 });

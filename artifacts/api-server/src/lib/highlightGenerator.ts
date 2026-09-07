@@ -126,6 +126,7 @@ const highlightAbortControllers = new Map<string, AbortController>();
 const lowlightAbortControllers = new Map<string, AbortController>();
 const proxyBuildAbortControllers = new Map<number, AbortController>();
 const hlsBuildAbortControllers = new Map<number, AbortController>();
+const activeReelGames = new Set<number>();
 const teamHighlightOwners = new Map<number, number>();
 const ownersWithDeletionInProgress = new Set<number>();
 
@@ -181,6 +182,9 @@ export function cancelLowlightRun(gameId: number, runToken: string): void {
 }
 export function cancelProxyBuild(gameId: number): void {
   proxyBuildAbortControllers.get(gameId)?.abort();
+  hlsBuildAbortControllers.get(gameId)?.abort();
+}
+export function cancelHlsBuild(gameId: number): void {
   hlsBuildAbortControllers.get(gameId)?.abort();
 }
 /** @deprecated use cancelHighlightJob / cancelLowlightJob */
@@ -2999,6 +3003,7 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
   highlightAbortControllers.set(abortKey, ac);
   let tmpDir: string | null = null;
   let releaseReelSlot: (() => void) | null = null;
+  let reelMarkedActive = false;
   const uploadedClipPaths: string[] = [];
   let uploadedCombinedPath: string | null = null;
   try {
@@ -3042,6 +3047,9 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
       logger.info({ gameId }, "Highlight: waiting for reel slot");
       await slotReady;
     }
+    activeReelGames.add(gameId);
+    reelMarkedActive = true;
+    cancelHlsBuild(gameId);
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
     if (!await markReelEncodingStarted(gameId, "highlight", runToken)) {
       throw new HighlightError("Cancelled");
@@ -3219,6 +3227,7 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
     await setGameStatus(gameId, runToken, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
+    if (reelMarkedActive) activeReelGames.delete(gameId);
     highlightAbortControllers.delete(abortKey);
     stopHeartbeat();
     releaseReelSlot?.();
@@ -3245,6 +3254,7 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
   lowlightAbortControllers.set(abortKey, ac);
   let tmpDir: string | null = null;
   let releaseReelSlot: (() => void) | null = null;
+  let reelMarkedActive = false;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -3283,6 +3293,9 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
       logger.info({ gameId }, "Lowlight: waiting for reel slot");
       await slotReady;
     }
+    activeReelGames.add(gameId);
+    reelMarkedActive = true;
+    cancelHlsBuild(gameId);
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
 
     // Cut clips directly from individual proxy chunks in GCS — same bounded
@@ -3402,6 +3415,7 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
     await setGameLowlightStatus(gameId, runToken, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
+    if (reelMarkedActive) activeReelGames.delete(gameId);
     lowlightAbortControllers.delete(abortKey);
     stopHeartbeat();
     releaseReelSlot?.();
@@ -3726,7 +3740,11 @@ export function ensureAllProxyChunksInBackground(
   videoObjectPath: string,
   durationMs: number,
 ): void {
-  if (backgroundProxyBuilds.has(gameId) || backgroundHlsBuilds.has(gameId)) return;
+  if (
+    activeReelGames.has(gameId)
+    || backgroundProxyBuilds.has(gameId)
+    || backgroundHlsBuilds.has(gameId)
+  ) return;
   backgroundHlsBuilds.add(gameId);
   const abortController = new AbortController();
   hlsBuildAbortControllers.set(gameId, abortController);

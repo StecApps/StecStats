@@ -1199,12 +1199,6 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }
 
   if (lowlight.status === 'processing') {
-    const pct = Math.min(97, Math.round(100 * (1 - Math.exp(-elapsedSec / 2000))));
-    const label =
-      elapsedSec < 60   ? 'Finding missed shots & turnovers…'
-      : elapsedSec < 900  ? 'Downloading game footage…'
-      : elapsedSec < 4500 ? 'Compressing clips…'
-      : 'Finalizing…';
     const mins = Math.floor(elapsedSec / 60);
     const secs = elapsedSec % 60;
     const elapsed = mins > 0
@@ -1214,13 +1208,13 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
         <ActivityIndicator color={colors.destructive ?? '#ef4444'} size="large" />
         <Text style={[videoStyle.emptyText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-          {label}
+          Preparing Lowlight video…
         </Text>
-        <View style={{ width: '100%', height: 6, backgroundColor: colors.muted, borderRadius: 3, overflow: 'hidden' }}>
-          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.destructive ?? '#ef4444', borderRadius: 3 }} />
-        </View>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
-          {pct}% · {elapsed} elapsed — typically 30–90 min for a full game
+          Processing on the server · {elapsed} elapsed
+        </Text>
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }]}>
+          You can leave this screen. We’ll notify you when it’s ready.
         </Text>
         <TouchableOpacity
           testID="cancel-lowlights"
@@ -2117,15 +2111,6 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }
 
   if (highlight.status === 'processing') {
-    // Synthetic progress — exponential approach towards 97 %.
-    // Time constant 2000 s → reaches ~80 % at 54 min, ~92 % at 84 min.
-    // Caps below 100 % so the bar never claims done before the server confirms.
-    const pct = Math.min(97, Math.round(100 * (1 - Math.exp(-elapsedSec / 2000))));
-    const label =
-      elapsedSec < 60   ? 'Finding highlight moments…'
-      : elapsedSec < 900  ? 'Downloading game footage…'
-      : elapsedSec < 4500 ? 'Compressing clips…'
-      : 'Finalizing…';
     const mins = Math.floor(elapsedSec / 60);
     const secs = elapsedSec % 60;
     const elapsed = mins > 0
@@ -2135,14 +2120,13 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
         <ActivityIndicator color={colors.primary} size="large" />
         <Text style={[videoStyle.emptyText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-          {label}
+          Preparing Highlight video…
         </Text>
-        {/* Progress bar */}
-        <View style={{ width: '100%', height: 6, backgroundColor: colors.muted, borderRadius: 3, overflow: 'hidden' }}>
-          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.primary, borderRadius: 3 }} />
-        </View>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
-          {pct}% · {elapsed} elapsed — typically 30–90 min for a full game
+          Processing on the server · {elapsed} elapsed
+        </Text>
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }]}>
+          You can leave this screen. We’ll notify you when it’s ready.
         </Text>
         <TouchableOpacity
           testID="cancel-highlights"
