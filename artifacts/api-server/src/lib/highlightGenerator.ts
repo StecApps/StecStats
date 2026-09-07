@@ -15,6 +15,7 @@ import {
   teamsTable,
   usersTable,
 } from "@workspace/db";
+import { startReelLeaseHeartbeat, updateReelIfOwner } from "./reelLease";
 import { sendExpoPush } from "./expoPush";
 import { ObjectStorageService } from "./objectStorage";
 import { logger } from "./logger";
@@ -79,8 +80,8 @@ async function withObjectRangeServer<T>(
 // Using a shared map caused the second job to overwrite the first's
 // controller, so Cancel aborted the wrong signal and the proxy download
 // (which uses the first job's signal) kept running, causing OOM loops.
-const highlightAbortControllers = new Map<number, AbortController>();
-const lowlightAbortControllers = new Map<number, AbortController>();
+const highlightAbortControllers = new Map<string, AbortController>();
+const lowlightAbortControllers = new Map<string, AbortController>();
 const proxyBuildAbortControllers = new Map<number, AbortController>();
 const hlsBuildAbortControllers = new Map<number, AbortController>();
 const teamHighlightOwners = new Map<number, number>();
@@ -121,10 +122,20 @@ async function assertOwnerMediaWritesAllowed(ownerId: number): Promise<void> {
 }
 
 export function cancelHighlightJob(gameId: number): void {
-  highlightAbortControllers.get(gameId)?.abort();
+  for (const [key, controller] of highlightAbortControllers) {
+    if (key.startsWith(`${gameId}:`)) controller.abort();
+  }
 }
 export function cancelLowlightJob(gameId: number): void {
-  lowlightAbortControllers.get(gameId)?.abort();
+  for (const [key, controller] of lowlightAbortControllers) {
+    if (key.startsWith(`${gameId}:`)) controller.abort();
+  }
+}
+export function cancelHighlightRun(gameId: number, runToken: string): void {
+  highlightAbortControllers.get(`${gameId}:${runToken}`)?.abort();
+}
+export function cancelLowlightRun(gameId: number, runToken: string): void {
+  lowlightAbortControllers.get(`${gameId}:${runToken}`)?.abort();
 }
 export function cancelProxyBuild(gameId: number): void {
   proxyBuildAbortControllers.get(gameId)?.abort();
@@ -154,8 +165,8 @@ export async function cancelAndWaitForGameProcessing(
   const deadline = Date.now() + timeoutMs;
   while (
     gameIds.some((gameId) =>
-      highlightAbortControllers.has(gameId) ||
-      lowlightAbortControllers.has(gameId) ||
+      Array.from(highlightAbortControllers.keys()).some((key) => key.startsWith(`${gameId}:`)) ||
+      Array.from(lowlightAbortControllers.keys()).some((key) => key.startsWith(`${gameId}:`)) ||
       proxyBuildAbortControllers.has(gameId) ||
       hlsBuildAbortControllers.has(gameId),
     )
@@ -1522,20 +1533,38 @@ export function ensureGameProxyInBackground(gameId: number, ownerId: number): vo
 type Moment = { timeSec: number; caption: string };
 type Segment = { start: number; end: number; moments: Moment[] };
 
-function run(cmd: string, args: string[], timeoutMs: number = PROCESS_TIMEOUT_MS): Promise<string> {
+function run(
+  cmd: string,
+  args: string[],
+  timeoutMs: number = PROCESS_TIMEOUT_MS,
+  signal?: AbortSignal,
+): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new HighlightError("Cancelled"));
+      return;
+    }
     const child = spawn(cmd, args);
     let stderr = "";
     let stdout = "";
+    const abort = () => {
+      child.kill("SIGKILL");
+      reject(new HighlightError("Cancelled"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error(`${cmd} process timed out after ${timeoutMs / 1000}s`));
     }, timeoutMs);
     child.stdout.on("data", (d) => (stdout += d.toString()));
     child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("error", (err) => { clearTimeout(timer); reject(err); });
+    child.on("error", (err) => { cleanup(); reject(err); });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      cleanup();
       if (code === 0) resolve(stdout);
       else reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-2000)}`));
     });
@@ -1565,7 +1594,7 @@ function runFfmpegQueued(
   // process starved ffmpeg so badly that encoding took >20 min per chunk.
   return prev.then(() => {
     if (signal?.aborted) throw new HighlightError("Cancelled");
-    return run("nice", ["-n", "10", "ffmpeg", ...args], timeoutMs);
+    return run("nice", ["-n", "10", "ffmpeg", ...args], timeoutMs, signal);
   }).finally(unlock);
 }
 
@@ -1626,34 +1655,34 @@ async function ffprobe(args: string[]): Promise<string> {
 
 async function setGameStatus(
   gameId: number,
+  runToken: string,
   status: "processing" | "ready" | "failed",
   extra: { highlightObjectPath?: string | null; highlightError?: string | null } = {},
-): Promise<void> {
-  await db
-    .update(gamesTable)
-    .set({
+): Promise<boolean> {
+  return updateReelIfOwner(gameId, "highlight", runToken, {
       highlightStatus: status,
       // Stamp the generator version on completion so stale reels (built by
       // older clip-timing code) can be detected and invalidated on read.
       ...(status === "ready" ? { highlightGeneratorVersion: GENERATOR_VERSION } : {}),
       ...extra,
-    })
-    .where(eq(gamesTable.id, gameId));
+      highlightRunToken: null,
+      highlightLeaseExpiresAt: null,
+    });
 }
 
 async function setGameLowlightStatus(
   gameId: number,
+  runToken: string,
   status: "processing" | "ready" | "failed",
   extra: { lowlightObjectPath?: string | null; lowlightError?: string | null } = {},
-): Promise<void> {
-  await db
-    .update(gamesTable)
-    .set({
+): Promise<boolean> {
+  return updateReelIfOwner(gameId, "lowlight", runToken, {
       lowlightStatus: status,
       ...(status === "ready" ? { lowlightGeneratorVersion: GENERATOR_VERSION } : {}),
       ...extra,
-    })
-    .where(eq(gamesTable.id, gameId));
+      lowlightRunToken: null,
+      lowlightLeaseExpiresAt: null,
+    });
 }
 
 async function setTeamStatus(
@@ -2565,6 +2594,7 @@ export async function concatSegments(
   outPath: string,
   hasAudio: boolean,
   musicTrackPath?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const listPath = path.join(tmpDir, `list_${path.basename(outPath)}.txt`);
   await fs.writeFile(
@@ -2617,7 +2647,7 @@ export async function concatSegments(
       outPath,
     );
 
-    await runFfmpegQueued(concatArgs);
+    await runFfmpegQueued(concatArgs, undefined, signal);
     return;
   }
 
@@ -2646,7 +2676,7 @@ export async function concatSegments(
     "-movflags", "+faststart",
     outPath,
   );
-  await runFfmpegQueued(concatArgs);
+  await runFfmpegQueued(concatArgs, undefined, signal);
 }
 
 /**
@@ -2711,7 +2741,12 @@ export async function mixMusicIntoReel(
   await runFfmpegQueued(args);
 }
 
-async function uploadHighlight(outPath: string, ownerId: number): Promise<string> {
+async function uploadHighlight(
+  outPath: string,
+  ownerId: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (signal?.aborted) throw new HighlightError("Cancelled");
   await assertOwnerMediaWritesAllowed(ownerId);
   // Use GCS SDK streaming upload (pipeline → createWriteStream) instead of
   // reading the whole file into a Buffer and POSTing to a signed URL.
@@ -2724,8 +2759,18 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
+      if (signal?.aborted) throw new HighlightError("Cancelled");
       await assertOwnerMediaWritesAllowed(ownerId);
-      await objectStorageService.uploadLocalFileToObjectPath(outPath, objectPath, "video/mp4");
+      await objectStorageService.uploadLocalFileToObjectPath(
+        outPath,
+        objectPath,
+        "video/mp4",
+        signal,
+      );
+      if (signal?.aborted) {
+        await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+        throw new HighlightError("Cancelled");
+      }
       await objectStorageService
         .trySetObjectEntityAclPolicy(objectPath, {
           owner: String(ownerId),
@@ -2735,7 +2780,9 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
       return objectPath;
     } catch (err) {
       lastErr = err;
-      if (err instanceof HighlightError) throw err;
+      if (err instanceof HighlightError || signal?.aborted) {
+        throw new HighlightError("Cancelled");
+      }
       if (attempt < MAX_ATTEMPTS) {
         const delayMs = attempt * 5000;
         logger.warn({ err, attempt, delayMs, outPath }, "Upload attempt failed, retrying");
@@ -2751,9 +2798,16 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
  * Runs fully async (fire-and-forget); progress is tracked via the game's
  * highlightStatus column.
  */
-export async function generateHighlight(gameId: number, musicTrackPath?: string): Promise<void> {
+export async function generateHighlight(gameId: number, musicTrackPath: string | undefined, runToken: string): Promise<void> {
   const ac = new AbortController();
-  highlightAbortControllers.set(gameId, ac);
+  const abortKey = `${gameId}:${runToken}`;
+  const stopHeartbeat = startReelLeaseHeartbeat(
+    gameId,
+    "highlight",
+    runToken,
+    () => ac.abort(),
+  );
+  highlightAbortControllers.set(abortKey, ac);
   let tmpDir: string | null = null;
   let releaseReelSlot: (() => void) | null = null;
   try {
@@ -2887,7 +2941,8 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     // concatSegments) so the track plays continuously across all clips without
     // resetting at each boundary, and no intermediate file is written to disk.
     const outPath = path.join(tmpDir, "highlight.mp4");
-    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath);
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath, ac.signal);
+    if (ac.signal.aborted) throw new HighlightError("Cancelled");
 
     // Guard: check the game still exists before writing any new GCS object.
     // If the game was deleted while we were generating, discard the output
@@ -2903,12 +2958,17 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       }
     }
 
-    const objectPath = await uploadHighlight(outPath, game.ownerId);
+    const objectPath = await uploadHighlight(outPath, game.ownerId, ac.signal);
 
-    await setGameStatus(gameId, "ready", {
+    const published = await setGameStatus(gameId, runToken, "ready", {
       highlightObjectPath: objectPath,
       highlightError: null,
     });
+    if (!published) {
+      await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+      logger.warn({ gameId }, "Highlight lease changed before publish — discarding stale result");
+      return;
+    }
     logger.info({ gameId, segments: segPaths.length }, "Highlight reel generated");
 
     // Send a push notification to the game owner (best-effort, never throws).
@@ -2919,10 +2979,11 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
         ? err.message
         : "Highlight generation failed. Please try again.";
     logger.error({ err, gameId }, "Highlight generation failed");
-    await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
+    await setGameStatus(gameId, runToken, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
-    highlightAbortControllers.delete(gameId);
+    highlightAbortControllers.delete(abortKey);
+    stopHeartbeat();
     releaseReelSlot?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -2935,9 +2996,16 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
  * Runs fully async (fire-and-forget); progress is tracked via the game's
  * lowlightStatus column.
  */
-export async function generateLowlight(gameId: number, musicTrackPath?: string): Promise<void> {
+export async function generateLowlight(gameId: number, musicTrackPath: string | undefined, runToken: string): Promise<void> {
   const ac = new AbortController();
-  lowlightAbortControllers.set(gameId, ac);
+  const abortKey = `${gameId}:${runToken}`;
+  const stopHeartbeat = startReelLeaseHeartbeat(
+    gameId,
+    "lowlight",
+    runToken,
+    () => ac.abort(),
+  );
+  lowlightAbortControllers.set(abortKey, ac);
   let tmpDir: string | null = null;
   let releaseReelSlot: (() => void) | null = null;
   try {
@@ -3056,7 +3124,8 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     // concatSegments) so the track plays continuously across all clips without
     // resetting at each boundary, and no intermediate file is written to disk.
     const outPath = path.join(tmpDir, "lowlight.mp4");
-    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath);
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath, ac.signal);
+    if (ac.signal.aborted) throw new HighlightError("Cancelled");
 
     // Guard: check the game still exists before writing any new GCS object.
     // If the game was deleted while we were generating, discard the output
@@ -3072,12 +3141,17 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       }
     }
 
-    const objectPath = await uploadHighlight(outPath, game.ownerId);
+    const objectPath = await uploadHighlight(outPath, game.ownerId, ac.signal);
 
-    await setGameLowlightStatus(gameId, "ready", {
+    const published = await setGameLowlightStatus(gameId, runToken, "ready", {
       lowlightObjectPath: objectPath,
       lowlightError: null,
     });
+    if (!published) {
+      await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+      logger.warn({ gameId }, "Lowlight lease changed before publish — discarding stale result");
+      return;
+    }
     logger.info({ gameId, segments: segPaths.length }, "Lowlight reel generated");
 
     // Send a push notification to the game owner (best-effort, never throws).
@@ -3088,10 +3162,11 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
         ? err.message
         : "Lowlight generation failed. Please try again.";
     logger.error({ err, gameId }, "Lowlight generation failed");
-    await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
+    await setGameLowlightStatus(gameId, runToken, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
-    lowlightAbortControllers.delete(gameId);
+    lowlightAbortControllers.delete(abortKey);
+    stopHeartbeat();
     releaseReelSlot?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});

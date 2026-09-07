@@ -129,5 +129,13 @@ export async function applySchemaAdditions(): Promise<void> {
   // when the coach's lowlight reel is ready. Reset to false when a new lowlight
   // job starts so the notification fires again if the reel is regenerated.
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_notification_sent boolean DEFAULT false`);
-  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id, push_token, deletion lifecycle, highlight_notification_sent for teams+games, lowlight_notification_sent for games)");
+  logger.info("Schema additions applied");
+}
+
+export async function applyReelLeaseSchemaAdditions(): Promise<void> {
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_run_token uuid`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_lease_expires_at timestamp`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_run_token uuid`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_lease_expires_at timestamp`);
+  logger.info("Database-owned game reel lease columns are ready");
 }

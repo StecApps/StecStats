@@ -297,6 +297,7 @@ vi.mock("../../lib/highlightGenerator", () => ({
   getHighlightCoverage: vi.fn().mockResolvedValue({ eligibleMoments: 5, onFilmMoments: 3 }),
   generateHighlight: vi.fn(),
   cancelHighlightJob: vi.fn(),
+  cancelHighlightRun: vi.fn(),
 }));
 
 vi.mock("../../lib/lowlightGenerator", () => ({

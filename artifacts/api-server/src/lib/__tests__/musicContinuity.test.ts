@@ -180,6 +180,26 @@ describe("concatSegments (single-pass) — music continuity across clip boundari
   // 1. Correct path: single-pass concat+music
   // ──────────────────────────────────────────────────────────────────────────
   it(
+    "does not start the final concat after its generation lease is cancelled",
+    async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const reelPath = path.join(tmpDir, "reel_cancelled.mp4");
+
+      await expect(
+        concatSegments(
+          [clip1, clip2],
+          tmpDir,
+          reelPath,
+          false,
+          musicPath,
+          controller.signal,
+        ),
+      ).rejects.toThrow("Cancelled");
+    },
+  );
+
+  it(
     "single-pass concat+music: music is audible at the clip boundary (track plays through)",
     async () => {
       // Single ffmpeg invocation: concat list + music input → final reel.

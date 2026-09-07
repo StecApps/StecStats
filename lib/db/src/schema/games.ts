@@ -33,10 +33,14 @@ export const gamesTable = pgTable("games", {
   highlightStatus: text("highlight_status"),
   highlightError: text("highlight_error"),
   highlightStartedAt: timestamp("highlight_started_at"),
+  highlightRunToken: uuid("highlight_run_token"),
+  highlightLeaseExpiresAt: timestamp("highlight_lease_expires_at"),
   lowlightObjectPath: text("lowlight_object_path"),
   lowlightStatus: text("lowlight_status"),
   lowlightError: text("lowlight_error"),
   lowlightStartedAt: timestamp("lowlight_started_at"),
+  lowlightRunToken: uuid("lowlight_run_token"),
+  lowlightLeaseExpiresAt: timestamp("lowlight_lease_expires_at"),
   // Version of the reel-generation code that produced the stored reels.
   // NULL/older than the current GENERATOR_VERSION means the reel was built
   // with outdated clip-timing logic and must be invalidated so it can be

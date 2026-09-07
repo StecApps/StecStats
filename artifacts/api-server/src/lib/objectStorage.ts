@@ -354,6 +354,7 @@ export class ObjectStorageService {
     localPath: string,
     objectEntityPath: string,
     contentType: string,
+    signal?: AbortSignal,
   ): Promise<void> {
     if (!objectEntityPath.startsWith("/objects/")) {
       throw new Error(`uploadLocalFileToObjectPath: path must start with /objects/, got ${objectEntityPath}`);
@@ -373,6 +374,7 @@ export class ObjectStorageService {
     await pipeline(
       createReadStream(localPath),
       file.createWriteStream({ metadata: { contentType }, resumable: false }),
+      { signal },
     );
   }
 
