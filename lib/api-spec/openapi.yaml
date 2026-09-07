@@ -478,6 +478,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+
     post:
       operationId: generateGameHighlight
       tags: [games]
@@ -501,6 +502,31 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /games/{gameId}/highlight/clips/{clipIndex}:
+    parameters:
+      - name: gameId
+        in: path
+        required: true
+        schema: { type: integer }
+      - name: clipIndex
+        in: path
+        required: true
+        schema: { type: integer, minimum: 0 }
+    get:
+      operationId: getGameHighlightClip
+      tags: [games]
+      summary: Resolve an authenticated standalone highlight clip by index
+      description: Resolves only an index from the game's published clip manifest; callers cannot provide an object path.
+      responses:
+        "302":
+          description: Redirect to a short-lived signed object-storage URL.
+        "404":
+          description: Game or published clip not found.
           content:
             application/json:
               schema:
@@ -1290,6 +1316,26 @@ components:
           type: string
           nullable: true
           description: YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.
+        playbackVersion:
+          type: integer
+          nullable: true
+          description: Version of the segmented native playback contract used by this manifest.
+        clips:
+          type: array
+          description: Ordered standalone Apple-compatible clips. Empty until atomically published with the combined reel.
+          items:
+            $ref: "#/components/schemas/HighlightClip"
+
+    HighlightClip:
+      type: object
+      required: [index, durationMs, streamUrl]
+      properties:
+        index: { type: integer, minimum: 0 }
+        durationMs: { type: integer, minimum: 1 }
+        streamUrl:
+          type: string
+          format: uri
+          description: Short-lived server-derived signed URL; never a client-supplied object path.
 
     LowlightStatus:
       type: object

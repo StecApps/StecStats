@@ -25,6 +25,7 @@ export * from './gameUpdate';
 export * from './gameUpdateResult';
 export * from './gameVideoAttachment';
 export * from './healthStatus';
+export * from './highlightClip';
 export * from './highlightStatus';
 export * from './highlightStatusStatus';
 export * from './importGameRow';

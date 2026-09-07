@@ -27,6 +27,8 @@ const {
   countEligibleMock,
   generateHighlightMock,
   launchReelJobMock,
+  signedUrlMock,
+  deleteObjectMock,
 } = vi.hoisted(() => {
   const currentUser = {
     value: { id: 7, clerkUserId: "clerk_coach", email: "coach@example.com" } as {
@@ -44,6 +46,8 @@ const {
   const countEligibleMock = vi.fn().mockResolvedValue(3);
   const generateHighlightMock = vi.fn().mockResolvedValue(undefined);
   const launchReelJobMock = vi.fn();
+  const signedUrlMock = vi.fn();
+  const deleteObjectMock = vi.fn().mockResolvedValue(undefined);
 
   return {
     currentUser,
@@ -54,6 +58,8 @@ const {
     countEligibleMock,
     generateHighlightMock,
     launchReelJobMock,
+    signedUrlMock,
+    deleteObjectMock,
   };
 });
 
@@ -84,6 +90,7 @@ vi.mock("@workspace/db", () => ({
       gamesTable: { findFirst: findFirstMock },
     },
     update: dbUpdateMock,
+    transaction: vi.fn().mockImplementation(async (work) => work({})),
   },
   gamesTable: "gamesTable",
   usersTable: "usersTable",
@@ -93,6 +100,18 @@ vi.mock("../../lib/entitlements", () => ({
   getEntitlementsForUser: vi.fn().mockResolvedValue({ plan: "pro" }),
   getEntitlements: vi.fn().mockResolvedValue({ plan: "pro" }),
   isPro: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock("../../lib/objectStorage", () => ({
+  ObjectStorageService: class {
+    getObjectEntitySignedURL = signedUrlMock;
+    deleteObjectEntity = deleteObjectMock;
+  },
+}));
+
+vi.mock("../../lib/highlightDerivatives", () => ({
+  captureAndInvalidateHighlight: vi.fn().mockResolvedValue(null),
+  cleanupCapturedHighlightDerivatives: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../lib/highlightGenerator", () => ({
@@ -156,6 +175,8 @@ function makeGame(overrides: Partial<{
   highlightNotificationSent: boolean;
   highlightStartedAt: Date | null;
   videoObjectPath: string | null;
+  highlightClipManifest: unknown;
+  highlightPlaybackVersion: number | null;
 }> = {}) {
   return {
     id: 99,
@@ -166,6 +187,8 @@ function makeGame(overrides: Partial<{
     highlightNotificationSent: overrides.highlightNotificationSent ?? false,
     highlightStartedAt: overrides.highlightStartedAt ?? null,
     highlightObjectPath: null,
+    highlightClipManifest: overrides.highlightClipManifest ?? null,
+    highlightPlaybackVersion: overrides.highlightPlaybackVersion ?? null,
     highlightError: null,
     highlightGeneratorVersion: null,
     highlightMusicTrack: null,
@@ -186,6 +209,43 @@ beforeEach(() => {
     token: "00000000-0000-4000-8000-000000000001",
     startedAt: new Date(),
     leaseExpiresAt: new Date(Date.now() + 600_000),
+  });
+  signedUrlMock.mockResolvedValue("https://storage.example/signed-clip");
+});
+
+describe("GET /games/:gameId/highlight/clips/:clipIndex", () => {
+  it("resolves only an owned clip index from the published manifest", async () => {
+    const objectPath =
+      "/objects/uploads/7/highlight_clips/99/00000000-0000-4000-8000-000000000001/clip_0.mp4";
+    findFirstMock.mockResolvedValue(makeGame({
+      highlightStatus: "ready",
+      highlightPlaybackVersion: 1,
+      highlightClipManifest: [{ index: 0, durationMs: 1234, objectPath }],
+    }));
+
+    const res = await fetch(`${baseUrl}/games/99/highlight/clips/0`, {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://storage.example/signed-clip");
+    expect(signedUrlMock).toHaveBeenCalledWith(objectPath, 3600);
+  });
+
+  it("never signs an object path outside the game's server namespace", async () => {
+    findFirstMock.mockResolvedValue(makeGame({
+      highlightStatus: "ready",
+      highlightClipManifest: [{
+        index: 0,
+        durationMs: 1234,
+        objectPath: "/objects/uploads/8/private-master.mp4",
+      }],
+    }));
+
+    const res = await fetch(`${baseUrl}/games/99/highlight/clips/0`, {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(404);
+    expect(signedUrlMock).not.toHaveBeenCalled();
   });
 });
 

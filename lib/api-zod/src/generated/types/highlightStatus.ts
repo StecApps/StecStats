@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { HighlightClip } from './highlightClip';
 import type { HighlightStatusStatus } from './highlightStatusStatus';
 
 export interface HighlightStatus {
@@ -21,4 +22,8 @@ export interface HighlightStatus {
   musicTrack?: string | null;
   /** YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet. */
   youtubeUrl?: string | null;
+  /** Version of the segmented native playback contract used by this manifest. */
+  playbackVersion?: number | null;
+  /** Ordered standalone Apple-compatible clips. Empty until atomically published with the combined reel. */
+  clips?: HighlightClip[];
 }

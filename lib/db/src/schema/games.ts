@@ -8,6 +8,7 @@ import {
   pgEnum,
   uuid,
   boolean,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -30,6 +31,12 @@ export const gamesTable = pgTable("games", {
   opponentScore: integer("opponent_score").notNull(),
   videoObjectPath: text("video_object_path"),
   highlightObjectPath: text("highlight_object_path"),
+  // Ordered standalone native-playback clips. Object paths remain server-only;
+  // API responses derive short-lived signed URLs from these entries.
+  highlightClipManifest: jsonb("highlight_clip_manifest").$type<
+    Array<{ index: number; objectPath: string; durationMs: number }>
+  >(),
+  highlightPlaybackVersion: integer("highlight_playback_version"),
   highlightStatus: text("highlight_status"),
   highlightError: text("highlight_error"),
   highlightStartedAt: timestamp("highlight_started_at"),

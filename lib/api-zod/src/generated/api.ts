@@ -809,6 +809,11 @@ export const GetTeamHighlightParams = zod.object({
   "teamId": zod.coerce.number()
 })
 
+export const getTeamHighlightResponseClipsItemIndexMin = 0;
+
+
+
+
 export const GetTeamHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
@@ -817,7 +822,13 @@ export const GetTeamHighlightResponse = zod.object({
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
-  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.')
+  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.'),
+  "playbackVersion": zod.number().nullish().describe('Version of the segmented native playback contract used by this manifest.'),
+  "clips": zod.array(zod.object({
+  "index": zod.number().min(getTeamHighlightResponseClipsItemIndexMin),
+  "durationMs": zod.number().min(1),
+  "streamUrl": zod.string().url().describe('Short-lived server-derived signed URL; never a client-supplied object path.')
+})).optional().describe('Ordered standalone Apple-compatible clips. Empty until atomically published with the combined reel.')
 })
 
 
@@ -831,6 +842,11 @@ export const GenerateTeamHighlightParams = zod.object({
   "teamId": zod.coerce.number()
 })
 
+export const generateTeamHighlightResponseClipsItemIndexMin = 0;
+
+
+
+
 export const GenerateTeamHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
@@ -839,7 +855,13 @@ export const GenerateTeamHighlightResponse = zod.object({
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
-  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.')
+  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.'),
+  "playbackVersion": zod.number().nullish().describe('Version of the segmented native playback contract used by this manifest.'),
+  "clips": zod.array(zod.object({
+  "index": zod.number().min(generateTeamHighlightResponseClipsItemIndexMin),
+  "durationMs": zod.number().min(1),
+  "streamUrl": zod.string().url().describe('Short-lived server-derived signed URL; never a client-supplied object path.')
+})).optional().describe('Ordered standalone Apple-compatible clips. Empty until atomically published with the combined reel.')
 })
 
 
@@ -850,6 +872,11 @@ export const GetGameHighlightParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
+export const getGameHighlightResponseClipsItemIndexMin = 0;
+
+
+
+
 export const GetGameHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
@@ -858,7 +885,13 @@ export const GetGameHighlightResponse = zod.object({
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
-  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.')
+  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.'),
+  "playbackVersion": zod.number().nullish().describe('Version of the segmented native playback contract used by this manifest.'),
+  "clips": zod.array(zod.object({
+  "index": zod.number().min(getGameHighlightResponseClipsItemIndexMin),
+  "durationMs": zod.number().min(1),
+  "streamUrl": zod.string().url().describe('Short-lived server-derived signed URL; never a client-supplied object path.')
+})).optional().describe('Ordered standalone Apple-compatible clips. Empty until atomically published with the combined reel.')
 })
 
 
@@ -872,6 +905,11 @@ export const GenerateGameHighlightParams = zod.object({
   "gameId": zod.coerce.number()
 })
 
+export const generateGameHighlightResponseClipsItemIndexMin = 0;
+
+
+
+
 export const GenerateGameHighlightResponse = zod.object({
   "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
@@ -880,8 +918,30 @@ export const GenerateGameHighlightResponse = zod.object({
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
-  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.')
+  "youtubeUrl": zod.string().nullish().describe('YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet.'),
+  "playbackVersion": zod.number().nullish().describe('Version of the segmented native playback contract used by this manifest.'),
+  "clips": zod.array(zod.object({
+  "index": zod.number().min(generateGameHighlightResponseClipsItemIndexMin),
+  "durationMs": zod.number().min(1),
+  "streamUrl": zod.string().url().describe('Short-lived server-derived signed URL; never a client-supplied object path.')
+})).optional().describe('Ordered standalone Apple-compatible clips. Empty until atomically published with the combined reel.')
 })
+
+
+/**
+ * Resolves only an index from the game's published clip manifest; callers cannot provide an object path.
+ * @summary Resolve an authenticated standalone highlight clip by index
+ */
+export const getGameHighlightClipPathClipIndexMin = 0;
+
+
+
+export const GetGameHighlightClipParams = zod.object({
+  "gameId": zod.coerce.number(),
+  "clipIndex": zod.coerce.number().min(getGameHighlightClipPathClipIndexMin)
+})
+
+export const GetGameHighlightClipResponse = zod.void()
 
 
 /**

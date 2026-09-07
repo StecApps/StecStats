@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -126,6 +126,36 @@ async function getReelPlaybackUrl(
   // manager has produced a complete local file.
   await reelDownloadManager.enqueue({ gameId, type, objectPath, url: remoteUrl }, true);
   return null;
+}
+
+function unsignedStreamIdentity(streamUrl: string) {
+  try {
+    const parsed = new URL(streamUrl);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return streamUrl.split(/[?#]/, 1)[0];
+  }
+}
+
+function highlightClipIdentity(index: number, streamUrl: string) {
+  return `playback-v1/clip-${index}/${unsignedStreamIdentity(streamUrl)}`;
+}
+
+function waitForReelDownload(gameId: number, type: 'highlight' | 'lowlight', objectPath: string) {
+  return new Promise<string>((resolve, reject) => {
+    const inspect = () => {
+      const entry = reelDownloadManager.get(gameId, type, objectPath);
+      if (entry?.status === 'downloaded' && entry.uri) {
+        unsubscribe();
+        resolve(entry.uri);
+      } else if (entry?.status === 'failed') {
+        unsubscribe();
+        reject(new Error(entry.error ?? 'Download failed'));
+      }
+    };
+    const unsubscribe = reelDownloadManager.subscribe(inspect);
+    inspect();
+  });
 }
 
 async function getReusableStreamUrl(
@@ -818,6 +848,49 @@ const videoStyle = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
   },
+  expandButton: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  segmentedModal: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  segmentedModalHeader: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    top: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    pointerEvents: 'box-none',
+  },
+  modalCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  clipProgress: {
+    marginLeft: 'auto',
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    overflow: 'hidden',
+  },
 });
 
 // Module-level maps so processing start times survive tab-switches/remounts.
@@ -1214,6 +1287,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [uploading, setUploading] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
   const [sharingClip, setSharingClip] = useState(false);
+  const [savingClip, setSavingClip] = useState(false);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [playbackInterrupted, setPlaybackInterrupted] = useState(false);
@@ -1229,6 +1303,10 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const pendingResumePositionRef = useRef(0);
   const reachedEndRef = useRef(false);
   const fullscreenRef = useRef(false);
+  const [currentClipPosition, setCurrentClipPosition] = useState(0);
+  const [segmentedFullscreenVisible, setSegmentedFullscreenVisible] = useState(false);
+  const shouldAutoPlayRef = useRef(false);
+  const prefetchedClipRef = useRef<string | null>(null);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -1270,7 +1348,29 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   // be seeked without freezing — signed object-storage URLs don't support
   // Range requests reliably in production.
   const highlightReady = highlight?.status === 'ready';
-  const highlightDownload = downloads.find((item) => item.gameId === gameId && item.type === 'highlight' && item.objectPath === highlight?.highlightObjectPath);
+  const segmentedClips = useMemo(
+    () => [...(highlight?.clips ?? [])].sort((a, b) => a.index - b.index),
+    [highlight?.clips],
+  );
+  const usesSegmentedPlayback =
+    Platform.OS === 'ios' &&
+    highlight?.playbackVersion === 1 &&
+    segmentedClips.length > 0;
+  const currentClip = usesSegmentedPlayback ? segmentedClips[currentClipPosition] : undefined;
+  const currentClipObjectPath = currentClip
+    ? highlightClipIdentity(currentClip.index, currentClip.streamUrl)
+    : null;
+  const combinedHighlightDownload = downloads.find((item) =>
+    item.gameId === gameId &&
+    item.type === 'highlight' &&
+    item.objectPath === highlight?.highlightObjectPath);
+  const currentClipDownload = currentClipObjectPath
+    ? downloads.find((item) =>
+        item.gameId === gameId &&
+        item.type === 'highlight' &&
+        item.objectPath === currentClipObjectPath)
+    : undefined;
+  const highlightDownload = usesSegmentedPlayback ? currentClipDownload : combinedHighlightDownload;
 
   const loadHighlightVideo = useCallback(async (
     forceFresh = false,
@@ -1282,6 +1382,32 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     setPlaybackError(null);
     setPlaybackInterrupted(false);
     try {
+      if (usesSegmentedPlayback) {
+        if (!currentClip || !currentClipObjectPath) {
+          throw new Error('The highlight clip is not available.');
+        }
+        if (forceFresh) {
+          attachedSourceRef.current = null;
+          await reelDownloadManager.invalidate(gameId, 'highlight', currentClipObjectPath);
+          if (!isCurrentLoad()) return;
+        }
+        const existing = reelDownloadManager.get(gameId, 'highlight', currentClipObjectPath);
+        if (existing?.status === 'downloaded' && existing.uri) {
+          setSignedUrl(existing.uri);
+          setSourceAttachRequest({ url: existing.uri, id: loadGeneration });
+          return;
+        }
+        await reelDownloadManager.enqueue({
+          gameId,
+          type: 'highlight',
+          objectPath: currentClipObjectPath,
+          url: currentClip.streamUrl,
+        }, true);
+        if (!isCurrentLoad()) return;
+        setSignedUrl(null);
+        setPlaybackLoading(false);
+        return;
+      }
       const objectPath = highlight?.highlightObjectPath;
       if (!objectPath) throw new Error('The highlight file is not available.');
       const token = await getTokenRef.current();
@@ -1332,13 +1458,21 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       setPlaybackError(error?.message ?? 'The highlight video could not be loaded.');
       setPlaybackLoading(false);
     }
-  }, [gameId, highlight?.highlightObjectPath, player]);
+  }, [
+    gameId,
+    highlight?.highlightObjectPath,
+    player,
+    usesSegmentedPlayback,
+    currentClip?.index,
+    currentClip?.streamUrl,
+    currentClipObjectPath,
+  ]);
 
   useEffect(() => () => {
     loadGenerationRef.current++;
     sourceAttachGenerationRef.current++;
     attachedSourceRef.current = null;
-  }, [highlight?.highlightObjectPath]);
+  }, [highlight?.highlightObjectPath, currentClipObjectPath]);
 
   // Attach only after the local URI state has committed and the native surface
   // exists. The serialized generation guard ensures the newest local source wins
@@ -1377,6 +1511,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           playbackPositionRef.current = player.currentTime;
           playbackStartedRef.current = true;
           player.play();
+        } else if (shouldAutoPlayRef.current) {
+          shouldAutoPlayRef.current = false;
+          player.play();
         }
         setPlaybackLoading(false);
       })
@@ -1414,7 +1551,24 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       }
     });
     const playingSubscription = player.addListener('playingChange', ({ isPlaying }) => {
-      if (isPlaying) playbackStartedRef.current = true;
+      if (isPlaying) {
+        playbackStartedRef.current = true;
+        if (usesSegmentedPlayback) {
+          const nextClip = segmentedClips[currentClipPosition + 1];
+          if (nextClip) {
+            const nextObjectPath = highlightClipIdentity(nextClip.index, nextClip.streamUrl);
+            if (prefetchedClipRef.current !== nextObjectPath) {
+              prefetchedClipRef.current = nextObjectPath;
+              void reelDownloadManager.enqueue({
+                gameId,
+                type: 'highlight',
+                objectPath: nextObjectPath,
+                url: nextClip.streamUrl,
+              });
+            }
+          }
+        }
+      }
     });
     const endSubscription = player.addListener('playToEnd', () => {
       reachedEndRef.current = true;
@@ -1422,13 +1576,20 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         playbackDurationRef.current = player.duration;
         playbackPositionRef.current = player.duration;
       }
+      if (usesSegmentedPlayback && currentClipPosition < segmentedClips.length - 1) {
+        shouldAutoPlayRef.current = true;
+        attachedSourceRef.current = null;
+        setPlaybackError(null);
+        setPlaybackInterrupted(false);
+        setCurrentClipPosition((position) => position + 1);
+      }
     });
     return () => {
       timeSubscription.remove();
       playingSubscription.remove();
       endSubscription.remove();
     };
-  }, [player]);
+  }, [player, usesSegmentedPlayback, segmentedClips, currentClipPosition, gameId]);
 
   // AVPlayer can reject a signed source after Expo Video has accepted it, so
   // replaceAsync resolving is not sufficient proof that playback is available.
@@ -1464,6 +1625,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       // error. In particular, do not call forceFresh: that would delete the
       // durable file while AVPlayer may still have it open.
       if (signedUrl.startsWith('file:')) {
+        if (usesSegmentedPlayback) return;
         if (!automaticRetryRef.current) {
           automaticRetryRef.current = true;
           attachedSourceRef.current = null;
@@ -1477,7 +1639,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       }
     });
     return () => subscription.remove();
-  }, [player, signedUrl, highlightDownload?.status, loadHighlightVideo, gameId]);
+  }, [player, signedUrl, highlightDownload?.status, loadHighlightVideo, gameId, usesSegmentedPlayback]);
 
   function handleRetryHighlightPlayback() {
     automaticRetryRef.current = false;
@@ -1569,8 +1731,40 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }
 
   async function handleSaveClip() {
-    if (!signedUrl) return;
-    await saveReviewVideo(signedUrl, 'Game Highlights');
+    if (savingClip) return;
+    setSavingClip(true);
+    try {
+      let saveUrl = signedUrl;
+      if (usesSegmentedPlayback) {
+        const objectPath = highlight?.highlightObjectPath;
+        if (!objectPath) throw new Error('The combined highlight is not available.');
+        const downloaded = reelDownloadManager.get(gameId, 'highlight', objectPath);
+        if (downloaded?.status === 'downloaded' && downloaded.uri) {
+          saveUrl = downloaded.uri;
+        } else {
+          const token = await getTokenRef.current();
+          if (!token) throw new Error('Your session expired. Please sign in again.');
+          const result = await getReusableStreamUrl(gameId, 'highlight', token);
+          if (Platform.OS === 'web') {
+            saveUrl = result.url;
+          } else {
+            await reelDownloadManager.enqueue({
+              gameId,
+              type: 'highlight',
+              objectPath,
+              url: result.url,
+            }, true);
+            saveUrl = await waitForReelDownload(gameId, 'highlight', objectPath);
+          }
+        }
+      }
+      if (!saveUrl) throw new Error('The highlight video is not ready.');
+      await saveReviewVideo(saveUrl, 'Game Highlights');
+    } catch (error: any) {
+      Alert.alert('Save Failed', error?.message ?? 'The highlight video could not be saved.');
+    } finally {
+      setSavingClip(false);
+    }
   }
 
   async function handleRegenerate() {
@@ -1580,6 +1774,8 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       await reelDownloadManager.invalidate(gameId, 'highlight', highlight?.highlightObjectPath);
       streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
       setSignedUrl(null);
+      setCurrentClipPosition(0);
+      setSegmentedFullscreenVisible(false);
       await generateMutation.mutateAsync({ gameId });
       refetch();
     } catch {
@@ -1605,13 +1801,13 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   if (highlight.status === 'ready') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.card }}>
-        {/* ZoomableVideo from the pinch-to-zoom task wraps only the player */}
+        {/* Segmented iOS playback deliberately never enters AVPlayerViewController. */}
         <ZoomableVideo style={{ flex: 1 }}>
-          <VideoView
+          {!segmentedFullscreenVisible && <VideoView
             player={player}
             style={{ flex: 1 }}
             contentFit="cover"
-            fullscreenOptions={{ enable: true, autoExitOnRotate: false }}
+            fullscreenOptions={{ enable: !usesSegmentedPlayback, autoExitOnRotate: false }}
             allowsPictureInPicture
             nativeControls
             onFirstFrameRender={() => {
@@ -1632,7 +1828,17 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
                 reachedEnd: reachedEndRef.current,
               });
             }}
-          />
+          />}
+          {usesSegmentedPlayback && !segmentedFullscreenVisible && (
+            <TouchableOpacity
+              testID="expand-segmented-highlight"
+              accessibilityLabel="Open highlight full screen"
+              onPress={() => setSegmentedFullscreenVisible(true)}
+              style={videoStyle.expandButton}
+            >
+              <Feather name="maximize" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
           {playbackError && !playbackLoading ? (
             <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
               <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
@@ -1686,6 +1892,39 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </View>
           )}
         </ZoomableVideo>
+        {usesSegmentedPlayback && segmentedFullscreenVisible && (
+          <Modal
+            testID="segmented-highlight-modal"
+            visible
+            animationType="fade"
+            supportedOrientations={['portrait', 'landscape']}
+            onRequestClose={() => setSegmentedFullscreenVisible(false)}
+          >
+            <View style={videoStyle.segmentedModal}>
+              <VideoView
+                player={player}
+                style={StyleSheet.absoluteFill}
+                contentFit="contain"
+                fullscreenOptions={{ enable: false }}
+                nativeControls
+                allowsPictureInPicture
+              />
+              <View style={videoStyle.segmentedModalHeader}>
+                <TouchableOpacity
+                  testID="close-segmented-highlight"
+                  accessibilityLabel="Close full screen highlight"
+                  onPress={() => setSegmentedFullscreenVisible(false)}
+                  style={videoStyle.modalCloseButton}
+                >
+                  <Feather name="x" size={24} color="#fff" />
+                </TouchableOpacity>
+                <Text style={videoStyle.clipProgress}>
+                  Clip {currentClipPosition + 1} of {segmentedClips.length}
+                </Text>
+              </View>
+            </View>
+          </Modal>
+        )}
         {Platform.OS !== 'web' && highlightDownload && (
           <View style={videoStyle.downloadedBadge}>
             <Feather name={highlightDownload.status === 'failed' ? 'alert-circle' : highlightDownload.status === 'downloaded' ? 'check-circle' : 'download'} size={14} color={colors.primary} />
@@ -1713,11 +1952,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           <TouchableOpacity
             testID="save-highlight-video"
             onPress={handleSaveClip}
+            disabled={savingClip}
             style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1 }]}
             activeOpacity={0.8}
           >
-            <Feather name="download" size={16} color={colors.foreground} />
-            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>Save Video</Text>
+            {savingClip ? <ActivityIndicator size="small" color={colors.foreground} /> : <Feather name="download" size={16} color={colors.foreground} />}
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>{savingClip ? 'Saving…' : 'Save Video'}</Text>
           </TouchableOpacity>
           {youtubeUrl ? (
             <TouchableOpacity

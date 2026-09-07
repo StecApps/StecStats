@@ -2087,6 +2087,89 @@ export const useGenerateGameHighlight = <TError = ErrorType<ErrorEnvelope>,
       return useMutation(getGenerateGameHighlightMutationOptions(options));
     }
 
+export const getGetGameHighlightClipUrl = (gameId: number,
+    clipIndex: number,) => {
+
+
+
+
+  return `/api/games/${gameId}/highlight/clips/${clipIndex}`
+}
+
+/**
+ * Resolves only an index from the game's published clip manifest; callers cannot provide an object path.
+ * @summary Resolve an authenticated standalone highlight clip by index
+ */
+export const getGameHighlightClip = async (gameId: number,
+    clipIndex: number, options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getGetGameHighlightClipUrl(gameId,clipIndex),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGameHighlightClipQueryKey = (gameId: number,
+    clipIndex: number,) => {
+    return [
+    `/api/games/${gameId}/highlight/clips/${clipIndex}`
+    ] as const;
+    }
+
+
+export const getGetGameHighlightClipQueryOptions = <TData = Awaited<ReturnType<typeof getGameHighlightClip>>, TError = ErrorType<void | ErrorEnvelope>>(gameId: number,
+    clipIndex: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameHighlightClip>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGameHighlightClipQueryKey(gameId,clipIndex);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGameHighlightClip>>> = ({ signal }) => getGameHighlightClip(gameId,clipIndex, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: gameId !== null && gameId !== undefined && clipIndex !== null && clipIndex !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGameHighlightClip>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGameHighlightClipQueryResult = NonNullable<Awaited<ReturnType<typeof getGameHighlightClip>>>
+export type GetGameHighlightClipQueryError = ErrorType<void | ErrorEnvelope>
+
+
+/**
+ * @summary Resolve an authenticated standalone highlight clip by index
+ */
+
+export function useGetGameHighlightClip<TData = Awaited<ReturnType<typeof getGameHighlightClip>>, TError = ErrorType<void | ErrorEnvelope>>(
+ gameId: number,
+    clipIndex: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGameHighlightClip>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGameHighlightClipQueryOptions(gameId,clipIndex,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetGameLowlightUrl = (gameId: number,) => {
 
 

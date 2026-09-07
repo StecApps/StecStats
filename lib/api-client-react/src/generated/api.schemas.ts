@@ -466,6 +466,15 @@ export const HighlightStatusStatus = {
   failed: 'failed',
 } as const;
 
+export interface HighlightClip {
+  /** @minimum 0 */
+  index: number;
+  /** @minimum 1 */
+  durationMs: number;
+  /** Short-lived server-derived signed URL; never a client-supplied object path. */
+  streamUrl: string;
+}
+
 export interface HighlightStatus {
   status: HighlightStatusStatus;
   highlightObjectPath?: string | null;
@@ -480,6 +489,10 @@ export interface HighlightStatus {
   musicTrack?: string | null;
   /** YouTube video URL if the highlight reel has been uploaded. Null when the reel has not been uploaded yet. */
   youtubeUrl?: string | null;
+  /** Version of the segmented native playback contract used by this manifest. */
+  playbackVersion?: number | null;
+  /** Ordered standalone Apple-compatible clips. Empty until atomically published with the combined reel. */
+  clips?: HighlightClip[];
 }
 
 export type LowlightStatusStatus = typeof LowlightStatusStatus[keyof typeof LowlightStatusStatus];

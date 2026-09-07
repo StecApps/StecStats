@@ -244,6 +244,23 @@ describe("database-owned reel leases", () => {
 });
 
 describe("shared reel job orchestration", () => {
+  it("clears segmented highlight playback before a replacement run starts", async () => {
+    row.value.highlightStatus = "ready";
+    row.value.highlightClipManifest = [{ index: 0, objectPath: "/old", durationMs: 1 }];
+    row.value.highlightPlaybackVersion = 1;
+
+    const lease = await claimReelLease(
+      42,
+      "highlight",
+      {},
+      new Date("2026-09-07T12:00:00Z"),
+    );
+
+    expect(lease).not.toBeNull();
+    expect(row.value.highlightClipManifest).toBeNull();
+    expect(row.value.highlightPlaybackVersion).toBeNull();
+  });
+
   it.each(["highlight", "lowlight"] as const)(
     "applies the same token-fenced watchdog and cleanup to %s jobs",
     async (kind) => {

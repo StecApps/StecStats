@@ -52,7 +52,7 @@ describe('saved-video playback caching', () => {
     expect(highlightSection).toContain('if (interruptedLocalPlayback) return;');
     expect(highlightSection).toContain('pendingResumePositionRef.current = playbackPositionRef.current;');
     expect(highlightSection).toContain("playbackInterrupted ? 'Resume Playback' : 'Retry Video'");
-    expect(highlightSection).toContain('fullscreenOptions={{ enable: true, autoExitOnRotate: false }}');
+    expect(highlightSection).toContain('fullscreenOptions={{ enable: !usesSegmentedPlayback, autoExitOnRotate: false }}');
     expect(highlightSection.indexOf('<VideoView')).toBeLessThan(highlightSection.indexOf('{playbackError && !playbackLoading ? ('));
   });
 
@@ -66,7 +66,8 @@ describe('saved-video playback caching', () => {
   test('does not recreate the highlight loader when Clerk refreshes getToken', () => {
     expect(gameScreen).toContain('const getTokenRef = useRef(getToken)');
     expect(gameScreen).toContain('const token = await getTokenRef.current()');
-    expect(gameScreen).toContain('}, [gameId, highlight?.highlightObjectPath, player])');
+    expect(gameScreen).toContain('highlight?.highlightObjectPath,');
+    expect(gameScreen).toContain('currentClipObjectPath,');
   });
 
   test('delegates highlight and lowlight downloads to the shared persistent manager', () => {
@@ -117,7 +118,7 @@ describe('saved-video playback caching', () => {
   });
 
   test('allows an explicit retry to reattach a new file at the same local URI', () => {
-    expect(gameScreen.match(/if \(forceFresh\) \{\s+attachedSourceRef\.current = null;/g)).toHaveLength(2);
+    expect(gameScreen.match(/if \(forceFresh\) \{\s+attachedSourceRef\.current = null;/g)).toHaveLength(3);
     expect(gameScreen.match(/async function handleRegenerate[\s\S]*?attachedSourceRef\.current = null;/g)).toHaveLength(2);
   });
 

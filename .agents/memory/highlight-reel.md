@@ -24,3 +24,10 @@ The fire-and-forget `Promise.race([job, timeout])` catch must check `err.message
 ## "Share" silently did nothing on iPhone/iPad (2026-07-10)
 The client's Share button called `await fetch(...)` + `await res.blob()` to build a `File` *before* calling `navigator.share({ files: [...] })`. On iOS Safari, the "user activation" granted by the tap that triggered the click handler expires once you await a network request in between — `share()` then throws (or is simply refused) with no visible error if the catch path swallows it. **Fix:** prefetch the highlight MP4 into an in-memory blob cache as soon as its status flips to `ready` (a `useEffect`, not on click), so by the time the user taps Share the blob is already available and `navigator.share()` can be called with a minimal gap after the tap.
 **Also:** the plain `<a download>` fallback (and the Download button) is unreliable on iOS Safari regardless — WebKit largely ignores the HTML `download` attribute for video and just opens/plays the file. Server-side fix: the object-serving route accepts `?download=<filename>` and only then sets `Content-Disposition: attachment` (kept conditional so the same route can still serve inline `<video src>` playback without forcing a download).
+
+## Native iOS playback uses an atomic standalone-clip manifest
+Keep the combined Highlight MP4 for sharing, YouTube, downloads, web, and legacy fallback, but publish independently encoded H.264/AAC MP4 clips for native iOS playback. Publish the ordered manifest only in the same run-token-fenced update that marks the combined reel ready.
+
+**Why:** A complete, packet-valid continuous MP4 repeatedly stopped near 30 seconds in iOS AVPlayer. Independent clips plus explicit app-controlled advancement remove stitched-file duration and transition handling from the App Review path.
+
+**How to apply:** Validate every clip independently before upload, store clips in an owner/game/run namespace, and expose them only by an owner-authorized manifest index. Any mutation or deletion must lock the game row, capture current derivative paths, and fence the run in one transaction before post-commit cleanup.

@@ -51,6 +51,12 @@ Once a local reel has rendered or begun playing, a transient native status error
 
 **How to apply:** Keep the VideoView mounted beneath any error overlay, track whether playback actually started, and offer an explicit same-file resume at the last observed time. Automatic reattachment is only safe before the first frame.
 
+Sequential iOS Highlight clips must use an app-owned full-screen modal rather than AVPlayerViewController fullscreen.
+
+**Why:** Replacing the source between clips can dismiss the system fullscreen controller even when both standalone files are valid. Mounting hidden inline and modal VideoViews simultaneously can also attach one player to two native surfaces.
+
+**How to apply:** Render exactly one VideoView for the player at a time. Disable native fullscreen for segmented playback, conditionally swap the inline surface for a visible app-owned modal, keep that modal mounted while `playToEnd` advances sources, and attach only atomically completed local clip files.
+
 Native player teardown errors must never trigger destructive media retry while a reel download is queued or active.
 
 **Why:** Leaving a game can make an empty Expo Video player emit `status:error` just before listener cleanup. Treating that as a bad remote source called force-fresh, paused the background transfer, deleted its partial file, and restarted at zero.

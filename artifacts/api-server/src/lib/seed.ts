@@ -63,6 +63,8 @@ export async function applyVideoOffsetFixes(): Promise<void> {
           // Reels cut with the old (or missing) sync are stale — clear them
           // so they regenerate from the corrected event→video mapping.
           highlightObjectPath: null,
+          highlightClipManifest: null,
+          highlightPlaybackVersion: null,
           highlightStatus: null,
           highlightError: null,
           highlightStartedAt: null,
@@ -137,5 +139,11 @@ export async function applyReelLeaseSchemaAdditions(): Promise<void> {
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_lease_expires_at timestamp`);
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_run_token uuid`);
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_lease_expires_at timestamp`);
-  logger.info("Database-owned game reel lease columns are ready");
+  // Generated game queries select these immediately, and publication relies on
+  // them being present alongside the lease columns. This boot step is fatal on
+  // failure (see index.ts), so an older production DB never accepts traffic
+  // with a partially upgraded Highlight schema.
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_clip_manifest jsonb`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_playback_version integer`);
+  logger.info("Database-owned game reel lease and playback columns are ready");
 }

@@ -263,7 +263,15 @@ const MAX_SEGMENT_SEC = 300;
 //       output instead of being forced into a landscape 1280×720 box.
 // v11 = final reel concat rebuilds one continuous CFR H.264/AAC timeline instead
 //       of stream-copying TS timestamp discontinuities that stall iOS AVPlayer.
-export const GENERATOR_VERSION = 11;
+// v12 = publish each merged highlight segment as a validated Apple-safe MP4.
+export const GENERATOR_VERSION = 12;
+export const HIGHLIGHT_PLAYBACK_VERSION = 1;
+
+export interface HighlightClipManifestEntry {
+  index: number;
+  objectPath: string;
+  durationMs: number;
+}
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
@@ -1657,13 +1665,21 @@ async function setGameStatus(
   gameId: number,
   runToken: string,
   status: "processing" | "ready" | "failed",
-  extra: { highlightObjectPath?: string | null; highlightError?: string | null } = {},
+  extra: {
+    highlightObjectPath?: string | null;
+    highlightError?: string | null;
+    highlightClipManifest?: HighlightClipManifestEntry[] | null;
+    highlightPlaybackVersion?: number | null;
+  } = {},
 ): Promise<boolean> {
   return updateReelIfOwner(gameId, "highlight", runToken, {
       highlightStatus: status,
       // Stamp the generator version on completion so stale reels (built by
       // older clip-timing code) can be detected and invalidated on read.
       ...(status === "ready" ? { highlightGeneratorVersion: GENERATOR_VERSION } : {}),
+      ...(status !== "ready"
+        ? { highlightClipManifest: null, highlightPlaybackVersion: null }
+        : {}),
       ...extra,
       highlightRunToken: null,
       highlightLeaseExpiresAt: null,
@@ -2793,6 +2809,105 @@ async function uploadHighlight(
   throw lastErr;
 }
 
+async function encodeAndValidateNativeClip(
+  segmentPath: string,
+  clipPath: string,
+  hasAudio: boolean,
+  signal: AbortSignal,
+): Promise<number> {
+  const args = ["-y", "-i", segmentPath];
+  if (!hasAudio) {
+    args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
+  }
+  args.push(
+    "-map", "0:v:0",
+    "-map", hasAudio ? "0:a:0?" : "1:a:0",
+    "-vf", "fps=30,format=yuv420p",
+    "-c:v", "libx264",
+    "-preset", "veryfast",
+    "-profile:v", "main",
+    "-pix_fmt", "yuv420p",
+    "-r", "30",
+    "-vsync", "cfr",
+    "-c:a", "aac",
+    "-ar", "44100",
+    "-ac", "2",
+    "-b:a", "128k",
+    "-shortest",
+    "-movflags", "+faststart",
+    clipPath,
+  );
+  await runFfmpegQueued(args, undefined, signal);
+
+  const raw = await ffprobe([
+    "-v", "error",
+    "-show_entries", "format=duration:stream=codec_type,codec_name,profile,pix_fmt,avg_frame_rate",
+    "-of", "json",
+    clipPath,
+  ]);
+  const probe = JSON.parse(raw) as {
+    format?: { duration?: string };
+    streams?: Array<{
+      codec_type?: string;
+      codec_name?: string;
+      profile?: string;
+      pix_fmt?: string;
+      avg_frame_rate?: string;
+    }>;
+  };
+  const video = probe.streams?.find((stream) => stream.codec_type === "video");
+  const audio = probe.streams?.find((stream) => stream.codec_type === "audio");
+  const durationMs = Math.round(Number(probe.format?.duration) * 1000);
+  const [rateNumerator, rateDenominator] = String(video?.avg_frame_rate ?? "").split("/").map(Number);
+  const frameRate = rateDenominator ? rateNumerator / rateDenominator : rateNumerator;
+  if (
+    video?.codec_name !== "h264"
+    || video.pix_fmt !== "yuv420p"
+    || !["Main", "High", "Constrained Baseline", "Baseline"].includes(video.profile ?? "")
+    || !Number.isFinite(frameRate)
+    || Math.abs(frameRate - 30) > 0.01
+    || audio?.codec_name !== "aac"
+    || !Number.isFinite(durationMs)
+    || durationMs <= 0
+  ) {
+    throw new HighlightError("Standalone highlight clip failed Apple playback validation");
+  }
+  return durationMs;
+}
+
+async function uploadNativeClip(
+  clipPath: string,
+  ownerId: number,
+  gameId: number,
+  runToken: string,
+  index: number,
+  signal: AbortSignal,
+): Promise<string> {
+  if (signal.aborted) throw new HighlightError("Cancelled");
+  await assertOwnerMediaWritesAllowed(ownerId);
+  const objectPath =
+    `/objects/uploads/${ownerId}/highlight_clips/${gameId}/${runToken}/clip_${index}.mp4`;
+  try {
+    await objectStorageService.uploadLocalFileToObjectPath(
+      clipPath,
+      objectPath,
+      "video/mp4",
+      signal,
+    );
+    if (signal.aborted) {
+      throw new HighlightError("Cancelled");
+    }
+    await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
+      owner: String(ownerId),
+      visibility: "private",
+    });
+    return objectPath;
+  } catch (err) {
+    await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+    throw err;
+  }
+}
+
 /**
  * Generate an MP4 highlight reel for a game and persist the result.
  * Runs fully async (fire-and-forget); progress is tracked via the game's
@@ -2810,6 +2925,8 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
   highlightAbortControllers.set(abortKey, ac);
   let tmpDir: string | null = null;
   let releaseReelSlot: (() => void) | null = null;
+  const uploadedClipPaths: string[] = [];
+  let uploadedCombinedPath: string | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -2944,6 +3061,28 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
     await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath, ac.signal);
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
 
+    const clipManifest: HighlightClipManifestEntry[] = [];
+    for (let index = 0; index < segPaths.length; index++) {
+      const clipPath = path.join(tmpDir, `native_clip_${index}.mp4`);
+      const durationMs = await encodeAndValidateNativeClip(
+        segPaths[index]!,
+        clipPath,
+        hasAudio,
+        ac.signal,
+      );
+      const objectPath = await uploadNativeClip(
+        clipPath,
+        game.ownerId,
+        gameId,
+        runToken,
+        index,
+        ac.signal,
+      );
+      uploadedClipPaths.push(objectPath);
+      clipManifest.push({ index, durationMs, objectPath });
+      await fs.unlink(clipPath).catch(() => {});
+    }
+
     // Guard: check the game still exists before writing any new GCS object.
     // If the game was deleted while we were generating, discard the output
     // rather than uploading an orphaned reel that can never be cleaned up.
@@ -2954,26 +3093,46 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
       });
       if (!stillExists) {
         logger.warn({ gameId }, "Highlight: game was deleted mid-generation — discarding output");
+        await Promise.all(uploadedClipPaths.map((clip) =>
+          objectStorageService.deleteObjectEntity(clip).catch(() => {}),
+        ));
+        uploadedClipPaths.length = 0;
         return;
       }
     }
 
     const objectPath = await uploadHighlight(outPath, game.ownerId, ac.signal);
+    uploadedCombinedPath = objectPath;
 
     const published = await setGameStatus(gameId, runToken, "ready", {
       highlightObjectPath: objectPath,
+      highlightClipManifest: clipManifest,
+      highlightPlaybackVersion: HIGHLIGHT_PLAYBACK_VERSION,
       highlightError: null,
     });
     if (!published) {
       await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+      uploadedCombinedPath = null;
+      await Promise.all(uploadedClipPaths.map((clip) =>
+        objectStorageService.deleteObjectEntity(clip).catch(() => {}),
+      ));
+      uploadedClipPaths.length = 0;
       logger.warn({ gameId }, "Highlight lease changed before publish — discarding stale result");
       return;
     }
+    uploadedCombinedPath = null;
+    uploadedClipPaths.length = 0;
     logger.info({ gameId, segments: segPaths.length }, "Highlight reel generated");
 
     // Send a push notification to the game owner (best-effort, never throws).
     await maybeSendGameHighlightNotification(game);
   } catch (err) {
+    await Promise.all(uploadedClipPaths.map((clip) =>
+      objectStorageService.deleteObjectEntity(clip).catch(() => {}),
+    ));
+    if (uploadedCombinedPath) {
+      await objectStorageService.deleteObjectEntity(uploadedCombinedPath).catch(() => {});
+    }
     const message =
       err instanceof HighlightError
         ? err.message

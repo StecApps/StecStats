@@ -38,6 +38,10 @@ import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitleme
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { retainGameMasterFilm } from "../lib/gameFilmRetention";
 import {
+  captureAndInvalidateHighlight,
+  cleanupCapturedHighlightDerivatives,
+} from "../lib/highlightDerivatives";
+import {
   PROXY_VERSION,
   PROXY_CHUNK_DURATION_SEC,
   HLS_SEGMENT_DURATION_SEC,
@@ -852,7 +856,13 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
     }
   }
 
+  // PATCH replaces the complete stats/events collection, and videoOffsetMs can
+  // remap every moment. Fence workers before committing so an old run cannot
+  // republish derivatives generated from the previous timeline.
+  cancelHighlightGeneration(gameId);
+  let capturedHighlight: Awaited<ReturnType<typeof captureAndInvalidateHighlight>> = null;
   await db.transaction(async (tx) => {
+    capturedHighlight = await captureAndInvalidateHighlight(tx, gameId, ownerId);
     // Record masters before changing active linkage. This is deliberately
     // before the UPDATE so a transaction rollback cannot expose an untracked
     // outgoing master to generic cleanup.
@@ -879,21 +889,14 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
         opponentScore: body.opponentScore,
         videoObjectPath,
         videoOffsetMs: body.videoOffsetMs ?? null,
-        // Only invalidate the reels when the video file itself changes.
-        // If the video is unchanged, the clips are still valid.
-        ...(videoObjectPath !== existing.videoObjectPath
-          ? {
-              highlightObjectPath: null,
-              highlightStatus: "idle",
-              highlightError: null,
-              highlightStartedAt: null,
-              lowlightObjectPath: null,
-              lowlightStatus: "idle",
-              lowlightError: null,
-              lowlightStartedAt: null,
-              videoDurationMs: null,
-            }
-          : {}),
+        lowlightObjectPath: null,
+        lowlightStatus: "idle",
+        lowlightError: null,
+        lowlightStartedAt: null,
+        lowlightGeneratorVersion: null,
+        lowlightRunToken: null,
+        lowlightLeaseExpiresAt: null,
+        ...(videoObjectPath !== existing.videoObjectPath ? { videoDurationMs: null } : {}),
       })
       .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
 
@@ -919,6 +922,7 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
     }
   });
 
+  await cleanupCapturedHighlightDerivatives(capturedHighlight);
   if (videoObjectPath && videoObjectPath !== existing.videoObjectPath) {
     scheduleVideoDurationProbe(gameId, videoObjectPath);
   }
@@ -938,6 +942,7 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
       id: true,
       videoObjectPath: true,
       highlightObjectPath: true,
+      highlightClipManifest: true,
       lowlightObjectPath: true,
       videoProxyObjectPath: true,
     },
@@ -954,20 +959,54 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   cancelHighlightGeneration(gameId);
   cancelProxyBuild(gameId);
 
-  // Cover legacy games created before the retention ledger existed. This is
-  // intentionally written before the hard delete, so a failed delete leaves
-  // the master protected and a retry remains idempotent.
-  if (game.videoObjectPath) {
-    const masterPath = objectStorageService.normalizeObjectEntityPath(game.videoObjectPath);
-    await db.insert(retainedGameFilmsTable)
-      .values({ ownerId, originalGameId: gameId, objectPath: masterPath })
-      .onConflictDoNothing();
+  let deletionSnapshot: {
+    videoObjectPath: string | null;
+    lowlightObjectPath: string | null;
+    videoProxyObjectPath: string | null;
+  } | null = null;
+  let capturedHighlight: Awaited<ReturnType<typeof captureAndInvalidateHighlight>> = null;
+  await db.transaction(async (tx) => {
+    const [lockedGame] = await tx
+      .select({
+        videoObjectPath: gamesTable.videoObjectPath,
+        lowlightObjectPath: gamesTable.lowlightObjectPath,
+        videoProxyObjectPath: gamesTable.videoProxyObjectPath,
+      })
+      .from(gamesTable)
+      .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)))
+      .for("update");
+    if (!lockedGame) return;
+    deletionSnapshot = lockedGame;
+
+    // The row lock makes capture/fencing and hard deletion one atomic flow.
+    // A publisher that committed after the initial request read is captured;
+    // one that arrives later blocks and fails after this row is removed.
+    capturedHighlight = await captureAndInvalidateHighlight(tx, gameId, ownerId);
+
+    // Cover legacy games created before the retention ledger existed. Keep
+    // retention capture and hard deletion in this same locked transaction.
+    if (lockedGame.videoObjectPath) {
+      const masterPath = objectStorageService.normalizeObjectEntityPath(lockedGame.videoObjectPath);
+      await tx.insert(retainedGameFilmsTable)
+        .values({ ownerId, originalGameId: gameId, objectPath: masterPath })
+        .onConflictDoNothing();
+    }
+
+    await tx
+      .delete(gamesTable)
+      .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+  });
+  const committedSnapshot = deletionSnapshot as {
+    videoObjectPath: string | null;
+    lowlightObjectPath: string | null;
+    videoProxyObjectPath: string | null;
+  } | null;
+  if (!committedSnapshot) {
+    res.status(204).send();
+    return;
   }
 
-  // Delete the DB row first so concurrent requests can no longer reference it.
-  await db
-    .delete(gamesTable)
-    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+  await cleanupCapturedHighlightDerivatives(capturedHighlight);
 
   // Delete replaceable derivative blobs in parallel. The original video is a
   // retained master and is deliberately omitted; its durable retention-ledger
@@ -989,9 +1028,8 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
     );
   };
 
-  deleteIfPresent(game.highlightObjectPath, "highlight");
-  deleteIfPresent(game.lowlightObjectPath, "lowlight");
-  deleteIfPresent(game.videoProxyObjectPath, "proxy");
+  deleteIfPresent(committedSnapshot.lowlightObjectPath, "lowlight");
+  deleteIfPresent(committedSnapshot.videoProxyObjectPath, "proxy");
 
   // Sweep proxy chunks: /objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}
   // These intermediate GCS objects are not stored in the DB row — enumerate
@@ -1044,7 +1082,7 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
       makeHlsSentinelGcsPath(ownerId, gameId),
     ).catch(() => {});
   };
-  if (game.videoObjectPath) {
+  if (committedSnapshot.videoObjectPath) {
     deletions.push(sweepPlaybackHls().catch((err) =>
       req.log.error({ err, gameId }, "Failed to sweep playback HLS objects for deleted game")
     ));
@@ -1184,7 +1222,17 @@ router.post("/games/merge", requireAuth, async (req, res) => {
   const mergedResult: "W" | "L" = mergedTeamScore >= mergedOpponentScore ? "W" : "L";
   const mergedVideoDurationMs = cumulative > 0 ? cumulative : null;
 
+  // Stop local encoders first; the transaction below durably clears every run
+  // token so workers on other instances are fenced from stale publication.
+  for (const gameId of allGameIds) cancelHighlightGeneration(gameId);
+  const capturedHighlights: NonNullable<
+    Awaited<ReturnType<typeof captureAndInvalidateHighlight>>
+  >[] = [];
   await db.transaction(async (tx) => {
+    for (const game of [...games].sort((a, b) => a.id - b.id)) {
+      const captured = await captureAndInvalidateHighlight(tx, game.id, ownerId);
+      if (captured) capturedHighlights.push(captured);
+    }
     // A merge can later replace the primary path (or hide donor rows). Record
     // every source master before either operation so no merge path can make
     // coach footage eligible for generic cleanup.
@@ -1207,16 +1255,13 @@ router.post("/games/merge", requireAuth, async (req, res) => {
         opponentScore: mergedOpponentScore,
         result: mergedResult,
         videoDurationMs: mergedVideoDurationMs,
-        highlightObjectPath: null,
-        highlightStatus: "idle",
-        highlightError: null,
-        highlightStartedAt: null,
-        highlightGeneratorVersion: null,
         lowlightObjectPath: null,
         lowlightStatus: "idle",
         lowlightError: null,
         lowlightStartedAt: null,
         lowlightGeneratorVersion: null,
+        lowlightRunToken: null,
+        lowlightLeaseExpiresAt: null,
         videoProxyObjectPath: null,
         videoProxyVersion: null,
       })
@@ -1263,9 +1308,19 @@ router.post("/games/merge", requireAuth, async (req, res) => {
     // Mark secondary games as merged (hidden from listings, not deleted).
     await tx
       .update(gamesTable)
-      .set({ mergedIntoGameId: primaryGameId })
+      .set({
+        mergedIntoGameId: primaryGameId,
+        lowlightObjectPath: null,
+        lowlightStatus: "idle",
+        lowlightError: null,
+        lowlightStartedAt: null,
+        lowlightGeneratorVersion: null,
+        lowlightRunToken: null,
+        lowlightLeaseExpiresAt: null,
+      })
       .where(and(inArray(gamesTable.id, secondaryGameIds), eq(gamesTable.ownerId, ownerId)));
   });
+  await Promise.all(capturedHighlights.map(cleanupCapturedHighlightDerivatives));
 
   // Background video concat when 2+ games have recordings.
   const gamesWithVideo = ordered.filter((g) => g.videoObjectPath);
@@ -1586,7 +1641,10 @@ router.patch("/games/:gameId/video", requireAuth, async (req, res) => {
   // A replay of an already-completed background upload must not invalidate
   // derivatives or enqueue another duration probe.
   if (videoObjectPath !== game.videoObjectPath) {
+    cancelHighlightGeneration(gameId);
+    let capturedHighlight: Awaited<ReturnType<typeof captureAndInvalidateHighlight>> = null;
     await db.transaction(async (tx) => {
+      capturedHighlight = await captureAndInvalidateHighlight(tx, gameId, ownerId);
       // Retain before changing active linkage; onConflict makes upload
       // retries safe.
       if (game.videoObjectPath) {
@@ -1602,10 +1660,6 @@ router.patch("/games/:gameId/video", requireAuth, async (req, res) => {
         .update(gamesTable)
         .set({
           videoObjectPath,
-          highlightObjectPath: null,
-          highlightStatus: "idle",
-          highlightError: null,
-          highlightStartedAt: null,
           lowlightObjectPath: null,
           lowlightStatus: "idle",
           lowlightError: null,
@@ -1614,6 +1668,7 @@ router.patch("/games/:gameId/video", requireAuth, async (req, res) => {
         })
         .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
     });
+    await cleanupCapturedHighlightDerivatives(capturedHighlight);
     scheduleVideoDurationProbe(gameId, videoObjectPath);
   }
 
@@ -1972,7 +2027,10 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       "video/mp4",
     );
 
+    cancelHighlightGeneration(gameId);
+    let capturedHighlight: Awaited<ReturnType<typeof captureAndInvalidateHighlight>> = null;
     await db.transaction(async (tx) => {
+      capturedHighlight = await captureAndInvalidateHighlight(tx, gameId, ownerId);
       if (game.videoObjectPath) {
         await retainGameMasterFilm(tx, ownerId, gameId, game.videoObjectPath);
       }
@@ -1984,8 +2042,6 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
           videoObjectPath: newObjectPath,
           videoProxyObjectPath: null,       // force proxy rebuild from repaired video
           videoProxyVersion: null,
-          highlightStatus: "idle",
-          highlightObjectPath: null,
           lowlightStatus: "idle",
           lowlightObjectPath: null,
           videoHalf2StartMs,
@@ -1994,6 +2050,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
         })
         .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
     });
+    await cleanupCapturedHighlightDerivatives(capturedHighlight);
 
     scheduleVideoDurationProbe(gameId, newObjectPath);
 

@@ -25,6 +25,8 @@ function timeoutFailureValues(kind: ReelKind): Record<string, unknown> {
         highlightError: "Generation timed out — tap Try Again to rebuild.",
         highlightRunToken: null,
         highlightLeaseExpiresAt: null,
+        highlightClipManifest: null,
+        highlightPlaybackVersion: null,
       }
     : {
         lowlightStatus: "failed",
@@ -149,6 +151,8 @@ export async function claimReelLease(
         highlightStartedAt: startedAtValue,
         highlightRunToken: token,
         highlightLeaseExpiresAt: leaseExpiresAtValue,
+        highlightClipManifest: null,
+        highlightPlaybackVersion: null,
         ...extra,
       }
     : {
@@ -263,6 +267,8 @@ export async function invalidateOutdatedReadyReel(
         highlightStartedAt: null,
         highlightRunToken: null,
         highlightLeaseExpiresAt: null,
+        highlightClipManifest: null,
+        highlightPlaybackVersion: null,
       }
     : {
         lowlightStatus: null,
