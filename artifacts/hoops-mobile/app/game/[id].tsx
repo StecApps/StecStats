@@ -782,7 +782,7 @@ const videoStyle = StyleSheet.create({
   waitingTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
   waitingText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 19, maxWidth: 300 },
   playbackError: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
@@ -1216,12 +1216,19 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [sharingClip, setSharingClip] = useState(false);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [playbackInterrupted, setPlaybackInterrupted] = useState(false);
   const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
   const automaticRetryRef = useRef(false);
   const loadGenerationRef = useRef(0);
   const sourceAttachGenerationRef = useRef(0);
   const sourceAttachChainRef = useRef<Promise<void>>(Promise.resolve());
   const attachedSourceRef = useRef<string | null>(null);
+  const playbackStartedRef = useRef(false);
+  const playbackPositionRef = useRef(0);
+  const playbackDurationRef = useRef(0);
+  const pendingResumePositionRef = useRef(0);
+  const reachedEndRef = useRef(false);
+  const fullscreenRef = useRef(false);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -1273,6 +1280,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     const isCurrentLoad = () => loadGeneration === loadGenerationRef.current;
     setPlaybackLoading(true);
     setPlaybackError(null);
+    setPlaybackInterrupted(false);
     try {
       const objectPath = highlight?.highlightObjectPath;
       if (!objectPath) throw new Error('The highlight file is not available.');
@@ -1282,6 +1290,11 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 
       if (forceFresh) {
         attachedSourceRef.current = null;
+        pendingResumePositionRef.current = 0;
+        playbackStartedRef.current = false;
+        playbackPositionRef.current = 0;
+        playbackDurationRef.current = 0;
+        reachedEndRef.current = false;
         streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
         await reelDownloadManager.invalidate(gameId, 'highlight', objectPath);
         if (!isCurrentLoad()) return;
@@ -1343,9 +1356,28 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           setPlaybackLoading(false);
           return;
         }
+        const resumePosition = pendingResumePositionRef.current;
+        playbackStartedRef.current = false;
+        reachedEndRef.current = false;
+        if (resumePosition <= 0) {
+          playbackPositionRef.current = 0;
+          playbackDurationRef.current = 0;
+        }
         await player.replaceAsync(playbackSource(sourceAttachRequest.url, false));
         if (cancelled || generation !== sourceAttachGenerationRef.current) return;
         attachedSourceRef.current = sourceAttachRequest.url;
+        playbackDurationRef.current = Number.isFinite(player.duration) ? player.duration : 0;
+        pendingResumePositionRef.current = 0;
+        if (resumePosition > 0.25) {
+          const duration = playbackDurationRef.current;
+          const safeResumePosition = duration > 1
+            ? Math.min(resumePosition, duration - 1)
+            : resumePosition;
+          player.currentTime = Math.max(0, safeResumePosition - 0.25);
+          playbackPositionRef.current = player.currentTime;
+          playbackStartedRef.current = true;
+          player.play();
+        }
         setPlaybackLoading(false);
       })
       .catch((error: any) => {
@@ -1366,6 +1398,38 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return () => { cancelled = true; };
   }, [highlightReady, gameId, highlightDownload?.status, highlightDownload?.uri, loadHighlightVideo]);
 
+  // Keep enough native playback state to distinguish an initial source failure
+  // from an interruption after AVPlayer has already shown valid frames. Retrying
+  // the latter automatically replaces the active source and dismisses iOS
+  // fullscreen playback even though the downloaded MP4 is still valid.
+  useEffect(() => {
+    player.timeUpdateEventInterval = 0.5;
+    const timeSubscription = player.addListener('timeUpdate', ({ currentTime }) => {
+      if (Number.isFinite(currentTime)) {
+        playbackPositionRef.current = currentTime;
+        if (currentTime > 0.25) playbackStartedRef.current = true;
+      }
+      if (Number.isFinite(player.duration) && player.duration > 0) {
+        playbackDurationRef.current = player.duration;
+      }
+    });
+    const playingSubscription = player.addListener('playingChange', ({ isPlaying }) => {
+      if (isPlaying) playbackStartedRef.current = true;
+    });
+    const endSubscription = player.addListener('playToEnd', () => {
+      reachedEndRef.current = true;
+      if (Number.isFinite(player.duration) && player.duration > 0) {
+        playbackDurationRef.current = player.duration;
+        playbackPositionRef.current = player.duration;
+      }
+    });
+    return () => {
+      timeSubscription.remove();
+      playingSubscription.remove();
+      endSubscription.remove();
+    };
+  }, [player]);
+
   // AVPlayer can reject a signed source after Expo Video has accepted it, so
   // replaceAsync resolving is not sufficient proof that playback is available.
   // Retry once with a fresh URL and native caching disabled; this bypasses a
@@ -1380,7 +1444,22 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           highlightDownload?.status === 'queued' ||
           highlightDownload?.status === 'downloading') return;
       const message = error?.message ?? 'The highlight video could not be loaded.';
+      const interruptedLocalPlayback = signedUrl.startsWith('file:') &&
+        (playbackStartedRef.current || playbackPositionRef.current > 0.25);
+      console.warn('[HighlightPlayback] AVPlayer error', {
+        gameId,
+        currentTime: playbackPositionRef.current,
+        duration: playbackDurationRef.current || player.duration,
+        fullscreen: fullscreenRef.current,
+        message,
+      });
+      setPlaybackInterrupted(interruptedLocalPlayback);
       setPlaybackError(message);
+      // Never replace a successfully-started local reel behind the coach. On
+      // iOS, replaceAsync dismisses the fullscreen AVPlayerViewController and
+      // made a valid Highlight appear to "cut out" back to the game screen.
+      // Keep the view/source mounted and offer an explicit same-file resume.
+      if (interruptedLocalPlayback) return;
       // Reattach a completed local MP4 once after a transient native source
       // error. In particular, do not call forceFresh: that would delete the
       // durable file while AVPlayer may still have it open.
@@ -1398,7 +1477,20 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       }
     });
     return () => subscription.remove();
-  }, [player, signedUrl, highlightDownload?.status, loadHighlightVideo]);
+  }, [player, signedUrl, highlightDownload?.status, loadHighlightVideo, gameId]);
+
+  function handleRetryHighlightPlayback() {
+    automaticRetryRef.current = false;
+    if (playbackInterrupted && signedUrl?.startsWith('file:')) {
+      pendingResumePositionRef.current = playbackPositionRef.current;
+      attachedSourceRef.current = null;
+      setPlaybackError(null);
+      setPlaybackInterrupted(false);
+      void loadHighlightVideo();
+      return;
+    }
+    void loadHighlightVideo(true, Platform.OS === 'ios');
+  }
 
   async function handleYoutubeUpload() {
     if (!uploadTitle.trim() || uploading) return;
@@ -1515,68 +1607,83 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       <View style={{ flex: 1, backgroundColor: colors.card }}>
         {/* ZoomableVideo from the pinch-to-zoom task wraps only the player */}
         <ZoomableVideo style={{ flex: 1 }}>
+          <VideoView
+            player={player}
+            style={{ flex: 1 }}
+            contentFit="cover"
+            fullscreenOptions={{ enable: true, autoExitOnRotate: false }}
+            allowsPictureInPicture
+            nativeControls
+            onFirstFrameRender={() => {
+              playbackStartedRef.current = true;
+              if (Number.isFinite(player.duration) && player.duration > 0) {
+                playbackDurationRef.current = player.duration;
+              }
+            }}
+            onFullscreenEnter={() => {
+              fullscreenRef.current = true;
+            }}
+            onFullscreenExit={() => {
+              fullscreenRef.current = false;
+              console.info('[HighlightPlayback] Fullscreen exited', {
+                gameId,
+                currentTime: playbackPositionRef.current,
+                duration: playbackDurationRef.current || player.duration,
+                reachedEnd: reachedEndRef.current,
+              });
+            }}
+          />
           {playbackError && !playbackLoading ? (
             <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
               <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
               <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
-                This highlight could not be loaded.
+                {playbackInterrupted
+                  ? `Playback was interrupted at ${formatReviewTime(playbackPositionRef.current)}. The complete Highlight is still downloaded on this device.`
+                  : 'This highlight could not be loaded.'}
               </Text>
               <TouchableOpacity
                 testID="retry-highlight-playback"
-                onPress={() => {
-                  automaticRetryRef.current = false;
-                  void loadHighlightVideo(true, Platform.OS === 'ios');
-                }}
+                onPress={handleRetryHighlightPlayback}
                 style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
               >
-                <Feather name="refresh-cw" size={15} color="#fff" />
-                <Text style={videoStyle.retryButtonText}>Retry Video</Text>
+                <Feather name={playbackInterrupted ? 'play' : 'refresh-cw'} size={15} color="#fff" />
+                <Text style={videoStyle.retryButtonText}>
+                  {playbackInterrupted ? 'Resume Playback' : 'Retry Video'}
+                </Text>
               </TouchableOpacity>
             </View>
-          ) : (
-            <>
-              <VideoView
-                player={player}
-                style={{ flex: 1 }}
-                contentFit="cover"
-                allowsFullscreen
-                allowsPictureInPicture
-                nativeControls
-              />
-              {(!signedUrl || playbackLoading) && (
-                <View style={[videoStyle.playbackLoading, { backgroundColor: colors.background }]}>
-                  {highlightDownload?.status === 'downloading' || playbackLoading ? (
-                    <>
-                      <ActivityIndicator color={colors.primary} />
-                      <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Downloading highlights…</Text>
-                      <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>The video will appear here when it is ready.</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Feather name="wifi-off" size={28} color={colors.mutedForeground} />
-                      <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Waiting to download</Text>
-                      <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>
-                        Connect to Wi‑Fi, or download now using cellular data.
-                      </Text>
-                      {!cellularAllowed && (
-                        <TouchableOpacity
-                          testID="download-highlight-cellular"
-                          onPress={async () => {
-                            await setCellularAllowed(true);
-                            automaticRetryRef.current = false;
-                            void loadHighlightVideo(true, Platform.OS === 'ios');
-                          }}
-                          style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
-                        >
-                          <Feather name="download" size={15} color="#fff" />
-                          <Text style={videoStyle.retryButtonText}>Download now</Text>
-                        </TouchableOpacity>
-                      )}
-                    </>
+          ) : (!signedUrl || playbackLoading) && (
+            <View style={[videoStyle.playbackLoading, { backgroundColor: colors.background }]}>
+              {highlightDownload?.status === 'downloading' || playbackLoading ? (
+                <>
+                  <ActivityIndicator color={colors.primary} />
+                  <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Downloading highlights…</Text>
+                  <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>The video will appear here when it is ready.</Text>
+                </>
+              ) : (
+                <>
+                  <Feather name="wifi-off" size={28} color={colors.mutedForeground} />
+                  <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Waiting to download</Text>
+                  <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>
+                    Connect to Wi‑Fi, or download now using cellular data.
+                  </Text>
+                  {!cellularAllowed && (
+                    <TouchableOpacity
+                      testID="download-highlight-cellular"
+                      onPress={async () => {
+                        await setCellularAllowed(true);
+                        automaticRetryRef.current = false;
+                        void loadHighlightVideo(true, Platform.OS === 'ios');
+                      }}
+                      style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+                    >
+                      <Feather name="download" size={15} color="#fff" />
+                      <Text style={videoStyle.retryButtonText}>Download now</Text>
+                    </TouchableOpacity>
                   )}
-                </View>
+                </>
               )}
-            </>
+            </View>
           )}
         </ZoomableVideo>
         {Platform.OS !== 'web' && highlightDownload && (

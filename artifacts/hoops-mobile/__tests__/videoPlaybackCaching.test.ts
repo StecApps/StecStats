@@ -43,6 +43,19 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('testID="retry-highlight-playback"');
   });
 
+  test('does not dismiss a successfully-started local Highlight on a transient AVPlayer error', () => {
+    const highlightSection = gameScreen.slice(
+      gameScreen.indexOf('function HighlightSection'),
+      gameScreen.indexOf('const reviewAction'),
+    );
+    expect(highlightSection).toContain('const interruptedLocalPlayback');
+    expect(highlightSection).toContain('if (interruptedLocalPlayback) return;');
+    expect(highlightSection).toContain('pendingResumePositionRef.current = playbackPositionRef.current;');
+    expect(highlightSection).toContain("playbackInterrupted ? 'Resume Playback' : 'Retry Video'");
+    expect(highlightSection).toContain('fullscreenOptions={{ enable: true, autoExitOnRotate: false }}');
+    expect(highlightSection.indexOf('<VideoView')).toBeLessThan(highlightSection.indexOf('{playbackError && !playbackLoading ? ('));
+  });
+
   test('does not delete a completed local reel during a transient player error', () => {
     expect(gameScreen.match(/if \(signedUrl\.startsWith\('file:'\)\)/g)).toHaveLength(2);
     expect(gameScreen).toContain('void loadHighlightVideo();');

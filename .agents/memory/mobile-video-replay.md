@@ -45,6 +45,12 @@ Downloaded Expo Video reels must attach as explicit uncached progressive file so
 
 **How to apply:** Pass local files through the typed playback-source helper, track the currently attached URI, skip identical replacements, and clear that identity before explicit retry/regeneration because those reuse the same deterministic path.
 
+Once a local reel has rendered or begun playing, a transient native status error must not unmount its VideoView or automatically replace its source.
+
+**Why:** On iOS, either action dismisses the fullscreen AVPlayerViewController back to the game screen, making a valid complete Highlight look truncated.
+
+**How to apply:** Keep the VideoView mounted beneath any error overlay, track whether playback actually started, and offer an explicit same-file resume at the last observed time. Automatic reattachment is only safe before the first frame.
+
 Native player teardown errors must never trigger destructive media retry while a reel download is queued or active.
 
 **Why:** Leaving a game can make an empty Expo Video player emit `status:error` just before listener cleanup. Treating that as a bad remote source called force-fresh, paused the background transfer, deleted its partial file, and restarted at zero.
