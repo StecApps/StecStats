@@ -11,6 +11,7 @@ export type GameHighlightStatus = typeof GameHighlightStatus[keyof typeof GameHi
 
 export const GameHighlightStatus = {
   idle: 'idle',
+  queued: 'queued',
   processing: 'processing',
   ready: 'ready',
   failed: 'failed',

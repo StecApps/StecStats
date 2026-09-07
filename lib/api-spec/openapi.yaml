@@ -1069,7 +1069,7 @@ components:
         highlightStatus:
           type: string
           nullable: true
-          enum: [idle, processing, ready, failed]
+          enum: [idle, queued, processing, ready, failed]
         highlightError: { type: string, nullable: true }
         videoProcessing:
           type: boolean
@@ -1293,14 +1293,14 @@ components:
       properties:
         status:
           type: string
-          enum: [idle, processing, ready, failed]
+          enum: [idle, queued, processing, ready, failed]
         highlightObjectPath: { type: string, nullable: true }
         error: { type: string, nullable: true }
         startedAt:
           type: string
           format: date-time
           nullable: true
-          description: When the current/most-recent generation run started — used by the client to estimate progress while status is "processing".
+          description: When active encoding started. Null while status is "queued"; used by the client to estimate progress while status is "processing".
         eligibleMoments:
           type: integer
           description: Number of qualifying moments (made shots, rebounds, assists, steals, blocks).

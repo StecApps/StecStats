@@ -12,7 +12,7 @@ export interface HighlightStatus {
   status: HighlightStatusStatus;
   highlightObjectPath?: string | null;
   error?: string | null;
-  /** When the current/most-recent generation run started — used by the client to estimate progress while status is "processing". */
+  /** When active encoding started. Null while status is "queued"; used by the client to estimate progress while status is "processing". */
   startedAt?: Date | null;
   /** Number of qualifying moments (made shots, rebounds, assists, steals, blocks). */
   eligibleMoments: number;

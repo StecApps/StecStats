@@ -128,7 +128,7 @@ function columnsFor(kind: ReelKind) {
 
 export interface ReelLease {
   token: string;
-  startedAt: Date;
+  startedAt: Date | null;
   leaseExpiresAt: Date;
 }
 
@@ -147,8 +147,8 @@ export async function claimReelLease(
   const c = columnsFor(kind);
   const values = kind === "highlight"
     ? {
-        highlightStatus: "processing",
-        highlightStartedAt: startedAtValue,
+        highlightStatus: "queued",
+        highlightStartedAt: null,
         highlightRunToken: token,
         highlightLeaseExpiresAt: leaseExpiresAtValue,
         highlightClipManifest: null,
@@ -169,7 +169,10 @@ export async function claimReelLease(
       and(
         eq(gamesTable.id, gameId),
         or(
-          sql`${c.status} IS DISTINCT FROM 'processing'`,
+          and(
+            sql`${c.status} IS DISTINCT FROM 'queued'`,
+            sql`${c.status} IS DISTINCT FROM 'processing'`,
+          ),
           sql`${c.token} IS NULL`,
           sql`${c.leaseExpiresAt} IS NULL`,
           now ? lt(c.leaseExpiresAt, now) : sql`${c.leaseExpiresAt} < NOW()`,
@@ -188,12 +191,41 @@ export async function claimReelLease(
           },
     );
   const claimed = rows[0];
-  if (!claimed?.startedAt || !claimed.leaseExpiresAt) return null;
+  if (!claimed?.leaseExpiresAt) return null;
   return {
     token,
-    startedAt: claimed.startedAt,
+    startedAt: claimed.startedAt ?? null,
     leaseExpiresAt: claimed.leaseExpiresAt,
   };
+}
+
+export async function markReelEncodingStarted(
+  gameId: number,
+  kind: ReelKind,
+  token: string,
+): Promise<boolean> {
+  const c = columnsFor(kind);
+  const values = kind === "highlight"
+    ? {
+        highlightStatus: "processing",
+        highlightStartedAt: sql<Date>`NOW()`,
+      }
+    : {
+        lowlightStatus: "processing",
+        lowlightStartedAt: sql<Date>`NOW()`,
+      };
+  const rows = await db
+    .update(gamesTable)
+    .set(values)
+    .where(
+      and(
+        eq(gamesTable.id, gameId),
+        or(eq(c.status, "queued"), eq(c.status, "processing")),
+        eq(c.token, token),
+      ),
+    )
+    .returning({ id: gamesTable.id });
+  return rows.length > 0;
 }
 
 export async function renewReelLease(
@@ -212,7 +244,13 @@ export async function renewReelLease(
   const rows = await db
     .update(gamesTable)
     .set(values)
-    .where(and(eq(gamesTable.id, gameId), eq(c.status, "processing"), eq(c.token, token)))
+    .where(
+      and(
+        eq(gamesTable.id, gameId),
+        or(eq(c.status, "queued"), eq(c.status, "processing")),
+        eq(c.token, token),
+      ),
+    )
     .returning({ id: gamesTable.id });
   return rows.length > 0;
 }
@@ -231,7 +269,7 @@ export async function updateReelIfOwner(
     .where(
       and(
         eq(gamesTable.id, gameId),
-        eq(c.status, "processing"),
+        or(eq(c.status, "queued"), eq(c.status, "processing")),
         eq(c.token, token),
       ),
     )

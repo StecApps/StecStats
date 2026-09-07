@@ -1317,9 +1317,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     }
   }, [highlight?.youtubeUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll every 3 s while the server is generating the reel
+  // Poll every 3 s while the reel is queued or actively encoding.
   useEffect(() => {
-    if (highlight?.status !== 'processing') return;
+    if (highlight?.status !== 'queued' && highlight?.status !== 'processing') return;
     const timer = setInterval(() => refetch(), 3000);
     return () => clearInterval(timer);
   }, [highlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2090,6 +2090,28 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </Pressable>
           </KeyboardAvoidingView>
         </Modal>
+      </View>
+    );
+  }
+
+  if (highlight.status === 'queued') {
+    return (
+      <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
+        <ActivityIndicator color={colors.primary} size="large" />
+        <Text style={[videoStyle.emptyText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+          Highlight queued
+        </Text>
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }]}>
+          All video workers are busy. Encoding will start automatically when a spot opens.
+        </Text>
+        <TouchableOpacity
+          testID="cancel-highlights"
+          onPress={handleCancelGeneration}
+          activeOpacity={0.7}
+          style={[reviewAction.cancelButton, { borderColor: colors.border }]}
+        >
+          <Text style={[reviewAction.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+        </TouchableOpacity>
       </View>
     );
   }

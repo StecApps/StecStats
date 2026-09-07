@@ -207,7 +207,7 @@ beforeEach(() => {
   generateHighlightMock.mockResolvedValue(undefined);
   launchReelJobMock.mockResolvedValue({
     token: "00000000-0000-4000-8000-000000000001",
-    startedAt: new Date(),
+    startedAt: null,
     leaseExpiresAt: new Date(Date.now() + 600_000),
   });
   signedUrlMock.mockResolvedValue("https://storage.example/signed-clip");
@@ -304,10 +304,11 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
     );
   });
 
-  it("sets highlightStatus to processing in the same DB call", async () => {
+  it("reports a newly claimed highlight as queued", async () => {
     findFirstMock.mockResolvedValue(makeGame({ highlightNotificationSent: true }));
 
-    await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
+    const response = await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
+    const body = await response.json() as { status: string; startedAt: string | null };
 
     expect(launchReelJobMock).toHaveBeenCalledWith(
       99,
@@ -318,6 +319,8 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
       undefined,
       expect.any(Object),
     );
+    expect(body.status).toBe("queued");
+    expect(body.startedAt).toBeNull();
   });
 
   it("does NOT reset or update the DB when a job is already in flight", async () => {

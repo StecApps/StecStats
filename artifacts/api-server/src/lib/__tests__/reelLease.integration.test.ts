@@ -112,7 +112,7 @@ describe("PostgreSQL reel lease concurrency", () => {
           .select()
           .from(gamesTable)
           .where(eq(gamesTable.id, gameId));
-        expect(stored[`${kind}Status`]).toBe("processing");
+        expect(stored[`${kind}Status`]).toBe(kind === "highlight" ? "queued" : "processing");
         expect(
           kind === "highlight"
             ? stored.highlightRunToken

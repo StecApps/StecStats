@@ -410,13 +410,13 @@ async function resumeOrphanedJobs(): Promise<void> {
       SELECT id, highlight_status, highlight_lease_expires_at, lowlight_status, lowlight_lease_expires_at
       FROM games
       WHERE
-        (highlight_status = 'processing' AND (highlight_lease_expires_at IS NULL OR highlight_lease_expires_at < NOW()))
+        (highlight_status IN ('queued', 'processing') AND (highlight_lease_expires_at IS NULL OR highlight_lease_expires_at < NOW()))
         OR
         (lowlight_status  = 'processing' AND (lowlight_lease_expires_at IS NULL OR lowlight_lease_expires_at < NOW()))
     `);
     for (const row of rows.rows) {
       const gameId = Number(row.id);
-      if (row.highlight_status === "processing") {
+      if (row.highlight_status === "queued" || row.highlight_status === "processing") {
         logger.info({ gameId }, "Resuming orphaned highlight job after restart");
         void resumeHighlightJob(gameId);
       }

@@ -11,6 +11,7 @@ export type HighlightStatusStatus = typeof HighlightStatusStatus[keyof typeof Hi
 
 export const HighlightStatusStatus = {
   idle: 'idle',
+  queued: 'queued',
   processing: 'processing',
   ready: 'ready',
   failed: 'failed',

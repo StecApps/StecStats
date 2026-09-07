@@ -4,6 +4,7 @@ type Predicate =
   | { op: "eq" | "lt"; field: string; value: unknown }
   | { op: "and" | "or"; children: Predicate[] }
   | { op: "distinct"; field: string; value: unknown }
+  | { op: "now" }
   | { op: "isNull"; field: string };
 
 const { row, gamesTable, updateMock } = vi.hoisted(() => {
@@ -27,6 +28,7 @@ const { row, gamesTable, updateMock } = vi.hoisted(() => {
     if (predicate.op === "or") return predicate.children.some(matches);
     if (predicate.op === "distinct") return row.value[predicate.field] !== predicate.value;
     if (predicate.op === "isNull") return row.value[predicate.field] == null;
+    if (predicate.op === "now") return true;
     if (predicate.op === "eq") return row.value[predicate.field] === predicate.value;
     if (predicate.op !== "lt") return false;
     const current = row.value[predicate.field];
@@ -78,10 +80,14 @@ vi.mock("drizzle-orm", () => ({
   and: (...children: Predicate[]): Predicate => ({ op: "and", children }),
   or: (...children: Predicate[]): Predicate => ({ op: "or", children }),
   isNull: (field: string): Predicate => ({ op: "isNull", field }),
-  sql: (strings: TemplateStringsArray, field: string): Predicate =>
+  sql: (strings: TemplateStringsArray, field?: string): Predicate =>
     strings.join("").includes("IS NULL")
-      ? { op: "isNull", field }
-      : { op: "distinct", field, value: "processing" },
+      ? { op: "isNull", field: field! }
+      : strings.join("").includes("IS DISTINCT FROM 'queued'")
+        ? { op: "distinct", field: field!, value: "queued" }
+        : strings.join("").includes("IS DISTINCT FROM 'processing'")
+          ? { op: "distinct", field: field!, value: "processing" }
+          : { op: "now" },
 }));
 
 import {
@@ -90,6 +96,7 @@ import {
   invalidateOutdatedReadyReel,
   invalidateReelLease,
   launchReelJob,
+  markReelEncodingStarted,
   REEL_LEASE_MS,
   resumeReelJob,
   updateReelIfOwner,
@@ -119,7 +126,7 @@ describe("database-owned reel leases", () => {
       ]);
 
       expect([first, second].filter(Boolean)).toHaveLength(1);
-      expect(row.value[`${kind}Status`]).toBe("processing");
+      expect(row.value[`${kind}Status`]).toBe(kind === "highlight" ? "queued" : "processing");
       expect(row.value[`${kind}LeaseExpiresAt`]).toEqual(
         new Date(now.getTime() + REEL_LEASE_MS),
       );
@@ -144,7 +151,7 @@ describe("database-owned reel leases", () => {
 
       const invalidated = await invalidateOutdatedReadyReel(42, kind, 10);
       expect(invalidated).toBe(false);
-      expect(row.value[`${kind}Status`]).toBe("processing");
+      expect(row.value[`${kind}Status`]).toBe(kind === "highlight" ? "queued" : "processing");
       expect(row.value[`${kind}RunToken`]).toBe(lease!.token);
     },
   );
@@ -259,6 +266,22 @@ describe("shared reel job orchestration", () => {
     expect(lease).not.toBeNull();
     expect(row.value.highlightClipManifest).toBeNull();
     expect(row.value.highlightPlaybackVersion).toBeNull();
+  });
+
+  it("starts highlight progress only when its token-fenced worker acquires a slot", async () => {
+    const lease = await claimReelLease(
+      42,
+      "highlight",
+      {},
+      new Date("2026-09-07T12:00:00Z"),
+    );
+
+    expect(row.value.highlightStatus).toBe("queued");
+    expect(row.value.highlightStartedAt).toBeNull();
+    expect(await markReelEncodingStarted(42, "highlight", lease!.token)).toBe(true);
+    expect(row.value.highlightStatus).toBe("processing");
+    expect(row.value.highlightStartedAt).toBeDefined();
+    expect(await markReelEncodingStarted(42, "highlight", "stale-token")).toBe(false);
   });
 
   it.each(["highlight", "lowlight"] as const)(

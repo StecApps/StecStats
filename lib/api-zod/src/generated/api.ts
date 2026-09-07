@@ -306,7 +306,7 @@ export const ListTeamGamesResponseItem = zod.object({
   "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
   "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
@@ -370,7 +370,7 @@ export const ListAllGamesResponseItem = zod.object({
   "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
   "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
@@ -519,7 +519,7 @@ export const CreateGameResponse = zod.object({
   "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
   "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
@@ -586,7 +586,7 @@ export const GetGameResponse = zod.object({
   "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
   "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
@@ -739,7 +739,7 @@ export const UpdateGameResponse = zod.object({
   "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
   "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
@@ -815,10 +815,10 @@ export const getTeamHighlightResponseClipsItemIndexMin = 0;
 
 
 export const GetTeamHighlightResponse = zod.object({
-  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\"; used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
@@ -848,10 +848,10 @@ export const generateTeamHighlightResponseClipsItemIndexMin = 0;
 
 
 export const GenerateTeamHighlightResponse = zod.object({
-  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\"; used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
@@ -878,10 +878,10 @@ export const getGameHighlightResponseClipsItemIndexMin = 0;
 
 
 export const GetGameHighlightResponse = zod.object({
-  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\"; used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
@@ -911,10 +911,10 @@ export const generateGameHighlightResponseClipsItemIndexMin = 0;
 
 
 export const GenerateGameHighlightResponse = zod.object({
-  "status": zod.enum(['idle', 'processing', 'ready', 'failed']),
+  "status": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']),
   "highlightObjectPath": zod.string().nullish(),
   "error": zod.string().nullish(),
-  "startedAt": zod.coerce.date().nullish().describe('When the current\/most-recent generation run started — used by the client to estimate progress while status is \"processing\".'),
+  "startedAt": zod.coerce.date().nullish().describe('When active encoding started. Null while status is \"queued\"; used by the client to estimate progress while status is \"processing\".'),
   "eligibleMoments": zod.number().describe('Number of qualifying moments (made shots, rebounds, assists, steals, blocks).'),
   "onFilmMoments": zod.number().nullish().describe('How many of the eligible moments occurred while the camera was still recording. Null when the video duration is unknown.'),
   "musicTrack": zod.string().nullish().describe('Music track ID used during the most recent reel generation (e.g. \"energetic\"). Null means no music was used.'),
@@ -1026,7 +1026,7 @@ export const MergeGamesResponse = zod.object({
   "videoHalf2StartMs": zod.number().nullish().describe('Recording-clock timestamp where the second half begins, for repaired two-half videos. Null for single continuous recordings.'),
   "videoHalftimeGapMs": zod.number().nullish().describe('Length of the halftime gap that was removed when the two halves were stitched. Second-half event timestamps must subtract this to map onto the stitched video timeline.'),
   "highlightObjectPath": zod.string().nullish(),
-  "highlightStatus": zod.enum(['idle', 'processing', 'ready', 'failed']).nullish(),
+  "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),

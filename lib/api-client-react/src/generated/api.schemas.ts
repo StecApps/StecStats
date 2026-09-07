@@ -216,6 +216,7 @@ export type GameHighlightStatus = typeof GameHighlightStatus[keyof typeof GameHi
 
 export const GameHighlightStatus = {
   idle: 'idle',
+  queued: 'queued',
   processing: 'processing',
   ready: 'ready',
   failed: 'failed',
@@ -461,6 +462,7 @@ export type HighlightStatusStatus = typeof HighlightStatusStatus[keyof typeof Hi
 
 export const HighlightStatusStatus = {
   idle: 'idle',
+  queued: 'queued',
   processing: 'processing',
   ready: 'ready',
   failed: 'failed',
@@ -479,7 +481,7 @@ export interface HighlightStatus {
   status: HighlightStatusStatus;
   highlightObjectPath?: string | null;
   error?: string | null;
-  /** When the current/most-recent generation run started — used by the client to estimate progress while status is "processing". */
+  /** When active encoding started. Null while status is "queued"; used by the client to estimate progress while status is "processing". */
   startedAt?: string | null;
   /** Number of qualifying moments (made shots, rebounds, assists, steals, blocks). */
   eligibleMoments: number;

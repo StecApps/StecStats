@@ -60,8 +60,8 @@ const highlightRunner = {
   cancelRun: cancelHighlightRun,
 };
 
-function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
-  if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
+function normalizeStatus(raw: string | null): "idle" | "queued" | "processing" | "ready" | "failed" {
+  if (raw === "queued" || raw === "processing" || raw === "ready" || raw === "failed") return raw;
   return "idle";
 }
 
@@ -183,7 +183,9 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
       tx,
       gameId,
       req.appUser!.id,
-      (current) => current.highlightStatus !== "processing",
+      (current) =>
+        current.highlightStatus !== "queued"
+        && current.highlightStatus !== "processing",
     ),
   );
   await cleanupCapturedHighlightDerivatives(captured);
@@ -198,13 +200,24 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
     musicTrackPath ?? undefined,
     highlightRunner,
   );
+  let responseStatus: "idle" | "queued" | "processing" | "ready" | "failed";
   if (lease) {
     startedAt = lease.startedAt;
+    responseStatus = "queued";
+  } else {
+    // A concurrent request or another autoscaled instance may have won the
+    // lease after this request read `game`. Return the winner's current phase,
+    // not the stale pre-claim status, so the client keeps polling accurately.
+    const current = await db.query.gamesTable.findFirst({
+      where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)),
+    });
+    responseStatus = normalizeStatus(current?.highlightStatus ?? game.highlightStatus);
+    startedAt = current?.highlightStartedAt ?? game.highlightStartedAt;
   }
 
   res.status(202).json(
     GetGameHighlightResponse.parse({
-      status: "processing",
+      status: responseStatus,
       highlightObjectPath: captured ? null : (game.highlightObjectPath ?? null),
       error: null,
       startedAt: startedAt?.toISOString() ?? null,
@@ -243,7 +256,7 @@ router.get("/games/:gameId/highlight/clips/:clipIndex", requireAuth, async (req,
 
 /**
  * Atomically claim and re-trigger a highlight job whose database lease expired.
- * Called at startup for processing games with no current owner.
+ * Called at startup for queued or processing games with no current owner.
  */
 export async function resumeHighlightJob(gameId: number): Promise<void> {
   await resumeReelJob(gameId, "highlight", highlightRunner);

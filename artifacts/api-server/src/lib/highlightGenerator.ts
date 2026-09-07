@@ -15,7 +15,11 @@ import {
   teamsTable,
   usersTable,
 } from "@workspace/db";
-import { startReelLeaseHeartbeat, updateReelIfOwner } from "./reelLease";
+import {
+  markReelEncodingStarted,
+  startReelLeaseHeartbeat,
+  updateReelIfOwner,
+} from "./reelLease";
 import { sendExpoPush } from "./expoPush";
 import { ObjectStorageService } from "./objectStorage";
 import { logger } from "./logger";
@@ -2969,6 +2973,9 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
       await slotReady;
     }
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
+    if (!await markReelEncodingStarted(gameId, "highlight", runToken)) {
+      throw new HighlightError("Cancelled");
+    }
 
     // Cut clips directly from individual proxy chunks in GCS — downloaded on
     // demand and deleted as the render walk moves past them, so peak tmpfs
