@@ -1531,6 +1531,17 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             }
           }
         }
+      } else if (usesSegmentedPlayback && playbackStartedRef.current) {
+        // Some iOS versions emit neither playToEnd nor a final timeUpdate for a
+        // local MP4. playingChange still arrives after AVPlayer reaches its final
+        // frame, and player.currentTime has the terminal position by then.
+        const expectedEnd = (currentClip?.durationMs ?? 0) / 1000;
+        if (
+          expectedEnd > 0 &&
+          player.currentTime >= expectedEnd - 0.35
+        ) {
+          advanceSegmentedClip();
+        }
       }
     });
     const endSubscription = player.addListener('playToEnd', () => {

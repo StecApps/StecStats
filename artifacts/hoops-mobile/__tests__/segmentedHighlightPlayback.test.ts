@@ -32,6 +32,7 @@ describe('segmented iOS Highlight playback', () => {
     expect(highlightSection).toContain('const advanceSegmentedClip = () =>');
     expect(highlightSection).toContain('const expectedEnd = (currentClip?.durationMs ?? 0) / 1000');
     expect(highlightSection).toContain('currentTime >= expectedEnd - 0.15');
+    expect(highlightSection).toContain('player.currentTime >= expectedEnd - 0.35');
     expect(highlightSection).toContain('setCurrentClipPosition((position) => position + 1)');
     expect(highlightSection).toContain('shouldAutoPlayRef.current = true');
   });
