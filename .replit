@@ -2,7 +2,7 @@ modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 
 [deployment]
 router = "application"
-deploymentTarget = "autoscale"
+deploymentTarget = "gce"
 
 [deployment.build]
 # Run the secrets check before building. If any required secret is missing the
