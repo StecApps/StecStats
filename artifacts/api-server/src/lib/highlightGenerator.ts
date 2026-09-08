@@ -311,7 +311,7 @@ const MAX_SEGMENT_SEC = 300;
 // v11 = final reel concat rebuilds one continuous CFR H.264/AAC timeline instead
 //       of stream-copying TS timestamp discontinuities that stall iOS AVPlayer.
 // v12 = publish each merged highlight segment as a validated Apple-safe MP4.
-export const GENERATOR_VERSION = 12;
+export const GENERATOR_VERSION = 13;
 export const HIGHLIGHT_PLAYBACK_VERSION = 1;
 
 export interface HighlightClipManifestEntry {
@@ -2912,6 +2912,12 @@ export async function concatSegments(
     concatArgs.push(
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
       "-profile:v", "main", "-pix_fmt", "yuv420p", "-r", "30",
+      "-fps_mode", "cfr",
+      // Keep the combined reel maximally friendly to iOS AVPlayer. The
+      // production MP4 can decode cleanly in ffmpeg yet AVPlayer can black out
+      // at a former clip boundary while resolving B-frame references.
+      "-bf", "0", "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
+      "-video_track_timescale", "90000",
       "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
       "-shortest",
       "-avoid_negative_ts", "make_zero",
@@ -2934,6 +2940,9 @@ export async function concatSegments(
     "-filter:v", "setpts=N/(30*TB)",
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
     "-profile:v", "main", "-pix_fmt", "yuv420p", "-r", "30",
+    "-fps_mode", "cfr",
+    "-bf", "0", "-g", "60", "-keyint_min", "60", "-sc_threshold", "0",
+    "-video_track_timescale", "90000",
   ];
   if (hasAudio) {
     concatArgs.push(

@@ -1260,6 +1260,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const playbackDurationRef = useRef(0);
   const pendingResumePositionRef = useRef(0);
   const reachedEndRef = useRef(false);
+  const playbackIsPlayingRef = useRef(false);
+  const lastPlaybackAdvanceAtRef = useRef(0);
+  const lastObservedPlaybackTimeRef = useRef(0);
   const fullscreenRef = useRef(false);
   const [currentClipPosition, setCurrentClipPosition] = useState(0);
   const [segmentedFullscreenVisible, setSegmentedFullscreenVisible] = useState(false);
@@ -1436,6 +1439,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         const resumePosition = pendingResumePositionRef.current;
         playbackStartedRef.current = false;
         reachedEndRef.current = false;
+        playbackIsPlayingRef.current = false;
+        lastPlaybackAdvanceAtRef.current = 0;
+        lastObservedPlaybackTimeRef.current = 0;
         if (resumePosition <= 0) {
           playbackPositionRef.current = 0;
           playbackDurationRef.current = 0;
@@ -1503,6 +1509,10 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     const timeSubscription = player.addListener('timeUpdate', ({ currentTime }) => {
       if (Number.isFinite(currentTime)) {
         playbackPositionRef.current = currentTime;
+        if (currentTime > lastObservedPlaybackTimeRef.current + 0.05) {
+          lastObservedPlaybackTimeRef.current = currentTime;
+          lastPlaybackAdvanceAtRef.current = Date.now();
+        }
         if (currentTime > 0.25) playbackStartedRef.current = true;
         // AVPlayer occasionally reaches the final frame of a local MP4 without
         // Expo Video forwarding playToEnd. Use the server-validated manifest
@@ -1520,7 +1530,10 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       }
     });
     const playingSubscription = player.addListener('playingChange', ({ isPlaying }) => {
+      playbackIsPlayingRef.current = isPlaying;
       if (isPlaying) {
+        lastPlaybackAdvanceAtRef.current = Date.now();
+        lastObservedPlaybackTimeRef.current = playbackPositionRef.current;
         playbackStartedRef.current = true;
         if (usesSegmentedPlayback) {
           const nextClip = segmentedClips[currentClipPosition + 1];
@@ -1570,6 +1583,57 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     currentClipPosition,
     currentClip?.durationMs,
     gameId,
+  ]);
+
+  // AVPlayer can silently black out at an old clip boundary without emitting a
+  // statusChange error or playToEnd. The combined file has already been fully
+  // downloaded and integrity-checked, so detect a genuinely stuck playhead and
+  // reattach that same local file once at the last confirmed timestamp.
+  useEffect(() => {
+    if (
+      usesSegmentedPlayback ||
+      !highlightReady ||
+      !signedUrl?.startsWith('file:')
+    ) return;
+    const timer = setInterval(() => {
+      const duration = playbackDurationRef.current || player.duration;
+      const position = playbackPositionRef.current;
+      if (
+        !playbackIsPlayingRef.current ||
+        !playbackStartedRef.current ||
+        playbackLoading ||
+        playbackError ||
+        reachedEndRef.current ||
+        automaticRetryRef.current ||
+        !Number.isFinite(duration) ||
+        duration <= 1 ||
+        position >= duration - 1 ||
+        Date.now() - lastPlaybackAdvanceAtRef.current < 5_000
+      ) return;
+      console.warn('[HighlightPlayback] silent AVPlayer stall', {
+        gameId,
+        currentTime: position,
+        duration,
+      });
+      automaticRetryRef.current = true;
+      pendingResumePositionRef.current = position;
+      shouldAutoPlayRef.current = true;
+      attachedSourceRef.current = null;
+      setPlaybackInterrupted(false);
+      setPlaybackError(null);
+      setPlaybackLoading(true);
+      void loadHighlightVideo();
+    }, 1_000);
+    return () => clearInterval(timer);
+  }, [
+    gameId,
+    highlightReady,
+    loadHighlightVideo,
+    playbackError,
+    playbackLoading,
+    player,
+    signedUrl,
+    usesSegmentedPlayback,
   ]);
 
   // AVPlayer can reject a signed source after Expo Video has accepted it, so

@@ -64,6 +64,18 @@ describe('saved-video playback caching', () => {
     expect(highlightSection.indexOf('<VideoView')).toBeLessThan(highlightSection.indexOf('{playbackError && !playbackLoading ? ('));
   });
 
+  test('recovers once when iOS silently freezes a verified local combined reel', () => {
+    const highlightSection = gameScreen.slice(
+      gameScreen.indexOf('function HighlightSection'),
+      gameScreen.indexOf('const reviewAction'),
+    );
+    expect(highlightSection).toContain("console.warn('[HighlightPlayback] silent AVPlayer stall'");
+    expect(highlightSection).toContain('Date.now() - lastPlaybackAdvanceAtRef.current < 5_000');
+    expect(highlightSection).toContain('pendingResumePositionRef.current = position;');
+    expect(highlightSection).toContain('attachedSourceRef.current = null;');
+    expect(highlightSection).toContain('void loadHighlightVideo();');
+  });
+
   test('does not delete a completed local reel during a transient player error', () => {
     expect(gameScreen.match(/if \(signedUrl\.startsWith\('file:'\)\)/g)).toHaveLength(2);
     expect(gameScreen).toContain('void loadHighlightVideo();');
