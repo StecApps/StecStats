@@ -1030,21 +1030,11 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={c.primary} />}
       >
-        {/* ── Integrated dashboard header — no detached image banner ── */}
+        {/* ── Coach header ── */}
         <View style={[
           styles.dashboardHeader,
           isTablet && styles.dashboardHeaderTablet,
         ]}>
-          <View style={styles.wordmark} accessibilityLabel="StecStats">
-            <Text style={[styles.wordmarkStec, { color: c.primary }]}>Stec</Text>
-            <Ionicons name="basketball" size={22} color={c.foreground} />
-            <Text style={[styles.wordmarkStats, { color: c.foreground }]}>STATS</Text>
-            {isTablet && (
-              <Text style={[styles.wordmarkTagline, { color: c.mutedForeground }]}>
-                YOUR ALL-IN-ONE APP
-              </Text>
-            )}
-          </View>
           <CoachGreeting />
         </View>
 
@@ -1085,27 +1075,6 @@ const styles = StyleSheet.create({
     minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  wordmark: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  wordmarkStec: {
-    ...tekoStyle(34),
-    fontStyle: 'italic',
-    letterSpacing: 0.5,
-  },
-  wordmarkStats: {
-    ...tekoStyle(34),
-    letterSpacing: 1,
-  },
-  wordmarkTagline: {
-    marginLeft: 7,
-    fontSize: 8,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 1.2,
   },
   playerSelector: {
     alignSelf: 'stretch',

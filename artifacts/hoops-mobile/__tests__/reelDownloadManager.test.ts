@@ -93,7 +93,7 @@ describe('ReelDownloadManager behavior', () => {
   });
 
   test('recovers an atomically promoted final file when the completion manifest write was interrupted', async () => {
-    mockStorage.set('@stecstats/reel-downloads/v4/coach-a', JSON.stringify([{
+    mockStorage.set('@stecstats/reel-downloads/v5/coach-a', JSON.stringify([{
       ...reel(),
       status: 'downloading',
       requestedAt: 1,
@@ -150,7 +150,7 @@ describe('ReelDownloadManager behavior', () => {
 
     releaseProgress();
     await Promise.all([progressWrite, completionWrite]);
-    expect(JSON.parse(mockStorage.get('@stecstats/reel-downloads/v4/coach-a')!)[0].status).toBe('downloaded');
+    expect(JSON.parse(mockStorage.get('@stecstats/reel-downloads/v5/coach-a')!)[0].status).toBe('downloaded');
   });
 
   test('resumes retained partial bytes after process recreation with a refreshed signed URL', async () => {
@@ -288,13 +288,15 @@ describe('ReelDownloadManager behavior', () => {
     expect(manager.get(7, 'highlight', 'reels/one.mp4')?.uri).toContain('file:///documents/reels/');
   });
 
-  test('discards obsolete v1-v3 downloads that may contain damaged media', async () => {
+  test('discards obsolete v1-v4 downloads that may contain damaged media', async () => {
     const v1Uri = 'file:///cache/reels/old/highlight-7-old.mp4';
     const v2Uri = 'file:///documents/reels/coach/highlight-7-v2.mp4';
     const v3Uri = 'file:///documents/reels/coach/highlight-7-v3.mp4';
+    const v4Uri = 'file:///documents/reels/coach/highlight-7-v4.mp4';
     mockFiles.set(v1Uri, 4096);
     mockFiles.set(v2Uri, 8192);
     mockFiles.set(v3Uri, 8192);
+    mockFiles.set(v4Uri, 8192);
     mockStorage.set('@stecstats/reel-downloads/v1/coach-a', JSON.stringify([{
       ...reel(), status: 'downloaded', requestedAt: 1, uri: v1Uri,
     }]));
@@ -304,17 +306,23 @@ describe('ReelDownloadManager behavior', () => {
     mockStorage.set('@stecstats/reel-downloads/v3/coach-a', JSON.stringify([{
       ...reel('reels/three.mp4'), status: 'downloaded', requestedAt: 3, uri: v3Uri,
     }]));
+    mockStorage.set('@stecstats/reel-downloads/v4/coach-a', JSON.stringify([{
+      ...reel('reels/four.mp4'), status: 'downloaded', requestedAt: 4, uri: v4Uri,
+    }]));
     const manager = new ReelDownloadManager();
     await manager.activate('coach-a');
     expect(manager.get(7, 'highlight', 'reels/one.mp4')).toBeUndefined();
     expect(manager.get(7, 'highlight', 'reels/two.mp4')).toBeUndefined();
     expect(manager.get(7, 'highlight', 'reels/three.mp4')).toBeUndefined();
+    expect(manager.get(7, 'highlight', 'reels/four.mp4')).toBeUndefined();
     expect(mockFiles.has(v1Uri)).toBe(false);
     expect(mockFiles.has(v2Uri)).toBe(false);
     expect(mockFiles.has(v3Uri)).toBe(false);
+    expect(mockFiles.has(v4Uri)).toBe(false);
     expect(mockStorage.has('@stecstats/reel-downloads/v1/coach-a')).toBe(false);
     expect(mockStorage.has('@stecstats/reel-downloads/v2/coach-a')).toBe(false);
     expect(mockStorage.has('@stecstats/reel-downloads/v3/coach-a')).toBe(false);
+    expect(mockStorage.has('@stecstats/reel-downloads/v4/coach-a')).toBe(false);
   });
 
   test('isolates accounts and ignores an old transfer callback', async () => {
@@ -350,8 +358,8 @@ describe('ReelDownloadManager behavior', () => {
     let releaseCoachA!: (value: string | null) => void;
     const coachARead = new Promise<string | null>((resolve) => { releaseCoachA = resolve; });
     storage.getItem.mockImplementation((storageKey: string) => {
-      if (storageKey === '@stecstats/reel-downloads/v4/coach-a') return coachARead;
-      if (storageKey === '@stecstats/reel-downloads/v4/coach-b') return Promise.resolve('[]');
+      if (storageKey === '@stecstats/reel-downloads/v5/coach-a') return coachARead;
+      if (storageKey === '@stecstats/reel-downloads/v5/coach-b') return Promise.resolve('[]');
       return Promise.resolve(null);
     });
     const manager = new ReelDownloadManager();
@@ -481,9 +489,9 @@ describe('ReelDownloadManager behavior', () => {
   });
 
   test('recovers malformed and interrupted persisted manifests as safe retryable failures', async () => {
-    mockStorage.set('@stecstats/reel-downloads/v4/coach-a', '{bad json');
+    mockStorage.set('@stecstats/reel-downloads/v5/coach-a', '{bad json');
     const malformed = new ReelDownloadManager(); await expect(malformed.activate('coach-a')).resolves.toBeUndefined();
-    mockStorage.set('@stecstats/reel-downloads/v4/coach-b', JSON.stringify([{ ...reel(), status: 'downloading', requestedAt: 1, uri: 'file:///cache/partial' }]));
+    mockStorage.set('@stecstats/reel-downloads/v5/coach-b', JSON.stringify([{ ...reel(), status: 'downloading', requestedAt: 1, uri: 'file:///cache/partial' }]));
     mockFiles.set('file:///cache/partial', 99);
     const interrupted = new ReelDownloadManager(); await interrupted.activate('coach-b');
     expect(interrupted.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('failed');

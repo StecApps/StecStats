@@ -32,11 +32,12 @@ const MIN_COMPLETE_BYTES = 1024;
 // v1 wrote an active download directly into the final .mp4 path. AVPlayer
 // could therefore open a truncated file and keep reporting only its first few
 // seconds even after the transfer changed underneath it. Start clean once.
-const MANIFEST_PREFIX = '@stecstats/reel-downloads/v4/';
+const MANIFEST_PREFIX = '@stecstats/reel-downloads/v5/';
 const OBSOLETE_MANIFEST_PREFIXES = [
   '@stecstats/reel-downloads/v1/',
   '@stecstats/reel-downloads/v2/',
   '@stecstats/reel-downloads/v3/',
+  '@stecstats/reel-downloads/v4/',
 ];
 const PREFERENCE_KEY = '@stecstats/reel-downloads/cellular';
 const REEL_STORAGE_ROOT = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
