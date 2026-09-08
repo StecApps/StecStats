@@ -999,7 +999,8 @@ export default function DashboardScreen() {
     );
   }
 
-  // Chip bar — reused in both portrait (inside ScrollView) and landscape (pinned above)
+  // Keep player selection inside the dashboard content so it remains fully
+  // visible below the app navigation and safe area on every iPad orientation.
   const chipBar = (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
       {(players as any[]).map((p) => (
@@ -1015,20 +1016,6 @@ export default function DashboardScreen() {
       <BasketballWatermark color={c.primary} />
       <StatsWatermark color={c.primary} />
 
-      {/* ── Pinned chip bar (landscape only) — sits above the ScrollView ── */}
-      {isLandscape && (
-        <View style={[
-          styles.pinnedChipBar,
-          {
-            paddingLeft: 16 + (insets.left ?? 0),
-            paddingRight: 16 + (insets.right ?? 0),
-            borderBottomColor: c.border,
-          },
-        ]}>
-          {chipBar}
-        </View>
-      )}
-
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
@@ -1043,33 +1030,34 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={c.primary} />}
       >
-        {/* ── Compact branded masthead ── */}
+        {/* ── Integrated dashboard header — no detached image banner ── */}
         <View style={[
-          styles.logoBannerContainer,
-          {
-            marginTop: isLandscape ? 10 : 0,
-          },
+          styles.dashboardHeader,
+          isTablet && styles.dashboardHeaderTablet,
         ]}>
-          <View style={[
-            styles.logoMasthead,
-            {
-              borderColor: hexToRgba(c.primary, 0.38),
-              width: isTablet ? 390 : '100%',
-            },
-          ]}>
-            <Image
-              source={require('../../assets/images/logo-banner.png')}
-              style={isTablet ? styles.logoBannerImageTablet : styles.logoBannerImage}
-              contentFit="contain"
-            />
+          <View style={styles.wordmark} accessibilityLabel="StecStats">
+            <Text style={[styles.wordmarkStec, { color: c.primary }]}>Stec</Text>
+            <Ionicons name="basketball" size={22} color={c.foreground} />
+            <Text style={[styles.wordmarkStats, { color: c.foreground }]}>STATS</Text>
+            {isTablet && (
+              <Text style={[styles.wordmarkTagline, { color: c.mutedForeground }]}>
+                YOUR ALL-IN-ONE APP
+              </Text>
+            )}
           </View>
+          <CoachGreeting />
         </View>
 
-        {/* ── Coach greeting ── */}
-        <CoachGreeting />
-
-        {/* ── Player chips — portrait only; landscape chips are pinned above ── */}
-        {!isLandscape && chipBar}
+        <View style={[
+          styles.playerSelector,
+          {
+            backgroundColor: hexToRgba(c.card, 0.76),
+            borderColor: c.border,
+          },
+        ]}>
+          <Text style={[styles.playerSelectorLabel, { color: c.mutedForeground }]}>PLAYERS</Text>
+          {chipBar}
+        </View>
 
         {activePlayer
           ? <PlayerDashboard player={activePlayer} />
@@ -1085,35 +1073,58 @@ const styles = StyleSheet.create({
   root:    { flex: 1 },
   centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: {},
-  chips:   { paddingBottom: 14 },
-  // Pinned chip bar rendered above the ScrollView in landscape so chips
-  // stay visible while the coach scrolls through stats.
-  pinnedChipBar: {
-    paddingTop: 8,
-    paddingBottom: 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+  chips: {
+    paddingRight: 8,
   },
-  logoBannerContainer: {
+  dashboardHeader: {
     alignSelf: 'stretch',
-    marginBottom: 12,
+    marginBottom: 10,
+    gap: 12,
+  },
+  dashboardHeaderTablet: {
+    minHeight: 68,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
-  logoMasthead: {
-    height: 58,
-    maxWidth: 420,
-    borderRadius: 18,
+  wordmark: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  wordmarkStec: {
+    ...tekoStyle(34),
+    fontStyle: 'italic',
+    letterSpacing: 0.5,
+  },
+  wordmarkStats: {
+    ...tekoStyle(34),
+    letterSpacing: 1,
+  },
+  wordmarkTagline: {
+    marginLeft: 7,
+    fontSize: 8,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 1.2,
+  },
+  playerSelector: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(5,3,2,0.78)',
+    borderRadius: 18,
+    paddingLeft: 14,
+    paddingRight: 6,
+    paddingVertical: 7,
+    marginBottom: 14,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 5 },
-    elevation: 5,
   },
-  logoBannerImage: { width: '100%', height: 56 },
-  logoBannerImageTablet: { width: '100%', height: 54 },
+  playerSelectorLabel: {
+    fontSize: 9,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 1.5,
+    marginRight: 12,
+  },
   emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginTop: 16, marginBottom: 8 },
   emptySub:   { fontSize: 14, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
   emptyBtn:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 14 },
