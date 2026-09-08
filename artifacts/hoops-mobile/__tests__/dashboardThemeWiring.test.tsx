@@ -25,11 +25,15 @@ jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(() => ({
     getToken: jest.fn(() => Promise.resolve('test-token')),
     userId: 'test-user-id',
+    isLoaded: true,
+    isSignedIn: true,
   })),
+  useUser: jest.fn(() => ({ user: { firstName: 'Coach' } })),
 }));
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ back: jest.fn() })),
+  useFocusEffect: jest.fn(),
 }));
 
 jest.mock('@workspace/api-client-react', () => ({
@@ -67,6 +71,7 @@ jest.mock('@workspace/api-client-react', () => ({
   })),
   useUpdatePlayer: jest.fn(() => ({ mutateAsync: jest.fn() })),
   getListPlayersQueryKey: jest.fn(() => ['players']),
+  useGetMe: jest.fn(() => ({ data: { firstName: 'Coach' } })),
 }));
 
 jest.mock('@tanstack/react-query', () => ({
@@ -138,6 +143,7 @@ jest.mock('react-native', () => {
     View: hostEl('View'),
     Text: hostEl('Text'),
     ScrollView: hostEl('ScrollView'),
+    useWindowDimensions: () => ({ width: 390, height: 844 }),
     TouchableOpacity: hostEl('TouchableOpacity'),
     ActivityIndicator: hostEl('ActivityIndicator'),
     RefreshControl: hostEl('RefreshControl'),
@@ -209,6 +215,14 @@ function flatStyle(style: any): Record<string, any> {
 describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
   const srcPath = path.resolve(__dirname, '../app/(tabs)/index.tsx');
   const rawSrc = fs.readFileSync(srcPath, 'utf8');
+
+  test('uses a bounded, full-height two-column layout on landscape iPads', () => {
+    expect(rawSrc).toContain('const isTabletLandscape = isLandscape && Math.min(width, height) >= 600');
+    expect(rawSrc).toContain('Math.round(width * 0.36)');
+    expect(rawSrc).toContain('isTabletLandscape && heroS.cardWrapperTabletLandscape');
+    expect(rawSrc).toContain('isTabletLandscape && lsS.rowTablet');
+    expect(rawSrc).toContain("alignItems: 'stretch'");
+  });
 
   // Strip single-line comments before scanning so a comment that mentions a
   // hex value (for documentation) doesn't cause a false positive.
@@ -302,9 +316,9 @@ describe('Dashboard runtime — theme tokens flow from colors.dark.primary', () 
 
   test('hero card borderColor is rgba() derived from colors.dark.primary', () => {
     const json = tree.toJSON();
-    const expectedBorder = hexToRgba(SENTINEL, 0.60);
+    const expectedBorder = hexToRgba(SENTINEL, 0.65);
 
-    // heroS.card is applied as [heroS.card, { borderColor: primaryRgba(0.40), ... }]
+    // heroS.card receives the current primary color at the configured opacity.
     const heroCards = findNodes(
       json,
       (n) => {

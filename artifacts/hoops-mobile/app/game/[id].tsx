@@ -1595,12 +1595,22 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         fullscreen: fullscreenRef.current,
         message,
       });
+      // Recover one unexpected local interruption automatically from the last
+      // known timestamp. This reattaches the same durable file; it never
+      // invalidates the download or requests media bytes again.
+      if (interruptedLocalPlayback && !automaticRetryRef.current) {
+        automaticRetryRef.current = true;
+        pendingResumePositionRef.current = playbackPositionRef.current;
+        shouldAutoPlayRef.current = true;
+        attachedSourceRef.current = null;
+        setPlaybackInterrupted(false);
+        setPlaybackError(null);
+        setPlaybackLoading(true);
+        void loadHighlightVideo();
+        return;
+      }
       setPlaybackInterrupted(interruptedLocalPlayback);
       setPlaybackError(message);
-      // Never replace a successfully-started local reel behind the coach. On
-      // iOS, replaceAsync dismisses the fullscreen AVPlayerViewController and
-      // made a valid Highlight appear to "cut out" back to the game screen.
-      // Keep the view/source mounted and offer an explicit same-file resume.
       if (interruptedLocalPlayback) return;
       // Reattach a completed local MP4 once after a transient native source
       // error. In particular, do not call forceFresh: that would delete the

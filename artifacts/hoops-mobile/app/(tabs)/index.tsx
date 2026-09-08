@@ -407,6 +407,7 @@ function PlayerDashboard({ player }: { player: any }) {
   const c = useColors();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isTabletLandscape = isLandscape && Math.min(width, height) >= 600;
   // Local rgba helper keyed to the current palette's primary color
   const primaryRgba = (alpha: number) => hexToRgba(c.primary, alpha);
 
@@ -537,8 +538,18 @@ function PlayerDashboard({ player }: { player: any }) {
 
   // ── Shared hero card content ──────────────────────────────────────────────
   const heroCard = (
-    <View style={[heroS.cardWrapper, { shadowColor: c.primary }, isLandscape && heroS.cardWrapperLandscape]}>
-      <View style={[heroS.card, { borderColor: primaryRgba(0.65), backgroundColor: c.card }, isLandscape && heroS.cardLandscape]}>
+    <View style={[
+      heroS.cardWrapper,
+      { shadowColor: c.primary },
+      isLandscape && heroS.cardWrapperLandscape,
+      isTabletLandscape && heroS.cardWrapperTabletLandscape,
+    ]}>
+      <View style={[
+        heroS.card,
+        { borderColor: primaryRgba(0.65), backgroundColor: c.card },
+        isLandscape && heroS.cardLandscape,
+        isTabletLandscape && heroS.cardTabletLandscape,
+      ]}>
         {/* Orange glow radiates from the top edge of the hero card */}
         <OrangeGlow primary={c.primary} strength={2.2} />
         {/* Deep ambient fill — bottom half of card glows darker orange */}
@@ -706,10 +717,16 @@ function PlayerDashboard({ player }: { player: any }) {
   );
 
   if (isLandscape) {
+    const heroWidth = isTabletLandscape
+      ? Math.min(400, Math.max(340, Math.round(width * 0.36)))
+      : Math.round(width * 0.44) - 20;
     return (
-      <View style={lsS.row}>
-        {/* Left column: hero card, fixed ~44% of screen width */}
-        <View style={[lsS.heroCol, { width: Math.round(width * 0.44) - 20 }]}>
+      <View style={[lsS.row, isTabletLandscape && lsS.rowTablet]}>
+        <View style={[
+          lsS.heroCol,
+          isTabletLandscape && lsS.heroColTablet,
+          { width: heroWidth },
+        ]}>
           {heroCard}
         </View>
         {/* Right column: all stats */}
@@ -742,6 +759,10 @@ const heroS = StyleSheet.create({
   cardWrapperLandscape: {
     marginBottom: 0,
   },
+  cardWrapperTabletLandscape: {
+    flex: 1,
+    alignSelf: 'stretch',
+  },
   card: {
     borderRadius: 20,
     borderWidth: 1.5,
@@ -754,6 +775,12 @@ const heroS = StyleSheet.create({
   cardLandscape: {
     paddingVertical: 18,
     paddingHorizontal: 14,
+  },
+  cardTabletLandscape: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 22,
   },
   // Horizontal orange→transparent bar along the very top edge
   topBar: {
@@ -823,10 +850,19 @@ const lsS = StyleSheet.create({
     gap: 12,
     alignItems: 'flex-start',
   },
+  rowTablet: {
+    alignItems: 'stretch',
+    maxWidth: 1180,
+    width: '100%',
+    alignSelf: 'center',
+  },
   // Left column: fixed width (set inline from screen width), full height of card
   heroCol: {
     // width is set inline; keep a flex-shrink:0 so it never collapses
     flexShrink: 0,
+  },
+  heroColTablet: {
+    alignSelf: 'stretch',
   },
   // Right column: grows to fill remaining space
   statsCol: {
