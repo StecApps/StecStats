@@ -411,8 +411,23 @@ export class ReelDownloadManager {
       if (this.accountId === accountAtStart &&
           this.generations.get(id) === generation &&
           this.entries.get(id) === entry) {
-        entry.status = 'failed'; entry.error = error?.message ?? 'Download failed';
-        await FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined);
+        const partialUri = this.partialUriFor(entry);
+        const partialInfo = await FileSystem.getInfoAsync(partialUri);
+        const partialBytes = partialInfo.exists ? partialInfo.size ?? 0 : 0;
+        if (Platform.OS === 'ios' && partialBytes > 0) {
+          // Wi-Fi roaming commonly closes the active fetch while iOS is moving
+          // between access points or cellular. Keep every verified byte and ask
+          // the screen to refresh the signed URL before resuming with Range.
+          entry.status = 'queued';
+          entry.error = undefined;
+          entry.bytesWritten = partialBytes;
+          entry.resumeData = undefined;
+          entry.needsUrlRefresh = true;
+        } else {
+          entry.status = 'failed';
+          entry.error = error?.message ?? 'Download failed';
+          await FileSystem.deleteAsync(partialUri, { idempotent: true }).catch(() => undefined);
+        }
       }
     } finally {
       // activate() resets bookkeeping for the new account. A late callback from

@@ -67,16 +67,17 @@ async function fetchStreamUrl(
   // chunks; AVPlayer on iOS handles M3U8 natively.  Use the playlist URL
   // directly instead of the single-file stream endpoint.
   //
-  // For non-HLS streams the server returns a pre-generated `streamUrl` (a
-  // 5 h GCS signed URL).  Passing it directly to expo-video means ALL seeks
-  // — including HTTP Range requests — go to GCS without touching the server.
-  // This avoids relying on AVPlayer retaining the 302 redirect target across
-  // Range seeks (unspecified behaviour), and means the 4 h stream token is
-  // irrelevant for playback: the GCS URL stays valid for 1 h after the token
-  // expires so the coach can seek freely throughout a long review session.
+  // Native reel downloads must use the server's GCS-SDK range proxy. Replit's
+  // signed object URLs can return the right byte count but incorrect bytes for
+  // non-zero Range resumes, producing a locally "complete" MP4 that stops at
+  // the resume boundary. Web playback and full-game video retain direct URLs.
+  const useReelRangeProxy =
+    Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight');
   const url = proxyType === 'hls'
     ? `${API_BASE}/api/games/${gameId}/hls/playlist.m3u8?t=${streamToken}`
-    : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
+    : useReelRangeProxy
+      ? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`
+      : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
 
   return {
     url,

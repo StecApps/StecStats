@@ -209,6 +209,58 @@ describe('ReelDownloadManager behavior', () => {
     expect(mockFiles.get(finalUri)).toBe(4194304);
   });
 
+  test('keeps iOS partial bytes when Wi-Fi roaming interrupts the active fetch', async () => {
+    Platform.OS = 'ios';
+    (expoFetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: { get: (name: string) => name.toLowerCase() === 'content-length' ? '4096' : null },
+      body: { getReader: () => ({
+        read: jest.fn()
+          .mockResolvedValueOnce({ done: false, value: new Uint8Array(2048) })
+          .mockRejectedValueOnce(new Error('Network connection was lost')),
+        cancel: jest.fn(),
+      }) },
+    });
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a');
+    manager.setNetworkForTesting('wifi', true);
+    await manager.enqueue(reel());
+    await flush();
+    await flush();
+
+    const interrupted = manager.get(7, 'highlight', 'reels/one.mp4')!;
+    expect(interrupted).toMatchObject({
+      status: 'queued',
+      bytesWritten: 2048,
+      expectedBytes: 4096,
+      needsUrlRefresh: true,
+    });
+    expect(mockFiles.get(`${interrupted.uri}.part`)).toBe(2048);
+
+    (expoFetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 206,
+      headers: { get: (name: string) => {
+        if (name.toLowerCase() === 'content-range') return 'bytes 2048-4095/4096';
+        if (name.toLowerCase() === 'content-length') return '2048';
+        return null;
+      } },
+      body: { getReader: () => ({
+        read: jest.fn()
+          .mockResolvedValueOnce({ done: false, value: new Uint8Array(2048) })
+          .mockResolvedValueOnce({ done: true }),
+        cancel: jest.fn(),
+      }) },
+    });
+    await manager.enqueue({ ...reel(), url: 'https://signed/refreshed' });
+    await flush();
+    await flush();
+
+    expect(manager.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
+    expect(mockFiles.get(interrupted.uri!)).toBe(4096);
+  });
+
   test('never restores another account resumable transfer', async () => {
     const manager = new ReelDownloadManager();
     await manager.activate('coach-a');

@@ -19,6 +19,11 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("await getReusableStreamUrl(gameId, 'lowlight'");
   });
 
+  test('downloads native reels through the GCS-backed range proxy', () => {
+    expect(gameScreen).toContain("Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight')");
+    expect(gameScreen).toContain('stream/${type}?t=${streamToken}&proxy=1');
+  });
+
   test('uses a larger LRU cache and a forward buffer for full games', () => {
     expect(gameScreen).toContain('setVideoCacheSizeAsync(3 * 1024 * 1024 * 1024)');
     expect(gameScreen).toContain('preferredForwardBufferDuration: 60');
