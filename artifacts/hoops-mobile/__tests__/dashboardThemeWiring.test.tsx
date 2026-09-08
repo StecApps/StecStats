@@ -216,12 +216,19 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
   const srcPath = path.resolve(__dirname, '../app/(tabs)/index.tsx');
   const rawSrc = fs.readFileSync(srcPath, 'utf8');
 
-  test('uses a bounded, full-height two-column layout on landscape iPads', () => {
+  test('uses a bounded two-column layout on landscape iPads without stretching the player panel', () => {
     expect(rawSrc).toContain('const isTabletLandscape = isLandscape && Math.min(width, height) >= 600');
     expect(rawSrc).toContain('Math.round(width * 0.36)');
     expect(rawSrc).toContain('isTabletLandscape && heroS.cardWrapperTabletLandscape');
     expect(rawSrc).toContain('isTabletLandscape && lsS.rowTablet');
-    expect(rawSrc).toContain("alignItems: 'stretch'");
+    expect(rawSrc).toContain("maxWidth: 1180, width: '100%', alignSelf: 'center'");
+    expect(rawSrc).not.toContain("cardWrapperTabletLandscape: { flex: 1");
+  });
+
+  test('keeps the roster scroller inside safe-area dashboard content', () => {
+    expect(rawSrc).toContain('style={styles.chipScroller}');
+    expect(rawSrc).toContain('paddingTop: insets.top');
+    expect(rawSrc).not.toContain('styles.pinnedChipBar');
   });
 
   // Strip single-line comments before scanning so a comment that mentions a
