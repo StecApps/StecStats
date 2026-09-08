@@ -149,3 +149,4 @@
 - [iOS continuous Highlight playback](expo-video-segmented-reel-endings.md) — prefer the rebuilt combined MP4; Expo source swaps can halt at 20-second clip boundaries.
 - [TestFlight build-number continuity](testflight-build-number-continuity.md) — keep local 8-digit iOS numbering; EAS remote counters like 82 sort below existing 202608xx builds.
 - [Native iPad full-screen support](native-ipad-fullscreen.md) — keep tablet support and full-screen requirement enabled; iPhone compatibility mode can return half-sized after video rotation.
+- [iPad dashboard branding](ipad-dashboard-branding.md) — no detached logo banner/card; keep player selection fully below the status bar in dashboard content.
