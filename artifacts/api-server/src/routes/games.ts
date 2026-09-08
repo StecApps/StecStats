@@ -38,6 +38,10 @@ import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitleme
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { retainGameMasterFilm } from "../lib/gameFilmRetention";
 import {
+  buildContinuous720pEncodeArgs,
+  buildContinuousConcatArgs,
+} from "../lib/videoTimeline";
+import {
   captureAndInvalidateHighlight,
   cleanupCapturedHighlightDerivatives,
 } from "../lib/highlightDerivatives";
@@ -1368,9 +1372,9 @@ router.post("/games/merge", requireAuth, async (req, res) => {
  * it, and update the primary game's videoObjectPath.  Runs in the background
  * after the merge API response has been sent.
  *
- * Uses ffmpeg -f concat -c copy so no re-encode is needed regardless of
- * the source container (WebM or MP4).  The output is the same format as the
- * first input file.
+ * Re-encodes the final concat to one continuous CFR H.264/AAC timeline.
+ * Stream-copying independently recorded sources can preserve a timestamp or
+ * keyframe discontinuity that AVPlayer exposes at the first clip boundary.
  */
 export async function startBackgroundVideoConcat(
   primaryGameId: number,
@@ -1412,9 +1416,7 @@ export async function startBackgroundVideoConcat(
       return;
     }
 
-    // Determine output extension from first segment.
-    const firstExt = path.extname(localPaths[0]);
-    const outPath = path.join(tmpDir, `merged${firstExt}`);
+    const outPath = path.join(tmpDir, "merged.mp4");
 
     // Build ffmpeg concat list file.
     const concatListPath = path.join(tmpDir, "concat.txt");
@@ -1423,21 +1425,32 @@ export async function startBackgroundVideoConcat(
 
     log.info({ primaryGameId, outPath }, "merge-video: running ffmpeg concat");
     await new Promise<void>((resolve, reject) => {
-      execFile(
-        "ffmpeg",
-        ["-y", "-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy", outPath],
-        { maxBuffer: 5 * 1024 * 1024, timeout: 10 * 60 * 1000 },
-        (err, _stdout, stderr) =>
-          err ? reject(new Error(`ffmpeg concat: ${stderr?.slice(-600)}`)) : resolve(),
-      );
+      const proc = spawn("ffmpeg", buildContinuousConcatArgs(concatListPath, outPath));
+      let stderrTail = "";
+      const timeout = setTimeout(() => {
+        proc.kill("SIGKILL");
+        reject(new Error("ffmpeg normalized concat timed out after 4 hours"));
+      }, 4 * 60 * 60 * 1000);
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderrTail = (stderrTail + chunk.toString()).slice(-8_000);
+      });
+      proc.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+      proc.on("close", (code) => {
+        clearTimeout(timeout);
+        code === 0
+          ? resolve()
+          : reject(new Error(`ffmpeg normalized concat exited ${code}: ${stderrTail.slice(-1200)}`));
+      });
     });
 
     log.info({ primaryGameId }, "merge-video: uploading merged file");
-    const contentType = firstExt === ".webm" ? "video/webm" : "video/mp4";
     const newObjectPath = await objectStorageService.uploadLocalFileAsObjectEntity(
       outPath,
       ownerId,
-      contentType,
+      "video/mp4",
     );
 
     // Guard: if the primary game was deleted while the concat job was running,
@@ -1814,7 +1827,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     // 'original' keeps the existing codec stream via -c copy.
     // The final concat step always uses -c copy (streams are already at target res).
     const ffmpegEncodeArgs: string[] = repairQuality === '720p'
-      ? ["-vf", "scale=-2:720", "-c:v", "libx264", "-crf", "23", "-preset", "veryfast", "-c:a", "aac", "-movflags", "+faststart"]
+      ? buildContinuous720pEncodeArgs()
       : ["-c", "copy", "-movflags", "+faststart"];
     // Set by the WebM two-half path; stored to DB for highlight timestamp correction.
     let videoHalf2StartMs: number | null = null;
@@ -1984,12 +1997,27 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
               code === 0 ? resolve() : reject(new Error(`ffmpeg webm-concat: ${stderr.slice(-500)}`)));
             proc.on("error", reject);
           });
+        } else if (repairQuality === "720p") {
+          // A concat-demuxed WebM can look like one valid container while still
+          // carrying a timestamp/keyframe discontinuity between recordings.
+          // A requested 720p repair must therefore rebuild the whole timeline.
+          const rawFull = path.join(tmpDir, "raw.bin");
+          log.info({ gameId }, "repair-video: downloading WebM for continuous timeline rebuild");
+          await downloadGCSRange(srcFile, rawFull);
+          log.info({ gameId }, "repair-video: normalizing single WebM timeline");
+          await new Promise<void>((resolve, reject) => {
+            execFile(
+              "ffmpeg",
+              ["-y", "-fflags", "+genpts", "-i", rawFull, ...ffmpegEncodeArgs, tmpOut],
+              { maxBuffer: 8 * 1024 * 1024, timeout: 4 * 60 * 60 * 1000 },
+              (err, _stdout, stderr) =>
+                err ? reject(new Error(`ffmpeg WebM normalize: ${stderr?.slice(-1200)}`)) : resolve(),
+            );
+          });
+          await fs.unlink(rawFull).catch(() => {});
         } else {
-          // Single continuous WebM — the original file is already a valid playable
-          // WebM (VP9/Opus). Attempting to ffmpeg-remux a 2+ GB file on the
-          // production server risks an OOM crash before completion.  Instead just
-          // reset the metadata: the player uses the original source directly and
-          // highlights are regenerated from the correct timestamps.
+          // Original-quality mode remains metadata-only for an ordinary single
+          // WebM. Coaches can explicitly choose 720p to force normalization.
           log.info({ gameId }, "repair-video: single WebM — skipping ffmpeg, resetting metadata only");
           // Do NOT clear highlight/lowlight reels here: the video file is
           // unchanged (same path, same content), so any existing reels are
