@@ -147,7 +147,7 @@
 - [Queued reel progress semantics](queued-reel-progress.md) — waiting for a media slot is queued, not processing; start progress time only after token-fenced slot acquisition.
 - [GitHub workflow scope for TestFlight](github-workflow-scope.md) — repo-only tokens cannot push Actions files; verify workflow scope or trigger the same EAS build directly.
 - [iOS continuous Highlight playback](expo-video-segmented-reel-endings.md) — prefer the rebuilt combined MP4; Expo source swaps can halt at 20-second clip boundaries.
-- [Silent AVPlayer reel stalls](ios-avplayer-silent-reel-stalls.md) — a valid combined MP4 can black out without an error; use no-B-frame output plus a stuck-playhead recovery.
+- [Silent AVPlayer reel stalls](ios-avplayer-silent-reel-stalls.md) — a valid combined MP4 can black out without an error; no-B-frame output and playhead reattachment made it worse.
 - [TestFlight build-number continuity](testflight-build-number-continuity.md) — keep local 8-digit iOS numbering; EAS remote counters like 82 sort below existing 202608xx builds.
 - [Native iPad full-screen support](native-ipad-fullscreen.md) — keep tablet support and full-screen requirement enabled; iPhone compatibility mode can return half-sized after video rotation.
 - [iPad dashboard branding](ipad-dashboard-branding.md) — use the approved dense desktop hierarchy; no detached logo card, and keep controls below the safe area.

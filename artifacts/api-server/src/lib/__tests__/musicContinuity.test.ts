@@ -293,7 +293,7 @@ describe("concatSegments — continuous iOS-safe video timeline", () => {
         "-v", "error",
         "-select_streams", "v:0",
         "-count_frames",
-        "-show_entries", "stream=start_time,duration,nb_read_frames,has_b_frames",
+        "-show_entries", "stream=start_time,duration,nb_read_frames",
         "-of", "json",
         reel,
       ]);
@@ -302,7 +302,6 @@ describe("concatSegments — continuous iOS-safe video timeline", () => {
       expect(Number(stream?.duration)).toBeGreaterThan(5.8);
       expect(Number(stream?.duration)).toBeLessThan(6.2);
       expect(Number(stream?.nb_read_frames)).toBeGreaterThanOrEqual(175);
-      expect(Number(stream?.has_b_frames)).toBe(0);
 
       await expect(
         execFileAsync("ffmpeg", ["-v", "error", "-i", reel, "-f", "null", "-"]),

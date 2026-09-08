@@ -7,4 +7,4 @@ A combined Highlight MP4 can have continuous timestamps, decode fully with FFmpe
 
 **Why:** A production five-clip reel was verified end-to-end, including continuous packets across the reported boundary, but physical iOS playback silently froze after clip two and could not resume with the native Play control.
 
-**How to apply:** Encode combined reels as CFR H.264 with no B-frames, a bounded keyframe cadence, and an explicit video track timescale. For verified local reels, monitor an actively playing but non-advancing playhead and reattach the same file once at the last confirmed timestamp.
+**How to apply:** Do not use the attempted no-B-frame/fixed-GOP encode or automatic playhead reattachment: physical-device testing regressed from two clips to less than one. Preserve the previous encode while investigating a different container/playback strategy.
