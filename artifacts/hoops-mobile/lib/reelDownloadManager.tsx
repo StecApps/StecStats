@@ -31,8 +31,11 @@ const MIN_COMPLETE_BYTES = 1024;
 // v1 wrote an active download directly into the final .mp4 path. AVPlayer
 // could therefore open a truncated file and keep reporting only its first few
 // seconds even after the transfer changed underneath it. Start clean once.
-const MANIFEST_PREFIX = '@stecstats/reel-downloads/v2/';
-const LEGACY_MANIFEST_PREFIX = '@stecstats/reel-downloads/v1/';
+const MANIFEST_PREFIX = '@stecstats/reel-downloads/v3/';
+const OBSOLETE_MANIFEST_PREFIXES = [
+  '@stecstats/reel-downloads/v1/',
+  '@stecstats/reel-downloads/v2/',
+];
 const PREFERENCE_KEY = '@stecstats/reel-downloads/cellular';
 const REEL_STORAGE_ROOT = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
 
@@ -99,21 +102,23 @@ export class ReelDownloadManager {
     }
     this.watchNetwork();
     this.cellularAllowed = (await AsyncStorage.getItem(PREFERENCE_KEY)) === 'true';
-    const legacyKey = `${LEGACY_MANIFEST_PREFIX}${accountId}`;
-    const legacyRaw = await AsyncStorage.getItem(legacyKey);
-    if (legacyRaw) {
-      try {
-        const legacy = JSON.parse(legacyRaw) as ReelDownload[];
-        if (Array.isArray(legacy)) {
-          await Promise.all(legacy.flatMap((entry) => [
-            entry?.uri ? FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => undefined) : Promise.resolve(),
-            entry?.objectPath ? FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined) : Promise.resolve(),
-          ]));
+    for (const prefix of OBSOLETE_MANIFEST_PREFIXES) {
+      const legacyKey = `${prefix}${accountId}`;
+      const legacyRaw = await AsyncStorage.getItem(legacyKey);
+      if (legacyRaw) {
+        try {
+          const legacy = JSON.parse(legacyRaw) as ReelDownload[];
+          if (Array.isArray(legacy)) {
+            await Promise.all(legacy.flatMap((entry) => [
+              entry?.uri ? FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => undefined) : Promise.resolve(),
+              entry?.objectPath ? FileSystem.deleteAsync(this.partialUriFor(entry), { idempotent: true }).catch(() => undefined) : Promise.resolve(),
+            ]));
+          }
+        } catch {
+          // Obsolete manifests are discarded even when malformed.
         }
-      } catch {
-        // The obsolete manifest is discarded even when it is malformed.
+        await AsyncStorage.removeItem(legacyKey);
       }
-      await AsyncStorage.removeItem(legacyKey);
     }
     const raw = await AsyncStorage.getItem(this.manifestKey());
     let persisted: ReelDownload[] = [];
