@@ -15,7 +15,8 @@
     },
     "ios": {
       "bundleIdentifier": "com.hoopsstats.coach",
-      "supportsTablet": false,
+      "supportsTablet": true,
+      "requireFullScreen": true,
       "infoPlist": {
         "NSCameraUsageDescription": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
         "NSMicrophoneUsageDescription": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
