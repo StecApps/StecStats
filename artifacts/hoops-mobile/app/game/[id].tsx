@@ -56,12 +56,12 @@ async function fetchStreamUrl(
   gameId: number,
   type: 'video' | 'highlight' | 'lowlight',
   token: string,
-): Promise<{ url: string; proxyReady: boolean; proxySkipped: boolean; isHls: boolean }> {
+): Promise<{ url: string; downloadUrl: string; proxyReady: boolean; proxySkipped: boolean; isHls: boolean }> {
   const res = await fetch(`${API_BASE}/api/games/${gameId}/stream-token/${type}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Could not get stream token');
-  const { token: streamToken, proxyReady, proxySkipped, proxyType, streamUrl } = await res.json();
+  const { token: streamToken, proxyReady, proxySkipped, proxyType, streamUrl, downloadUrl } = await res.json();
 
   // proxyType==='hls' → long game served as an HLS playlist backed by proxy
   // chunks; AVPlayer on iOS handles M3U8 natively.  Use the playlist URL
@@ -81,6 +81,9 @@ async function fetchStreamUrl(
 
   return {
     url,
+    // For reel HLS, streamUrl remains the authenticated resumable MP4 proxy.
+    // It is intentionally separate from the native playback playlist.
+    downloadUrl: downloadUrl ?? streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`,
     isHls: proxyType === 'hls',
     // proxyReady=false → server is still building the proxy (H.264 or HLS);
     // raw VP9/WebM is unplayable on iOS so we show a spinner and keep polling.
@@ -93,6 +96,7 @@ async function fetchStreamUrl(
 
 type CachedStream = {
   url: string;
+  downloadUrl: string;
   isHls: boolean;
   expiresAt: number;
 };
@@ -166,6 +170,7 @@ async function getReusableStreamUrl(
   if (cached && cached.expiresAt > Date.now()) {
     return {
       url: cached.url,
+      downloadUrl: cached.downloadUrl,
       isHls: cached.isHls,
       proxyReady: true,
       proxySkipped: false,
@@ -176,6 +181,7 @@ async function getReusableStreamUrl(
   if (result.proxyReady) {
     streamUrlCache.set(key, {
       url: result.url,
+      downloadUrl: result.downloadUrl,
       isHls: result.isHls,
       expiresAt: Date.now() + STREAM_URL_REUSE_MS,
     });
@@ -899,6 +905,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
   const generateMutation = useGenerateGameLowlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [streamIsHls, setStreamIsHls] = useState(false);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
@@ -941,13 +948,24 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         ? await fetchStreamUrl(gameId, 'lowlight', token)
         : await getReusableStreamUrl(gameId, 'lowlight', token);
       if (!isCurrentLoad()) return;
-      const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.url, forceFresh);
+      // Play completed reel HLS immediately on native platforms. Keep the
+      // persistent MP4 transfer running independently for Save/offline use.
+      if (result.isHls && Platform.OS !== 'web') {
+        await reelDownloadManager.enqueue({ gameId, type: 'lowlight', objectPath, url: result.downloadUrl }, true);
+        if (!isCurrentLoad()) return;
+        setStreamIsHls(true);
+        setSignedUrl(result.url);
+        setSourceAttachRequest({ url: result.url, id: loadGeneration });
+        return;
+      }
+      const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.downloadUrl, forceFresh);
       if (!isCurrentLoad()) return;
       if (!playbackUrl) {
         setSignedUrl(null);
         setPlaybackLoading(false);
         return;
       }
+      setStreamIsHls(false);
       setSignedUrl(playbackUrl);
       setSourceAttachRequest({ url: playbackUrl, id: loadGeneration });
     } catch (error: any) {
@@ -980,7 +998,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           setPlaybackLoading(false);
           return;
         }
-        await player.replaceAsync(playbackSource(sourceAttachRequest.url, false));
+        await player.replaceAsync(playbackSource(sourceAttachRequest.url, streamIsHls));
         if (cancelled || generation !== sourceAttachGenerationRef.current) return;
         attachedSourceRef.current = sourceAttachRequest.url;
         setPlaybackLoading(false);
@@ -991,7 +1009,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         setPlaybackLoading(false);
       });
     return () => { cancelled = true; };
-  }, [player, sourceAttachRequest]);
+  }, [player, sourceAttachRequest, streamIsHls]);
 
   useEffect(() => {
     if (!lowlightReady) return;
@@ -1030,8 +1048,14 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }, [player, signedUrl, lowlightDownload?.status, loadLowlightVideo]);
 
   async function handleSaveLowlight() {
-    if (!signedUrl) return;
-    await saveReviewVideo(signedUrl, 'Game Lowlights');
+    const objectPath = lowlight?.lowlightObjectPath;
+    if (!objectPath || !signedUrl) return;
+    // Never hand the HLS manifest to the photo-library saver. The parallel
+    // token-bound MP4 download is the durable save/offline fallback.
+    const saveUrl = streamIsHls
+      ? lowlightDownload?.uri ?? await waitForReelDownload(gameId, 'lowlight', objectPath)
+      : signedUrl;
+    await saveReviewVideo(saveUrl, 'Game Lowlights');
   }
 
   async function handleRegenerateLowlight() {
@@ -1236,6 +1260,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [streamIsHls, setStreamIsHls] = useState(false);
 
   // YouTube upload state — seed from the highlight response so the link
   // persists across remounts (the URL is persisted in the DB on the server).
@@ -1325,7 +1350,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     setPlaybackError(null);
     setPlaybackInterrupted(false);
     try {
-      if (usesSegmentedPlayback) {
+      if (usesSegmentedPlayback || streamIsHls) {
         if (!currentClip || !currentClipObjectPath) {
           throw new Error('The highlight clip is not available.');
         }
@@ -1373,11 +1398,19 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         : await getReusableStreamUrl(gameId, 'highlight', token);
       if (!isCurrentLoad()) return;
 
+      if (result.isHls && Platform.OS !== 'web') {
+        await reelDownloadManager.enqueue({ gameId, type: 'highlight', objectPath, url: result.downloadUrl }, true);
+        if (!isCurrentLoad()) return;
+        setStreamIsHls(true);
+        setSignedUrl(result.url);
+        setSourceAttachRequest({ url: result.url, id: loadGeneration });
+        return;
+      }
       const playbackUrl = await getReelPlaybackUrl(
         gameId,
         'highlight',
         objectPath,
-        result.url,
+        result.downloadUrl,
         forceFresh,
       );
       if (!isCurrentLoad()) return;
@@ -1389,10 +1422,12 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       if (result.proxyReady) {
         streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
           url: result.url,
+          downloadUrl: result.downloadUrl,
           isHls: result.isHls,
           expiresAt: Date.now() + STREAM_URL_REUSE_MS,
         });
       }
+      setStreamIsHls(false);
       setSignedUrl(playbackUrl);
       setSourceAttachRequest({ url: playbackUrl, id: loadGeneration });
     } catch (error: any) {
@@ -1440,7 +1475,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           playbackPositionRef.current = 0;
           playbackDurationRef.current = 0;
         }
-        await player.replaceAsync(playbackSource(sourceAttachRequest.url, false));
+        await player.replaceAsync(playbackSource(sourceAttachRequest.url, streamIsHls));
         if (cancelled || generation !== sourceAttachGenerationRef.current) return;
         attachedSourceRef.current = sourceAttachRequest.url;
         playbackDurationRef.current = Number.isFinite(player.duration) ? player.duration : 0;
@@ -1466,7 +1501,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         setPlaybackLoading(false);
       });
     return () => { cancelled = true; };
-  }, [player, sourceAttachRequest]);
+  }, [player, sourceAttachRequest, streamIsHls]);
 
   useEffect(() => {
     if (!highlightReady) return;
@@ -1743,7 +1778,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
               gameId,
               type: 'highlight',
               objectPath,
-              url: result.url,
+              url: result.downloadUrl,
             }, true);
             saveUrl = await waitForReelDownload(gameId, 'highlight', objectPath);
           }

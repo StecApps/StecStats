@@ -341,13 +341,26 @@ vi.mock("../../lib/highlightGenerator", () => ({
   readPlayableHlsSegmentDurations: vi.fn().mockResolvedValue([60, 60]),
   readHlsSentinel: vi.fn().mockImplementation(() => Promise.resolve(hlsSentinel.value)),
   ensureAllProxyChunksInBackground: vi.fn(),
-  acquireProxyChunkLocally: vi.fn(),
+  acquireProxyChunkLocally: vi.fn().mockResolvedValue({
+    localPath: "/tmp/reel.mp4",
+    release: vi.fn().mockResolvedValue(undefined),
+  }),
 }));
 
-vi.mock("child_process", () => ({
-  execFile: vi.fn(),
-  spawn: vi.fn(),
-}));
+vi.mock("child_process", () => {
+  const { EventEmitter } = require("events");
+  const { PassThrough } = require("stream");
+  return {
+    execFile: vi.fn(),
+    spawn: vi.fn(() => {
+      const proc = new EventEmitter();
+      proc.stdout = new PassThrough();
+      proc.stderr = new PassThrough();
+      process.nextTick(() => { proc.stdout.end("20\n"); proc.emit("close", 0); });
+      return proc;
+    }),
+  };
+});
 
 vi.mock("fs", async () => {
   const { Readable } = await import("stream");

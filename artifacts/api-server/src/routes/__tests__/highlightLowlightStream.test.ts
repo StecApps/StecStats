@@ -298,6 +298,20 @@ vi.mock("../../lib/highlightGenerator", () => ({
   generateHighlight: vi.fn(),
   cancelHighlightJob: vi.fn(),
   cancelHighlightRun: vi.fn(),
+  HLS_SEGMENT_DURATION_SEC: 60,
+  makeProxyChunkGcsPath: vi.fn(),
+  makeHlsChunkGcsPath: vi.fn(),
+  makeHlsSegmentMetadataGcsPath: vi.fn(),
+  makeHlsSentinelGcsPath: vi.fn(),
+  getReadyProxyChunkCount: vi.fn(),
+  getPlayableProxyChunkCount: vi.fn(),
+  readHlsSentinel: vi.fn(),
+  readPlayableHlsSegmentDurations: vi.fn(),
+  ensureAllProxyChunksInBackground: vi.fn(),
+  acquireProxyChunkLocally: vi.fn().mockResolvedValue({
+    localPath: "/tmp/reel.mp4",
+    release: vi.fn().mockResolvedValue(undefined),
+  }),
 }));
 
 vi.mock("../../lib/lowlightGenerator", () => ({
@@ -313,10 +327,20 @@ vi.mock("../../lib/musicTracks", () => ({
   MUSIC_TRACKS: [],
 }));
 
-vi.mock("child_process", () => ({
-  execFile: vi.fn(),
-  spawn: vi.fn(),
-}));
+vi.mock("child_process", () => {
+  const { EventEmitter } = require("events");
+  const { PassThrough } = require("stream");
+  return {
+    execFile: vi.fn(),
+    spawn: vi.fn(() => {
+      const proc = new EventEmitter();
+      proc.stdout = new PassThrough();
+      proc.stderr = new PassThrough();
+      process.nextTick(() => { proc.stdout.end("20\n"); proc.emit("close", 0); });
+      return proc;
+    }),
+  };
+});
 
 vi.mock("fs", async () => {
   const { Readable } = await import("stream");

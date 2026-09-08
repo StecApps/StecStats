@@ -328,9 +328,9 @@ export class ReelDownloadManager {
         const stream = await fetch(`${base}/api/games/${game.id}/stream-token/${type}`, { headers: { Authorization: `Bearer ${token}` } });
         if (!stream.ok || this.accountId !== accountAtStart) return;
         const data = await stream.json() as { streamUrl?: string; token?: string; proxyType?: string };
-        const url = data.proxyType === 'hls'
-          ? `${base}/api/games/${game.id}/hls/playlist.m3u8?t=${data.token}`
-          : data.streamUrl ?? `${base}/api/games/${game.id}/stream/${type}?t=${data.token}`;
+        // Reel HLS responses retain streamUrl as the token-bound MP4 range
+        // endpoint so offline downloads never try to save an M3U8 manifest.
+        const url = data.streamUrl ?? `${base}/api/games/${game.id}/stream/${type}?t=${data.token}`;
         await this.enqueue({ gameId: game.id, type, objectPath, url });
       })));
     } catch {

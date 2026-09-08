@@ -24,6 +24,13 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('stream/${type}?t=${streamToken}&proxy=1');
   });
 
+  test('plays native completed reels as HLS while retaining MP4 downloads for offline save', () => {
+    expect(gameScreen).toContain("if (result.isHls && Platform.OS !== 'web')");
+    expect(gameScreen).toContain("url: result.downloadUrl");
+    expect(gameScreen).toContain("setStreamIsHls(true);");
+    expect(gameScreen).toContain("playbackSource(sourceAttachRequest.url, streamIsHls)");
+  });
+
   test('uses a larger LRU cache and a forward buffer for full games', () => {
     expect(gameScreen).toContain('setVideoCacheSizeAsync(3 * 1024 * 1024 * 1024)');
     expect(gameScreen).toContain('preferredForwardBufferDuration: 60');
@@ -116,7 +123,7 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('sourceAttachChainRef.current = sourceAttachChainRef.current');
     expect(gameScreen).toContain('generation !== sourceAttachGenerationRef.current');
     expect(gameScreen).not.toContain('await player.replaceAsync(playbackUrl);');
-    expect(gameScreen).toContain('await player.replaceAsync(playbackSource(sourceAttachRequest.url, false));');
+    expect(gameScreen).toContain('await player.replaceAsync(playbackSource(sourceAttachRequest.url, streamIsHls));');
   });
 
   test('does not replace a reel source that is already attached and playing', () => {
