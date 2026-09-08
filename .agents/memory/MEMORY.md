@@ -150,3 +150,4 @@
 - [TestFlight build-number continuity](testflight-build-number-continuity.md) — keep local 8-digit iOS numbering; EAS remote counters like 82 sort below existing 202608xx builds.
 - [Native iPad full-screen support](native-ipad-fullscreen.md) — keep tablet support and full-screen requirement enabled; iPhone compatibility mode can return half-sized after video rotation.
 - [iPad dashboard branding](ipad-dashboard-branding.md) — no detached logo banner/card; keep player selection fully below the status bar in dashboard content.
+- [Merged game source timelines](merged-game-source-timelines.md) — never stream-copy independent recordings; normalize the master before generating reels.
