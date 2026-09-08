@@ -2481,6 +2481,9 @@ router.get("/games/:gameId/stream/:type", async (req, res) => {
       res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Content-Type", String(metadata.contentType || "video/mp4"));
       res.setHeader("Cache-Control", "private, max-age=3600");
+      if (metadata.md5Hash) {
+        res.setHeader("X-Content-MD5", Buffer.from(String(metadata.md5Hash), "base64").toString("hex"));
+      }
 
       const rangeHeader = req.headers.range;
       let start = 0;

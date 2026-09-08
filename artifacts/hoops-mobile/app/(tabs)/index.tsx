@@ -1043,33 +1043,26 @@ export default function DashboardScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={c.primary} />}
       >
-        {/* ── Logo banner — stretches edge-to-edge, compensating for all paddings ── */}
+        {/* ── Compact branded masthead ── */}
         <View style={[
           styles.logoBannerContainer,
           {
-            height: insets.top + (isTablet ? 80 : 68),
-            marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)),
-            marginLeft: -(16 + (insets.left ?? 0)),
-            marginRight: -(16 + (insets.right ?? 0)),
+            marginTop: isLandscape ? 10 : 0,
           },
         ]}>
-          {isTablet ? (
-            // On iPad the logo-banner image is narrow relative to the wide canvas —
-            // cap it at 520px and center it so it doesn't stretch or letterbox oddly.
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
-              <Image
-                source={require('../../assets/images/logo-banner.png')}
-                style={{ width: 520, height: 70 }}
-                contentFit="contain"
-              />
-            </View>
-          ) : (
+          <View style={[
+            styles.logoMasthead,
+            {
+              borderColor: hexToRgba(c.primary, 0.38),
+              width: isTablet ? 390 : '100%',
+            },
+          ]}>
             <Image
               source={require('../../assets/images/logo-banner.png')}
-              style={styles.logoBannerImage}
-              contentFit="cover"
+              style={isTablet ? styles.logoBannerImageTablet : styles.logoBannerImage}
+              contentFit="contain"
             />
-          )}
+          </View>
         </View>
 
         {/* ── Coach greeting ── */}
@@ -1102,13 +1095,25 @@ const styles = StyleSheet.create({
   },
   logoBannerContainer: {
     alignSelf: 'stretch',
-    marginHorizontal: -16,
-    marginBottom: 14,
-    backgroundColor: '#050302',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  logoBannerImage: { width: '100%', height: 60 },
+  logoMasthead: {
+    height: 58,
+    maxWidth: 420,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(5,3,2,0.78)',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 5,
+  },
+  logoBannerImage: { width: '100%', height: 56 },
+  logoBannerImageTablet: { width: '100%', height: 54 },
   emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginTop: 16, marginBottom: 8 },
   emptySub:   { fontSize: 14, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
   emptyBtn:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 14 },

@@ -21,6 +21,7 @@ export type ReelDownload = {
   priority?: number;
   sizeBytes?: number;
   expectedBytes?: number;
+  expectedMd5?: string;
   bytesWritten?: number;
   resumeData?: string;
   needsUrlRefresh?: boolean;
@@ -31,10 +32,11 @@ const MIN_COMPLETE_BYTES = 1024;
 // v1 wrote an active download directly into the final .mp4 path. AVPlayer
 // could therefore open a truncated file and keep reporting only its first few
 // seconds even after the transfer changed underneath it. Start clean once.
-const MANIFEST_PREFIX = '@stecstats/reel-downloads/v3/';
+const MANIFEST_PREFIX = '@stecstats/reel-downloads/v4/';
 const OBSOLETE_MANIFEST_PREFIXES = [
   '@stecstats/reel-downloads/v1/',
   '@stecstats/reel-downloads/v2/',
+  '@stecstats/reel-downloads/v3/',
 ];
 const PREFERENCE_KEY = '@stecstats/reel-downloads/cellular';
 const REEL_STORAGE_ROOT = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
@@ -395,12 +397,19 @@ export class ReelDownloadManager {
       if (!info?.exists || (info.size ?? 0) <= MIN_COMPLETE_BYTES) throw new Error('Download was incomplete');
       const contentRange = Object.entries(result.headers).find(([name]) => name.toLowerCase() === 'content-range')?.[1];
       const contentLength = Object.entries(result.headers).find(([name]) => name.toLowerCase() === 'content-length')?.[1];
+      const expectedMd5 = Object.entries(result.headers).find(([name]) => name.toLowerCase() === 'x-content-md5')?.[1]?.toLowerCase();
       const expectedFromResponse = Number(contentRange?.match(/\/(\d+)$/)?.[1] ?? contentLength ?? 0);
       const expectedBytes = entry.expectedBytes && entry.expectedBytes > 0
         ? entry.expectedBytes
         : expectedFromResponse;
       if (expectedBytes > 0 && info.size !== expectedBytes) {
         throw new Error(`Download was incomplete (${info.size ?? 0} of ${expectedBytes} bytes)`);
+      }
+      if (expectedMd5) {
+        const checksumInfo = await FileSystem.getInfoAsync(result.uri, { md5: true });
+        if (!checksumInfo.exists || !checksumInfo.md5 || checksumInfo.md5.toLowerCase() !== expectedMd5) {
+          throw new Error('Download checksum mismatch');
+        }
       }
       // Promote only a verified complete transfer. The final URI never points
       // at bytes that are still changing underneath AVPlayer.
@@ -409,6 +418,7 @@ export class ReelDownloadManager {
       entry.status = 'downloaded';
       entry.sizeBytes = info.size;
       entry.expectedBytes = expectedBytes > 0 ? expectedBytes : info.size;
+      entry.expectedMd5 = expectedMd5;
       entry.bytesWritten = info.size;
       entry.resumeData = undefined;
       entry.needsUrlRefresh = false;
@@ -419,7 +429,17 @@ export class ReelDownloadManager {
         const partialUri = this.partialUriFor(entry);
         const partialInfo = await FileSystem.getInfoAsync(partialUri);
         const partialBytes = partialInfo.exists ? partialInfo.size ?? 0 : 0;
-        if (Platform.OS === 'ios' && partialBytes > 0) {
+        const checksumMismatch = error?.message === 'Download checksum mismatch';
+        if (checksumMismatch) {
+          await FileSystem.deleteAsync(partialUri, { idempotent: true }).catch(() => undefined);
+          entry.status = 'queued';
+          entry.error = undefined;
+          entry.bytesWritten = 0;
+          entry.expectedBytes = undefined;
+          entry.expectedMd5 = undefined;
+          entry.resumeData = undefined;
+          entry.needsUrlRefresh = true;
+        } else if (Platform.OS === 'ios' && partialBytes > 0) {
           // Wi-Fi roaming commonly closes the active fetch while iOS is moving
           // between access points or cellular. Keep every verified byte and ask
           // the screen to refresh the signed URL before resuming with Range.
@@ -507,6 +527,8 @@ export class ReelDownloadManager {
     if (contentRange) headers['content-range'] = contentRange;
     const contentLength = response.headers.get('content-length');
     if (contentLength) headers['content-length'] = contentLength;
+    const expectedMd5 = response.headers.get('x-content-md5');
+    if (expectedMd5) headers['x-content-md5'] = expectedMd5;
     return { uri: partialUri, status: response.status, headers };
   }
 }
