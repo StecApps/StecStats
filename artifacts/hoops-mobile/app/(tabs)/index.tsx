@@ -12,9 +12,10 @@ import {
   Share,
   useWindowDimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
-import Svg, { Circle, G } from 'react-native-svg';
+import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
@@ -42,6 +43,56 @@ function hexToRgba(hex: string, alpha: number): string {
 
 function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
+}
+
+function ScreenGlow({ primary }: { primary: string }) {
+  const rgba = (alpha: number) => hexToRgba(primary, alpha);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      <LinearGradient
+        colors={[rgba(0.38), rgba(0.18), rgba(0.06), rgba(0)]}
+        locations={[0, 0.22, 0.45, 0.70]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <LinearGradient
+        colors={[rgba(0.14), rgba(0)]}
+        locations={[0, 0.5]}
+        start={{ x: 0.75, y: 0 }}
+        end={{ x: 0.25, y: 0.5 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+    </View>
+  );
+}
+
+function BasketballWatermark({ color }: { color: string }) {
+  const size = 340, center = size / 2, radius = 155, strokeWidth = 9;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: -60, right: -100, width: size, height: size, opacity: 0.11 }}>
+      <Svg width={size} height={size}>
+        <Circle cx={center} cy={center} r={radius} stroke={color} strokeWidth={strokeWidth} fill="none" />
+        <Path d={`M${center},${center - radius} C${center - 62},${center - radius * 0.38} ${center + 62},${center + radius * 0.38} ${center},${center + radius}`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" />
+        <Path d={`M${center - radius},${center} Q${center},${center - radius * 0.68} ${center + radius},${center}`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" />
+        <Path d={`M${center - radius},${center} Q${center},${center + radius * 0.68} ${center + radius},${center}`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" />
+      </Svg>
+    </View>
+  );
+}
+
+function StatsWatermark({ color }: { color: string }) {
+  const bars: [number, number][] = [[0.50, 0], [0.78, 1], [0.40, 2], [0.92, 3], [0.65, 4]];
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', bottom: 120, right: -10, width: 180, height: 140, opacity: 0.055 }}>
+      <Svg width={180} height={140}>
+        {bars.map(([height, index]) => {
+          const barHeight = height * 100;
+          return <Rect key={index} x={10 + index * 38} y={120 - barHeight} width={26} height={barHeight} rx={5} fill={color} />;
+        })}
+      </Svg>
+    </View>
+  );
 }
 
 // ─── Arc Gauge ───────────────────────────────────────────────────────────────
@@ -628,6 +679,9 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
+      <ScreenGlow primary={c.primary} />
+      <BasketballWatermark color={c.primary} />
+      <StatsWatermark color={c.primary} />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[

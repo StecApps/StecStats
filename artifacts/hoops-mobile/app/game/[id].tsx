@@ -940,6 +940,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [streamIsHls, setStreamIsHls] = useState(false);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [sharingLowlight, setSharingLowlight] = useState(false);
   const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
   const automaticRetryRef = useRef(false);
   const loadGenerationRef = useRef(0);
@@ -1100,6 +1101,33 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     await saveReviewVideo(saveUrl, 'Game Lowlights');
   }
 
+  async function handleShareLowlight() {
+    if (sharingLowlight) return;
+    setSharingLowlight(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch(`${API_BASE}/api/games/${gameId}/share-token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Could not generate share link');
+      const { shareToken } = await res.json() as { shareToken: string };
+      const url = `${WEB_BASE}/lowlight/${shareToken}`;
+      await Share.share({
+        title: 'Game Lowlights',
+        message: `Watch our game lowlights: ${url}`,
+        url,
+      });
+    } catch (error: any) {
+      if (error?.message !== 'User did not share') {
+        Alert.alert('Share Failed', 'Could not create the lowlight link. Please try again.');
+      }
+    } finally {
+      setSharingLowlight(false);
+    }
+  }
+
   async function handleRegenerateLowlight() {
     if (generateMutation.isPending) return;
     try {
@@ -1206,6 +1234,20 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           </View>
         )}
         <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            testID="share-lowlight-video"
+            onPress={handleShareLowlight}
+            disabled={sharingLowlight}
+            style={[ytStyle.btn, { backgroundColor: colors.primary, flex: 1, opacity: sharingLowlight ? 0.65 : 1 }]}
+            activeOpacity={0.8}
+          >
+            {sharingLowlight ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Feather name="share-2" size={16} color="#fff" />
+            )}
+            <Text style={ytStyle.btnText}>{sharingLowlight ? 'Preparing…' : 'Share Link'}</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             testID="save-lowlight-video"
             onPress={handleSaveLowlight}

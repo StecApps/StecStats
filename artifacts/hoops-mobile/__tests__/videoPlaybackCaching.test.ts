@@ -50,6 +50,12 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("sharingClip ? 'Preparing…' : 'Share Clip'");
   });
 
+  test('shares the complete lowlight reel through a public link', () => {
+    expect(gameScreen).toContain('async function handleShareLowlight()');
+    expect(gameScreen).toContain('`${WEB_BASE}/lowlight/${shareToken}`');
+    expect(gameScreen).toContain("sharingLowlight ? 'Preparing…' : 'Share Link'");
+  });
+
   test('recovers from an iOS native player source error', () => {
     expect(gameScreen).toContain("player.addListener('statusChange'");
     expect(gameScreen).toContain("loadHighlightVideo(true, Platform.OS === 'ios')");

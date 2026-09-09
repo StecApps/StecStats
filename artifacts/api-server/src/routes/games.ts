@@ -626,6 +626,47 @@ router.get("/games/public/:shareToken/highlight", publicGameRateLimit, async (re
   });
 });
 
+router.get("/games/public/:shareToken/lowlight", publicGameRateLimit, async (req, res) => {
+  const shareToken = String(req.params["shareToken"] ?? "");
+  if (!UUID_RE.test(shareToken)) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  const game = await db.query.gamesTable.findFirst({
+    where: eq(gamesTable.shareToken, shareToken),
+  });
+  if (!game) return res.status(404).json({ error: "Game not found" });
+
+  if (game.ownerId != null) {
+    const owner = await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, game.ownerId),
+    });
+    if (!owner) return res.status(404).json({ error: "Not found" });
+  }
+
+  if (!game.lowlightObjectPath || game.lowlightStatus !== "ready") {
+    return res.status(404).json({ error: "Lowlight reel not available" });
+  }
+
+  const team = await db.query.teamsTable.findFirst({
+    where: eq(teamsTable.id, game.teamId),
+  });
+  const videoUrl = await objectStorageService.getObjectEntitySignedURL(
+    game.lowlightObjectPath,
+    3600,
+  );
+
+  return res.json({
+    teamName: team?.name ?? "",
+    opponent: game.opponent,
+    date: game.date,
+    result: game.result,
+    teamScore: game.teamScore,
+    opponentScore: game.opponentScore,
+    videoUrl,
+  });
+});
+
 router.post("/games", requireAuth, async (req, res) => {
   // Extract optional clientId before Zod strips it (Zod drops unknown fields by default).
   // Used to deduplicate offline-queued game syncs — same clientId returns the existing game.
