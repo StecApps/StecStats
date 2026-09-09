@@ -16,3 +16,9 @@ Account-scoped download enqueueing must wait until the download manager has acti
 **Why:** On a cold launch or fresh install, the game screen could receive a reel URL before account storage finished loading. The manager silently ignored the enqueue because no account was active, so production saw no MP4 request and the download never began.
 
 **How to apply:** Expose account-specific manager readiness through context. Playback may attach independently, but download effects must rerun when readiness becomes true; never queue ownership-sensitive media under a null or stale account.
+
+Never construct a mobile download URL from Express `req.protocol` unless trusted-proxy handling is explicitly configured and verified.
+
+**Why:** Behind a TLS-terminating production proxy, Express can see the internal hop as HTTP and return an `http://` URL. iOS App Transport Security rejects that URL locally, so the server sees no request and the UI can look indefinitely stuck.
+
+**How to apply:** Prefer a relative API path from the server and resolve it against the mobile app's known HTTPS API base. For security-sensitive native media routes, the client can construct that HTTPS URL directly from the signed token.
