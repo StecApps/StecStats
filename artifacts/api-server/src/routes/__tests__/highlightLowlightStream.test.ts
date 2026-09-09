@@ -441,11 +441,13 @@ describe("Stored reel HLS playback", () => {
     expect(playlist).toContain("#EXT-X-PLAYLIST-TYPE:VOD");
     expect(playlist).toContain("#EXT-X-ENDLIST");
     expect(playlist.endsWith("\n")).toBe(true);
-    const segmentUrl = playlist.split("\n").find((line) => line.startsWith("segment/1?t="));
+    expect(playlist).toContain("#EXT-X-INDEPENDENT-SEGMENTS");
+    const segmentUrl = playlist.split("\n").find((line) =>
+      line.startsWith(`/api/games/${GAME_ID}/hls/segment/1?t=`));
     expect(segmentUrl).toBeTruthy();
 
     const segmentResponse = await fetch(
-      `${baseUrl}/api/games/${GAME_ID}/hls/${segmentUrl}`,
+      `${baseUrl}${segmentUrl}`,
     );
     expect(segmentResponse.status).toBe(200);
     expect(acquireProxyChunkLocally).toHaveBeenCalledWith(

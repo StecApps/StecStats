@@ -73,17 +73,26 @@ async function fetchStreamUrl(
   // the resume boundary. Web playback and full-game video retain direct URLs.
   const useReelRangeProxy =
     Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight');
+  const reelRangeProxyUrl =
+    `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`;
   const url = proxyType === 'hls'
     ? `${API_BASE}/api/games/${gameId}/hls/playlist.m3u8?t=${streamToken}`
     : useReelRangeProxy
-      ? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`
+      ? reelRangeProxyUrl
       : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
 
   return {
     url,
     // For reel HLS, streamUrl remains the authenticated resumable MP4 proxy.
     // It is intentionally separate from the native playback playlist.
-    downloadUrl: downloadUrl ?? streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`,
+    // Native reels always use the known HTTPS API base. Do not trust an
+    // absolute server-generated URL here: a TLS-terminating reverse proxy can
+    // otherwise leak its internal http protocol and iOS ATS blocks it locally.
+    downloadUrl: useReelRangeProxy
+      ? reelRangeProxyUrl
+      : (downloadUrl?.startsWith('/') ? `${API_BASE}${downloadUrl}` : downloadUrl)
+        ?? streamUrl
+        ?? reelRangeProxyUrl,
     isHls: proxyType === 'hls',
     // proxyReady=false → server is still building the proxy (H.264 or HLS);
     // raw VP9/WebM is unplayable on iOS so we show a spinner and keep polling.

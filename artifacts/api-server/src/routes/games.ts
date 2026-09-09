@@ -2443,7 +2443,11 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
       proxyType: "hls",
       proxyReady: true,
       streamUrl: hlsEntry.streamUrl,
-      downloadUrl: `${req.protocol}://${req.get("host")}/api/games/${gameId}/stream/${type}?t=${hlsToken}&proxy=1`,
+      // Keep this path relative. req.protocol reflects the internal HTTP hop
+      // behind Replit's TLS proxy unless Express explicitly trusts that proxy;
+      // returning it as an absolute URL makes iOS ATS reject the download
+      // before any request reaches this server.
+      downloadUrl: `/api/games/${gameId}/stream/${type}?t=${hlsToken}&proxy=1`,
     });
   }
 
@@ -2734,11 +2738,14 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
       `#EXT-X-TARGETDURATION:${targetDuration}`,
       "#EXT-X-PLAYLIST-TYPE:VOD",
       "#EXT-X-MEDIA-SEQUENCE:0",
+      "#EXT-X-INDEPENDENT-SEGMENTS",
     ];
     for (let i = 0; i < segmentEntry.hlsSegmentCount!; i++) {
       const duration = manifest.segments[i]!.durationSec;
       lines.push(`#EXTINF:${duration.toFixed(3)},`);
-      lines.push(`segment/${i}?t=${segmentToken}`);
+      // Use an absolute-path URI so native players do not need to resolve a
+      // tokenized playlist URL against a relative segment path.
+      lines.push(`/api/games/${gameId}/hls/segment/${i}?t=${segmentToken}`);
     }
     lines.push("#EXT-X-ENDLIST");
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");

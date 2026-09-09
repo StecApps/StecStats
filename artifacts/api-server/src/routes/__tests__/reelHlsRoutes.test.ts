@@ -12,8 +12,9 @@ describe("reel HLS route contract", () => {
     expect(routes).toContain('isHls: true');
     expect(routes).toContain('hlsSegmentCount: manifest.segments.length');
     expect(routes).toContain('segmentToken = signStreamToken(segmentEntry)');
-    expect(routes).toContain('segment/${i}?t=${segmentToken}');
+    expect(routes).toContain('/api/games/${gameId}/hls/segment/${i}?t=${segmentToken}');
     expect(routes).toContain('"#EXT-X-PLAYLIST-TYPE:VOD"');
+    expect(routes).toContain('"#EXT-X-INDEPENDENT-SEGMENTS"');
     expect(routes).toContain('lines.push("#EXT-X-ENDLIST")');
     expect(routes).toContain("...manifest.segments.map((segment) => segment.durationSec)");
     expect(routes).toContain("`#EXT-X-TARGETDURATION:${targetDuration}`");
@@ -35,6 +36,8 @@ describe("reel HLS route contract", () => {
     expect(reelIssuance).not.toContain("acquireReelHlsSource");
     expect(reelIssuance).not.toContain("readReelHlsManifest");
     expect(routes).toContain("const manifest = await readReelHlsManifest(entry.objectPath)");
+    expect(routes).toContain('downloadUrl: `/api/games/${gameId}/stream/${type}?t=${hlsToken}&proxy=1`');
+    expect(routes).not.toContain('downloadUrl: `${req.protocol}://${req.get("host")}');
   });
 
   it("serves pre-generated independently decodable reel segments directly", () => {
