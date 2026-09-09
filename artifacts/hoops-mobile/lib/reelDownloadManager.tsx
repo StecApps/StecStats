@@ -29,6 +29,9 @@ export type ReelDownload = {
 
 type Listener = () => void;
 const MIN_COMPLETE_BYTES = 1024;
+// Some production range proxies close a response which remains open for an
+// entire reel. Keep every iOS request comfortably below those limits.
+const IOS_RANGE_CHUNK_BYTES = 2 * 1024 * 1024;
 // v1 wrote an active download directly into the final .mp4 path. AVPlayer
 // could therefore open a truncated file and keep reporting only its first few
 // seconds even after the transfer changed underneath it. Start clean once.
@@ -474,63 +477,113 @@ export class ReelDownloadManager {
     signal: AbortSignal,
   ) {
     const existing = await FileSystem.getInfoAsync(partialUri);
-    const offset = existing.exists ? existing.size ?? 0 : 0;
-    const response = await expoFetch(entry.url, {
-      headers: offset > 0 ? { Range: `bytes=${offset}-` } : undefined,
-      signal,
-    });
-    const contentRange = response.headers.get('content-range');
-    if (response.status === 416) {
-      const total = Number(contentRange?.match(/\*\/(\d+)$/)?.[1] ?? -1);
-      if (offset > 0 && total === offset) {
-        return { uri: partialUri, status: 206, headers: { 'content-range': `bytes 0-${offset - 1}/${offset}` } };
-      }
-    }
-    if (!response.ok) throw new Error(`Download failed with status ${response.status}`);
-    if (offset > 0) {
-      const rangeStart = Number(contentRange?.match(/^bytes\s+(\d+)-/i)?.[1] ?? -1);
-      if (response.status !== 206 || rangeStart !== offset) {
-        throw new Error('Download server did not accept the saved byte range');
-      }
-    }
-    const expectedBytes = Number(contentRange?.match(/\/(\d+)$/)?.[1] ?? response.headers.get('content-length') ?? 0);
+    let offset = existing.exists ? existing.size ?? 0 : 0;
+    let totalBytes = entry.expectedBytes && entry.expectedBytes > 0 ? entry.expectedBytes : 0;
+    let expectedMd5 = entry.expectedMd5;
     if (!existing.exists) new File(partialUri).create();
     const handle = new File(partialUri).open();
     handle.offset = offset;
     let bytesWritten = offset;
     let lastPersisted = offset;
     try {
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Download response had no body');
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!value) continue;
-        handle.writeBytes(value);
-        bytesWritten += value.byteLength;
-        if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) {
-          await reader.cancel();
-          return undefined;
+      while (totalBytes === 0 || offset < totalBytes) {
+        if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) return undefined;
+        const rangeEnd = totalBytes > 0
+          ? Math.min(offset + IOS_RANGE_CHUNK_BYTES - 1, totalBytes - 1)
+          : offset + IOS_RANGE_CHUNK_BYTES - 1;
+        const response = await expoFetch(entry.url, {
+          headers: { Range: `bytes=${offset}-${rangeEnd}` },
+          signal,
+        });
+        const contentRange = response.headers.get('content-range');
+        const md5 = response.headers.get('x-content-md5')?.toLowerCase();
+        if (md5 && expectedMd5 && md5 !== expectedMd5) throw new Error('Download checksum mismatch');
+        if (md5) expectedMd5 = md5;
+
+        if (response.status === 416) {
+          const total = Number(contentRange?.match(/^bytes\s+\*\/(\d+)$/i)?.[1] ?? -1);
+          if (offset > 0 && total === offset && (!totalBytes || totalBytes === total)) {
+            totalBytes = total;
+            break;
+          }
+          throw new Error('Download server rejected the saved byte range');
         }
-        entry.bytesWritten = bytesWritten;
-        if (expectedBytes > 0) entry.expectedBytes = expectedBytes;
-        this.emit();
-        if (bytesWritten - lastPersisted >= 1024 * 1024) {
-          lastPersisted = bytesWritten;
-          await this.persist();
+        if (!response.ok) throw new Error(`Download failed with status ${response.status}`);
+
+        let chunkBytes: number;
+        if (response.status === 206) {
+          const match = contentRange?.match(/^bytes\s+(\d+)-(\d+)\/(\d+)$/i);
+          if (!match) throw new Error('Download server returned an invalid byte range');
+          const [, startText, endText, totalText] = match;
+          const start = Number(startText);
+          const end = Number(endText);
+          const total = Number(totalText);
+          if (start !== offset || end < start || end > rangeEnd || total <= end ||
+              (totalBytes > 0 && totalBytes !== total)) {
+            throw new Error('Download server returned an unexpected byte range');
+          }
+          totalBytes = total;
+          chunkBytes = end - start + 1;
+        } else if (response.status === 200 && offset === 0) {
+          // A few origins ignore Range for a new request. It is safe only when
+          // that complete response itself still fits in one bounded chunk.
+          const contentLength = Number(response.headers.get('content-length') ?? 0);
+          if (!Number.isSafeInteger(contentLength) || contentLength <= 0 ||
+              contentLength > IOS_RANGE_CHUNK_BYTES ||
+              (totalBytes > 0 && totalBytes !== contentLength)) {
+            throw new Error('Download server did not honor the requested byte range');
+          }
+          totalBytes = contentLength;
+          chunkBytes = contentLength;
+        } else {
+          throw new Error('Download server did not accept the requested byte range');
         }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('Download response had no body');
+        let chunkWritten = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (!value) continue;
+            if (chunkWritten + value.byteLength > chunkBytes) {
+              throw new Error('Download response exceeded its requested byte range');
+            }
+            handle.writeBytes(value);
+            chunkWritten += value.byteLength;
+            bytesWritten += value.byteLength;
+            if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) {
+              await reader.cancel();
+              return undefined;
+            }
+            entry.bytesWritten = bytesWritten;
+            entry.expectedBytes = totalBytes;
+            entry.expectedMd5 = expectedMd5;
+            this.emit();
+            if (bytesWritten - lastPersisted >= 1024 * 1024) {
+              lastPersisted = bytesWritten;
+              await this.persist();
+            }
+          }
+        } finally {
+          // A reader which throws has already written only its verified prefix;
+          // the next attempt begins at that exact file offset.
+          if (chunkWritten !== chunkBytes) await reader.cancel().catch(() => undefined);
+        }
+        if (chunkWritten !== chunkBytes) throw new Error('Download response ended before its requested byte range');
+        offset = bytesWritten;
       }
     } finally {
       handle.close();
     }
     await this.persist();
-    const headers: Record<string, string> = {};
-    if (contentRange) headers['content-range'] = contentRange;
-    const contentLength = response.headers.get('content-length');
-    if (contentLength) headers['content-length'] = contentLength;
-    const expectedMd5 = response.headers.get('x-content-md5');
+    if (totalBytes <= 0 || bytesWritten !== totalBytes) throw new Error('Download was incomplete');
+    const headers: Record<string, string> = {
+      'content-range': `bytes 0-${totalBytes - 1}/${totalBytes}`,
+    };
     if (expectedMd5) headers['x-content-md5'] = expectedMd5;
-    return { uri: partialUri, status: response.status, headers };
+    return { uri: partialUri, status: 206, headers };
   }
 }
 

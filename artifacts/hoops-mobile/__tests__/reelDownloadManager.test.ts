@@ -160,8 +160,12 @@ describe('ReelDownloadManager behavior', () => {
     let reads = 0;
     (expoFetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      status: 200,
-      headers: { get: (name: string) => name.toLowerCase() === 'content-length' ? '4194304' : null },
+      status: 206,
+      headers: { get: (name: string) => {
+        if (name.toLowerCase() === 'content-range') return 'bytes 0-2097151/4194304';
+        if (name.toLowerCase() === 'content-length') return '2097152';
+        return null;
+      } },
       body: { getReader: () => ({
         read: jest.fn(() => {
           reads += 1;
@@ -204,9 +208,46 @@ describe('ReelDownloadManager behavior', () => {
     await flush();
     const resumeCall = (expoFetch as jest.Mock).mock.calls[1];
     expect(resumeCall[0]).toBe('https://signed/fresh-token');
-    expect(resumeCall[1].headers).toEqual({ Range: 'bytes=2097152-' });
+    expect(resumeCall[1].headers).toEqual({ Range: 'bytes=2097152-4194303' });
     expect(relaunched.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
     expect(mockFiles.get(finalUri)).toBe(4194304);
+  });
+
+  test('downloads iOS reels in bounded consecutive ranges', async () => {
+    Platform.OS = 'ios';
+    const total = 5 * 1024 * 1024;
+    const chunk = (start: number, end: number) => ({
+      ok: true,
+      status: 206,
+      headers: { get: (name: string) => {
+        if (name.toLowerCase() === 'content-range') return `bytes ${start}-${end}/${total}`;
+        if (name.toLowerCase() === 'content-length') return String(end - start + 1);
+        return null;
+      } },
+      body: { getReader: () => ({
+        read: jest.fn()
+          .mockResolvedValueOnce({ done: false, value: new Uint8Array(end - start + 1) })
+          .mockResolvedValueOnce({ done: true }),
+        cancel: jest.fn(),
+      }) },
+    });
+    (expoFetch as jest.Mock)
+      .mockResolvedValueOnce(chunk(0, 2097151))
+      .mockResolvedValueOnce(chunk(2097152, 4194303))
+      .mockResolvedValueOnce(chunk(4194304, total - 1));
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a');
+    manager.setNetworkForTesting('wifi', true);
+    await manager.enqueue(reel());
+    await flush();
+    await flush();
+
+    expect((expoFetch as jest.Mock).mock.calls.map((call) => call[1].headers.Range)).toEqual([
+      'bytes=0-2097151',
+      'bytes=2097152-4194303',
+      'bytes=4194304-5242879',
+    ]);
+    expect(manager.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
   });
 
   test('keeps iOS partial bytes when Wi-Fi roaming interrupts the active fetch', async () => {
