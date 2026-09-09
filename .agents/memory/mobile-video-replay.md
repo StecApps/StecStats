@@ -91,7 +91,7 @@ Film Room HLS playback chunks must use a separate namespace and shorter duration
 
 **Why:** Reusing six-minute reel chunks meant a 1.1 GB VP9 game could encode for more than ten minutes without making even the first frame available. AVPlayer rejected a completed reel playlist before requesting segment 1 when FFmpeg produced a segment slightly longer than the advertised four-second target.
 
-**How to apply:** Use short playback-only segments, calculate EXTINF and TARGETDURATION from measured manifest/sidecar durations, terminate completed playlists with a newline, and sweep media, metadata, and sentinel together when a game is deleted.
+**How to apply:** Use short playback-only segments, calculate EXTINF and TARGETDURATION from measured manifest/sidecar durations, terminate completed playlists with a newline, and sweep media, metadata, and sentinel together when a game is deleted. FFmpeg can advertise an exact integer EXTINF (for example 4.000) while the muxed TS timeline is slightly longer (for example 4.023); give exact integer target boundaries one second of headroom or AVPlayer can reject the playlist before requesting segment zero.
 
 Long-game playback encodes must yield the global ffmpeg serializer in bounded batches; segment size alone does not provide fairness when one ffmpeg process still encodes the full game.
 
