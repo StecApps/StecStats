@@ -899,7 +899,7 @@ const videoStyle = StyleSheet.create({
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
-  const { downloads, cellularAllowed, setCellularAllowed } = useReelDownloads();
+  const { downloads, cellularAllowed, downloadManagerReady, setCellularAllowed } = useReelDownloads();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
@@ -959,7 +959,9 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           setPlaybackLoading(false);
           return;
         }
-        await reelDownloadManager.enqueue({ gameId, type: 'lowlight', objectPath, url: result.downloadUrl }, true);
+        if (downloadManagerReady) {
+          await reelDownloadManager.enqueue({ gameId, type: 'lowlight', objectPath, url: result.downloadUrl }, true);
+        }
         if (!isCurrentLoad()) return;
         setStreamIsHls(true);
         setSignedUrl(result.url);
@@ -982,7 +984,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
       setPlaybackLoading(false);
     }
-  }, [gameId, lowlight?.lowlightObjectPath, player]);
+  }, [downloadManagerReady, gameId, lowlight?.lowlightObjectPath, player]);
 
   useEffect(() => () => {
     loadGenerationRef.current++;
@@ -1261,7 +1263,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 type PrivacyStatus = 'public' | 'unlisted' | 'private';
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
-  const { downloads, cellularAllowed, setCellularAllowed } = useReelDownloads();
+  const { downloads, cellularAllowed, downloadManagerReady, setCellularAllowed } = useReelDownloads();
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const router = useRouter();
@@ -1411,7 +1413,9 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           setPlaybackLoading(false);
           return;
         }
-        await reelDownloadManager.enqueue({ gameId, type: 'highlight', objectPath, url: result.downloadUrl }, true);
+        if (downloadManagerReady) {
+          await reelDownloadManager.enqueue({ gameId, type: 'highlight', objectPath, url: result.downloadUrl }, true);
+        }
         if (!isCurrentLoad()) return;
         setStreamIsHls(true);
         setSignedUrl(result.url);
@@ -1449,6 +1453,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       setPlaybackLoading(false);
     }
   }, [
+    downloadManagerReady,
     gameId,
     highlight?.highlightObjectPath,
     player,

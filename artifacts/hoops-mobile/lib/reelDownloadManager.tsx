@@ -588,7 +588,12 @@ export class ReelDownloadManager {
 }
 
 export const reelDownloadManager = new ReelDownloadManager();
-type ContextValue = { downloads: ReelDownload[]; cellularAllowed: boolean; setCellularAllowed: (value: boolean) => Promise<void> };
+type ContextValue = {
+  downloads: ReelDownload[];
+  cellularAllowed: boolean;
+  downloadManagerReady: boolean;
+  setCellularAllowed: (value: boolean) => Promise<void>;
+};
 const ReelDownloadContext = createContext<ContextValue | null>(null);
 export function ReelDownloadProvider({
   accountId,
@@ -600,6 +605,7 @@ export function ReelDownloadProvider({
 }) {
   const [downloads, setDownloads] = useState<ReelDownload[]>([]);
   const [cellularAllowed, setCellular] = useState(false);
+  const [activatedAccountId, setActivatedAccountId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     const syncSnapshot = () => {
@@ -609,6 +615,8 @@ export function ReelDownloadProvider({
     };
     const unsubscribe = reelDownloadManager.subscribe(syncSnapshot);
     void reelDownloadManager.activate(accountId).then(() => {
+      if (cancelled) return;
+      setActivatedAccountId(accountId);
       syncSnapshot();
     });
     return () => {
@@ -616,7 +624,13 @@ export function ReelDownloadProvider({
       unsubscribe();
     };
   }, [accountId]);
-  return <ReelDownloadContext.Provider value={useMemo(() => ({ downloads, cellularAllowed, setCellularAllowed: (v) => reelDownloadManager.setCellularAllowed(v) }), [downloads, cellularAllowed])}>{children}</ReelDownloadContext.Provider>;
+  const downloadManagerReady = accountId !== null && activatedAccountId === accountId;
+  return <ReelDownloadContext.Provider value={useMemo(() => ({
+    downloads,
+    cellularAllowed,
+    downloadManagerReady,
+    setCellularAllowed: (v) => reelDownloadManager.setCellularAllowed(v),
+  }), [downloads, cellularAllowed, downloadManagerReady])}>{children}</ReelDownloadContext.Provider>;
 }
 export function useReelDownloads() {
   const value = useContext(ReelDownloadContext);

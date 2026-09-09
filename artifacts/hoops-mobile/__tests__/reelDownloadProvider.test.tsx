@@ -33,7 +33,7 @@ jest.mock('expo-file-system', () => ({
 }));
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
 
-import { ReelDownloadProvider, reelDownloadManager } from '@/lib/reelDownloadManager';
+import { ReelDownloadProvider, reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -100,5 +100,33 @@ describe('ReelDownloadProvider auth lifecycle', () => {
     expect(getTokenA).not.toHaveBeenCalled();
     expect(getTokenB).not.toHaveBeenCalled();
     expect(reelDownloadManager.activate).toHaveBeenCalledWith('coach-b');
+  });
+
+  test('reports readiness only after the active account finishes loading', async () => {
+    let finishActivation!: () => void;
+    jest.spyOn(reelDownloadManager, 'activate').mockImplementation(
+      () => new Promise<void>((resolve) => { finishActivation = resolve; }),
+    );
+    const readiness: boolean[] = [];
+    function Consumer() {
+      readiness.push(useReelDownloads().downloadManagerReady);
+      return null;
+    }
+
+    await act(async () => {
+      TestRenderer.create(
+        <ReelDownloadProvider accountId="coach-a">
+          <Consumer />
+        </ReelDownloadProvider>,
+      );
+      await flush();
+    });
+    expect(readiness.at(-1)).toBe(false);
+
+    await act(async () => {
+      finishActivation();
+      await flush();
+    });
+    expect(readiness.at(-1)).toBe(true);
   });
 });
