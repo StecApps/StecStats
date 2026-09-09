@@ -951,6 +951,14 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       // Play completed reel HLS immediately on native platforms. Keep the
       // persistent MP4 transfer running independently for Save/offline use.
       if (result.isHls && Platform.OS !== 'web') {
+        // A download completion can re-run this loader while the durable MP4 is
+        // already playing. Never replace that active local source with a late
+        // playlist response; explicit Retry/Regenerate still opts in via
+        // forceFresh.
+        if (!forceFresh && attachedSourceRef.current?.startsWith('file:')) {
+          setPlaybackLoading(false);
+          return;
+        }
         await reelDownloadManager.enqueue({ gameId, type: 'lowlight', objectPath, url: result.downloadUrl }, true);
         if (!isCurrentLoad()) return;
         setStreamIsHls(true);
@@ -1399,6 +1407,10 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       if (!isCurrentLoad()) return;
 
       if (result.isHls && Platform.OS !== 'web') {
+        if (!forceFresh && attachedSourceRef.current?.startsWith('file:')) {
+          setPlaybackLoading(false);
+          return;
+        }
         await reelDownloadManager.enqueue({ gameId, type: 'highlight', objectPath, url: result.downloadUrl }, true);
         if (!isCurrentLoad()) return;
         setStreamIsHls(true);

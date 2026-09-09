@@ -2483,41 +2483,31 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     // than progressive playback of a generated reel. Keep the MP4 route below
     // for Save/share/offline downloads, but bind playback segments to this
     // exact derivative object and reel type in the signed token.
-    try {
-      const hlsInfo = await getReelHlsInfo(objectPath);
-      const hlsEntry: StreamTokenEntry = {
-        objectPath,
-        expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
-        ownerId,
-        entitlementOkUntil: Date.now() + STREAM_ENTITLEMENT_RECHECK_MS,
-        gameId,
-        streamType: type,
-        isHls: true,
-        hlsDurationMs: hlsInfo.durationMs,
-        hlsSegmentDurationSec: REEL_HLS_SEGMENT_DURATION_SEC,
-        hlsSegmentCount: hlsInfo.segmentCount,
-      };
-      // Retain the existing direct MP4 URL for older clients and web callers.
-      // Native reel playback uses proxyType=hls; its durable downloader uses
-      // downloadUrl below so it still receives authenticated byte ranges.
-      hlsEntry.streamUrl = await objectStorageService.getObjectEntitySignedURL(
-        objectPath,
-        STREAM_SIGNED_URL_TTL_S,
-      );
-      const hlsToken = signStreamToken(hlsEntry);
-      streamTokens.set(hlsToken, hlsEntry);
-      return void res.json({
-        token: hlsToken,
-        proxyType: "hls",
-        proxyReady: true,
-        streamUrl: hlsEntry.streamUrl,
-        // Existing native save/offline code uses this GCS-SDK range proxy.
-        downloadUrl: `${req.protocol}://${req.get("host")}/api/games/${gameId}/stream/${type}?t=${hlsToken}&proxy=1`,
-      });
-    } catch (err) {
-      req.log.error({ err, gameId, type }, "Unable to prepare reel HLS playback");
-      return void res.status(503).json({ error: "Reel playback is being prepared — try again shortly" });
-    }
+    // This initial token deliberately contains no duration. Do not download or
+    // ffprobe during authenticated token issuance: native playback must start
+    // immediately and AVPlayer will fetch the playlist only when it needs it.
+    const hlsEntry: StreamTokenEntry = {
+      objectPath,
+      expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
+      ownerId,
+      entitlementOkUntil: Date.now() + STREAM_ENTITLEMENT_RECHECK_MS,
+      gameId,
+      streamType: type,
+      isHls: true,
+    };
+    hlsEntry.streamUrl = await objectStorageService.getObjectEntitySignedURL(
+      objectPath,
+      STREAM_SIGNED_URL_TTL_S,
+    );
+    const hlsToken = signStreamToken(hlsEntry);
+    streamTokens.set(hlsToken, hlsEntry);
+    return void res.json({
+      token: hlsToken,
+      proxyType: "hls",
+      proxyReady: true,
+      streamUrl: hlsEntry.streamUrl,
+      downloadUrl: `${req.protocol}://${req.get("host")}/api/games/${gameId}/stream/${type}?t=${hlsToken}&proxy=1`,
+    });
   }
 
   // Pre-generate the GCS signed URL and return it as `streamUrl` so the mobile
@@ -2781,22 +2771,43 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     return void res.status(403).json({ error: "Subscription required" });
   }
 
-  if ((entry.streamType === "highlight" || entry.streamType === "lowlight")
-      && entry.hlsSegmentCount != null && entry.hlsSegmentDurationSec != null) {
+  if (entry.streamType === "highlight" || entry.streamType === "lowlight") {
+    // The initial reel token is intentionally cheap. The first playlist fetch
+    // owns the one duration probe, then signs a second portable token with the
+    // exact finite VOD shape. Segment requests reject the initial token, while
+    // autoscaled instances can verify the fully-bound token without state.
+    let segmentEntry = entry;
+    let segmentToken = token;
+    if (entry.hlsSegmentCount == null || entry.hlsSegmentDurationSec == null || entry.hlsDurationMs == null) {
+      try {
+        const info = await getReelHlsInfo(entry.objectPath);
+        segmentEntry = {
+          ...entry,
+          hlsDurationMs: info.durationMs,
+          hlsSegmentDurationSec: REEL_HLS_SEGMENT_DURATION_SEC,
+          hlsSegmentCount: info.segmentCount,
+        };
+        segmentToken = signStreamToken(segmentEntry);
+        streamTokens.set(segmentToken, segmentEntry);
+      } catch (err) {
+        req.log.error({ err, gameId, streamType: entry.streamType }, "Unable to prepare reel HLS playlist");
+        return void res.status(503).json({ error: "Reel playlist is being prepared — try again shortly" });
+      }
+    }
     const lines = [
       "#EXTM3U",
       "#EXT-X-VERSION:3",
-      `#EXT-X-TARGETDURATION:${Math.ceil(entry.hlsSegmentDurationSec)}`,
+      `#EXT-X-TARGETDURATION:${Math.ceil(segmentEntry.hlsSegmentDurationSec!)}`,
       "#EXT-X-PLAYLIST-TYPE:VOD",
       "#EXT-X-MEDIA-SEQUENCE:0",
     ];
-    for (let i = 0; i < entry.hlsSegmentCount; i++) {
+    for (let i = 0; i < segmentEntry.hlsSegmentCount!; i++) {
       const duration = Math.min(
-        entry.hlsSegmentDurationSec,
-        Math.max(0.001, (entry.hlsDurationMs! / 1000) - i * entry.hlsSegmentDurationSec),
+        segmentEntry.hlsSegmentDurationSec!,
+        Math.max(0.001, (segmentEntry.hlsDurationMs! / 1000) - i * segmentEntry.hlsSegmentDurationSec!),
       );
       lines.push(`#EXTINF:${duration.toFixed(3)},`);
-      lines.push(`segment/${i}?t=${token}`);
+      lines.push(`segment/${i}?t=${segmentToken}`);
     }
     lines.push("#EXT-X-ENDLIST");
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
