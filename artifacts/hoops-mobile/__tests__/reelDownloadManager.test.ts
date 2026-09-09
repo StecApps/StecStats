@@ -61,6 +61,10 @@ import { ReelDownloadManager } from '@/lib/reelDownloadManager';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const reel = (objectPath = 'reels/one.mp4') => ({ gameId: 7, type: 'highlight' as const, objectPath, url: `https://signed/${objectPath}` });
+const rangeReel = (objectPath = 'reels/one.mp4') => ({
+  ...reel(objectPath),
+  url: `https://stecstats.com/api/games/7/stream/highlight?t=test&proxy=1`,
+});
 
 beforeEach(() => {
   mockStorage.clear(); mockFiles.clear(); mockTasks.splice(0); mockNetworkListener = undefined;
@@ -176,7 +180,7 @@ describe('ReelDownloadManager behavior', () => {
       }) },
     });
     first.setNetworkForTesting('wifi', true);
-    await first.enqueue(reel());
+    await first.enqueue(rangeReel());
     await flush();
     const finalUri = first.get(7, 'highlight', 'reels/one.mp4')!.uri!;
     await flush();
@@ -204,10 +208,11 @@ describe('ReelDownloadManager behavior', () => {
         cancel: jest.fn(),
       }) },
     });
-    await relaunched.enqueue({ ...reel(), url: 'https://signed/fresh-token' });
+    const refreshedRangeUrl = 'https://stecstats.com/api/games/7/stream/highlight?t=fresh&proxy=1';
+    await relaunched.enqueue({ ...rangeReel(), url: refreshedRangeUrl });
     await flush();
     const resumeCall = (expoFetch as jest.Mock).mock.calls[1];
-    expect(resumeCall[0]).toBe('https://signed/fresh-token');
+    expect(resumeCall[0]).toBe(refreshedRangeUrl);
     expect(resumeCall[1].headers).toEqual({ Range: 'bytes=2097152-4194303' });
     expect(relaunched.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
     expect(mockFiles.get(finalUri)).toBe(4194304);
@@ -238,7 +243,7 @@ describe('ReelDownloadManager behavior', () => {
     const manager = new ReelDownloadManager();
     await manager.activate('coach-a');
     manager.setNetworkForTesting('wifi', true);
-    await manager.enqueue(reel());
+    await manager.enqueue(rangeReel());
     await flush();
     await flush();
 
@@ -266,7 +271,7 @@ describe('ReelDownloadManager behavior', () => {
     const manager = new ReelDownloadManager();
     await manager.activate('coach-a');
     manager.setNetworkForTesting('wifi', true);
-    await manager.enqueue(reel());
+    await manager.enqueue(rangeReel());
     await flush();
     await flush();
 
@@ -294,12 +299,32 @@ describe('ReelDownloadManager behavior', () => {
         cancel: jest.fn(),
       }) },
     });
-    await manager.enqueue({ ...reel(), url: 'https://signed/refreshed' });
+    await manager.enqueue({
+      ...rangeReel(),
+      url: 'https://stecstats.com/api/games/7/stream/highlight?t=refreshed&proxy=1',
+    });
     await flush();
     await flush();
 
     expect(manager.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
     expect(mockFiles.get(interrupted.uri!)).toBe(4096);
+  });
+
+  test('uses the native background downloader for a signed GCS URL on iOS', async () => {
+    Platform.OS = 'ios';
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a');
+    manager.setNetworkForTesting('wifi', true);
+
+    await manager.enqueue(reel());
+    await flush();
+    await flush();
+
+    expect(FileSystem.createDownloadResumable).toHaveBeenCalledTimes(1);
+    expect((FileSystem.createDownloadResumable as jest.Mock).mock.calls[0][0])
+      .toBe('https://signed/reels/one.mp4');
+    expect(expoFetch).not.toHaveBeenCalled();
+    expect(manager.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
   });
 
   test('never restores another account resumable transfer', async () => {

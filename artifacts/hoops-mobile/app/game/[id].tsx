@@ -85,11 +85,12 @@ async function fetchStreamUrl(
     url,
     // For reel HLS, streamUrl remains the authenticated resumable MP4 proxy.
     // It is intentionally separate from the native playback playlist.
-    // Native reels always use the known HTTPS API base. Do not trust an
-    // absolute server-generated URL here: a TLS-terminating reverse proxy can
-    // otherwise leak its internal http protocol and iOS ATS blocks it locally.
+    // Native iOS downloads use the signed GCS URL as a single NSURLSession
+    // background transfer. The expo/fetch Range path never left physical
+    // devices even though it worked in unit tests. If the direct URL is
+    // unavailable, retain the authenticated HTTPS proxy as a fallback.
     downloadUrl: useReelRangeProxy
-      ? reelRangeProxyUrl
+      ? (streamUrl ?? reelRangeProxyUrl)
       : (downloadUrl?.startsWith('/') ? `${API_BASE}${downloadUrl}` : downloadUrl)
         ?? streamUrl
         ?? reelRangeProxyUrl,

@@ -23,7 +23,7 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight')");
     expect(gameScreen).toContain('const reelRangeProxyUrl =');
     expect(gameScreen).toContain('downloadUrl: useReelRangeProxy');
-    expect(gameScreen).toContain('? reelRangeProxyUrl');
+    expect(gameScreen).toContain('? (streamUrl ?? reelRangeProxyUrl)');
   });
 
   test('plays native completed reels as HLS while retaining MP4 downloads for offline save', () => {

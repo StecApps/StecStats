@@ -360,14 +360,18 @@ export class ReelDownloadManager {
     try {
       await FileSystem.makeDirectoryAsync(`${REEL_STORAGE_ROOT}reels/${hash(accountAtStart)}`, { intermediates: true });
       const partialUri = this.partialUriFor(entry);
-      if (!entry.resumeData && Platform.OS !== 'ios') {
+      const useIosRangeProxy =
+        Platform.OS === 'ios' &&
+        entry.url.includes('/api/games/') &&
+        entry.url.includes('proxy=1');
+      if (!entry.resumeData && !useIosRangeProxy) {
         await FileSystem.deleteAsync(partialUri, { idempotent: true }).catch(() => undefined);
       }
       // createDownloadResumable is used rather than File.downloadFileAsync so iOS
       // receives an NSURLSession background transfer. iOS may finish it after the
       // app backgrounds; force-quitting cancels system-managed transfers.
       let result: { uri: string; status: number; headers: Record<string, string> } | undefined;
-      if (Platform.OS === 'ios') {
+      if (useIosRangeProxy) {
         controller = new AbortController();
         this.controllers.set(id, controller);
         result = await this.downloadRange(entry, partialUri, id, generation, controller.signal);
