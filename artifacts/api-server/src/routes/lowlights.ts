@@ -15,11 +15,13 @@ import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { getMusicTrackPath } from "../lib/musicTracks";
 import {
-  cancelReelJob,
-  invalidateOutdatedReadyReel,
   launchReelJob,
   resumeReelJob,
 } from "../lib/reelLease";
+import {
+  captureAndInvalidateLowlight,
+  cleanupCapturedLowlightDerivatives,
+} from "../lib/highlightDerivatives";
 
 const router: IRouter = Router();
 
@@ -53,12 +55,18 @@ router.get("/games/:gameId/lowlight", requireAuth, async (req, res) => {
     lowlightStatus === "ready" &&
     (game.lowlightGeneratorVersion ?? 0) < GENERATOR_VERSION
   ) {
-    const invalidated = await invalidateOutdatedReadyReel(
-      gameId,
-      "lowlight",
-      GENERATOR_VERSION,
+    const captured = await db.transaction((tx) =>
+      captureAndInvalidateLowlight(
+        tx,
+        gameId,
+        req.appUser!.id,
+        (current) =>
+          current.lowlightStatus === "ready"
+          && (current.lowlightGeneratorVersion ?? 0) < GENERATOR_VERSION,
+      ),
     );
-    if (invalidated) {
+    if (captured) {
+      await cleanupCapturedLowlightDerivatives(captured);
       lowlightStatus = null;
       lowlightError = null;
       lowlightObjectPath = null;
@@ -122,6 +130,17 @@ router.post("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   const musicTrackPath = musicTrackId ? getMusicTrackPath(musicTrackId) : undefined;
 
   let startedAt = game.lowlightStartedAt;
+  const captured = await db.transaction((tx) =>
+    captureAndInvalidateLowlight(
+      tx,
+      gameId,
+      req.appUser!.id,
+      (current) =>
+        current.lowlightStatus !== "queued"
+        && current.lowlightStatus !== "processing",
+    ),
+  );
+  await cleanupCapturedLowlightDerivatives(captured);
   const lease = await launchReelJob(
     gameId,
     "lowlight",
@@ -176,15 +195,14 @@ router.delete("/games/:gameId/lowlight", requireAuth, async (req, res) => {
   });
   if (!game) { res.status(404).json({ error: "Game not found" }); return; }
 
-  await cancelReelJob(gameId, "lowlight", cancelLowlightJob, {
-    lowlightStatus: "failed",
-    lowlightStartedAt: null,
-    lowlightObjectPath: null,
-    lowlightError: "Generation was cancelled",
-    lowlightProgressStage: null,
-    lowlightProgressCompleted: null,
-    lowlightProgressTotal: null,
-  });
+  cancelLowlightJob(gameId);
+  const captured = await db.transaction((tx) =>
+    captureAndInvalidateLowlight(tx, gameId, req.appUser!.id, () => true, {
+      lowlightStatus: "failed",
+      lowlightError: "Generation was cancelled",
+    }),
+  );
+  await cleanupCapturedLowlightDerivatives(captured);
 
   res.json({ ok: true });
 });

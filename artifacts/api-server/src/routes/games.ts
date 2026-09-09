@@ -44,6 +44,8 @@ import {
 import {
   captureAndInvalidateHighlight,
   cleanupCapturedHighlightDerivatives,
+  cleanupReelHlsDerivative,
+  readReelHlsManifest,
 } from "../lib/highlightDerivatives";
 import {
   PROXY_VERSION,
@@ -1036,6 +1038,13 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   };
 
   deleteIfPresent(committedSnapshot.lowlightObjectPath, "lowlight");
+  if (committedSnapshot.lowlightObjectPath) {
+    deletions.push(
+      cleanupReelHlsDerivative(committedSnapshot.lowlightObjectPath).catch((err) =>
+        req.log.error({ err, gameId }, "Failed to delete game lowlight HLS derivative")
+      ),
+    );
+  }
   deleteIfPresent(committedSnapshot.videoProxyObjectPath, "proxy");
 
   // Sweep proxy chunks: /objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}
@@ -2214,79 +2223,6 @@ function signStreamToken(entry: StreamTokenEntry): string {
   return `${payload}.${signature}`;
 }
 
-const REEL_HLS_SEGMENT_DURATION_SEC = 4;
-const REEL_HLS_LOCAL_CACHE_TTL_MS = 10 * 60_000;
-const REEL_HLS_LOCAL_CACHE_MAX = 3;
-type LocalReelSource = Awaited<ReturnType<typeof acquireProxyChunkLocally>>;
-const reelHlsLocalSources = new Map<string, { source: LocalReelSource; users: number; lastUsedAt: number }>();
-
-/**
- * Keep a very small, idle-expiring set of reel MP4s locally. AVPlayer requests
- * HLS segments sequentially, so releasing the source after every four-second
- * segment used to re-download the same 20–30 MB object repeatedly. This is
- * process-local only (safe under autoscaling), bounded, and each retained
- * acquire handle is explicitly released on eviction.
- */
-async function acquireReelHlsSource(objectPath: string): Promise<{ localPath: string; release: () => void }> {
-  const now = Date.now();
-  for (const [key, entry] of reelHlsLocalSources) {
-    if (entry.users === 0 && now - entry.lastUsedAt > REEL_HLS_LOCAL_CACHE_TTL_MS) {
-      reelHlsLocalSources.delete(key);
-      void entry.source.release().catch(() => {});
-    }
-  }
-  let entry = reelHlsLocalSources.get(objectPath);
-  if (!entry) {
-    // Evict only idle sources; busy ffmpeg processes retain their file.
-    const idle = [...reelHlsLocalSources.entries()]
-      .filter(([, candidate]) => candidate.users === 0)
-      .sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
-    while (reelHlsLocalSources.size >= REEL_HLS_LOCAL_CACHE_MAX && idle.length) {
-      const [key, candidate] = idle.shift()!;
-      reelHlsLocalSources.delete(key);
-      void candidate.source.release().catch(() => {});
-    }
-    const source = await acquireProxyChunkLocally(objectPath);
-    entry = { source, users: 0, lastUsedAt: now };
-    reelHlsLocalSources.set(objectPath, entry);
-  }
-  entry.users++;
-  return {
-    localPath: entry.source.localPath,
-    release: () => {
-      entry!.users = Math.max(0, entry!.users - 1);
-      entry!.lastUsedAt = Date.now();
-    },
-  };
-}
-
-async function getReelHlsInfo(objectPath: string): Promise<{ durationMs: number; segmentCount: number }> {
-  // Reels are intentionally short. Probe the published object once while
-  // minting its token instead of persisting a second mutable playback record.
-  // The token then binds the VOD's finite segment list to that exact object.
-  const local = await acquireReelHlsSource(objectPath);
-  try {
-    const output = await new Promise<string>((resolve, reject) => {
-      const proc = spawn("ffprobe", [
-        "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=nw=1:nk=1", local.localPath,
-      ]);
-      let stdout = "";
-      proc.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
-      proc.once("error", reject);
-      proc.once("close", (code) => code === 0 ? resolve(stdout) : reject(new Error("Unable to probe reel duration")));
-    });
-    const duration = Number.parseFloat(output);
-    if (!Number.isFinite(duration) || duration <= 0) throw new Error("Invalid reel duration");
-    return {
-      durationMs: Math.ceil(duration * 1000),
-      segmentCount: Math.max(1, Math.ceil(duration / REEL_HLS_SEGMENT_DURATION_SEC)),
-    };
-  } finally {
-    local.release();
-  }
-}
-
 function verifyStreamToken(token: string): StreamTokenEntry | null {
   const secret = process.env.SESSION_SECRET;
   if (!secret) return null;
@@ -2484,8 +2420,9 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     // for Save/share/offline downloads, but bind playback segments to this
     // exact derivative object and reel type in the signed token.
     // This initial token deliberately contains no duration. Do not download or
-    // ffprobe during authenticated token issuance: native playback must start
-    // immediately and AVPlayer will fetch the playlist only when it needs it.
+    // inspect the manifest during authenticated token issuance: native playback
+    // starts immediately and AVPlayer fetches the stored manifest only when it
+    // requests the playlist.
     const hlsEntry: StreamTokenEntry = {
       objectPath,
       expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
@@ -2772,28 +2709,21 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
   }
 
   if (entry.streamType === "highlight" || entry.streamType === "lowlight") {
-    // The initial reel token is intentionally cheap. The first playlist fetch
-    // owns the one duration probe, then signs a second portable token with the
-    // exact finite VOD shape. Segment requests reject the initial token, while
-    // autoscaled instances can verify the fully-bound token without state.
-    let segmentEntry = entry;
-    let segmentToken = token;
-    if (entry.hlsSegmentCount == null || entry.hlsSegmentDurationSec == null || entry.hlsDurationMs == null) {
-      try {
-        const info = await getReelHlsInfo(entry.objectPath);
-        segmentEntry = {
-          ...entry,
-          hlsDurationMs: info.durationMs,
-          hlsSegmentDurationSec: REEL_HLS_SEGMENT_DURATION_SEC,
-          hlsSegmentCount: info.segmentCount,
-        };
-        segmentToken = signStreamToken(segmentEntry);
-        streamTokens.set(segmentToken, segmentEntry);
-      } catch (err) {
-        req.log.error({ err, gameId, streamType: entry.streamType }, "Unable to prepare reel HLS playlist");
-        return void res.status(503).json({ error: "Reel playlist is being prepared — try again shortly" });
-      }
+    // The initial reel token is intentionally cheap. The playlist request reads
+    // the already-published manifest and signs a second portable token with the
+    // exact finite VOD shape. No source download or encoding happens here.
+    const manifest = await readReelHlsManifest(entry.objectPath);
+    if (!manifest) {
+      return void res.status(503).json({ error: "Reel playlist is being prepared — try again shortly" });
     }
+    const segmentEntry: StreamTokenEntry = {
+      ...entry,
+      hlsDurationMs: manifest.durationMs,
+      hlsSegmentDurationSec: manifest.segmentDurationSec,
+      hlsSegmentCount: manifest.segments.length,
+    };
+    const segmentToken = signStreamToken(segmentEntry);
+    streamTokens.set(segmentToken, segmentEntry);
     const lines = [
       "#EXTM3U",
       "#EXT-X-VERSION:3",
@@ -2802,10 +2732,7 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
       "#EXT-X-MEDIA-SEQUENCE:0",
     ];
     for (let i = 0; i < segmentEntry.hlsSegmentCount!; i++) {
-      const duration = Math.min(
-        segmentEntry.hlsSegmentDurationSec!,
-        Math.max(0.001, (segmentEntry.hlsDurationMs! / 1000) - i * segmentEntry.hlsSegmentDurationSec!),
-      );
+      const duration = manifest.segments[i]!.durationSec;
       lines.push(`#EXTINF:${duration.toFixed(3)},`);
       lines.push(`segment/${i}?t=${segmentToken}`);
     }
@@ -2899,7 +2826,12 @@ router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
   }
   const gameId = Number(req.params.gameId);
   const chunkIndex = Number(req.params.chunkIndex);
-  if (isNaN(gameId) || isNaN(chunkIndex) || chunkIndex < 0 || entry.gameId !== gameId) {
+  if (
+    isNaN(gameId)
+    || !Number.isSafeInteger(chunkIndex)
+    || chunkIndex < 0
+    || entry.gameId !== gameId
+  ) {
     return void res.status(401).end();
   }
 
@@ -2913,17 +2845,16 @@ router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
     || !Number.isFinite(entry.hlsSegmentDurationSec)
     || chunkIndex >= entry.hlsSegmentCount!
   )) return void res.status(404).end();
+  const reelManifest = isReel ? await readReelHlsManifest(entry.objectPath) : null;
+  if (isReel && (!reelManifest || reelManifest.segments.length !== entry.hlsSegmentCount)) {
+    return void res.status(404).end();
+  }
   const chunkGcsPath = isReel
-    // The signed objectPath is the complete generated reel. It is never read
-    // from query parameters, preventing highlight/lowlight or regenerated-run
-    // substitution.
-    ? entry.objectPath
+    ? reelManifest!.segments[chunkIndex]!.objectPath
     : makeHlsChunkGcsPath(entry.ownerId, gameId, chunkIndex);
   let chunk: { localPath: string; release: () => void | Promise<void> };
   try {
-    chunk = isReel
-      ? await acquireReelHlsSource(chunkGcsPath)
-      : await acquireProxyChunkLocally(chunkGcsPath);
+    chunk = await acquireProxyChunkLocally(chunkGcsPath);
   } catch (err) {
     console.error("HLS segment: failed to acquire proxy chunk", { gameId, chunkIndex, err });
     return void res.status(503).json({ error: "Segment not available — try again shortly" });
@@ -2932,14 +2863,11 @@ router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
   res.setHeader("Content-Type", "video/mp2t");
   res.setHeader("Cache-Control", "private, max-age=3600");
 
-  // Reel VOD requests are bounded to four seconds; full-game HLS keeps its
-  // existing copy-remux behavior.
-  const reelSegmentDuration = isReel
-    ? Math.min(
-      entry.hlsSegmentDurationSec!,
-      Math.max(0.001, (entry.hlsDurationMs! / 1000) - chunkIndex * entry.hlsSegmentDurationSec!),
-    )
-    : undefined;
+  if (isReel) {
+    createReadStream(chunk.localPath).pipe(res);
+    res.on("close", () => { Promise.resolve(chunk.release()).catch(() => {}); });
+    return;
+  }
   const ffmpegArgs = [
     "-n", "10", "ffmpeg",
     "-y",
@@ -2947,13 +2875,7 @@ router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
     // Output-side seek decodes to the requested timestamp. Re-encoding the
     // bounded reel window guarantees an opening IDR frame, unlike stream-copy
     // which may start on an undecodable non-keyframe.
-    ...(isReel ? [
-      "-ss", String(chunkIndex * entry.hlsSegmentDurationSec!),
-      "-t", String(reelSegmentDuration),
-      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-      "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
-      "-avoid_negative_ts", "make_zero",
-    ] : ["-c", "copy"]),
+    "-c", "copy",
     "-f", "mpegts",
     "pipe:1",
   ];

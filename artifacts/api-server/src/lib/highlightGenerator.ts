@@ -23,6 +23,12 @@ import {
 } from "./reelLease";
 import { sendExpoPush } from "./expoPush";
 import { ObjectStorageService } from "./objectStorage";
+import {
+  cleanupReelHlsDerivative,
+  reelHlsManifestPath,
+  reelHlsSegmentPath,
+  type ReelHlsManifest,
+} from "./highlightDerivatives";
 import { logger } from "./logger";
 import { planProxyChunkBuild } from "./reelChunkPlan";
 
@@ -311,8 +317,11 @@ const MAX_SEGMENT_SEC = 300;
 // v11 = final reel concat rebuilds one continuous CFR H.264/AAC timeline instead
 //       of stream-copying TS timestamp discontinuities that stall iOS AVPlayer.
 // v12 = publish each merged highlight segment as a validated Apple-safe MP4.
-export const GENERATOR_VERSION = 14;
+// v15 = publish a complete four-second VOD HLS derivative before marking each
+//       Highlight or Lowlight ready, eliminating per-playback segment encodes.
+export const GENERATOR_VERSION = 15;
 export const HIGHLIGHT_PLAYBACK_VERSION = 1;
+export const REEL_HLS_SEGMENT_DURATION_SEC = 4;
 
 export interface HighlightClipManifestEntry {
   index: number;
@@ -3065,6 +3074,76 @@ async function uploadHighlight(
   throw lastErr;
 }
 
+async function buildAndUploadReelHls(
+  outPath: string,
+  combinedPath: string,
+  ownerId: number,
+  tmpDir: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const hlsDir = path.join(tmpDir, `reel-hls-${randomUUID()}`);
+  await fs.mkdir(hlsDir, { recursive: true });
+  const playlistPath = path.join(hlsDir, "index.m3u8");
+  try {
+    await runFfmpegQueued([
+      "-y", "-i", outPath,
+      "-map", "0:v:0", "-map", "0:a:0?",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+      "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
+      "-force_key_frames", `expr:gte(t,n_forced*${REEL_HLS_SEGMENT_DURATION_SEC})`,
+      "-f", "hls",
+      "-hls_time", String(REEL_HLS_SEGMENT_DURATION_SEC),
+      "-hls_playlist_type", "vod",
+      "-hls_segment_filename", path.join(hlsDir, "segment-%d.ts"),
+      playlistPath,
+    ], undefined, signal, { niceLevel: 0 });
+    const playlist = await fs.readFile(playlistPath, "utf8");
+    const durations = [...playlist.matchAll(/^#EXTINF:([\d.]+),/gm)]
+      .map((match) => Number.parseFloat(match[1]!));
+    if (durations.length < 1 || durations.some((duration) => !Number.isFinite(duration) || duration <= 0)) {
+      throw new HighlightError("Generated reel HLS playlist has invalid segment timing");
+    }
+    const uploaded: string[] = [];
+    try {
+      for (let index = 0; index < durations.length; index++) {
+        if (signal.aborted) throw new HighlightError("Cancelled");
+        const objectPath = reelHlsSegmentPath(combinedPath, index);
+        await objectStorageService.uploadLocalFileToObjectPath(
+          path.join(hlsDir, `segment-${index}.ts`),
+          objectPath,
+          "video/mp2t",
+          signal,
+        );
+        uploaded.push(objectPath);
+      }
+      const manifest: ReelHlsManifest = {
+        version: 1,
+        segmentDurationSec: REEL_HLS_SEGMENT_DURATION_SEC,
+        durationMs: Math.round(durations.reduce((sum, duration) => sum + duration, 0) * 1000),
+        segments: durations.map((durationSec, index) => ({
+          objectPath: reelHlsSegmentPath(combinedPath, index),
+          durationSec,
+        })),
+      };
+      const manifestLocalPath = path.join(hlsDir, "manifest.json");
+      await fs.writeFile(manifestLocalPath, JSON.stringify(manifest));
+      await objectStorageService.uploadLocalFileToObjectPath(
+        manifestLocalPath,
+        reelHlsManifestPath(combinedPath),
+        "application/json",
+        signal,
+      );
+    } catch (err) {
+      await Promise.all(uploaded.map((objectPath) =>
+        objectStorageService.deleteObjectEntity(objectPath).catch(() => {}),
+      ));
+      throw err;
+    }
+  } finally {
+    await fs.rm(hlsDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 async function encodeAndValidateNativeClip(
   segmentPath: string,
   clipPath: string,
@@ -3384,6 +3463,7 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
 
     const objectPath = await uploadHighlight(outPath, game.ownerId, ac.signal);
     uploadedCombinedPath = objectPath;
+    await buildAndUploadReelHls(outPath, objectPath, game.ownerId, tmpDir, ac.signal);
 
     const published = await setGameStatus(gameId, runToken, "ready", {
       highlightObjectPath: objectPath,
@@ -3392,6 +3472,7 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
       highlightError: null,
     });
     if (!published) {
+      await cleanupReelHlsDerivative(objectPath).catch(() => {});
       await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
       uploadedCombinedPath = null;
       await Promise.all(uploadedClipPaths.map((clip) =>
@@ -3412,6 +3493,7 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
       objectStorageService.deleteObjectEntity(clip).catch(() => {}),
     ));
     if (uploadedCombinedPath) {
+      await cleanupReelHlsDerivative(uploadedCombinedPath).catch(() => {});
       await objectStorageService.deleteObjectEntity(uploadedCombinedPath).catch(() => {});
     }
     const message =
@@ -3448,6 +3530,7 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
   );
   lowlightAbortControllers.set(abortKey, ac);
   let tmpDir: string | null = null;
+  let uploadedCombinedPath: string | null = null;
   let releaseReelSlot: (() => void) | null = null;
   let reelMarkedActive = false;
   try {
@@ -3607,21 +3690,30 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
     }
 
     const objectPath = await uploadHighlight(outPath, game.ownerId, ac.signal);
+    uploadedCombinedPath = objectPath;
+    await buildAndUploadReelHls(outPath, objectPath, game.ownerId, tmpDir, ac.signal);
 
     const published = await setGameLowlightStatus(gameId, runToken, "ready", {
       lowlightObjectPath: objectPath,
       lowlightError: null,
     });
     if (!published) {
+      await cleanupReelHlsDerivative(objectPath).catch(() => {});
       await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+      uploadedCombinedPath = null;
       logger.warn({ gameId }, "Lowlight lease changed before publish — discarding stale result");
       return;
     }
+    uploadedCombinedPath = null;
     logger.info({ gameId, segments: segPaths.length }, "Lowlight reel generated");
 
     // Send a push notification to the game owner (best-effort, never throws).
     await maybeSendGameLowlightNotification(game);
   } catch (err) {
+    if (uploadedCombinedPath) {
+      await cleanupReelHlsDerivative(uploadedCombinedPath).catch(() => {});
+      await objectStorageService.deleteObjectEntity(uploadedCombinedPath).catch(() => {});
+    }
     const message =
       err instanceof HighlightError
         ? err.message

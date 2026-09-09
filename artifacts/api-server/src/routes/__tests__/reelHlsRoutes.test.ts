@@ -3,18 +3,20 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const routes = fs.readFileSync(path.resolve(__dirname, "../games.ts"), "utf8");
+const generator = fs.readFileSync(path.resolve(__dirname, "../../lib/highlightGenerator.ts"), "utf8");
+const derivatives = fs.readFileSync(path.resolve(__dirname, "../../lib/highlightDerivatives.ts"), "utf8");
 
 describe("reel HLS route contract", () => {
   it("binds completed VOD playlists to signed reel token claims", () => {
     expect(routes).toContain('streamType: type');
     expect(routes).toContain('isHls: true');
-    expect(routes).toContain('hlsSegmentCount: info.segmentCount');
+    expect(routes).toContain('hlsSegmentCount: manifest.segments.length');
     expect(routes).toContain('segmentToken = signStreamToken(segmentEntry)');
     expect(routes).toContain('segment/${i}?t=${segmentToken}');
     expect(routes).toContain('"#EXT-X-PLAYLIST-TYPE:VOD"');
     expect(routes).toContain('lines.push("#EXT-X-ENDLIST")');
     expect(routes).toContain('const isReel = entry.streamType === "highlight" || entry.streamType === "lowlight"');
-    expect(routes).toContain('? entry.objectPath');
+    expect(routes).toContain("readReelHlsManifest(entry.objectPath)");
   });
 
   it("keeps reel token issuance free of source download/probe work", () => {
@@ -28,21 +30,27 @@ describe("reel HLS route contract", () => {
     );
     expect(reelIssuance).not.toContain("getReelHlsInfo");
     expect(reelIssuance).not.toContain("acquireReelHlsSource");
-    expect(routes).toContain("const info = await getReelHlsInfo(entry.objectPath)");
+    expect(reelIssuance).not.toContain("readReelHlsManifest");
+    expect(routes).toContain("const manifest = await readReelHlsManifest(entry.objectPath)");
   });
 
-  it("uses an accurate bounded re-encode for independently decodable reel segments", () => {
-    expect(routes).toContain('"-i", chunk.localPath');
-    expect(routes).toContain('"-ss", String(chunkIndex * entry.hlsSegmentDurationSec!)');
-    expect(routes).toContain('"-t", String(reelSegmentDuration)');
-    expect(routes).toContain('"-c:v", "libx264"');
-    expect(routes).not.toContain('"-bf", "0"');
+  it("serves pre-generated independently decodable reel segments directly", () => {
+    expect(routes).toContain("const reelManifest = isReel ? await readReelHlsManifest(entry.objectPath) : null");
+    expect(routes).toContain("reelManifest!.segments[chunkIndex]!.objectPath");
+    expect(routes).toContain("createReadStream(chunk.localPath).pipe(res)");
+    expect(routes).not.toContain('"-ss", String(chunkIndex * entry.hlsSegmentDurationSec!)');
   });
 
-  it("keeps a bounded idle local source cache across sequential segments", () => {
-    expect(routes).toContain("const REEL_HLS_LOCAL_CACHE_MAX = 3");
-    expect(routes).toContain("const REEL_HLS_LOCAL_CACHE_TTL_MS = 10 * 60_000");
-    expect(routes).toContain("async function acquireReelHlsSource");
-    expect(routes).toContain("candidate.users === 0");
+  it("binds segment access to the stored manifest and finite playlist token", () => {
+    expect(routes).toContain("hlsSegmentCount: manifest.segments.length");
+    expect(routes).toContain("reelManifest.segments.length !== entry.hlsSegmentCount");
+  });
+
+  it("builds and publishes the complete VOD derivative before reel readiness", () => {
+    expect(generator).toContain('"-hls_playlist_type", "vod"');
+    expect(generator).toContain('"-hls_time", String(REEL_HLS_SEGMENT_DURATION_SEC)');
+    expect(generator).toContain("await buildAndUploadReelHls(outPath, objectPath");
+    expect(generator).toContain("reelHlsManifestPath(combinedPath)");
+    expect(derivatives).toContain("deleteObjectEntityPrefix(reelHlsPrefix(combinedPath))");
   });
 });

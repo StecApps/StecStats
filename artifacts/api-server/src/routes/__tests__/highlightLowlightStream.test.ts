@@ -236,6 +236,15 @@ vi.mock("../../lib/objectStorage", () => {
       lastStreamObjectPath.value = objectPath;
       return {
         getMetadata: vi.fn().mockResolvedValue([{ contentType: "video/mp4", size: 5_000_000 }]),
+         download: vi.fn().mockResolvedValue([Buffer.from(JSON.stringify({
+           version: 1,
+           segmentDurationSec: 4,
+           durationMs: 8_000,
+           segments: [0, 1].map((index) => ({
+             objectPath: `${reelMode.value === "lowlight" ? PATH_LOWLIGHT : PATH_HIGHLIGHT}.hls/segment-${index}.ts`,
+             durationSec: 4,
+           })),
+         }))]),
         createReadStream: vi.fn().mockImplementation((opts?: { start?: number; end?: number }) => {
           streamCalls.createReadStream += 1;
           const s = new Readable({ read() {} });
@@ -373,6 +382,7 @@ vi.mock("fs", async () => {
 // ---------------------------------------------------------------------------
 import gamesRouter from "../games";
 import highlightsRouter from "../highlights";
+import { acquireProxyChunkLocally } from "../../lib/highlightGenerator";
 
 // ---------------------------------------------------------------------------
 // Express app
@@ -416,6 +426,40 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("Stored reel HLS playback", () => {
+  it("serves the completed manifest playlist and stored segment without encoding", async () => {
+    reelMode.value = "highlight";
+    vi.mocked(acquireProxyChunkLocally).mockClear();
+    const token = await mintToken(GAME_ID, "highlight");
+
+    const playlistResponse = await reelPlaylist(GAME_ID, token);
+    expect(playlistResponse.status).toBe(200);
+    const playlist = await playlistResponse.text();
+    expect(playlist.match(/#EXTINF:4\.000,/g)).toHaveLength(2);
+    expect(playlist).toContain("#EXT-X-PLAYLIST-TYPE:VOD");
+    expect(playlist).toContain("#EXT-X-ENDLIST");
+
+    const segmentResponse = await fetch(
+      `${baseUrl}/api/games/${GAME_ID}/hls/segment/1?t=${token}`,
+    );
+    expect(segmentResponse.status).toBe(200);
+    expect(acquireProxyChunkLocally).toHaveBeenCalledWith(
+      `${PATH_HIGHLIGHT}.hls/segment-1.ts`,
+    );
+  });
+
+  it("rejects a fractional segment index without dereferencing the manifest", async () => {
+    reelMode.value = "lowlight";
+    vi.mocked(acquireProxyChunkLocally).mockClear();
+    const token = await mintToken(GAME_ID, "lowlight");
+    const response = await fetch(
+      `${baseUrl}/api/games/${GAME_ID}/hls/segment/0.5?t=${token}`,
+    );
+    expect(response.status).toBe(401);
+    expect(acquireProxyChunkLocally).not.toHaveBeenCalled();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -436,6 +480,10 @@ async function mintTokenFull(gameId: number, type: string) {
   const res = await fetch(`${baseUrl}/api/games/${gameId}/stream-token/${type}`);
   if (!res.ok) throw new Error(`stream-token returned ${res.status}: ${await res.text()}`);
   return res.json() as Promise<{ token: string; streamUrl?: string; proxyReady: boolean; proxySkipped?: boolean }>;
+}
+
+async function reelPlaylist(gameId: number, token: string) {
+  return fetch(`${baseUrl}/api/games/${gameId}/hls/playlist.m3u8?t=${token}`);
 }
 
 /**

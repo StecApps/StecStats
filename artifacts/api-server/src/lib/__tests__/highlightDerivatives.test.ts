@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { deleteMock, warnMock } = vi.hoisted(() => ({
+const { deleteMock, deletePrefixMock, downloadMock, warnMock } = vi.hoisted(() => ({
   deleteMock: vi.fn(),
+  deletePrefixMock: vi.fn(),
+  downloadMock: vi.fn(),
   warnMock: vi.fn(),
 }));
 
@@ -14,6 +16,9 @@ vi.mock("@workspace/db", () => ({
     highlightClipManifest: "highlight_clip_manifest",
     highlightStatus: "highlight_status",
     highlightGeneratorVersion: "highlight_generator_version",
+    lowlightObjectPath: "lowlight_object_path",
+    lowlightStatus: "lowlight_status",
+    lowlightGeneratorVersion: "lowlight_generator_version",
   },
 }));
 
@@ -21,6 +26,8 @@ vi.mock("../objectStorage", () => ({
   ObjectStorageService: class {
     normalizeObjectEntityPath(path: string) { return path; }
     deleteObjectEntity = deleteMock;
+    deleteObjectEntityPrefix = deletePrefixMock;
+    getObjectEntityFile = vi.fn().mockResolvedValue({ download: downloadMock });
   },
 }));
 
@@ -31,6 +38,10 @@ vi.mock("../logger", () => ({
 import {
   captureAndInvalidateHighlight,
   cleanupCapturedHighlightDerivatives,
+  cleanupReelHlsDerivative,
+  readReelHlsManifest,
+  reelHlsManifestPath,
+  reelHlsSegmentPath,
 } from "../highlightDerivatives";
 
 function transactionFor(row: Record<string, unknown>) {
@@ -52,6 +63,8 @@ function transactionFor(row: Record<string, unknown>) {
 describe("atomic Highlight derivative invalidation", () => {
   beforeEach(() => {
     deleteMock.mockReset().mockResolvedValue(undefined);
+    deletePrefixMock.mockReset().mockResolvedValue(undefined);
+    downloadMock.mockReset();
     warnMock.mockReset();
   });
 
@@ -93,6 +106,7 @@ describe("atomic Highlight derivative invalidation", () => {
       highlightStatus: "idle",
     });
     await cleanupCapturedHighlightDerivatives(captured);
+    expect(deletePrefixMock).toHaveBeenCalledWith(`${publishedPath}.hls`);
     expect(deleteMock).toHaveBeenCalledWith(publishedPath);
     expect(deleteMock).toHaveBeenCalledWith(publishedClip);
     expect(deleteMock).not.toHaveBeenCalledWith(requestSnapshotPath);
@@ -107,5 +121,46 @@ describe("atomic Highlight derivative invalidation", () => {
       clipPaths: [],
     })).resolves.toBeUndefined();
     expect(warnMock).toHaveBeenCalled();
+  });
+});
+
+describe("stored reel HLS derivatives", () => {
+  beforeEach(() => {
+    downloadMock.mockReset();
+    deletePrefixMock.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("accepts only a manifest bound to the exact combined reel path", async () => {
+    const combinedPath = "/objects/uploads/7/reel.mp4";
+    downloadMock.mockResolvedValue([Buffer.from(JSON.stringify({
+      version: 1,
+      segmentDurationSec: 4,
+      durationMs: 7_500,
+      segments: [
+        { objectPath: reelHlsSegmentPath(combinedPath, 0), durationSec: 4 },
+        { objectPath: reelHlsSegmentPath(combinedPath, 1), durationSec: 3.5 },
+      ],
+    }))]);
+
+    await expect(readReelHlsManifest(combinedPath)).resolves.toMatchObject({
+      durationMs: 7_500,
+      segments: [{ durationSec: 4 }, { durationSec: 3.5 }],
+    });
+    expect(reelHlsManifestPath(combinedPath)).toBe(`${combinedPath}.hls/manifest.json`);
+  });
+
+  it("rejects a manifest that points at another reel's segments", async () => {
+    downloadMock.mockResolvedValue([Buffer.from(JSON.stringify({
+      version: 1,
+      segmentDurationSec: 4,
+      durationMs: 4_000,
+      segments: [{ objectPath: "/objects/uploads/8/other.mp4.hls/segment-0.ts", durationSec: 4 }],
+    }))]);
+    await expect(readReelHlsManifest("/objects/uploads/7/reel.mp4")).resolves.toBeNull();
+  });
+
+  it("deletes only the sidecar namespace for the matching combined reel", async () => {
+    await cleanupReelHlsDerivative("/objects/uploads/7/reel.mp4");
+    expect(deletePrefixMock).toHaveBeenCalledWith("/objects/uploads/7/reel.mp4.hls");
   });
 });

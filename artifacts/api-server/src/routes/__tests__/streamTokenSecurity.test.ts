@@ -272,6 +272,12 @@ vi.mock("../../lib/objectStorage", () => {
       lastObjectPathRequested.value = objectPath;
       return {
         getMetadata: vi.fn().mockResolvedValue([{ contentType: "video/mp4", size: 1024 }]),
+         download: vi.fn().mockResolvedValue([Buffer.from(JSON.stringify({
+           version: 1,
+           segmentDurationSec: 4,
+           durationMs: 4_000,
+           segments: [{ objectPath: `${PATH_A_HIGHLIGHT}.hls/segment-0.ts`, durationSec: 4 }],
+         }))]),
         createReadStream: vi.fn().mockImplementation(() => {
           const s = new Readable({ read() {} });
           process.nextTick(() => s.push(null)); // immediate EOF

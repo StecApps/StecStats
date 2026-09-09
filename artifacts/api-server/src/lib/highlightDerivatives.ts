@@ -12,6 +12,63 @@ export interface CapturedHighlightDerivatives {
   clipPaths: string[];
 }
 
+export interface CapturedLowlightDerivatives {
+  gameId: number;
+  ownerId: number;
+  combinedPath: string | null;
+}
+
+export interface ReelHlsManifest {
+  version: 1;
+  segmentDurationSec: number;
+  durationMs: number;
+  segments: Array<{ objectPath: string; durationSec: number }>;
+}
+
+export function reelHlsPrefix(combinedPath: string): string {
+  return `${combinedPath}.hls`;
+}
+
+export function reelHlsManifestPath(combinedPath: string): string {
+  return `${reelHlsPrefix(combinedPath)}/manifest.json`;
+}
+
+export function reelHlsSegmentPath(combinedPath: string, index: number): string {
+  return `${reelHlsPrefix(combinedPath)}/segment-${index}.ts`;
+}
+
+export async function readReelHlsManifest(
+  combinedPath: string,
+): Promise<ReelHlsManifest | null> {
+  const storage = new ObjectStorageService();
+  try {
+    const file = await storage.getObjectEntityFile(reelHlsManifestPath(combinedPath));
+    const [contents] = await file.download();
+    const parsed = JSON.parse(contents.toString("utf8")) as ReelHlsManifest;
+    if (
+      parsed.version !== 1
+      || !Number.isFinite(parsed.durationMs)
+      || parsed.durationMs <= 0
+      || !Number.isFinite(parsed.segmentDurationSec)
+      || parsed.segmentDurationSec <= 0
+      || !Array.isArray(parsed.segments)
+      || parsed.segments.length < 1
+      || parsed.segments.some((segment, index) =>
+        segment.objectPath !== reelHlsSegmentPath(combinedPath, index)
+        || !Number.isFinite(segment.durationSec)
+        || segment.durationSec <= 0)
+    ) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export async function cleanupReelHlsDerivative(combinedPath: string): Promise<void> {
+  const storage = new ObjectStorageService();
+  await storage.deleteObjectEntityPrefix(reelHlsPrefix(combinedPath));
+}
+
 export const highlightDerivativeInvalidation = {
   highlightObjectPath: null,
   highlightClipManifest: null,
@@ -82,6 +139,63 @@ export async function captureAndInvalidateHighlight(
   };
 }
 
+export async function captureAndInvalidateLowlight(
+  tx: GameTransaction,
+  gameId: number,
+  ownerId: number,
+  shouldInvalidate: (row: {
+    lowlightStatus: string | null;
+    lowlightGeneratorVersion: number | null;
+  }) => boolean = () => true,
+  values: Record<string, unknown> = {},
+): Promise<CapturedLowlightDerivatives | null> {
+  const [current] = await tx
+    .select({
+      lowlightObjectPath: gamesTable.lowlightObjectPath,
+      lowlightStatus: gamesTable.lowlightStatus,
+      lowlightGeneratorVersion: gamesTable.lowlightGeneratorVersion,
+    })
+    .from(gamesTable)
+    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)))
+    .for("update");
+  if (!current || !shouldInvalidate(current)) return null;
+
+  await tx
+    .update(gamesTable)
+    .set({
+      lowlightObjectPath: null,
+      lowlightStatus: "idle",
+      lowlightError: null,
+      lowlightStartedAt: null,
+      lowlightProgressStage: null,
+      lowlightProgressCompleted: null,
+      lowlightProgressTotal: null,
+      lowlightGeneratorVersion: null,
+      lowlightRunToken: null,
+      lowlightLeaseExpiresAt: null,
+      ...values,
+    })
+    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+
+  return { gameId, ownerId, combinedPath: current.lowlightObjectPath };
+}
+
+export async function cleanupCapturedLowlightDerivatives(
+  captured: CapturedLowlightDerivatives | null | undefined,
+): Promise<void> {
+  if (!captured?.combinedPath) return;
+  const storage = new ObjectStorageService();
+  try {
+    await cleanupReelHlsDerivative(captured.combinedPath);
+    await storage.deleteObjectEntity(storage.normalizeObjectEntityPath(captured.combinedPath));
+  } catch (err) {
+    logger.warn(
+      { err, gameId: captured.gameId, objectPath: captured.combinedPath },
+      "Lowlight derivative cleanup failed; object left for namespace cleanup",
+    );
+  }
+}
+
 /**
  * DB state is already committed when this runs. Cleanup is deliberately
  * best-effort: failures are logged for namespace/orphan sweeps and never turn a
@@ -97,6 +211,12 @@ export async function cleanupCapturedHighlightDerivatives(
     ...captured.clipPaths,
   ];
   await Promise.all(paths.map(async (objectPath) => {
+    await cleanupReelHlsDerivative(objectPath).catch((err) => {
+      logger.warn(
+        { err, gameId: captured.gameId, objectPath },
+        "Highlight HLS cleanup failed; objects left for namespace cleanup",
+      );
+    });
     try {
       await storage.deleteObjectEntity(objectPath);
     } catch (err) {
