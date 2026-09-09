@@ -2728,10 +2728,17 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     };
     const segmentToken = signStreamToken(segmentEntry);
     streamTokens.set(segmentToken, segmentEntry);
-    const targetDuration = Math.ceil(Math.max(
+    const maxAdvertisedSegmentDuration = Math.max(
       ...manifest.segments.map((segment) => segment.durationSec),
       1,
-    ));
+    );
+    // FFmpeg rounds EXTINF values to milliseconds. A segment advertised as
+    // exactly 4.000s can still have a 4.023s MPEG-TS timeline after muxing.
+    // AVPlayer rejects that playlist before requesting segment zero when the
+    // target is also 4. Give exact integer boundaries one second of headroom.
+    const targetDuration = Number.isInteger(maxAdvertisedSegmentDuration)
+      ? maxAdvertisedSegmentDuration + 1
+      : Math.ceil(maxAdvertisedSegmentDuration);
     const lines = [
       "#EXTM3U",
       "#EXT-X-VERSION:3",

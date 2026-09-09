@@ -17,6 +17,7 @@ describe("reel HLS route contract", () => {
     expect(routes).toContain('"#EXT-X-INDEPENDENT-SEGMENTS"');
     expect(routes).toContain('lines.push("#EXT-X-ENDLIST")');
     expect(routes).toContain("...manifest.segments.map((segment) => segment.durationSec)");
+    expect(routes).toContain("Number.isInteger(maxAdvertisedSegmentDuration)");
     expect(routes).toContain("`#EXT-X-TARGETDURATION:${targetDuration}`");
     expect(routes).toContain('res.end(`${lines.join("\\n")}\\n`)');
     expect(routes).toContain('const isReel = entry.streamType === "highlight" || entry.streamType === "lowlight"');

@@ -240,7 +240,7 @@ vi.mock("../../lib/objectStorage", () => {
            version: 1,
            segmentDurationSec: 4,
            durationMs: 8_040,
-           segments: [4.04, 4].map((durationSec, index) => ({
+           segments: [4, 4].map((durationSec, index) => ({
              objectPath: `${reelMode.value === "lowlight" ? PATH_LOWLIGHT : PATH_HIGHLIGHT}.hls/segment-${index}.ts`,
              durationSec,
            })),
@@ -436,8 +436,7 @@ describe("Stored reel HLS playback", () => {
     expect(playlistResponse.status).toBe(200);
     const playlist = await playlistResponse.text();
     expect(playlist).toContain("#EXT-X-TARGETDURATION:5");
-    expect(playlist).toContain("#EXTINF:4.040,");
-    expect(playlist).toContain("#EXTINF:4.000,");
+    expect(playlist.match(/#EXTINF:4\.000,/g)).toHaveLength(2);
     expect(playlist).toContain("#EXT-X-PLAYLIST-TYPE:VOD");
     expect(playlist).toContain("#EXT-X-ENDLIST");
     expect(playlist.endsWith("\n")).toBe(true);
