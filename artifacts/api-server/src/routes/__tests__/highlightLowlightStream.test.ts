@@ -239,10 +239,10 @@ vi.mock("../../lib/objectStorage", () => {
          download: vi.fn().mockResolvedValue([Buffer.from(JSON.stringify({
            version: 1,
            segmentDurationSec: 4,
-           durationMs: 8_000,
-           segments: [0, 1].map((index) => ({
+           durationMs: 8_040,
+           segments: [4.04, 4].map((durationSec, index) => ({
              objectPath: `${reelMode.value === "lowlight" ? PATH_LOWLIGHT : PATH_HIGHLIGHT}.hls/segment-${index}.ts`,
-             durationSec: 4,
+             durationSec,
            })),
          }))]),
         createReadStream: vi.fn().mockImplementation((opts?: { start?: number; end?: number }) => {
@@ -435,12 +435,17 @@ describe("Stored reel HLS playback", () => {
     const playlistResponse = await reelPlaylist(GAME_ID, token);
     expect(playlistResponse.status).toBe(200);
     const playlist = await playlistResponse.text();
-    expect(playlist.match(/#EXTINF:4\.000,/g)).toHaveLength(2);
+    expect(playlist).toContain("#EXT-X-TARGETDURATION:5");
+    expect(playlist).toContain("#EXTINF:4.040,");
+    expect(playlist).toContain("#EXTINF:4.000,");
     expect(playlist).toContain("#EXT-X-PLAYLIST-TYPE:VOD");
     expect(playlist).toContain("#EXT-X-ENDLIST");
+    expect(playlist.endsWith("\n")).toBe(true);
+    const segmentUrl = playlist.split("\n").find((line) => line.startsWith("segment/1?t="));
+    expect(segmentUrl).toBeTruthy();
 
     const segmentResponse = await fetch(
-      `${baseUrl}/api/games/${GAME_ID}/hls/segment/1?t=${token}`,
+      `${baseUrl}/api/games/${GAME_ID}/hls/${segmentUrl}`,
     );
     expect(segmentResponse.status).toBe(200);
     expect(acquireProxyChunkLocally).toHaveBeenCalledWith(

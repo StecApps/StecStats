@@ -2724,10 +2724,14 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     };
     const segmentToken = signStreamToken(segmentEntry);
     streamTokens.set(segmentToken, segmentEntry);
+    const targetDuration = Math.ceil(Math.max(
+      ...manifest.segments.map((segment) => segment.durationSec),
+      1,
+    ));
     const lines = [
       "#EXTM3U",
       "#EXT-X-VERSION:3",
-      `#EXT-X-TARGETDURATION:${Math.ceil(segmentEntry.hlsSegmentDurationSec!)}`,
+      `#EXT-X-TARGETDURATION:${targetDuration}`,
       "#EXT-X-PLAYLIST-TYPE:VOD",
       "#EXT-X-MEDIA-SEQUENCE:0",
     ];
@@ -2739,7 +2743,7 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     lines.push("#EXT-X-ENDLIST");
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
     res.setHeader("Cache-Control", "private, max-age=60");
-    return void res.end(lines.join("\n"));
+    return void res.end(`${lines.join("\n")}\n`);
   }
 
   // Read the sentinel for exact per-segment durations (ffprobe-measured at

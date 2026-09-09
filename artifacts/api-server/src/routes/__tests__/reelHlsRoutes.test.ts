@@ -15,6 +15,9 @@ describe("reel HLS route contract", () => {
     expect(routes).toContain('segment/${i}?t=${segmentToken}');
     expect(routes).toContain('"#EXT-X-PLAYLIST-TYPE:VOD"');
     expect(routes).toContain('lines.push("#EXT-X-ENDLIST")');
+    expect(routes).toContain("...manifest.segments.map((segment) => segment.durationSec)");
+    expect(routes).toContain("`#EXT-X-TARGETDURATION:${targetDuration}`");
+    expect(routes).toContain('res.end(`${lines.join("\\n")}\\n`)');
     expect(routes).toContain('const isReel = entry.streamType === "highlight" || entry.streamType === "lowlight"');
     expect(routes).toContain("readReelHlsManifest(entry.objectPath)");
   });
