@@ -441,7 +441,7 @@ export class ReelDownloadManager {
         if (checksumMismatch) {
           await FileSystem.deleteAsync(partialUri, { idempotent: true }).catch(() => undefined);
           entry.status = 'queued';
-          entry.error = undefined;
+          entry.error = 'Checksum mismatch; requesting a fresh download URL.';
           entry.bytesWritten = 0;
           entry.expectedBytes = undefined;
           entry.expectedMd5 = undefined;
@@ -452,7 +452,7 @@ export class ReelDownloadManager {
           // between access points or cellular. Keep every verified byte and ask
           // the screen to refresh the signed URL before resuming with Range.
           entry.status = 'queued';
-          entry.error = undefined;
+          entry.error = `Native transfer interrupted after ${(partialBytes / 1024 / 1024).toFixed(1)} MB; refreshing its URL.`;
           entry.bytesWritten = partialBytes;
           entry.resumeData = undefined;
           entry.needsUrlRefresh = true;

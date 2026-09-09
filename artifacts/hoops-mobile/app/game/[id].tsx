@@ -32,6 +32,7 @@ import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { saveReviewVideo } from '@/lib/saveReviewVideo';
 import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
+import * as Updates from 'expo-updates';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
@@ -40,6 +41,27 @@ import { reelProgressText } from '@/lib/reelProgressText';
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : '';
+const RUNNING_UPDATE_ID = Updates.updateId ?? (Updates.isEmbeddedLaunch ? 'embedded-build' : 'development');
+
+function reelDownloadStatus(download: {
+  status: string;
+  bytesWritten?: number;
+  expectedBytes?: number;
+  error?: string;
+}) {
+  if (download.status === 'downloaded') return 'Downloaded on this device';
+  const progress = download.expectedBytes && download.expectedBytes > 0
+    ? ` · ${Math.min(100, Math.round(((download.bytesWritten ?? 0) / download.expectedBytes) * 100))}%`
+    : download.bytesWritten
+      ? ` · ${(download.bytesWritten / 1024 / 1024).toFixed(1)} MB`
+      : '';
+  const state = download.status === 'failed'
+    ? 'Download failed'
+    : download.status === 'downloading'
+      ? 'Downloading'
+      : 'Queued';
+  return `${state}${progress}${download.error ? ` · ${download.error}` : ''} · OTA ${RUNNING_UPDATE_ID}`;
+}
 
 // Expo Video defaults to a 1 GB LRU cache. A single full-game recording can
 // approach that size, which caused previously watched footage to be evicted
@@ -1179,7 +1201,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           <View style={videoStyle.downloadedBadge}>
             <Feather name={lowlightDownload.status === 'failed' ? 'alert-circle' : lowlightDownload.status === 'downloaded' ? 'check-circle' : 'download'} size={14} color={colors.primary} />
             <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
-              {lowlightDownload.status === 'downloaded' ? 'Downloaded on this device' : lowlightDownload.status === 'failed' ? 'Download failed — tap Retry Video' : `${lowlightDownload.status === 'downloading' ? 'Downloading' : 'Queued'} for offline playback`}
+              {reelDownloadStatus(lowlightDownload)}
             </Text>
           </View>
         )}
@@ -1982,7 +2004,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           <View style={videoStyle.downloadedBadge}>
             <Feather name={highlightDownload.status === 'failed' ? 'alert-circle' : highlightDownload.status === 'downloaded' ? 'check-circle' : 'download'} size={14} color={colors.primary} />
             <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
-              {highlightDownload.status === 'downloaded' ? 'Downloaded on this device' : highlightDownload.status === 'failed' ? 'Download failed — tap Retry Video' : `${highlightDownload.status === 'downloading' ? 'Downloading' : 'Queued'} for offline playback`}
+              {reelDownloadStatus(highlightDownload)}
             </Text>
           </View>
         )}
