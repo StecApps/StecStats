@@ -22,3 +22,9 @@ Never construct a mobile download URL from Express `req.protocol` unless trusted
 **Why:** Behind a TLS-terminating production proxy, Express can see the internal hop as HTTP and return an `http://` URL. iOS App Transport Security rejects that URL locally, so the server sees no request and the UI can look indefinitely stuck.
 
 **How to apply:** Prefer a relative API path from the server and resolve it against the mobile app's known HTTPS API base. For security-sensitive native media routes, the client can construct that HTTPS URL directly from the signed token.
+
+Physical iOS reel downloads should use one native `URLSession` background transfer from the signed GCS URL, not an `expo/fetch` loop over server-proxied ranges.
+
+**Why:** The bounded Range implementation passed unit tests, but on a physical iPhone it repeatedly changed Downloading → Queued while no Range request ever left the device. The HLS player failed independently, so no local fallback ever became available.
+
+**How to apply:** Download the complete signed object into a `.part` destination with `createDownloadResumable`, verify status and size, then atomically promote it for playback/share. If a refreshed signed URL cannot safely reuse iOS resume data, restart the full transfer rather than combining bytes from different requests.
