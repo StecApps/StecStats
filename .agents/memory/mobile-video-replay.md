@@ -99,6 +99,12 @@ Long-game playback encodes must yield the global ffmpeg serializer in bounded ba
 
 **How to apply:** Run a small number of playback segments per ffmpeg invocation, rejoin the queue between batches, and use fast pre-input seeking only for the authenticated loopback Range source. Detect EOF with a zero-output batch before writing the final sentinel.
 
+Reel HLS token issuance must never download or probe the media before returning, and a late HLS result must not replace a local reel that has already started playing.
+
+**Why:** Production token requests blocked for 6–24 seconds while ffprobe waited on the complete reel. The old local MP4 played during that delay, then the late HLS source replacement dismissed playback after roughly one and a half clips; no playlist or segment request was ever made.
+
+**How to apply:** Mint the object/type-bound playlist token immediately. Let the first playlist request probe duration and mint a second portable token containing exact segment count/duration. Segment routes accept only that fully bound token.
+
 Do not scan the game history for ready Highlight/Lowlight reels when the mobile app activates.
 
 **Why:** Fetching both reel statuses for up to 30 games produced waves of roughly 60 requests, automatically queued unrelated downloads, competed with current-game Film Room preparation, and made the app appear stuck.
