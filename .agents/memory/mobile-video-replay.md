@@ -9,6 +9,12 @@ For progressive MP4 playback, keep the exact signed media URL stable while the a
 
 **How to apply:** Any future mobile player or refactor should preserve source URL identity, opt progressive MP4 into the native cache, and avoid enabling iOS caching for HLS because Expo Video does not support that combination. For generated highlight/lowlight reels on iOS, download the complete signed-GCS MP4 to the app cache and give AVPlayer the local file URI.
 
+The public share page playing a reel end-to-end is strong evidence that the combined MP4 is healthy even when native iOS playback dismisses after one or two former clip boundaries.
+
+**Why:** Physical-device Highlight/Lowlight playback exited early while the same shared link played all the way through.
+
+**How to apply:** Do not regenerate the reel from this symptom. Keep public sharing unchanged and move native playback to the complete validated local MP4 rather than HLS.
+
 Expo Video can accept `replaceAsync()` and only report AVPlayer's source failure later through the `statusChange` event. A player must not treat the resolved replacement promise as proof that media loaded.
 
 **Why:** A valid, fast-start H.264/AAC highlight remained on iOS as a black player with the crossed-out play icon because the delayed native error was ignored.
