@@ -26,7 +26,7 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "20260911"
+      "buildNumber": "20260912"
     },
     "android": {
       "adaptiveIcon": {
@@ -99,9 +99,9 @@
     "updates": {
       "url": "https://u.expo.dev/2115ac2f-b1d6-42f5-a109-9dd376d0121a",
       "enabled": true,
-      "checkAutomatically": "ON_LOAD"
+      "checkAutomatically": "NEVER"
     },
-    "runtimeVersion": "1.0.0-rescue-20260830",
+    "runtimeVersion": "1.0.0-recovery-20260912",
     "extra": {
       "router": {
         "origin": "https://replit.com/"
