@@ -142,6 +142,7 @@ const gaugeS = StyleSheet.create({
 // ─── Player chip ─────────────────────────────────────────────────────────────
 function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: boolean; onPress: () => void }) {
   const c = useColors();
+  const { data: summary } = useGetPlayerSummary(player.id);
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -154,23 +155,26 @@ function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: 
         },
       ]}
     >
-      {isSelected ? (
-        <Ionicons name="checkmark" size={14} color={c.primaryForeground} style={chipS.icon} />
-      ) : (
-        <Ionicons name="person" size={12} color={c.primary} style={chipS.icon} />
-      )}
-      <Text style={[chipS.name, { color: isSelected ? c.primaryForeground : c.foreground }]}>{player.name}</Text>
+      <Text style={[chipS.name, { color: isSelected ? c.primaryForeground : c.foreground }]}>
+        {player.name}
+      </Text>
+      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.78)' : c.mutedForeground }]}>
+        {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
+      </Text>
     </TouchableOpacity>
   );
 }
 const chipS = StyleSheet.create({
-  chip: { 
-    flexDirection: 'row', alignItems: 'center', 
-    paddingHorizontal: 14, paddingVertical: 8, 
-    borderRadius: 20, borderWidth: 1, marginRight: 8 
+  chip: {
+    minWidth: 110,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 24,
+    borderWidth: 1,
+    marginRight: 8,
   },
-  icon: { marginRight: 6 },
-  name: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  name: { fontSize: 14, fontFamily: 'Inter_700Bold' },
+  sub: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
 });
 
 // ─── Unified Stat Card (Desktop style) ───────────────────────────────────────

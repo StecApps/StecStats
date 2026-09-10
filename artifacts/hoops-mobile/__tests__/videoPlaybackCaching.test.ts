@@ -26,10 +26,11 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('? (streamUrl ?? reelRangeProxyUrl)');
   });
 
-  test('plays native completed reels as HLS while retaining MP4 downloads for offline save', () => {
-    expect(gameScreen).toContain("if (result.isHls && Platform.OS !== 'web')");
-    expect(gameScreen).toContain("url: result.downloadUrl");
-    expect(gameScreen).toContain("setStreamIsHls(true);");
+  test('plays native Highlight and Lowlight reels from their complete downloaded MP4', () => {
+    expect(gameScreen).not.toContain("if (result.isHls && Platform.OS !== 'web')");
+    expect(gameScreen).toContain("getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.downloadUrl");
+    expect(gameScreen).toContain("getReelPlaybackUrl(\n        gameId,\n        'highlight'");
+    expect(gameScreen).toContain("if (existing?.status === 'downloaded' && existing.uri) return existing.uri");
     expect(gameScreen).toContain("playbackSource(sourceAttachRequest.url, streamIsHls)");
   });
 
@@ -63,17 +64,15 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('testID="retry-highlight-playback"');
   });
 
-  test('automatically resumes a successfully-started local Highlight after one transient AVPlayer error', () => {
+  test('requires an explicit same-file resume after local Highlight playback is interrupted', () => {
     const highlightSection = gameScreen.slice(
       gameScreen.indexOf('function HighlightSection'),
       gameScreen.indexOf('const reviewAction'),
     );
     expect(highlightSection).toContain('const interruptedLocalPlayback');
-    expect(highlightSection).toContain('interruptedLocalPlayback && !automaticRetryRef.current');
+    expect(highlightSection).not.toContain('interruptedLocalPlayback && !automaticRetryRef.current');
+    expect(highlightSection).toContain('if (playbackInterrupted && signedUrl?.startsWith');
     expect(highlightSection).toContain('pendingResumePositionRef.current = playbackPositionRef.current;');
-    expect(highlightSection).toContain('shouldAutoPlayRef.current = true;');
-    expect(highlightSection).toContain('setPlaybackLoading(true);');
-    expect(highlightSection).toContain('void loadHighlightVideo();');
     expect(highlightSection).toContain("playbackInterrupted ? 'Resume Playback' : 'Retry Video'");
     expect(highlightSection).toContain('fullscreenOptions={{ enable: !usesSegmentedPlayback, autoExitOnRotate: false }}');
     expect(highlightSection.indexOf('<VideoView')).toBeLessThan(highlightSection.indexOf('{playbackError && !playbackLoading ? ('));
