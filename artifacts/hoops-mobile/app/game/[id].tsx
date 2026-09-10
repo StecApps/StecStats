@@ -941,6 +941,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [sharingLowlight, setSharingLowlight] = useState(false);
+  const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
   const automaticRetryRef = useRef(false);
   const loadGenerationRef = useRef(0);
@@ -949,6 +950,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const attachedSourceRef = useRef<string | null>(null);
 
   const player = useVideoPlayer('', configureReviewPlayer);
+  const usesAppFullscreen = Platform.OS === 'ios' && streamIsHls;
 
   // Poll every 3 s while generating
   useEffect(() => {
@@ -1181,14 +1183,24 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </View>
           ) : (
             <>
-              <VideoView
+              {!fullscreenVisible && <VideoView
                 player={player}
                 style={{ flex: 1 }}
                 contentFit="cover"
-                allowsFullscreen
+                fullscreenOptions={{ enable: !usesAppFullscreen, autoExitOnRotate: false }}
                 allowsPictureInPicture
                 nativeControls
-              />
+              />}
+              {usesAppFullscreen && !fullscreenVisible && (
+                <TouchableOpacity
+                  testID="expand-lowlight"
+                  accessibilityLabel="Open lowlight full screen"
+                  onPress={() => setFullscreenVisible(true)}
+                  style={videoStyle.expandButton}
+                >
+                  <Feather name="maximize" size={20} color="#fff" />
+                </TouchableOpacity>
+              )}
               {(!signedUrl || playbackLoading) && (
                 <View style={[videoStyle.playbackLoading, { backgroundColor: colors.background }]}>
                   {lowlightDownload?.status === 'downloading' || playbackLoading ? (
@@ -1225,6 +1237,36 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </>
           )}
         </ZoomableVideo>
+        {usesAppFullscreen && fullscreenVisible && (
+          <Modal
+            testID="lowlight-modal"
+            visible
+            animationType="fade"
+            supportedOrientations={['portrait', 'landscape']}
+            onRequestClose={() => setFullscreenVisible(false)}
+          >
+            <View style={videoStyle.segmentedModal}>
+              <VideoView
+                player={player}
+                style={StyleSheet.absoluteFill}
+                contentFit="contain"
+                fullscreenOptions={{ enable: false }}
+                nativeControls
+                allowsPictureInPicture
+              />
+              <View style={videoStyle.segmentedModalHeader}>
+                <TouchableOpacity
+                  testID="close-lowlight"
+                  accessibilityLabel="Close full screen lowlight"
+                  onPress={() => setFullscreenVisible(false)}
+                  style={videoStyle.modalCloseButton}
+                >
+                  <Feather name="x" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
         {Platform.OS !== 'web' && lowlightDownload && (
           <View style={videoStyle.downloadedBadge}>
             <Feather name={lowlightDownload.status === 'failed' ? 'alert-circle' : lowlightDownload.status === 'downloaded' ? 'check-circle' : 'download'} size={14} color={colors.primary} />
@@ -1423,6 +1465,8 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         item.objectPath === currentClipObjectPath)
     : undefined;
   const highlightDownload = usesSegmentedPlayback ? currentClipDownload : combinedHighlightDownload;
+  const usesAppFullscreen =
+    Platform.OS === 'ios' && (usesSegmentedPlayback || streamIsHls);
 
   const loadHighlightVideo = useCallback(async (
     forceFresh = false,
@@ -1434,7 +1478,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     setPlaybackError(null);
     setPlaybackInterrupted(false);
     try {
-      if (usesSegmentedPlayback || streamIsHls) {
+      if (usesSegmentedPlayback) {
         if (!currentClip || !currentClipObjectPath) {
           throw new Error('The highlight clip is not available.');
         }
@@ -1924,7 +1968,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             player={player}
             style={{ flex: 1 }}
             contentFit="cover"
-            fullscreenOptions={{ enable: !usesSegmentedPlayback, autoExitOnRotate: false }}
+            fullscreenOptions={{ enable: !usesAppFullscreen, autoExitOnRotate: false }}
             allowsPictureInPicture
             nativeControls
             onFirstFrameRender={() => {
@@ -1946,7 +1990,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
               });
             }}
           />}
-          {usesSegmentedPlayback && !segmentedFullscreenVisible && (
+          {usesAppFullscreen && !segmentedFullscreenVisible && (
             <TouchableOpacity
               testID="expand-segmented-highlight"
               accessibilityLabel="Open highlight full screen"
@@ -2009,7 +2053,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
             </View>
           )}
         </ZoomableVideo>
-        {usesSegmentedPlayback && segmentedFullscreenVisible && (
+        {usesAppFullscreen && segmentedFullscreenVisible && (
           <Modal
             testID="segmented-highlight-modal"
             visible
@@ -2035,9 +2079,11 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
                 >
                   <Feather name="x" size={24} color="#fff" />
                 </TouchableOpacity>
-                <Text style={videoStyle.clipProgress}>
-                  Clip {currentClipPosition + 1} of {segmentedClips.length}
-                </Text>
+                {usesSegmentedPlayback && (
+                  <Text style={videoStyle.clipProgress}>
+                    Clip {currentClipPosition + 1} of {segmentedClips.length}
+                  </Text>
+                )}
               </View>
             </View>
           </Modal>

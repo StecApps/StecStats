@@ -58,16 +58,16 @@ describe('segmented iOS Highlight playback', () => {
   test('uses mutually exclusive inline/modal surfaces and disables native fullscreen', () => {
     expect(highlightSection).toContain('testID="expand-segmented-highlight"');
     expect(highlightSection).toContain('testID="segmented-highlight-modal"');
-    expect(highlightSection).toContain('fullscreenOptions={{ enable: !usesSegmentedPlayback');
+    expect(highlightSection).toContain('fullscreenOptions={{ enable: !usesAppFullscreen');
     expect(highlightSection).toContain('fullscreenOptions={{ enable: false }}');
     expect(highlightSection).toContain('Clip {currentClipPosition + 1} of {segmentedClips.length}');
     expect(highlightSection).toContain('testID="close-segmented-highlight"');
     expect(highlightSection).toContain('{!segmentedFullscreenVisible && <VideoView');
-    expect(highlightSection).toContain('{usesSegmentedPlayback && segmentedFullscreenVisible && (');
+    expect(highlightSection).toContain('{usesAppFullscreen && segmentedFullscreenVisible && (');
     expect(highlightSection).not.toContain('visible={segmentedFullscreenVisible}');
 
     const inlineBranch = highlightSection.indexOf('{!segmentedFullscreenVisible && <VideoView');
-    const modalBranch = highlightSection.indexOf('{usesSegmentedPlayback && segmentedFullscreenVisible && (');
+    const modalBranch = highlightSection.indexOf('{usesAppFullscreen && segmentedFullscreenVisible && (');
     expect(inlineBranch).toBeGreaterThan(-1);
     expect(modalBranch).toBeGreaterThan(inlineBranch);
   });

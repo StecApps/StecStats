@@ -81,6 +81,12 @@ iOS Highlight/Lowlight playback should retain the HLS behavior from the recovery
 
 **How to apply:** Keep HLS as the active native playback source and let the MP4 download continue independently for offline Save/share. Do not switch native playback to local-only again without new physical-device evidence.
 
+Native iPhone reel HLS should use one app-owned full-screen modal instead of AVPlayerViewController, and download-state refreshes must stay on the combined-reel loader.
+
+**Why:** A completed HLS VOD could play correctly while the system full-screen controller dismissed at a former clip boundary. Separately, the Highlight loader treated `streamIsHls` as segmented playback after the parallel MP4 download changed state, then failed because no standalone clip was selected.
+
+**How to apply:** Disable Expo Video native fullscreen for Highlight/Lowlight HLS on iOS, move the same player between mutually exclusive inline and modal surfaces, and gate standalone-clip loading only on the explicit segmented-playback flag.
+
 Keep Clerk's `getToken` function in a ref when a media-loading callback is itself an effect dependency.
 
 **Why:** Its changing function identity recreated the loader after each state update, producing a stream-token request storm and an eventual native app restart.
