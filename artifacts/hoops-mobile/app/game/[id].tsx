@@ -981,9 +981,26 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         ? await fetchStreamUrl(gameId, 'lowlight', token)
         : await getReusableStreamUrl(gameId, 'lowlight', token);
       if (!isCurrentLoad()) return;
-      // Native reel playback is local-only. The public shared page can stream
-      // the complete reel reliably, but AVPlayer may dismiss HLS playback at a
-      // former clip boundary. Download and validate the combined MP4 first.
+      // Play completed reel HLS immediately on native platforms. Keep the
+      // persistent MP4 transfer running independently for Save/offline use.
+      if (result.isHls && Platform.OS !== 'web') {
+        // A download completion can re-run this loader while the durable MP4 is
+        // already playing. Never replace that active local source with a late
+        // playlist response; explicit Retry/Regenerate still opts in via
+        // forceFresh.
+        if (!forceFresh && attachedSourceRef.current?.startsWith('file:')) {
+          setPlaybackLoading(false);
+          return;
+        }
+        if (downloadManagerReady) {
+          await reelDownloadManager.enqueue({ gameId, type: 'lowlight', objectPath, url: result.downloadUrl }, true);
+        }
+        if (!isCurrentLoad()) return;
+        setStreamIsHls(true);
+        setSignedUrl(result.url);
+        setSourceAttachRequest({ url: result.url, id: loadGeneration });
+        return;
+      }
       const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.downloadUrl, forceFresh);
       if (!isCurrentLoad()) return;
       if (!playbackUrl) {
@@ -1417,7 +1434,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     setPlaybackError(null);
     setPlaybackInterrupted(false);
     try {
-      if (usesSegmentedPlayback) {
+      if (usesSegmentedPlayback || streamIsHls) {
         if (!currentClip || !currentClipObjectPath) {
           throw new Error('The highlight clip is not available.');
         }
@@ -1465,9 +1482,20 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         : await getReusableStreamUrl(gameId, 'highlight', token);
       if (!isCurrentLoad()) return;
 
-      // Native Highlight playback uses the complete downloaded MP4. Streaming
-      // HLS played initially on physical iOS but could dismiss after one or two
-      // clip boundaries even though the combined file was valid.
+      if (result.isHls && Platform.OS !== 'web') {
+        if (!forceFresh && attachedSourceRef.current?.startsWith('file:')) {
+          setPlaybackLoading(false);
+          return;
+        }
+        if (downloadManagerReady) {
+          await reelDownloadManager.enqueue({ gameId, type: 'highlight', objectPath, url: result.downloadUrl }, true);
+        }
+        if (!isCurrentLoad()) return;
+        setStreamIsHls(true);
+        setSignedUrl(result.url);
+        setSourceAttachRequest({ url: result.url, id: loadGeneration });
+        return;
+      }
       const playbackUrl = await getReelPlaybackUrl(
         gameId,
         'highlight',
@@ -1693,10 +1721,20 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         fullscreen: fullscreenRef.current,
         message,
       });
-      // Never replace a local source automatically after playback has started.
-      // On physical iOS that replacement can dismiss the native player around
-      // former clip boundaries. Preserve the complete file and let the coach
-      // explicitly resume from the last observed position.
+      // Recover one unexpected local interruption automatically from the last
+      // known timestamp. This reattaches the same durable file; it never
+      // invalidates the download or requests media bytes again.
+      if (interruptedLocalPlayback && !automaticRetryRef.current) {
+        automaticRetryRef.current = true;
+        pendingResumePositionRef.current = playbackPositionRef.current;
+        shouldAutoPlayRef.current = true;
+        attachedSourceRef.current = null;
+        setPlaybackInterrupted(false);
+        setPlaybackError(null);
+        setPlaybackLoading(true);
+        void loadHighlightVideo();
+        return;
+      }
       setPlaybackInterrupted(interruptedLocalPlayback);
       setPlaybackError(message);
       if (interruptedLocalPlayback) return;

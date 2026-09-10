@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
@@ -438,9 +439,11 @@ function PlayerDashboard({ player }: { player: any }) {
 
         <View style={heroS.actionRow}>
           <TouchableOpacity onPress={handlePhotoTap} style={[heroS.iconBtn, { borderColor: c.border }]}>
+            <BlurView tint="dark" intensity={45} style={StyleSheet.absoluteFillObject} />
             {uploading ? <ActivityIndicator size="small" color={c.foreground} /> : <Ionicons name="camera-outline" size={18} color={c.foreground} />}
           </TouchableOpacity>
           <TouchableOpacity onPress={handleShareProfile} disabled={sharing} style={[heroS.iconBtn, { borderColor: c.border }]}>
+            <BlurView tint="dark" intensity={45} style={StyleSheet.absoluteFillObject} />
             {sharing ? <ActivityIndicator size="small" color={c.foreground} /> : <Ionicons name="share-outline" size={18} color={c.foreground} />}
           </TouchableOpacity>
         </View>
@@ -589,7 +592,8 @@ const heroS = StyleSheet.create({
     height: 38,
     borderRadius: 19,
     borderWidth: 1,
-    backgroundColor: 'rgba(0,0,0,0.28)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
