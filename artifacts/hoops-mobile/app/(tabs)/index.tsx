@@ -393,10 +393,19 @@ function PlayerDashboard({ player }: { player: any }) {
   const heroCard = (
     <View style={[
       heroS.container, 
-      { borderColor: primaryRgba(0.65), backgroundColor: c.card },
+      { borderColor: primaryRgba(0.8), backgroundColor: c.card },
       isLandscape && heroS.containerLandscape,
       isTabletLandscape && heroS.cardWrapperTabletLandscape,
     ]}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[primaryRgba(0.3), primaryRgba(0.1), 'transparent']}
+        locations={[0, 0.58, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <BasketballWatermark color={c.primary} />
       <View style={heroS.topRow}>
         <View style={heroS.playerInfo}>
           {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
@@ -414,6 +423,7 @@ function PlayerDashboard({ player }: { player: any }) {
             </View>
           )}
           <View style={heroS.nameCol}>
+            <Text style={[heroS.eyebrow, { color: c.primary }]}>PLAYER PROFILE</Text>
             <Text style={[heroS.name, { color: c.foreground }]}>{player.name.toUpperCase()}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <View style={[heroS.scopePill, { backgroundColor: c.primary }]}>
@@ -509,6 +519,7 @@ function PlayerDashboard({ player }: { player: any }) {
 
 const heroS = StyleSheet.create({
   container: {
+    minHeight: 148,
     borderRadius: 6,
     borderWidth: 1,
     overflow: 'hidden',
@@ -520,32 +531,43 @@ const heroS = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   topRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  playerInfo: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+  },
+  playerInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarInitials: {
-    fontSize: 18,
+    fontSize: 23,
     fontFamily: 'Inter_700Bold',
   },
   nameCol: {
-    gap: 4,
+    flex: 1,
+    gap: 5,
+  },
+  eyebrow: {
+    fontSize: 8,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 2,
   },
   name: {
-    ...tekoStyle(30),
+    ...tekoStyle(36),
     letterSpacing: 1,
   },
   scopePill: {
@@ -560,13 +582,14 @@ const heroS = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
   },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     borderWidth: 1,
+    backgroundColor: 'rgba(0,0,0,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
   },
