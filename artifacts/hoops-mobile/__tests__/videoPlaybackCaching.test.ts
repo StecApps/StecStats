@@ -75,7 +75,7 @@ describe('saved-video playback caching', () => {
     expect(highlightSection).toContain('setPlaybackLoading(true);');
     expect(highlightSection).toContain('void loadHighlightVideo();');
     expect(highlightSection).toContain("playbackInterrupted ? 'Resume Playback' : 'Retry Video'");
-    expect(highlightSection).toContain('fullscreenOptions={{ enable: !usesSegmentedPlayback, autoExitOnRotate: false }}');
+    expect(highlightSection).toContain('fullscreenOptions={{ enable: !usesAppFullscreen, autoExitOnRotate: false }}');
     expect(highlightSection.indexOf('<VideoView')).toBeLessThan(highlightSection.indexOf('{playbackError && !playbackLoading ? ('));
   });
 
