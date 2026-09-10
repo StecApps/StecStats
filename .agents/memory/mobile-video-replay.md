@@ -75,11 +75,11 @@ An unfinished HLS build must be re-triggerable from playlist refreshes, and an u
 
 **How to apply:** Put the source object path in portable HLS token state, idempotently resume on unfinished playlist reads, and return `proxyReady=false` until short-game proxy media exists.
 
-iOS Highlight/Lowlight playback should retain the HLS behavior from the recovery build while the remaining clip-boundary exit is investigated.
+iOS Highlight/Lowlight playback should bypass reel HLS and use the complete remote progressive MP4 while the offline download continues separately.
 
-**Why:** On a physical iPhone, the local-only build downloaded the reels but showed black video and still cut out. The preceding HLS build visibly played better, although it also exited early.
+**Why:** On a physical iPhone, both Highlight and Lowlight HLS played segment 1 and stopped during segment 2. A local-only build downloaded the reels but showed black video, while public complete-MP4 links played end-to-end.
 
-**How to apply:** Keep HLS as the active native playback source and let the MP4 download continue independently for offline Save/share. Do not switch native playback to local-only again without new physical-device evidence.
+**How to apply:** When the server advertises reel HLS, attach its separate signed complete-MP4 URL as progressive media instead of the playlist. Keep the manager download only for offline Save/share; do not wait for or attach the local file.
 
 Native iPhone reel HLS should use one app-owned full-screen modal instead of AVPlayerViewController, and download-state refreshes must stay on the combined-reel loader.
 

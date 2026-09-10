@@ -26,10 +26,11 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('? (streamUrl ?? reelRangeProxyUrl)');
   });
 
-  test('plays native completed reels as HLS while retaining MP4 downloads for offline save', () => {
+  test('bypasses native reel HLS with the complete progressive MP4 while retaining offline downloads', () => {
     expect(gameScreen).toContain("if (result.isHls && Platform.OS !== 'web')");
     expect(gameScreen).toContain("url: result.downloadUrl");
-    expect(gameScreen).toContain("setStreamIsHls(true);");
+    expect(gameScreen).toContain("setStreamIsHls(false);");
+    expect(gameScreen).toContain("setSourceAttachRequest({ url: result.downloadUrl");
     expect(gameScreen).toContain("playbackSource(sourceAttachRequest.url, streamIsHls)");
   });
 

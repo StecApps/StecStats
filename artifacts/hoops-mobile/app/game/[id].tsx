@@ -983,24 +983,17 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         ? await fetchStreamUrl(gameId, 'lowlight', token)
         : await getReusableStreamUrl(gameId, 'lowlight', token);
       if (!isCurrentLoad()) return;
-      // Play completed reel HLS immediately on native platforms. Keep the
+      // Native HLS consistently stops during segment 2 on physical iPhones.
+      // Play the complete signed MP4 progressively instead, while keeping the
       // persistent MP4 transfer running independently for Save/offline use.
       if (result.isHls && Platform.OS !== 'web') {
-        // A download completion can re-run this loader while the durable MP4 is
-        // already playing. Never replace that active local source with a late
-        // playlist response; explicit Retry/Regenerate still opts in via
-        // forceFresh.
-        if (!forceFresh && attachedSourceRef.current?.startsWith('file:')) {
-          setPlaybackLoading(false);
-          return;
-        }
         if (downloadManagerReady) {
           await reelDownloadManager.enqueue({ gameId, type: 'lowlight', objectPath, url: result.downloadUrl }, true);
         }
         if (!isCurrentLoad()) return;
-        setStreamIsHls(true);
-        setSignedUrl(result.url);
-        setSourceAttachRequest({ url: result.url, id: loadGeneration });
+        setStreamIsHls(false);
+        setSignedUrl(result.downloadUrl);
+        setSourceAttachRequest({ url: result.downloadUrl, id: loadGeneration });
         return;
       }
       const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.downloadUrl, forceFresh);
@@ -1527,17 +1520,13 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       if (!isCurrentLoad()) return;
 
       if (result.isHls && Platform.OS !== 'web') {
-        if (!forceFresh && attachedSourceRef.current?.startsWith('file:')) {
-          setPlaybackLoading(false);
-          return;
-        }
         if (downloadManagerReady) {
           await reelDownloadManager.enqueue({ gameId, type: 'highlight', objectPath, url: result.downloadUrl }, true);
         }
         if (!isCurrentLoad()) return;
-        setStreamIsHls(true);
-        setSignedUrl(result.url);
-        setSourceAttachRequest({ url: result.url, id: loadGeneration });
+        setStreamIsHls(false);
+        setSignedUrl(result.downloadUrl);
+        setSourceAttachRequest({ url: result.downloadUrl, id: loadGeneration });
         return;
       }
       const playbackUrl = await getReelPlaybackUrl(
