@@ -152,3 +152,4 @@
 - [Native iPad full-screen support](native-ipad-fullscreen.md) — keep tablet support and full-screen requirement enabled; iPhone compatibility mode can return half-sized after video rotation.
 - [iPad dashboard branding](ipad-dashboard-branding.md) — use the approved dense desktop hierarchy; no detached logo card, and keep controls below the safe area.
 - [Merged game source timelines](merged-game-source-timelines.md) — never stream-copy independent recordings; normalize the master before generating reels.
+- [EAS Update production environment](eas-update-production-env.md) — production OTAs need EAS server variables plus build.production.env; use the guarded release command.

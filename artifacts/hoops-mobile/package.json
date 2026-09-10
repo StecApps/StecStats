@@ -16,7 +16,7 @@
     "ios:release:device": "pnpm run ios:release:prepare && pnpm exec expo run:ios --configuration Release --device",
     "ios:release:verify-archive": "node scripts/check-local-ios-release-env.js && node scripts/verify-ios-release-archive.js",
     "release:staging": "eas update --channel preview --message \"${MESSAGE:-staging release}\"",
-    "release:prod": "eas update --channel production --message \"${MESSAGE:-production release}\"",
+    "release:prod": "node scripts/publish-production-update.cjs",
     "rollback:prod": "eas update:republish --group $GROUP --destination-channel production"
   },
   "devDependencies": {
