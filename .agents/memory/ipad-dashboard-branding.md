@@ -7,11 +7,11 @@ Do not place the StecStats logo in a separate full-width strip, centered card, p
 
 The approved mobile direction translates the desktop dashboard's dense, flat information hierarchy: sharp bordered stat blocks, strong uppercase section labels, restrained orange accents, compact roster chips, and minimal decorative layering.
 
-Keep the original compact horizontal selected-player card in iPad landscape. Do not turn it into a tall one-third-width profile panel with a centered portrait, even when that produces a mathematically balanced split.
+Use the classic full-width iPad dashboard: a centered player hero with orange glow, large portrait/name, summary stat cards, full shooting gauges, and playmaking/defense cards below. Do not use a narrow left profile column.
 
-**Why:** The tall profile treatment left too much empty space and the user explicitly rejected it after physical-device review, asking for the original iPad layout back.
+**Why:** The side-by-side layouts produced either an undersized/collapsed profile or a tall empty card. The user explicitly selected the earlier full-width dashboard screenshots as the target.
 
-**How to apply:** Preserve the compact avatar/name/actions row and its natural content height. Let the statistics remain the visual focus rather than enlarging the profile card to match the stats column.
+**How to apply:** On iPad in either orientation, stack the centered hero, responsive summary cards, defense cards, and three gauge cards. Keep later auth/photo/share fixes while restoring this historical visual structure.
 
 **Why:** Separate logo treatments looked detached from the interface, while a pinned landscape player row sat behind the iPad status information and made player names appear faded or hidden. The user explicitly confirmed the desktop dashboard screenshots as the preferred visual direction.
 

@@ -17,7 +17,7 @@ The public share page playing a reel end-to-end is strong evidence that the comb
 
 Use the public browser player as the default iOS Highlight/Lowlight playback path while native playback remains an explicit diagnostic option.
 
-**Why:** Physical-device failures moved between roughly 20 and 40 seconds across HLS, local MP4, and progressive MP4 builds, while the public browser player repeatedly completed the same media. More small AVPlayer source tweaks required costly full-build cycles without isolating the cause.
+**Why:** Physical-device failures moved between roughly 20 and 40 seconds across HLS, local MP4, and progressive MP4 builds. The user then confirmed on a physical iPad that the public browser player ran the videos well. More small AVPlayer source tweaks required costly full-build cycles without isolating the cause.
 
 **How to apply:** Create or reuse the game share token, open the corresponding public reel page through the in-app browser, and keep offline Save/download independent. Keep a native-player comparison control in test builds so one installation can compare both paths.
 
