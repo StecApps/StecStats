@@ -21,3 +21,7 @@ On iOS Safari, `getUserMedia` always reports `videoWidth < videoHeight` (portrai
 3. **Never force `aspectRatio` CSS on `<video>` elements:** Pre-rotation `videoWidth/videoHeight` gives the wrong ratio on iOS. Remove `style={{ aspectRatio }}` and use `max-w-full max-h-[70vh]`.
 
 4. **MediaRecorder mimeType:** iOS doesn't support `video/webm`. Add `video/mp4` as final fallback: `isTypeSupported("video/webm;codecs=vp9,opus") ? ... : isTypeSupported("video/webm") ? ... : "video/mp4"`.
+
+5. **Expo CameraView on iPad:** Let the native camera follow physical device orientation and enable its responsive-orientation behavior. Do not expose a control that only changes the React layout orientation without changing native capture orientation.
+
+**Why:** A layout-only portrait/landscape override can leave the preview and recorded rotation metadata out of sync, producing upside-down footage. Orientation churn can also leave native recording promises unsettled, so camera-switch waits must be bounded and reset their guards.
