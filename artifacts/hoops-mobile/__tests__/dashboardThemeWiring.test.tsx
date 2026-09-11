@@ -331,7 +331,7 @@ describe('Dashboard runtime — theme tokens flow from colors.dark.primary', () 
 
   test('hero card borderColor is rgba() derived from colors.dark.primary', () => {
     const json = tree.toJSON();
-    const expectedBorder = hexToRgba(SENTINEL, 0.65);
+    const expectedBorder = hexToRgba(SENTINEL, 0.8);
 
     // heroS.card receives the current primary color at the configured opacity.
     const heroCards = findNodes(

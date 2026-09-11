@@ -394,7 +394,7 @@ function PlayerDashboard({ player }: { player: any }) {
   const heroCard = (
     <View style={[
       heroS.container, 
-      { borderColor: primaryRgba(0.65), backgroundColor: c.card },
+      { borderColor: primaryRgba(0.8), backgroundColor: c.card },
       isLandscape && heroS.containerLandscape,
       isTabletLandscape && heroS.cardWrapperTabletLandscape,
     ]}>
