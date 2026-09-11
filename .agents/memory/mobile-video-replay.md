@@ -15,6 +15,12 @@ The public share page playing a reel end-to-end is strong evidence that the comb
 
 **How to apply:** Do not regenerate the reel from this symptom. Keep public sharing unchanged. A complete local download is not proof that AVPlayer will render it correctly.
 
+Use the public browser player as the default iOS Highlight/Lowlight playback path while native playback remains an explicit diagnostic option.
+
+**Why:** Physical-device failures moved between roughly 20 and 40 seconds across HLS, local MP4, and progressive MP4 builds, while the public browser player repeatedly completed the same media. More small AVPlayer source tweaks required costly full-build cycles without isolating the cause.
+
+**How to apply:** Create or reuse the game share token, open the corresponding public reel page through the in-app browser, and keep offline Save/download independent. Keep a native-player comparison control in test builds so one installation can compare both paths.
+
 Expo Video can accept `replaceAsync()` and only report AVPlayer's source failure later through the `statusChange` event. A player must not treat the resolved replacement promise as proof that media loaded.
 
 **Why:** A valid, fast-start H.264/AAC highlight remained on iOS as a black player with the crossed-out play icon because the delayed native error was ignored.
