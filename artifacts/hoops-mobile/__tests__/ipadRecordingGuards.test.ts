@@ -38,6 +38,11 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain('scale > 1.01 ? { transform: [{ scale }] }');
     expect(source).toContain("if (recordingStartedRef.current) {");
     expect(source).toContain('Share the live link before you start the game clock.');
+    expect(source).toContain('cameraActive={!isSharingLiveLink}');
+    expect(source).toContain('if (result.action === Share.sharedAction)');
+    expect(source).toContain('activateLiveBroadcast(code)');
+    expect(source).toContain('Do not connect the broadcaster yet.');
+    expect(source).not.toContain('url,\\n    });');
     expect(source).toContain('selectable');
     expect(source).toContain('{watchUrl(liveCode)}');
   });

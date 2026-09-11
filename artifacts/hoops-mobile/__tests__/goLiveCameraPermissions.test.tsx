@@ -352,8 +352,15 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
 
       await act(async () => { goLiveBtn.props.onPress(); });
 
-      // fetch('/api/live/start') has now resolved, isLive=true, liveCode='TESTLIVE'.
-      // The Go Live button's style gains the red background — confirming state change.
+      // fetch('/api/live/start') prepares liveCode='TESTLIVE' without opening
+      // the live socket. This lets Messages finish before broadcasting begins.
+      const [startLiveBtn] = findNodes(
+        tree.toJSON(),
+        (n) => n.type === 'TouchableOpacity' && treeHasText(n, 'Start Live Now'),
+      );
+      expect(startLiveBtn).toBeDefined();
+      await act(async () => { startLiveBtn.props.onPress(); });
+
       // ── Step 2: press the dismiss/eye-off button to collapse the preview ──
       // camControlBtn buttons all have activeOpacity={0.75}.
       // Order: [flip, mute, orientation, eye-off(dismiss), Go Live]  → index 3.

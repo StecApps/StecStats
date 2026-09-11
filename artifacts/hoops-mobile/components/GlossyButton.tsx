@@ -43,17 +43,17 @@ export function GlossyButton({
     >
       <LinearGradient
         colors={selected
-          ? [c.primary, c.primary, c.background]
-          : [c.primary, c.card, c.background]}
-        locations={selected ? [0, 0.58, 1] : [0, 0.42, 1]}
+          ? ['#FF8A24', c.primary, '#160803']
+          : [c.primary, '#8A2D09', '#090504']}
+        locations={selected ? [0, 0.62, 1] : [0, 0.55, 1]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.fill}
       >
         <LinearGradient
           pointerEvents="none"
-          colors={['rgba(255,255,255,0.34)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0)']}
-          locations={[0, 0.34, 0.68]}
+          colors={['rgba(255,255,255,0.48)', 'rgba(255,255,255,0.12)', 'rgba(255,255,255,0)']}
+          locations={[0, 0.28, 0.62]}
           start={{ x: 0.15, y: 0 }}
           end={{ x: 0.72, y: 1 }}
           style={StyleSheet.absoluteFillObject}

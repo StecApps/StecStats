@@ -90,6 +90,7 @@ const defaultLine = (): StatLine => ({
 
 type RecordingCameraPreviewProps = {
   cameraRef: React.RefObject<any>;
+  cameraActive: boolean;
   cameraReady: boolean;
   cameraFacing: 'front' | 'back';
   cameraZoom: number;
@@ -105,6 +106,7 @@ type RecordingCameraPreviewProps = {
 const RecordingCameraPreview = React.memo(
   function RecordingCameraPreview({
     cameraRef,
+    cameraActive,
     cameraReady,
     cameraFacing,
     cameraZoom,
@@ -124,6 +126,7 @@ const RecordingCameraPreview = React.memo(
         // transform cropped most of the court and became distorted on rotation.
         style={StyleSheet.absoluteFill}
         facing={cameraFacing}
+        active={cameraActive}
         mode="video"
         // 720p is substantially less demanding than the iPad's default
         // recording profile and leaves headroom for responsive stat controls.
@@ -136,6 +139,7 @@ const RecordingCameraPreview = React.memo(
   },
   (previous, next) =>
     previous.cameraRef === next.cameraRef &&
+    previous.cameraActive === next.cameraActive &&
     previous.cameraReady === next.cameraReady &&
     previous.cameraFacing === next.cameraFacing &&
     previous.cameraZoom === next.cameraZoom &&
@@ -362,6 +366,7 @@ export default function ScorekeeperScreen() {
   const [isLive, setIsLive] = useState(false);
   const [liveLoading, setLiveLoading] = useState(false);
   const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
+  const [isSharingLiveLink, setIsSharingLiveLink] = useState(false);
   // A timed-out POST may still have committed server-side. Reuse this ID on
   // retries so the server returns that same session instead of creating a
   // second invite link.
@@ -388,6 +393,15 @@ export default function ScorekeeperScreen() {
     return publicOrigin ? `${publicOrigin}/watch/${encodeURIComponent(code)}` : '';
   }
 
+  function activateLiveBroadcast(code: string) {
+    if (isLive) return;
+    setIsLive(true);
+    // A record-enabled game keeps the native camera exclusively for the
+    // durable local recording. The live viewer receives score updates only.
+    webrtcCameraFailedRef.current = recordVideo;
+    connectBroadcasterWs(code, teamScore, opponentScore);
+  }
+
   async function shareLiveLink(code: string) {
     const url = watchUrl(code);
     if (!url) {
@@ -401,11 +415,22 @@ export default function ScorekeeperScreen() {
       );
       return;
     }
-    await Share.share({
-      title: `${teamName} live game`,
-      message: `Watch ${teamName} live: ${url}`,
-      url,
-    });
+    // The invite exists, but the live socket and WebRTC stack are not started
+    // yet. Pause the idle camera before iOS presents Messages so the app can
+    // background and return without terminating the scorekeeper.
+    setIsSharingLiveLink(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    try {
+      const result = await Share.share({
+        title: `${teamName} live game`,
+        message: `Watch ${teamName} live: ${url}`,
+      });
+      if (result.action === Share.sharedAction) {
+        activateLiveBroadcast(code);
+      }
+    } finally {
+      setIsSharingLiveLink(false);
+    }
   }
 
   async function startLiveBroadcast() {
@@ -467,14 +492,12 @@ export default function ScorekeeperScreen() {
       }
       const { code } = await res.json();
       setLiveCode(code);
-      setIsLive(true);
       liveStartRequestIdRef.current = null;
       setShowGoLiveSheet(true);
-      // A record-enabled game keeps the native camera exclusively for the
-      // durable local recording. Set this before opening the socket so its
-      // first join message cannot optimistically advertise unavailable video.
-      webrtcCameraFailedRef.current = recordVideo;
-      connectBroadcasterWs(code, teamScore, opponentScore);
+      // Do not connect the broadcaster yet. The coach can open Messages and
+      // send the invite while the camera and live socket are both inactive.
+      // Broadcasting begins after Share reports success or the coach taps
+      // "Start Live Now" after returning to StecStats.
     } catch (err: any) {
       Alert.alert('Go Live failed', err?.message ?? 'Could not start broadcast');
     } finally {
@@ -2152,7 +2175,9 @@ export default function ScorekeeperScreen() {
           <View style={styles.sheetHeader}>
             <View style={styles.sheetTitleRow}>
               <Animated.View style={[styles.sheetLiveDot, { opacity: livePulse }]} />
-              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>You're Live</Text>
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
+                {isLive ? "You're Live" : 'Share Before Going Live'}
+              </Text>
             </View>
             <TouchableOpacity onPress={() => setShowGoLiveSheet(false)} style={styles.sheetCloseBtn}>
               <Ionicons name="close" size={20} color={colors.mutedForeground} />
@@ -2160,7 +2185,9 @@ export default function ScorekeeperScreen() {
           </View>
 
           <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
-            Share before starting the game clock. Leaving StecStats for Messages during recording pauses the iPad camera.
+            {isLive
+              ? 'The watch link is active. You can now start the game clock and recording.'
+              : 'Send the watch link first. The broadcast starts after you return to StecStats, keeping Messages from interrupting the game.'}
           </Text>
 
           {/* Session code */}
@@ -2196,11 +2223,24 @@ export default function ScorekeeperScreen() {
                 style={StyleSheet.absoluteFillObject}
               />
               <Ionicons name="share-outline" size={18} color="#fff" />
-              <Text style={styles.shareLinkText}>Share Watch Link</Text>
+              <Text style={styles.shareLinkText}>
+                {isSharingLiveLink ? 'Opening Messages…' : 'Text Watch Link'}
+              </Text>
             </LinearGradient>
           </TouchableOpacity>
 
-          {/* Stop broadcast */}
+          {!isLive && (
+            <TouchableOpacity
+              onPress={() => activateLiveBroadcast(liveCode)}
+              activeOpacity={0.8}
+              style={[styles.stopLiveBtn, { borderColor: colors.primary + '60' }]}
+            >
+              <Ionicons name="radio-outline" size={16} color={colors.primary} />
+              <Text style={[styles.stopLiveText, { color: colors.primary }]}>Start Live Now</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Stop broadcast / cancel prepared invite */}
           <TouchableOpacity
             onPress={async () => {
               setShowGoLiveSheet(false);
@@ -2210,7 +2250,9 @@ export default function ScorekeeperScreen() {
             style={[styles.stopLiveBtn, { borderColor: colors.destructive + '60' }]}
           >
             <Ionicons name="stop-circle-outline" size={18} color={colors.destructive} />
-            <Text style={[styles.stopLiveText, { color: colors.destructive }]}>End Broadcast</Text>
+            <Text style={[styles.stopLiveText, { color: colors.destructive }]}>
+              {isLive ? 'End Broadcast' : 'Cancel Invite'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -2292,6 +2334,7 @@ export default function ScorekeeperScreen() {
         {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
         <RecordingCameraPreview
           cameraRef={cameraRef}
+          cameraActive={!isSharingLiveLink}
           cameraReady={!!cameraReady}
           cameraFacing={cameraFacing}
           cameraZoom={cameraZoom}

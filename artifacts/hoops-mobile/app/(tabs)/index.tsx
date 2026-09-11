@@ -182,15 +182,16 @@ function PlayerChip({ player, isSelected, onPress, glossy = false }: { player: a
 }
 const chipS = StyleSheet.create({
   chip: {
-    minWidth: 110,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    minWidth: 132,
+    minHeight: 58,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     borderRadius: 24,
     borderWidth: 1,
     marginRight: 8,
   },
-  name: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  sub: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  name: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  sub: { fontSize: 11, fontFamily: 'Inter_500Medium', marginTop: 3 },
 });
 
 // ─── Unified Stat Card (Desktop style) ───────────────────────────────────────

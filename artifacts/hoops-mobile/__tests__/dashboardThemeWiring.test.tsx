@@ -237,7 +237,10 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('glossy={isTablet}');
     expect(rawSrc).toContain("paddingLeft: (isTablet ? 6 : 16)");
     expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" flush />');
-    expect(glossyButtonSrc).toContain('? [c.primary, c.primary, c.background]');
+    expect(glossyButtonSrc).toContain("? ['#FF8A24', c.primary, '#160803']");
+    expect(glossyButtonSrc).toContain(": [c.primary, '#8A2D09', '#090504']");
+    expect(rawSrc).toContain('minWidth: 132');
+    expect(rawSrc).toContain('minHeight: 58');
     expect(rawSrc).toContain('<SectionHeader title="Playmaking & Defense" />');
     expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" />');
   });
