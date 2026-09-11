@@ -264,6 +264,7 @@ function PlayerDashboard({ player }: { player: any }) {
   const c = useColors();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
+  const isTablet = Math.min(width, height) >= 600;
   const isTabletLandscape = isLandscape && Math.min(width, height) >= 600;
   const primaryRgba = (alpha: number) => hexToRgba(c.primary, alpha);
 
@@ -389,6 +390,109 @@ function PlayerDashboard({ player }: { player: any }) {
   const fgAtt  = summary.twoAttempted + summary.threeAttempted;
   const winRate = summary.games > 0 ? Math.round((summary.wins / summary.games) * 100) : 0;
   const hasPhoto = !!player.photoObjectPath;
+
+  if (isTablet) {
+    const summaryCards = [
+      <StatCard key="points" label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} TOTAL`} />,
+      <StatCard key="games" label="Games Played" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} />,
+      <StatCard key="record" label="Win Record" value={`${summary.wins}-${summary.losses}`} sub={`${winRate}% WIN RATE`} />,
+      <StatCard key="rebounds" label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} TOTAL`} />,
+    ];
+    const defenseCards = [
+      <StatCard key="assists" label="Assists / GM" value={summary.apg.toFixed(1)} sub={`${summary.assists} TOTAL`} />,
+      <StatCard key="steals" label="Steals / GM" value={summary.spg.toFixed(1)} sub={`${summary.steals} TOTAL`} />,
+      <StatCard key="blocks" label="Blocks / GM" value={summary.bpg.toFixed(1)} sub={`${summary.blocks} TOTAL`} />,
+      <StatCard key="turnovers" label="Turnovers / GM" value={summary.topg.toFixed(1)} sub={`${summary.turnovers} TOTAL`} />,
+    ];
+    const cardRows = (cards: React.ReactNode[]) => isLandscape ? (
+      <View style={tabletS.fourCardRow}>{cards}</View>
+    ) : (
+      <>
+        <View style={tabletS.twoCardRow}>{cards.slice(0, 2)}</View>
+        <View style={tabletS.twoCardRow}>{cards.slice(2)}</View>
+      </>
+    );
+
+    return (
+      <View testID="tablet-classic-dashboard" style={tabletS.dashboard}>
+        <View style={[tabletS.hero, { borderColor: primaryRgba(0.8), backgroundColor: c.card }]}>
+          <LinearGradient
+            pointerEvents="none"
+            colors={[primaryRgba(0.5), primaryRgba(0.16), 'transparent']}
+            locations={[0, 0.46, 1]}
+            start={{ x: 0, y: 0.5 }}
+            end={{ x: 1, y: 0.5 }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={tabletS.flashRow}>
+            <Ionicons name="flash" size={13} color={c.primary} />
+            <Text style={[tabletS.liveLabel, { color: c.primary }]}>LIVE PLAYER STATS</Text>
+            <Ionicons name="flash" size={13} color={c.primary} />
+          </View>
+          <View style={tabletS.avatarArea}>
+            {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
+              <Image
+                source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
+                style={[tabletS.avatar, { borderColor: c.primary }]}
+                contentFit="cover"
+                onError={() => setPhotoLoadFailed(true)}
+              />
+            ) : (
+              <View style={[tabletS.avatar, { borderColor: c.primary, backgroundColor: primaryRgba(0.16) }]}>
+                <Text style={[tabletS.avatarInitials, { color: c.primary }]}>
+                  {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <TouchableOpacity
+              accessibilityLabel="Change player photo"
+              onPress={handlePhotoTap}
+              style={[tabletS.cameraButton, { backgroundColor: c.primary, borderColor: c.background }]}
+            >
+              {uploading
+                ? <ActivityIndicator size="small" color={c.primaryForeground} />
+                : <Ionicons name="camera" size={14} color={c.primaryForeground} />}
+            </TouchableOpacity>
+          </View>
+          <Text style={[tabletS.playerName, { color: c.foreground }]}>{player.name.toUpperCase()}</Text>
+          <View style={[tabletS.scopeBadge, { backgroundColor: c.background }]}>
+            <Text style={[tabletS.scopeText, { color: c.mutedForeground }]}>
+              {summary.seasonScope === 'career' ? '● CAREER SUMMARY DASHBOARD' : '● CURRENT SEASON SUMMARY'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            accessibilityLabel="Share player profile"
+            onPress={handleShareProfile}
+            disabled={sharing}
+            style={[tabletS.shareButton, { borderColor: c.border, backgroundColor: primaryRgba(0.12) }]}
+          >
+            {sharing
+              ? <ActivityIndicator size="small" color={c.foreground} />
+              : <Ionicons name="share-outline" size={18} color={c.foreground} />}
+          </TouchableOpacity>
+        </View>
+
+        {cardRows(summaryCards)}
+
+        <SectionHeader title="Playmaking & Defense" />
+        {cardRows(defenseCards)}
+
+        <SectionHeader title="Shooting Efficiency" />
+        <View style={tabletS.shootingRow}>
+          <View style={[tabletS.gaugeCard, { borderColor: c.border, backgroundColor: c.card }]}>
+            <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
+          </View>
+          <View style={[tabletS.gaugeCard, { borderColor: c.border, backgroundColor: c.card }]}>
+            <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
+          </View>
+          <View style={[tabletS.gaugeCard, { borderColor: c.border, backgroundColor: c.card }]}>
+            <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
+          </View>
+        </View>
+        <View style={{ height: 40 }} />
+      </View>
+    );
+  }
 
   // ── Integrated Player Panel (Desktop Style) ───────────────────────────────
   const heroCard = (
@@ -600,6 +704,112 @@ const heroS = StyleSheet.create({
   divider: {
     height: 3,
     width: '100%',
+  },
+});
+
+const tabletS = StyleSheet.create({
+  dashboard: {
+    width: '100%',
+    maxWidth: 1180,
+    alignSelf: 'center',
+  },
+  hero: {
+    minHeight: 220,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 24,
+    marginBottom: 8,
+  },
+  flashRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 12,
+  },
+  liveLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 2.4,
+  },
+  avatarArea: {
+    position: 'relative',
+    marginBottom: 10,
+  },
+  avatar: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    borderWidth: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    ...tekoStyle(30),
+  },
+  cameraButton: {
+    position: 'absolute',
+    right: -3,
+    bottom: -3,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playerName: {
+    ...tekoStyle(48),
+    letterSpacing: 1.5,
+    textAlign: 'center',
+  },
+  scopeBadge: {
+    marginTop: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  scopeText: {
+    fontSize: 9,
+    fontFamily: 'Inter_600SemiBold',
+    letterSpacing: 1.1,
+  },
+  shareButton: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fourCardRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  twoCardRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  shootingRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  gaugeCard: {
+    flex: 1,
+    minHeight: 174,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
   },
 });
 
