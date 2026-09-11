@@ -153,3 +153,4 @@
 - [iPad dashboard branding](ipad-dashboard-branding.md) — use the approved dense desktop hierarchy; no detached logo card, and keep controls below the safe area.
 - [Merged game source timelines](merged-game-source-timelines.md) — never stream-copy independent recordings; normalize the master before generating reels.
 - [EAS Update production environment](eas-update-production-env.md) — production OTAs need EAS server variables plus build.production.env; use the guarded release command.
+- [Mobile recording owns the camera](mobile-recording-camera-ownership.md) — local recording and WebRTC cannot independently capture the iPad camera; recording wins and live falls back to score-only.

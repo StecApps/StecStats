@@ -13,6 +13,8 @@ Use the classic full-width iPad dashboard: a centered player hero with orange gl
 
 **How to apply:** On iPad in either orientation, use the full safe-area width with no desktop max-width cap. Stack the centered hero, responsive summary cards, defense cards, and three gauge cards. Keep stat cards flat and use the glossy treatment for buttons.
 
+All roster buttons need a visible orange-to-black glossy gradient, with the selected player receiving the stronger orange emphasis. Shooting cards should meet the section divider without a detached vertical gap.
+
 **Why:** Separate logo treatments looked detached from the interface, while a pinned landscape player row sat behind the iPad status information and made player names appear faded or hidden. The user explicitly confirmed the desktop dashboard screenshots as the preferred visual direction.
 
 **How to apply:** Dashboard changes must preserve safe-area spacing and render player chips in a dedicated high-contrast content row. Prefer flat, information-dense sections over decorative glow/card effects. Do not reintroduce a pinned top-left selector or an independent logo image container.
