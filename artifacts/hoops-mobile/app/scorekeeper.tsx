@@ -117,24 +117,12 @@ const RecordingCameraPreview = React.memo(
       return <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0d0d0d' }]} />;
     }
 
-    const cameraAspect = isLandscape ? (4 / 3) : (3 / 4);
-    const containerAspect = containerWidth / containerHeight;
-    const scale = containerWidth && containerHeight
-      ? Math.max(
-        1,
-        containerAspect > cameraAspect
-          ? containerAspect / cameraAspect
-          : cameraAspect / containerAspect,
-      )
-      : 1;
-
     return (
       <CameraView
         ref={cameraRef}
-        style={[
-          StyleSheet.absoluteFill,
-          scale > 1.01 ? { transform: [{ scale }] } : {},
-        ]}
+        // Do not scale the iPad preview to "cover" this box. That artificial
+        // transform cropped most of the court and became distorted on rotation.
+        style={StyleSheet.absoluteFill}
         facing={cameraFacing}
         mode="video"
         // 720p is substantially less demanding than the iPad's default
@@ -406,6 +394,13 @@ export default function ScorekeeperScreen() {
       Alert.alert('Share Link Unavailable', 'The public app address is missing. Close and reopen StecStats, then try Go Live again.');
       return;
     }
+    if (recordingStartedRef.current) {
+      Alert.alert(
+        'Keep recording open',
+        'Opening Messages backgrounds StecStats, and iPadOS pauses the active camera. Share the live link before you start the game clock. The watch address is shown below so another device can also enter it manually.',
+      );
+      return;
+    }
     await Share.share({
       title: `${teamName} live game`,
       message: `Watch ${teamName} live: ${url}`,
@@ -415,6 +410,13 @@ export default function ScorekeeperScreen() {
 
   async function startLiveBroadcast() {
     if (liveLoading || isLive) return;
+    if (recordingStartedRef.current) {
+      Alert.alert(
+        'Share before recording',
+        'Opening Messages during recording pauses the iPad camera. Start Go Live and share the link first, then start the game clock and recording.',
+      );
+      return;
+    }
 
     // Android 12+ (API 31+) requires BLUETOOTH_CONNECT at runtime for WebRTC
     // to route audio through a connected Bluetooth headset. Request it before
@@ -2158,13 +2160,20 @@ export default function ScorekeeperScreen() {
           </View>
 
           <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
-            Share this link with viewers. They can watch the score update in real time.
+            Share before starting the game clock. Leaving StecStats for Messages during recording pauses the iPad camera.
           </Text>
 
           {/* Session code */}
           <View style={[styles.codeBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             <Text style={[styles.codeLabel, { color: colors.mutedForeground }]}>Session code</Text>
             <Text style={[styles.codeValue, { color: colors.foreground }]}>{liveCode}</Text>
+            <Text
+              selectable
+              numberOfLines={1}
+              style={[styles.watchAddress, { color: colors.primary }]}
+            >
+              {watchUrl(liveCode)}
+            </Text>
           </View>
 
           {/* Share link */}
@@ -2901,11 +2910,12 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     compactStatArea: {
       flex: 1,
       paddingHorizontal: isTablet ? 5 : 8,
-      paddingTop: 3,
-      paddingBottom: 3,
-      gap: isTablet ? 3 : 5,
+      paddingTop: isTablet ? 8 : 3,
+      paddingBottom: isTablet ? 8 : 3,
+      gap: isTablet ? 8 : 5,
+      justifyContent: isTablet ? 'space-evenly' : 'flex-start',
     },
-    compactShootGrid: { gap: 4 },
+    compactShootGrid: { gap: isTablet ? 8 : 4 },
     compactBtnRow: { flexDirection: 'row', gap: 5 },
     compactShootHeaderCell: {
       flex: 1,
@@ -2927,7 +2937,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactMakeBtn: {
       flex: 1,
-      height: isTablet ? 31 : 36,
+      height: isTablet ? 48 : 36,
       borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
@@ -2936,7 +2946,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactMissBtn: {
       flex: 1,
-      height: isTablet ? 31 : 36,
+      height: isTablet ? 48 : 36,
       borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
@@ -2956,7 +2966,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactUndoBtn: {
       flex: 1,
-      height: 20,
+      height: isTablet ? 30 : 20,
       borderRadius: 5,
       borderWidth: 1,
       alignItems: 'center' as const,
@@ -2966,12 +2976,12 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       fontSize: 9,
       fontFamily: 'Inter_500Medium',
     },
-    compactCountStrip: { flexDirection: 'row', gap: 4 },
+    compactCountStrip: { flexDirection: 'row', gap: 4, minHeight: isTablet ? 82 : undefined },
     compactCountCard: {
       flex: 1,
       borderRadius: 8,
       borderWidth: 1,
-      padding: isTablet ? 3 : 4,
+      padding: isTablet ? 7 : 4,
       alignItems: 'center',
       gap: 2,
     },
@@ -2981,11 +2991,11 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       letterSpacing: 0.5,
       textTransform: 'uppercase' as const,
     },
-    compactCountVal: { ...tekoStyle(16) },
+    compactCountVal: { ...tekoStyle(isTablet ? 22 : 16) },
     compactCountBtns: { flexDirection: 'row', gap: 3, width: '100%' },
     compactCountBtn: {
       flex: 1,
-      height: isTablet ? 21 : 24,
+      height: isTablet ? 30 : 24,
       borderRadius: 6,
       alignItems: 'center',
       justifyContent: 'center',
@@ -3084,6 +3094,11 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     codeValue: {
       ...tekoStyle(36),
       letterSpacing: 6,
+    },
+    watchAddress: {
+      fontSize: 11,
+      fontFamily: 'Inter_500Medium',
+      marginTop: 6,
     },
     shareLinkBtn: {
       height: 48,

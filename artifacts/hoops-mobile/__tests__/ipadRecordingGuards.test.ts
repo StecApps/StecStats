@@ -33,6 +33,15 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('if (webrtcCameraFailedRef.current) return;');
   });
 
+  test('does not crop the iPad preview or background an active recording for Messages', () => {
+    expect(source).toContain('style={StyleSheet.absoluteFill}');
+    expect(source).not.toContain('scale > 1.01 ? { transform: [{ scale }] }');
+    expect(source).toContain("if (recordingStartedRef.current) {");
+    expect(source).toContain('Share the live link before you start the game clock.');
+    expect(source).toContain('selectable');
+    expect(source).toContain('{watchUrl(liveCode)}');
+  });
+
   test('shares an absolute encoded public watch URL', () => {
     expect(source).toContain('const publicOrigin = API_BASE');
     expect(source).toContain('/watch/${encodeURIComponent(code)}');

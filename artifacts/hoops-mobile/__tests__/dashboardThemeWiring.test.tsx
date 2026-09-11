@@ -223,6 +223,10 @@ function flatStyle(style: any): Record<string, any> {
 describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
   const srcPath = path.resolve(__dirname, '../app/(tabs)/index.tsx');
   const rawSrc = fs.readFileSync(srcPath, 'utf8');
+  const glossyButtonSrc = fs.readFileSync(
+    path.resolve(__dirname, '../components/GlossyButton.tsx'),
+    'utf8',
+  );
 
   test('uses the classic full-width hero and stacked stat sections on iPads', () => {
     expect(rawSrc).toContain('const isTablet = Math.min(width, height) >= 600');
@@ -233,6 +237,7 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('glossy={isTablet}');
     expect(rawSrc).toContain("paddingLeft: (isTablet ? 6 : 16)");
     expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" flush />');
+    expect(glossyButtonSrc).toContain('? [c.primary, c.primary, c.background]');
     expect(rawSrc).toContain('<SectionHeader title="Playmaking & Defense" />');
     expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" />');
   });
