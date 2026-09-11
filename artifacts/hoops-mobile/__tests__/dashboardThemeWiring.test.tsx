@@ -229,7 +229,9 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('testID="tablet-classic-dashboard"');
     expect(rawSrc).toContain('LIVE PLAYER STATS');
     expect(rawSrc).toContain('● CAREER SUMMARY DASHBOARD');
-    expect(rawSrc).toContain("maxWidth: 1180");
+    expect(rawSrc).not.toContain("maxWidth: 1180");
+    expect(rawSrc).toContain('glossy={isTablet}');
+    expect(rawSrc).toContain("paddingLeft: (isTablet ? 6 : 16)");
     expect(rawSrc).toContain('<SectionHeader title="Playmaking & Defense" />');
     expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" />');
   });

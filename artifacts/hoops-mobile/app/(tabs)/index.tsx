@@ -33,6 +33,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
+import { GlossyButton } from '@/components/GlossyButton';
 
 // ─── Theme helpers ────────────────────────────────────────────────────────────
 function hexToRgba(hex: string, alpha: number): string {
@@ -141,9 +142,28 @@ const gaugeS = StyleSheet.create({
 });
 
 // ─── Player chip ─────────────────────────────────────────────────────────────
-function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: boolean; onPress: () => void }) {
+function PlayerChip({ player, isSelected, onPress, glossy = false }: { player: any; isSelected: boolean; onPress: () => void; glossy?: boolean }) {
   const c = useColors();
   const { data: summary } = useGetPlayerSummary(player.id);
+  const content = (
+    <>
+      <Text style={[chipS.name, { color: isSelected ? c.primaryForeground : c.foreground }]}>
+        {player.name}
+      </Text>
+      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.78)' : c.mutedForeground }]}>
+        {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
+      </Text>
+    </>
+  );
+
+  if (glossy) {
+    return (
+      <GlossyButton onPress={onPress} selected={isSelected} style={chipS.chip}>
+        {content}
+      </GlossyButton>
+    );
+  }
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -156,12 +176,7 @@ function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: 
         },
       ]}
     >
-      <Text style={[chipS.name, { color: isSelected ? c.primaryForeground : c.foreground }]}>
-        {player.name}
-      </Text>
-      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.78)' : c.mutedForeground }]}>
-        {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
-      </Text>
+      {content}
     </TouchableOpacity>
   );
 }
@@ -444,15 +459,16 @@ function PlayerDashboard({ player }: { player: any }) {
                 </Text>
               </View>
             )}
-            <TouchableOpacity
+            <GlossyButton
               accessibilityLabel="Change player photo"
               onPress={handlePhotoTap}
+              selected
               style={[tabletS.cameraButton, { backgroundColor: c.primary, borderColor: c.background }]}
             >
               {uploading
                 ? <ActivityIndicator size="small" color={c.primaryForeground} />
                 : <Ionicons name="camera" size={14} color={c.primaryForeground} />}
-            </TouchableOpacity>
+            </GlossyButton>
           </View>
           <Text style={[tabletS.playerName, { color: c.foreground }]}>{player.name.toUpperCase()}</Text>
           <View style={[tabletS.scopeBadge, { backgroundColor: c.background }]}>
@@ -460,16 +476,17 @@ function PlayerDashboard({ player }: { player: any }) {
               {summary.seasonScope === 'career' ? '● CAREER SUMMARY DASHBOARD' : '● CURRENT SEASON SUMMARY'}
             </Text>
           </View>
-          <TouchableOpacity
+          <GlossyButton
             accessibilityLabel="Share player profile"
             onPress={handleShareProfile}
             disabled={sharing}
+            selected
             style={[tabletS.shareButton, { borderColor: c.border, backgroundColor: primaryRgba(0.12) }]}
           >
             {sharing
               ? <ActivityIndicator size="small" color={c.foreground} />
               : <Ionicons name="share-outline" size={18} color={c.foreground} />}
-          </TouchableOpacity>
+          </GlossyButton>
         </View>
 
         {cardRows(summaryCards)}
@@ -710,8 +727,6 @@ const heroS = StyleSheet.create({
 const tabletS = StyleSheet.create({
   dashboard: {
     width: '100%',
-    maxWidth: 1180,
-    alignSelf: 'center',
   },
   hero: {
     minHeight: 220,
@@ -815,7 +830,7 @@ const tabletS = StyleSheet.create({
 
 const lsS = StyleSheet.create({
   row: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
-  rowTablet: { alignItems: 'flex-start', maxWidth: 1180, width: '100%', alignSelf: 'center' },
+  rowTablet: { alignItems: 'flex-start', width: '100%' },
   heroCol: { flexShrink: 0 },
   heroColTablet: { alignSelf: 'stretch' },
   statsCol: { flex: 1 },
@@ -913,7 +928,7 @@ export default function DashboardScreen() {
       contentContainerStyle={styles.chips}
     >
       {(players as any[]).map((p) => (
-        <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} />
+        <PlayerChip key={p.id} player={p} glossy={isTablet} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} />
       ))}
     </ScrollView>
   );
@@ -930,8 +945,8 @@ export default function DashboardScreen() {
           {
             paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 16 : 24),
             paddingBottom: insets.bottom + 100,
-            paddingLeft: 16 + (insets.left ?? 0),
-            paddingRight: 16 + (insets.right ?? 0),
+            paddingLeft: (isTablet ? 6 : 16) + (insets.left ?? 0),
+            paddingRight: (isTablet ? 6 : 16) + (insets.right ?? 0),
           },
         ]}
         showsVerticalScrollIndicator={false}

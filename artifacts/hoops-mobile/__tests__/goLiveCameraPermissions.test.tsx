@@ -107,6 +107,10 @@ jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success' },
 }));
 
+jest.mock('expo-linear-gradient', () => ({
+  LinearGradient: ({ children }: any) => children ?? null,
+}));
+
 jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
   Feather:  () => null,

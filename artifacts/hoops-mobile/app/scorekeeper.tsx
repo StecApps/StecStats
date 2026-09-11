@@ -48,6 +48,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue, runOnJS } from 'react-native-reanimated';
 // react-native-webrtc is a native module — not available in Expo Go.
@@ -325,8 +326,23 @@ export default function ScorekeeperScreen() {
 
   // ─── Live broadcast helpers ────────────────────────────────────────────────
   function watchUrl(code: string): string {
-    const domain = process.env.EXPO_PUBLIC_DOMAIN;
-    return domain ? `https://${domain}/watch/${code}` : `/watch/${code}`;
+    const publicOrigin = API_BASE || (
+      process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : ''
+    );
+    return publicOrigin ? `${publicOrigin}/watch/${encodeURIComponent(code)}` : '';
+  }
+
+  async function shareLiveLink(code: string) {
+    const url = watchUrl(code);
+    if (!url) {
+      Alert.alert('Share Link Unavailable', 'The public app address is missing. Close and reopen StecStats, then try Go Live again.');
+      return;
+    }
+    await Share.share({
+      title: `${teamName} live game`,
+      message: `Watch ${teamName} live: ${url}`,
+      url,
+    });
   }
 
   async function startLiveBroadcast() {
@@ -761,15 +777,22 @@ export default function ScorekeeperScreen() {
           onPress: async () => {
             // Stop the active recording and capture the URI
             cameraRef.current?.stopRecording();
-            if (recordingPromiseRef.current) {
+            const activeRecording = recordingPromiseRef.current;
+            if (activeRecording) {
               try {
-                const result = await recordingPromiseRef.current;
+                const result = await Promise.race([
+                  activeRecording,
+                  new Promise<undefined>((resolve) => setTimeout(resolve, 3_000)),
+                ]);
                 if (result?.uri) recordedUrisRef.current.push(result.uri);
               } catch { /* recording stopped cleanly */ }
             }
-            // Reset so startRecording can be called again
+            // Invalidate the old session and reset even if iPad's native
+            // recording promise did not settle after stopRecording().
+            recordingGenerationRef.current += 1;
             recordingStartedRef.current = false;
             recordingPromiseRef.current = null;
+            setIsRecording(false);
             // Switch camera; onCameraReady will restart recording via pendingRecordRef
             cameraReadyRef.current = false;
             pendingRecordRef.current = true;
@@ -1578,6 +1601,7 @@ export default function ScorekeeperScreen() {
 
   const { width: sw, height: sh } = useWindowDimensions();
   const isLandscape = layoutLandscape !== null ? layoutLandscape : sw > sh;
+  const isTablet = Math.min(sw, sh) >= 600;
 
   const styles = makeStyles(colors, insets, sw, sh, isLandscape);
   const cameraReady = recordVideo && cameraPermission?.granted && micPermission?.granted;
@@ -2059,12 +2083,26 @@ export default function ScorekeeperScreen() {
 
           {/* Share link */}
           <TouchableOpacity
-            onPress={() => Share.share({ message: watchUrl(liveCode), url: watchUrl(liveCode) })}
+            onPress={() => shareLiveLink(liveCode)}
             activeOpacity={0.8}
-            style={[styles.shareLinkBtn, { backgroundColor: colors.primary }]}
+            style={styles.shareLinkBtn}
           >
-            <Ionicons name="share-outline" size={18} color="#fff" />
-            <Text style={styles.shareLinkText}>Share Watch Link</Text>
+            <LinearGradient
+              colors={[colors.primary, colors.card, colors.background]}
+              locations={[0, 0.68, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.glossyButtonFill}
+            >
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(255,255,255,0.24)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0)']}
+                locations={[0, 0.38, 0.72]}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <Ionicons name="share-outline" size={18} color="#fff" />
+              <Text style={styles.shareLinkText}>Share Watch Link</Text>
+            </LinearGradient>
           </TouchableOpacity>
 
           {/* Stop broadcast */}
@@ -2181,6 +2219,7 @@ export default function ScorekeeperScreen() {
             facing={cameraFacing}
             mode="video"
             zoom={cameraZoom}
+            responsiveOrientationWhenOrientationLocked
             onCameraReady={onCameraReady}
           />
         ) : (
@@ -2229,8 +2268,9 @@ export default function ScorekeeperScreen() {
                   <Ionicons name={micMuted ? 'mic-off' : 'mic'} size={18} color="#fff" />
                 </TouchableOpacity>
 
-                {/* Orientation lock */}
-                <TouchableOpacity
+                {/* Phone-only layout override. iPads follow the device so the
+                    native camera and recording metadata stay in sync. */}
+                {!isTablet && <TouchableOpacity
                   onPress={() => {
                     const next = !(layoutLandscape !== null ? layoutLandscape : sw > sh);
                     setLayoutLandscape(next);
@@ -2242,7 +2282,7 @@ export default function ScorekeeperScreen() {
                   <View style={{ transform: [{ rotate: isLandscape ? '90deg' : '0deg' }] }}>
                     <Ionicons name="phone-portrait-outline" size={18} color="#fff" />
                   </View>
-                </TouchableOpacity>
+                </TouchableOpacity>}
 
                 {/* Dismiss preview */}
                 <TouchableOpacity
@@ -2966,12 +3006,18 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       letterSpacing: 6,
     },
     shareLinkBtn: {
+      height: 48,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary + '80',
+      overflow: 'hidden',
+    },
+    glossyButtonFill: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
-      height: 48,
-      borderRadius: 12,
     },
     shareLinkText: {
       fontSize: 15,
