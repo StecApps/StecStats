@@ -99,9 +99,9 @@
     "updates": {
       "url": "https://u.expo.dev/2115ac2f-b1d6-42f5-a109-9dd376d0121a",
       "enabled": true,
-      "checkAutomatically": "NEVER"
+      "checkAutomatically": "ON_LOAD"
     },
-    "runtimeVersion": "1.0.0-recovery-20260912",
+    "runtimeVersion": "1.0.0-playback-lab-20260920",
     "extra": {
       "router": {
         "origin": "https://replit.com/"

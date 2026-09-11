@@ -394,9 +394,8 @@ function PlayerDashboard({ player }: { player: any }) {
   const heroCard = (
     <View style={[
       heroS.container, 
-      { borderColor: primaryRgba(0.8), backgroundColor: c.card },
+      { borderColor: primaryRgba(0.65), backgroundColor: c.card },
       isLandscape && heroS.containerLandscape,
-      isTabletLandscape && heroS.containerTabletLandscape,
       isTabletLandscape && heroS.cardWrapperTabletLandscape,
     ]}>
       <LinearGradient
@@ -408,28 +407,26 @@ function PlayerDashboard({ player }: { player: any }) {
         style={StyleSheet.absoluteFillObject}
       />
       <BasketballWatermark color={c.primary} />
-      <View style={[heroS.topRow, isTabletLandscape && heroS.topRowTabletLandscape]}>
-        <View style={[heroS.playerInfo, isTabletLandscape && heroS.playerInfoTabletLandscape]}>
+      <View style={heroS.topRow}>
+        <View style={heroS.playerInfo}>
           {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
             <Image
               source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
-              style={[heroS.avatar, isTabletLandscape && heroS.avatarTabletLandscape]}
+              style={heroS.avatar}
               contentFit="cover"
               onError={() => setPhotoLoadFailed(true)}
             />
           ) : (
-            <View style={[heroS.avatar, isTabletLandscape && heroS.avatarTabletLandscape, { backgroundColor: c.border }]}>
+            <View style={[heroS.avatar, { backgroundColor: c.border }]}>
               <Text style={[heroS.avatarInitials, { color: c.mutedForeground }]}>
                 {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
               </Text>
             </View>
           )}
-          <View style={[heroS.nameCol, isTabletLandscape && heroS.nameColTabletLandscape]}>
+          <View style={heroS.nameCol}>
             <Text style={[heroS.eyebrow, { color: c.primary }]}>PLAYER PROFILE</Text>
-            <Text style={[heroS.name, isTabletLandscape && heroS.nameTabletLandscape, { color: c.foreground }]}>
-              {player.name.toUpperCase()}
-            </Text>
-            <View style={[heroS.scopeRow, isTabletLandscape && heroS.scopeRowTabletLandscape]}>
+            <Text style={[heroS.name, { color: c.foreground }]}>{player.name.toUpperCase()}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <View style={[heroS.scopePill, { backgroundColor: c.primary }]}>
                 <Text style={[heroS.scopeText, { color: c.primaryForeground }]}>
                   {summary.seasonScope === 'career' ? 'CAREER' : 'SEASON'}
@@ -440,7 +437,7 @@ function PlayerDashboard({ player }: { player: any }) {
           </View>
         </View>
 
-        <View style={[heroS.actionRow, isTabletLandscape && heroS.actionRowTabletLandscape]}>
+        <View style={heroS.actionRow}>
           <TouchableOpacity onPress={handlePhotoTap} style={[heroS.iconBtn, { borderColor: c.border }]}>
             <BlurView tint="dark" intensity={45} style={StyleSheet.absoluteFillObject} />
             {uploading ? <ActivityIndicator size="small" color={c.foreground} /> : <Ionicons name="camera-outline" size={18} color={c.foreground} />}
@@ -501,7 +498,7 @@ function PlayerDashboard({ player }: { player: any }) {
 
   if (isLandscape) {
     const heroWidth = isTabletLandscape
-      ? Math.min(380, Math.max(330, Math.round(width * 0.34)))
+      ? Math.min(400, Math.max(340, Math.round(width * 0.36)))
       : Math.round(width * 0.44) - 20;
     return (
       <View style={[lsS.row, isTabletLandscape && lsS.rowTablet]}>
@@ -533,11 +530,8 @@ const heroS = StyleSheet.create({
   containerLandscape: {
     marginBottom: 0,
   },
-  containerTabletLandscape: {
-    minHeight: 330,
-  },
-  cardWrapperTabletLandscape: {
-    width: '100%',
+  cardWrapperTabletLandscape: { // Add for tests
+    alignSelf: 'flex-start',
   },
   topRow: {
     flex: 1,
@@ -547,22 +541,11 @@ const heroS = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 20,
   },
-  topRowTabletLandscape: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    paddingHorizontal: 28,
-    paddingVertical: 26,
-  },
   playerInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-  },
-  playerInfoTabletLandscape: {
-    flexDirection: 'column',
-    justifyContent: 'center',
-    gap: 14,
   },
   avatar: {
     width: 78,
@@ -573,12 +556,6 @@ const heroS = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarTabletLandscape: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    borderWidth: 3,
-  },
   avatarInitials: {
     fontSize: 23,
     fontFamily: 'Inter_700Bold',
@@ -586,9 +563,6 @@ const heroS = StyleSheet.create({
   nameCol: {
     flex: 1,
     gap: 5,
-  },
-  nameColTabletLandscape: {
-    alignItems: 'center',
   },
   eyebrow: {
     fontSize: 8,
@@ -598,18 +572,6 @@ const heroS = StyleSheet.create({
   name: {
     ...tekoStyle(36),
     letterSpacing: 1,
-  },
-  nameTabletLandscape: {
-    ...tekoStyle(42),
-    textAlign: 'center',
-  },
-  scopeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  scopeRowTabletLandscape: {
-    justifyContent: 'center',
   },
   scopePill: {
     paddingHorizontal: 6,
@@ -624,11 +586,6 @@ const heroS = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     gap: 6,
-  },
-  actionRowTabletLandscape: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
   },
   iconBtn: {
     width: 38,

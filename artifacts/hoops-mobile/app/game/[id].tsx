@@ -33,6 +33,7 @@ import { tekoStyle } from '@/lib/tekoStyle';
 import { saveReviewVideo } from '@/lib/saveReviewVideo';
 import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
 import * as Updates from 'expo-updates';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
@@ -41,6 +42,25 @@ import { reelProgressText } from '@/lib/reelProgressText';
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : '';
+const WEB_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : 'https://stecstats.com';
+
+async function getPublicReelUrl(
+  gameId: number,
+  reelType: 'highlight' | 'lowlight',
+  getToken: () => Promise<string | null>,
+) {
+  const token = await getToken();
+  if (!token) throw new Error('Your session expired. Please sign in again.');
+  const res = await fetch(`${API_BASE}/api/games/${gameId}/share-token`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Could not open the complete video.');
+  const { shareToken } = await res.json() as { shareToken: string };
+  return `${WEB_BASE}/${reelType}/${shareToken}`;
+}
 const RUNNING_UPDATE_ID = Updates.updateId ?? (Updates.isEmbeddedLaunch ? 'embedded-build' : 'development');
 
 function reelDownloadStatus(download: {
@@ -859,6 +879,37 @@ const videoStyle = StyleSheet.create({
     fontFamily: 'Inter_500Medium',
     textAlign: 'center',
   },
+  webPlaybackLauncher: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  webPlaybackTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    textAlign: 'center',
+  },
+  webPlaybackText: {
+    maxWidth: 360,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+  },
+  diagnosticButton: {
+    minHeight: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  diagnosticButtonText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
   downloadedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -942,6 +993,8 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [sharingLowlight, setSharingLowlight] = useState(false);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
+  const [openingWebPlayer, setOpeningWebPlayer] = useState(false);
+  const [useNativeDiagnostic, setUseNativeDiagnostic] = useState(false);
   const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
   const automaticRetryRef = useRef(false);
   const loadGenerationRef = useRef(0);
@@ -1123,6 +1176,19 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     }
   }
 
+  async function handleOpenLowlightPlayer() {
+    if (openingWebPlayer) return;
+    setOpeningWebPlayer(true);
+    try {
+      const url = await getPublicReelUrl(gameId, 'lowlight', getToken);
+      await WebBrowser.openBrowserAsync(url);
+    } catch (error: any) {
+      Alert.alert('Could Not Open Video', error?.message ?? 'Please try again.');
+    } finally {
+      setOpeningWebPlayer(false);
+    }
+  }
+
   async function handleRegenerateLowlight() {
     if (generateMutation.isPending) return;
     try {
@@ -1156,7 +1222,31 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.card }}>
         <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
-          {playbackError && !playbackLoading ? (
+          {Platform.OS === 'ios' && !useNativeDiagnostic ? (
+            <View style={[videoStyle.webPlaybackLauncher, { backgroundColor: colors.background }]}>
+              <Feather name="play-circle" size={42} color={colors.primary} />
+              <Text style={[videoStyle.webPlaybackTitle, { color: colors.foreground }]}>Play Complete Lowlight</Text>
+              <Text style={[videoStyle.webPlaybackText, { color: colors.mutedForeground }]}>
+                Opens the proven browser player instead of the unreliable iOS native video path.
+              </Text>
+              <TouchableOpacity
+                testID="open-lowlight-web-player"
+                onPress={handleOpenLowlightPlayer}
+                disabled={openingWebPlayer}
+                style={[videoStyle.retryButton, { backgroundColor: colors.primary, opacity: openingWebPlayer ? 0.65 : 1 }]}
+              >
+                {openingWebPlayer ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="play" size={16} color="#fff" />}
+                <Text style={videoStyle.retryButtonText}>{openingWebPlayer ? 'Opening…' : 'Play Full Video'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="try-lowlight-native-player"
+                onPress={() => setUseNativeDiagnostic(true)}
+                style={[videoStyle.diagnosticButton, { borderColor: colors.border }]}
+              >
+                <Text style={[videoStyle.diagnosticButtonText, { color: colors.mutedForeground }]}>Try Native Player</Text>
+              </TouchableOpacity>
+            </View>
+          ) : playbackError && !playbackLoading ? (
             <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
               <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
               <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
@@ -1390,6 +1480,8 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
   const [sharingClip, setSharingClip] = useState(false);
   const [savingClip, setSavingClip] = useState(false);
+  const [openingWebPlayer, setOpeningWebPlayer] = useState(false);
+  const [useNativeDiagnostic, setUseNativeDiagnostic] = useState(false);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [playbackInterrupted, setPlaybackInterrupted] = useState(false);
@@ -1880,6 +1972,19 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     }
   }
 
+  async function handleOpenHighlightPlayer() {
+    if (openingWebPlayer) return;
+    setOpeningWebPlayer(true);
+    try {
+      const url = await getPublicReelUrl(gameId, 'highlight', getToken);
+      await WebBrowser.openBrowserAsync(url);
+    } catch (error: any) {
+      Alert.alert('Could Not Open Video', error?.message ?? 'Please try again.');
+    } finally {
+      setOpeningWebPlayer(false);
+    }
+  }
+
   async function handleSaveClip() {
     if (savingClip) return;
     setSavingClip(true);
@@ -1953,6 +2058,31 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       <View style={{ flex: 1, backgroundColor: colors.card }}>
         {/* Segmented iOS playback deliberately never enters AVPlayerViewController. */}
         <ZoomableVideo style={{ flex: 1 }}>
+          {Platform.OS === 'ios' && !useNativeDiagnostic ? (
+            <View style={[videoStyle.webPlaybackLauncher, { backgroundColor: colors.background }]}>
+              <Feather name="play-circle" size={42} color={colors.primary} />
+              <Text style={[videoStyle.webPlaybackTitle, { color: colors.foreground }]}>Play Complete Highlight</Text>
+              <Text style={[videoStyle.webPlaybackText, { color: colors.mutedForeground }]}>
+                Opens the proven browser player instead of the unreliable iOS native video path.
+              </Text>
+              <TouchableOpacity
+                testID="open-highlight-web-player"
+                onPress={handleOpenHighlightPlayer}
+                disabled={openingWebPlayer}
+                style={[videoStyle.retryButton, { backgroundColor: colors.primary, opacity: openingWebPlayer ? 0.65 : 1 }]}
+              >
+                {openingWebPlayer ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="play" size={16} color="#fff" />}
+                <Text style={videoStyle.retryButtonText}>{openingWebPlayer ? 'Opening…' : 'Play Full Video'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="try-highlight-native-player"
+                onPress={() => setUseNativeDiagnostic(true)}
+                style={[videoStyle.diagnosticButton, { borderColor: colors.border }]}
+              >
+                <Text style={[videoStyle.diagnosticButtonText, { color: colors.mutedForeground }]}>Try Native Player</Text>
+              </TouchableOpacity>
+            </View>
+          ) : <>
           {!segmentedFullscreenVisible && <VideoView
             player={player}
             style={{ flex: 1 }}
@@ -2041,6 +2171,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
               )}
             </View>
           )}
+          </>}
         </ZoomableVideo>
         {usesAppFullscreen && segmentedFullscreenVisible && (
           <Modal
@@ -2423,10 +2554,6 @@ const ytStyle = StyleSheet.create({
     alignItems: 'center',
   },
 });
-const WEB_BASE = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : 'https://stecstats.com';
-
 export default function GameDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const gameId = Number(id);

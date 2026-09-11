@@ -57,6 +57,16 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("sharingLowlight ? 'Preparing…' : 'Share Link'");
   });
 
+  test('defaults iOS reels to the proven public web player while keeping native playback available in the same build', () => {
+    expect(gameScreen).toContain("await getPublicReelUrl(gameId, 'highlight', getToken)");
+    expect(gameScreen).toContain("await getPublicReelUrl(gameId, 'lowlight', getToken)");
+    expect(gameScreen).toContain('await WebBrowser.openBrowserAsync(url)');
+    expect(gameScreen).toContain('testID="open-highlight-web-player"');
+    expect(gameScreen).toContain('testID="open-lowlight-web-player"');
+    expect(gameScreen).toContain('testID="try-highlight-native-player"');
+    expect(gameScreen).toContain('testID="try-lowlight-native-player"');
+  });
+
   test('recovers from an iOS native player source error', () => {
     expect(gameScreen).toContain("player.addListener('statusChange'");
     expect(gameScreen).toContain("loadHighlightVideo(true, Platform.OS === 'ios')");

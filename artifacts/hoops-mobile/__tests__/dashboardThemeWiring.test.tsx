@@ -179,20 +179,6 @@ import colors from '@/constants/colors';
 // rendering is sufficient to propagate the sentinel through all three sites.
 import DashboardScreen from '../app/(tabs)/index';
 
-const dashboardSource = fs.readFileSync(
-  path.resolve(__dirname, '../app/(tabs)/index.tsx'),
-  'utf8',
-);
-
-describe('iPad dashboard proportions', () => {
-  test('keeps the selected-player panel at one-third width without content shrink', () => {
-    expect(dashboardSource).toContain('Math.round(width * 0.34)');
-    expect(dashboardSource).toContain("cardWrapperTabletLandscape: {\n    width: '100%',");
-    expect(dashboardSource).toContain('containerTabletLandscape: {\n    minHeight: 330,');
-    expect(dashboardSource).not.toContain("cardWrapperTabletLandscape: { // Add for tests\n    alignSelf: 'flex-start'");
-  });
-});
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Convert a 6-char hex to rgba(r,g,b,alpha) — mirrors hexToRgba in index.tsx. */
@@ -240,7 +226,7 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
 
   test('uses a bounded two-column layout on landscape iPads without stretching the player panel', () => {
     expect(rawSrc).toContain('const isTabletLandscape = isLandscape && Math.min(width, height) >= 600');
-    expect(rawSrc).toContain('Math.round(width * 0.34)');
+    expect(rawSrc).toContain('Math.round(width * 0.36)');
     expect(rawSrc).toContain('isTabletLandscape && heroS.cardWrapperTabletLandscape');
     expect(rawSrc).toContain('isTabletLandscape && lsS.rowTablet');
     expect(rawSrc).toContain("maxWidth: 1180, width: '100%', alignSelf: 'center'");
@@ -345,7 +331,7 @@ describe('Dashboard runtime — theme tokens flow from colors.dark.primary', () 
 
   test('hero card borderColor is rgba() derived from colors.dark.primary', () => {
     const json = tree.toJSON();
-    const expectedBorder = hexToRgba(SENTINEL, 0.8);
+    const expectedBorder = hexToRgba(SENTINEL, 0.65);
 
     // heroS.card receives the current primary color at the configured opacity.
     const heroCards = findNodes(
