@@ -400,6 +400,10 @@ export default function ScorekeeperScreen() {
       setIsLive(true);
       liveStartRequestIdRef.current = null;
       setShowGoLiveSheet(true);
+      // A record-enabled game keeps the native camera exclusively for the
+      // durable local recording. Set this before opening the socket so its
+      // first join message cannot optimistically advertise unavailable video.
+      webrtcCameraFailedRef.current = recordVideo;
       connectBroadcasterWs(code, teamScore, opponentScore);
     } catch (err: any) {
       Alert.alert('Go Live failed', err?.message ?? 'Could not start broadcast');
@@ -841,11 +845,11 @@ export default function ScorekeeperScreen() {
   async function startRecording() {
     if (!cameraRef.current || recordingStartedRef.current) return;
     if (!cameraPermission?.granted || !micPermission?.granted) return;
-    // Most Android camera HALs cannot service expo-camera and WebRTC capture at
-    // the same time. Trying to keep both sessions open can wedge the camera
-    // service (and, on affected devices, the RN UI) after several seconds.
+    // Mobile camera stacks cannot reliably service expo-camera recording and
+    // react-native-webrtc capture at the same time. Trying to keep both sessions
+    // open can wedge the camera service and the RN UI after several seconds.
     // Recording takes priority; the live session continues score-only.
-    if (Platform.OS === 'android' && webrtcStreamRef.current) {
+    if (webrtcStreamRef.current) {
       webrtcCameraFailedRef.current = true;
       closeAllWebRtcPeers();
       stopWebRtcStream();
@@ -981,10 +985,12 @@ export default function ScorekeeperScreen() {
       stopWebRtcStream();
       return;
     }
-    // Avoid opening a second native camera session while expo-camera is
-    // recording. Android camera implementations commonly serialize or deadlock
-    // competing clients; viewers still receive the live scoreboard and link.
-    if (Platform.OS === 'android' && recordingStartedRef.current) {
+    // A record-enabled game reserves the native camera for the durable local
+    // recording. Do not open a second capture session for WebRTC on iOS or
+    // Android: physical iPad testing showed that dual ownership freezes the
+    // controls and disconnects the broadcaster. The viewer remains connected
+    // to the real-time score-only experience.
+    if (recordVideo) {
       webrtcCameraFailedRef.current = true;
       closeAllWebRtcPeers();
       stopWebRtcStream();
@@ -996,9 +1002,8 @@ export default function ScorekeeperScreen() {
       });
       return;
     }
-    // Open the camera stream for WebRTC broadcast.
-    // expo-camera (CameraView) and react-native-webrtc both access the camera —
-    // iOS 16+ supports simultaneous sessions cleanly.
+    // Open the camera stream for WebRTC broadcast when this game is not also
+    // creating a local video recording.
     if (!mediaDevices) return; // native module not available (Expo Go)
     let cancelled = false;
     (async () => {
@@ -1063,7 +1068,7 @@ export default function ScorekeeperScreen() {
       closeAllWebRtcPeers();
       stopWebRtcStream();
     };
-  }, [isLive, liveCode, cameraPermission?.granted, cameraFacing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLive, liveCode, cameraPermission?.granted, cameraFacing, recordVideo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Live scoreboard push — fires whenever score changes while broadcasting ──
   useEffect(() => {
@@ -2398,8 +2403,8 @@ export default function ScorekeeperScreen() {
 
 function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscape: boolean) {
   // Camera section height — bigger on tablet.
-  // Portrait: 54 % of screen height (was 46 %).
-  // Landscape: tablet gets 62 % width, phone gets 55 %.
+  // Portrait: recording gets most of the screen on tablets.
+  // Landscape: tablet gets 70 % width, phone gets 55 %.
   // Tablet detection: iPads (and large Android tablets) report at least 768px on
   // their short edge. Platform.isPad only exists on the iOS static type, so we
   // use a dimension heuristic that works cross-platform.
@@ -2411,9 +2416,9 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
   // so the controls section keeps the same space it had before the height bump.
   // Larger phones (≥ 750 pt) and tablets keep the 54 % / 62 % values.
   const isSmallPhone = !isTablet && sh <= 667;
-  const portraitRatio = isTablet ? 0.62 : isSmallPhone ? 0.46 : 0.54;
+  const portraitRatio = isTablet ? 0.70 : isSmallPhone ? 0.46 : 0.54;
   const cameraH = isLandscape ? sh : Math.round(sh * portraitRatio);
-  const cameraLandW = isTablet ? '62%' : '55%';
+  const cameraLandW = isTablet ? '70%' : '55%';
 
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
@@ -2820,10 +2825,10 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     // ── Compact stat area (camera recording mode) ─────────────────────────────
     compactStatArea: {
       flex: 1,
-      paddingHorizontal: 8,
-      paddingTop: 5,
-      paddingBottom: 4,
-      gap: 5,
+      paddingHorizontal: isTablet ? 5 : 8,
+      paddingTop: 3,
+      paddingBottom: 3,
+      gap: isTablet ? 3 : 5,
     },
     compactShootGrid: { gap: 4 },
     compactBtnRow: { flexDirection: 'row', gap: 5 },
@@ -2847,7 +2852,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactMakeBtn: {
       flex: 1,
-      height: 36,
+      height: isTablet ? 31 : 36,
       borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
@@ -2856,7 +2861,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactMissBtn: {
       flex: 1,
-      height: 36,
+      height: isTablet ? 31 : 36,
       borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
@@ -2891,7 +2896,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       flex: 1,
       borderRadius: 8,
       borderWidth: 1,
-      padding: 4,
+      padding: isTablet ? 3 : 4,
       alignItems: 'center',
       gap: 2,
     },
@@ -2905,7 +2910,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     compactCountBtns: { flexDirection: 'row', gap: 3, width: '100%' },
     compactCountBtn: {
       flex: 1,
-      height: 24,
+      height: isTablet ? 21 : 24,
       borderRadius: 6,
       alignItems: 'center',
       justifyContent: 'center',

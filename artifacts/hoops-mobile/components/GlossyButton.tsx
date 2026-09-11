@@ -44,8 +44,8 @@ export function GlossyButton({
       <LinearGradient
         colors={selected
           ? [c.primary, c.card, c.background]
-          : [c.card, c.background, c.card]}
-        locations={selected ? [0, 0.62, 1] : [0, 0.58, 1]}
+          : [c.primary, c.background, c.card]}
+        locations={selected ? [0, 0.62, 1] : [0, 0.24, 1]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.fill}

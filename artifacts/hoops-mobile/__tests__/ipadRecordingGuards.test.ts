@@ -16,6 +16,15 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('recordingGenerationRef.current += 1');
   });
 
+  test('reserves the mobile camera for local recording instead of opening dual capture sessions', () => {
+    expect(source).toContain('if (recordVideo) {');
+    expect(source).not.toContain("Platform.OS === 'android' && recordingStartedRef.current");
+    expect(source).not.toContain("Platform.OS === 'android' && webrtcStreamRef.current");
+    expect(source).toContain('webrtcCameraFailedRef.current = recordVideo');
+    expect(source).toContain("const cameraLandW = isTablet ? '70%' : '55%'");
+    expect(source).toContain('const portraitRatio = isTablet ? 0.70');
+  });
+
   test('shares an absolute encoded public watch URL', () => {
     expect(source).toContain('const publicOrigin = API_BASE');
     expect(source).toContain('/watch/${encodeURIComponent(code)}');

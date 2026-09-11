@@ -215,10 +215,10 @@ const statS = StyleSheet.create({
 });
 
 // ─── Section header ───────────────────────────────────────────────────────────
-function SectionHeader({ title }: { title: string }) {
+function SectionHeader({ title, flush = false }: { title: string; flush?: boolean }) {
   const c = useColors();
   return (
-    <View style={secS.row}>
+    <View style={[secS.row, flush && secS.rowFlush]}>
       <Text style={[secS.title, { color: c.foreground }]}>{title.toUpperCase()}</Text>
       <View style={{ flex: 1, height: 1, backgroundColor: c.primary, marginLeft: 16 }} />
     </View>
@@ -226,6 +226,7 @@ function SectionHeader({ title }: { title: string }) {
 }
 const secS = StyleSheet.create({
   row:   { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginTop: 32 },
+  rowFlush: { marginBottom: 0 },
   title: { fontSize: 14, fontFamily: 'Inter_700Bold', letterSpacing: 1.5 },
 });
 
@@ -494,7 +495,7 @@ function PlayerDashboard({ player }: { player: any }) {
         <SectionHeader title="Playmaking & Defense" />
         {cardRows(defenseCards)}
 
-        <SectionHeader title="Shooting Efficiency" />
+        <SectionHeader title="Shooting Efficiency" flush />
         <View style={tabletS.shootingRow}>
           <View style={[tabletS.gaugeCard, { borderColor: c.border, backgroundColor: c.card }]}>
             <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />

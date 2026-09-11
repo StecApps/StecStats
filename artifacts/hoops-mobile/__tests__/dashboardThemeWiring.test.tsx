@@ -232,6 +232,7 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).not.toContain("maxWidth: 1180");
     expect(rawSrc).toContain('glossy={isTablet}');
     expect(rawSrc).toContain("paddingLeft: (isTablet ? 6 : 16)");
+    expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" flush />');
     expect(rawSrc).toContain('<SectionHeader title="Playmaking & Defense" />');
     expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" />');
   });
