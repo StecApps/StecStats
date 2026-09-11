@@ -25,6 +25,14 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('const portraitRatio = isTablet ? 0.70');
   });
 
+  test('keeps the native recorder stable while scoring and blocks iPad camera reconfiguration', () => {
+    expect(source).toContain('const RecordingCameraPreview = React.memo');
+    expect(source).toContain('videoQuality="720p"');
+    expect(source).toContain('if (isRecording && isTablet) {');
+    expect(source).toContain('Finish this game before switching cameras.');
+    expect(source).toContain('if (webrtcCameraFailedRef.current) return;');
+  });
+
   test('shares an absolute encoded public watch URL', () => {
     expect(source).toContain('const publicOrigin = API_BASE');
     expect(source).toContain('/watch/${encodeURIComponent(code)}');

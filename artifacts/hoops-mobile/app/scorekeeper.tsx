@@ -88,6 +88,74 @@ const defaultLine = (): StatLine => ({
   steals: 0, turnovers: 0, blocks: 0,
 });
 
+type RecordingCameraPreviewProps = {
+  cameraRef: React.RefObject<any>;
+  cameraReady: boolean;
+  cameraFacing: 'front' | 'back';
+  cameraZoom: number;
+  containerWidth: number;
+  containerHeight: number;
+  isLandscape: boolean;
+  onCameraReady: () => void;
+};
+
+// Recording runs in a native AVFoundation session. Keep CameraView isolated
+// from scoring state updates so a make/miss tap does not resend new style props
+// to the active native recorder while it is writing a movie file.
+const RecordingCameraPreview = React.memo(
+  function RecordingCameraPreview({
+    cameraRef,
+    cameraReady,
+    cameraFacing,
+    cameraZoom,
+    containerWidth,
+    containerHeight,
+    isLandscape,
+    onCameraReady,
+  }: RecordingCameraPreviewProps) {
+    if (!cameraReady) {
+      return <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0d0d0d' }]} />;
+    }
+
+    const cameraAspect = isLandscape ? (4 / 3) : (3 / 4);
+    const containerAspect = containerWidth / containerHeight;
+    const scale = containerWidth && containerHeight
+      ? Math.max(
+        1,
+        containerAspect > cameraAspect
+          ? containerAspect / cameraAspect
+          : cameraAspect / containerAspect,
+      )
+      : 1;
+
+    return (
+      <CameraView
+        ref={cameraRef}
+        style={[
+          StyleSheet.absoluteFill,
+          scale > 1.01 ? { transform: [{ scale }] } : {},
+        ]}
+        facing={cameraFacing}
+        mode="video"
+        // 720p is substantially less demanding than the iPad's default
+        // recording profile and leaves headroom for responsive stat controls.
+        videoQuality="720p"
+        zoom={cameraZoom}
+        responsiveOrientationWhenOrientationLocked
+        onCameraReady={onCameraReady}
+      />
+    );
+  },
+  (previous, next) =>
+    previous.cameraRef === next.cameraRef &&
+    previous.cameraReady === next.cameraReady &&
+    previous.cameraFacing === next.cameraFacing &&
+    previous.cameraZoom === next.cameraZoom &&
+    previous.containerWidth === next.containerWidth &&
+    previous.containerHeight === next.containerHeight &&
+    previous.isLandscape === next.isLandscape,
+);
+
 function calcPoints(line: StatLine): number {
   return line.twoMade * 2 + line.threeMade * 3 + line.ftMade;
 }
@@ -709,6 +777,9 @@ export default function ScorekeeperScreen() {
       try {
         const msg = JSON.parse(event.data as string);
         if (msg.type === 'new-viewer') {
+          // A record-enabled game intentionally advertises score-only mode.
+          // Do not queue viewer IDs for an offer that can never be created.
+          if (webrtcCameraFailedRef.current) return;
           if (webrtcStreamRef.current) {
             // Stream is ready — offer immediately.
             await createPeerForViewer(msg.viewerId, code);
@@ -763,6 +834,16 @@ export default function ScorekeeperScreen() {
   }
 
   function toggleCameraFacing() {
+    // Changing AVFoundation inputs while an iPad is actively writing a video
+    // has caused native app termination. Preserve the recording rather than
+    // trying to split and reconfigure the session mid-game.
+    if (isRecording && isTablet) {
+      Alert.alert(
+        'Camera is recording',
+        'Finish this game before switching cameras. This keeps the iPad recording stable.',
+      );
+      return;
+    }
     if (!isRecording) {
       // Not recording — switch immediately
       setCameraFacing((f) => (f === 'back' ? 'front' : 'back'));
@@ -2200,36 +2281,16 @@ export default function ScorekeeperScreen() {
         }}
       >
         {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
-        {cameraReady ? (
-          <CameraView
-            ref={cameraRef}
-            style={[StyleSheet.absoluteFill, (() => {
-              // Scale the CameraView so the native preview always fills (covers) the
-              // container, removing black bars caused by aspect-ratio mismatches
-              // (especially visible on iPad where the section is wider than the
-              // camera's native 3:4 portrait preview).
-              const { w: cw, h: ch } = cameraContainerSize;
-              if (!cw || !ch) return {};
-              // Typical iOS camera preview: 4:3 landscape, 3:4 portrait.
-              const cameraAspect = isLandscape ? (4 / 3) : (3 / 4);
-              const containerAspect = cw / ch;
-              const scale = Math.max(
-                1,
-                containerAspect > cameraAspect
-                  ? containerAspect / cameraAspect   // container is wider → scale to fill width
-                  : cameraAspect / containerAspect,  // container is taller → scale to fill height
-              );
-              return scale > 1.01 ? { transform: [{ scale }] } : {};
-            })()]}
-            facing={cameraFacing}
-            mode="video"
-            zoom={cameraZoom}
-            responsiveOrientationWhenOrientationLocked
-            onCameraReady={onCameraReady}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0d0d0d' }]} />
-        )}
+        <RecordingCameraPreview
+          cameraRef={cameraRef}
+          cameraReady={!!cameraReady}
+          cameraFacing={cameraFacing}
+          cameraZoom={cameraZoom}
+          containerWidth={cameraContainerSize.w}
+          containerHeight={cameraContainerSize.h}
+          isLandscape={isLandscape}
+          onCameraReady={onCameraReady}
+        />
 
         {previewVisible ? (
           <>
@@ -2259,16 +2320,30 @@ export default function ScorekeeperScreen() {
                 <TouchableOpacity
                   onPress={toggleCameraFacing}
                   activeOpacity={0.75}
-                  style={styles.camControlBtn}
+                  style={[
+                    styles.camControlBtn,
+                    isRecording && isTablet && { opacity: 0.4 },
+                  ]}
                 >
                   <Ionicons name="camera-reverse" size={18} color="#fff" />
                 </TouchableOpacity>
 
                 {/* Mute / unmute mic */}
                 <TouchableOpacity
-                  onPress={() => { setMicMuted((m) => !m); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  onPress={() => {
+                    if (isRecording && isTablet) {
+                      Alert.alert('Recording in progress', 'Microphone settings apply when the next recording starts.');
+                      return;
+                    }
+                    setMicMuted((m) => !m);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
                   activeOpacity={0.75}
-                  style={[styles.camControlBtn, micMuted && { backgroundColor: 'rgba(239,68,68,0.75)' }]}
+                  style={[
+                    styles.camControlBtn,
+                    micMuted && { backgroundColor: 'rgba(239,68,68,0.75)' },
+                    isRecording && isTablet && { opacity: 0.4 },
+                  ]}
                 >
                   <Ionicons name={micMuted ? 'mic-off' : 'mic'} size={18} color="#fff" />
                 </TouchableOpacity>
