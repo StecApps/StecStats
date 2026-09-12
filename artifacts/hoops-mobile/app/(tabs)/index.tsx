@@ -289,19 +289,19 @@ function ConsoleStat({ label, value, sub, accent = false }: { label: string; val
   );
 }
 const cStatS = StyleSheet.create({
-  cell: { flex: 1, minHeight: 112, paddingHorizontal: 24, paddingVertical: 18, justifyContent: 'center', position: 'relative' },
-  accentBar: { position: 'absolute', left: 0, top: 22, bottom: 22, width: 4, borderRadius: 2 },
-  label: { fontSize: 12, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, lineHeight: 16, textTransform: 'uppercase', marginBottom: 3, paddingLeft: 4 },
-  value: { ...tekoStyle(58), lineHeight: 58, marginBottom: 3, paddingLeft: 4 },
-  sub: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, lineHeight: 15, textTransform: 'uppercase', paddingLeft: 4 },
+  cell: { flex: 1, minHeight: 130, paddingHorizontal: 28, paddingVertical: 20, justifyContent: 'center', position: 'relative' },
+  accentBar: { position: 'absolute', left: 0, top: 24, bottom: 24, width: 4, borderRadius: 2 },
+  label: { fontSize: 13, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, lineHeight: 18, textTransform: 'uppercase', marginBottom: 2, paddingLeft: 4 },
+  value: { ...tekoStyle(64), lineHeight: 72, marginBottom: 2, paddingLeft: 4 },
+  sub: { fontSize: 12, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, lineHeight: 17, textTransform: 'uppercase', paddingLeft: 4 },
 });
 
 const consoleS = StyleSheet.create({
   dashboard: { width: '100%' },
   grid: { flexDirection: 'column', gap: 16 },
-  gridLandscape: { flexDirection: 'row', alignItems: 'stretch', minHeight: 540 },
+  gridLandscape: { flexDirection: 'row', alignItems: 'stretch', minHeight: 580 },
   col: { gap: 16 },
-  statsColLandscape: { flex: 7 },
+  statsColLandscape: { flex: 8 },
   statsSectionLandscape: { flex: 1 },
   card: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
 
@@ -325,7 +325,7 @@ const consoleS = StyleSheet.create({
   shootingCardLandscape: { minHeight: 154, paddingVertical: 28, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-around' },
   sectionTitle: { fontSize: 13, lineHeight: 18, fontFamily: 'Inter_700Bold', letterSpacing: 2, marginBottom: 10, marginLeft: 4 },
   statGrid: { flex: 1 },
-  statRow: { flex: 1, minHeight: 112, flexDirection: 'row' },
+  statRow: { flex: 1, minHeight: 130, flexDirection: 'row' },
   vDivider: { width: 1 },
 });
 
@@ -467,7 +467,7 @@ function PlayerDashboard({ player }: { player: any }) {
         <View style={[consoleS.grid, isLandscape && consoleS.gridLandscape]}>
 
           {/* Left Column */}
-          <View style={[consoleS.col, isLandscape ? { flex: 5 } : undefined]}>
+          <View style={[consoleS.col, isLandscape ? { flex: 4 } : undefined]}>
             <View style={[consoleS.card, consoleS.identityCard, { borderColor: c.border, backgroundColor: c.card }]}>
               <LinearGradient
                 pointerEvents="none"

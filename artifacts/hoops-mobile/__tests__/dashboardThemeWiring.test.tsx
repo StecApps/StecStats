@@ -242,10 +242,10 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('SHARE PLAYER');
     expect(rawSrc).toContain('PLAYMAKING & DEFENSE');
     expect(rawSrc).toContain('SHOOTING EFFICIENCY');
-    expect(rawSrc).toContain('isLandscape ? { flex: 5 }');
-    expect(rawSrc).toContain('statsColLandscape: { flex: 7 }');
-    expect(rawSrc).toContain('gridLandscape: { flexDirection: \'row\', alignItems: \'stretch\', minHeight: 540 }');
-    expect(rawSrc).toContain('cell: { flex: 1, minHeight: 112');
+    expect(rawSrc).toContain('isLandscape ? { flex: 4 }');
+    expect(rawSrc).toContain('statsColLandscape: { flex: 8 }');
+    expect(rawSrc).toContain('gridLandscape: { flexDirection: \'row\', alignItems: \'stretch\', minHeight: 580 }');
+    expect(rawSrc).toContain('cell: { flex: 1, minHeight: 130');
     expect(rawSrc).toContain('shootingCardLandscape: { minHeight: 154');
     expect(glossyButtonSrc).toContain("? ['#FF8A24', c.primary, '#160803']");
   });
