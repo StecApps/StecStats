@@ -289,21 +289,23 @@ function ConsoleStat({ label, value, sub, accent = false }: { label: string; val
   );
 }
 const cStatS = StyleSheet.create({
-  cell: { flex: 1, padding: 20, justifyContent: 'center', position: 'relative' },
-  accentBar: { position: 'absolute', left: 0, top: 24, bottom: 24, width: 4, borderRadius: 2 },
-  label: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, paddingLeft: 4 },
-  value: { ...tekoStyle(52), lineHeight: 52, marginBottom: 2, paddingLeft: 4 },
-  sub: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, textTransform: 'uppercase', paddingLeft: 4 },
+  cell: { flex: 1, minHeight: 112, paddingHorizontal: 24, paddingVertical: 18, justifyContent: 'center', position: 'relative' },
+  accentBar: { position: 'absolute', left: 0, top: 22, bottom: 22, width: 4, borderRadius: 2 },
+  label: { fontSize: 12, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, lineHeight: 16, textTransform: 'uppercase', marginBottom: 3, paddingLeft: 4 },
+  value: { ...tekoStyle(58), lineHeight: 58, marginBottom: 3, paddingLeft: 4 },
+  sub: { fontSize: 11, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, lineHeight: 15, textTransform: 'uppercase', paddingLeft: 4 },
 });
 
 const consoleS = StyleSheet.create({
   dashboard: { width: '100%' },
   grid: { flexDirection: 'column', gap: 16 },
-  gridLandscape: { flexDirection: 'row', alignItems: 'stretch' },
+  gridLandscape: { flexDirection: 'row', alignItems: 'stretch', minHeight: 540 },
   col: { gap: 16 },
+  statsColLandscape: { flex: 7 },
+  statsSectionLandscape: { flex: 1 },
   card: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
 
-  identityCard: { flex: 1, padding: 24, minHeight: 300 },
+  identityCard: { flex: 1, padding: 24, minHeight: 340 },
   identityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, zIndex: 10 },
   liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
@@ -315,14 +317,15 @@ const consoleS = StyleSheet.create({
   shareBtnText: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 },
 
   avatarContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 200 },
-  avatarWrap: { width: '100%', height: '100%', aspectRatio: 1, maxWidth: 300, maxHeight: 300, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  avatarWrap: { width: '100%', height: '100%', aspectRatio: 1, maxWidth: 340, maxHeight: 340, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   avatar: { width: '100%', height: '100%' },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { ...tekoStyle(100), lineHeight: 100, marginTop: 15 },
 
-  sectionTitle: { fontSize: 12, fontFamily: 'Inter_700Bold', letterSpacing: 2, marginBottom: 12, marginLeft: 4 },
-  statGrid: {},
-  statRow: { flexDirection: 'row' },
+  shootingCardLandscape: { minHeight: 154, paddingVertical: 28, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-around' },
+  sectionTitle: { fontSize: 13, lineHeight: 18, fontFamily: 'Inter_700Bold', letterSpacing: 2, marginBottom: 10, marginLeft: 4 },
+  statGrid: { flex: 1 },
+  statRow: { flex: 1, minHeight: 112, flexDirection: 'row' },
   vDivider: { width: 1 },
 });
 
@@ -533,7 +536,7 @@ function PlayerDashboard({ player }: { player: any }) {
             </View>
 
             {isLandscape && (
-              <View style={[consoleS.card, { borderColor: c.border, backgroundColor: c.card, paddingVertical: 28, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-around' }]}>
+              <View style={[consoleS.card, consoleS.shootingCardLandscape, { borderColor: c.border, backgroundColor: c.card }]}>
                 <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
                 <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
                 <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
@@ -542,8 +545,8 @@ function PlayerDashboard({ player }: { player: any }) {
           </View>
 
           {/* Right Column */}
-          <View style={[consoleS.col, isLandscape ? { flex: 7 } : undefined]}>
-            <View>
+          <View style={[consoleS.col, isLandscape && consoleS.statsColLandscape]}>
+            <View style={isLandscape ? consoleS.statsSectionLandscape : undefined}>
               <Text style={[consoleS.sectionTitle, { color: c.mutedForeground }]}>HEADLINE PRODUCTION</Text>
               <View style={[consoleS.card, consoleS.statGrid, { borderColor: c.border, backgroundColor: c.card }]}>
                 <View style={[consoleS.statRow, { borderBottomWidth: 1, borderBottomColor: c.border }]}>
@@ -559,7 +562,7 @@ function PlayerDashboard({ player }: { player: any }) {
               </View>
             </View>
 
-            <View>
+            <View style={isLandscape ? consoleS.statsSectionLandscape : undefined}>
               <Text style={[consoleS.sectionTitle, { color: c.mutedForeground, marginTop: 12 }]}>PLAYMAKING & DEFENSE</Text>
               <View style={[consoleS.card, consoleS.statGrid, { borderColor: c.border, backgroundColor: c.card }]}>
                 <View style={[consoleS.statRow, { borderBottomWidth: 1, borderBottomColor: c.border }]}>
