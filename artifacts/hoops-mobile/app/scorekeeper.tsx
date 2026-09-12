@@ -99,6 +99,13 @@ const defaultLine = (): StatLine => ({
   steals: 0, turnovers: 0, blocks: 0,
 });
 
+const CAMERA_ZOOM_STEP = 0.05;
+const CAMERA_PINCH_SENSITIVITY = 0.2;
+
+export function clampCameraZoom(zoom: number) {
+  return Math.min(1, Math.max(0, zoom));
+}
+
 type RecordingCameraPreviewProps = {
   cameraRef: React.RefObject<any>;
   sharedCameraMode: boolean;
@@ -389,7 +396,7 @@ export default function ScorekeeperScreen() {
   const pinchBaseZoom = useSharedValue(0);
 
   function showZoomBadge(zoom: number) {
-    setCameraZoom(Math.min(1, Math.max(0, zoom)));
+    setCameraZoom(clampCameraZoom(zoom));
     setZoomBadgeVisible(true);
     zoomBadgeOpacity.stopAnimation();
     Animated.timing(zoomBadgeOpacity, { toValue: 1, duration: 120, useNativeDriver: true }).start();
@@ -399,13 +406,22 @@ export default function ScorekeeperScreen() {
     }, 1400);
   }
 
+  function adjustCameraZoom(delta: number) {
+    showZoomBadge(cameraZoom + delta);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }
+
   const pinchGesture = Gesture.Pinch()
     .onStart(() => {
       pinchBaseZoom.value = cameraZoom;
     })
     .onUpdate((e) => {
-      // Map pinch scale to a zoom delta: scale 1.0 = no change, 2.0 = +0.4, 0.5 = -0.2
-      const newZoom = Math.min(1, Math.max(0, pinchBaseZoom.value + (e.scale - 1) * 0.45));
+      // Keep two-finger adjustments gradual so a small pinch cannot jump from
+      // a full-court view to a tight crop while the coach is recording.
+      const newZoom = Math.min(
+        1,
+        Math.max(0, pinchBaseZoom.value + (e.scale - 1) * CAMERA_PINCH_SENSITIVITY),
+      );
       runOnJS(showZoomBadge)(newZoom);
     });
 
@@ -2751,6 +2767,36 @@ export default function ScorekeeperScreen() {
               </View>
             )}
 
+            {cameraReady && (
+              <View style={styles.zoomControls}>
+                <TouchableOpacity
+                  testID="camera-zoom-out"
+                  accessibilityRole="button"
+                  accessibilityLabel="Zoom camera out"
+                  disabled={cameraZoom <= 0}
+                  onPress={() => adjustCameraZoom(-CAMERA_ZOOM_STEP)}
+                  activeOpacity={0.75}
+                  style={[styles.zoomControlBtn, cameraZoom <= 0 && styles.zoomControlBtnDisabled]}
+                >
+                  <Ionicons name="remove" size={22} color="#fff" />
+                </TouchableOpacity>
+                <View style={styles.zoomControlLevel}>
+                  <Text style={styles.zoomControlLevelText}>{(1 + cameraZoom * 4).toFixed(1)}×</Text>
+                </View>
+                <TouchableOpacity
+                  testID="camera-zoom-in"
+                  accessibilityRole="button"
+                  accessibilityLabel="Zoom camera in"
+                  disabled={cameraZoom >= 1}
+                  onPress={() => adjustCameraZoom(CAMERA_ZOOM_STEP)}
+                  activeOpacity={0.75}
+                  style={[styles.zoomControlBtn, cameraZoom >= 1 && styles.zoomControlBtnDisabled]}
+                >
+                  <Ionicons name="add" size={22} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Permission denied — shown inside camera box */}
             {recordVideo && !cameraReady && (
               <View style={styles.permBanner}>
@@ -2808,7 +2854,7 @@ export default function ScorekeeperScreen() {
           </View>
         )}
 
-        {/* ── Zoom level badge — fades in on pinch, fades out after 1.4 s ── */}
+        {/* ── Zoom level badge — fades in after pinch or button adjustment ── */}
         {zoomBadgeVisible && (
           <Animated.View
             pointerEvents="none"
@@ -3046,6 +3092,39 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       backgroundColor: 'rgba(0,0,0,0.55)',
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    zoomControls: {
+      position: 'absolute',
+      top: insets.top + (Platform.OS === 'web' ? 116 : 60),
+      right: 10,
+      alignItems: 'center',
+      gap: 5,
+    },
+    zoomControlBtn: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.32)',
+      backgroundColor: 'rgba(0,0,0,0.62)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    zoomControlBtnDisabled: {
+      opacity: 0.35,
+    },
+    zoomControlLevel: {
+      minWidth: 42,
+      paddingHorizontal: 6,
+      paddingVertical: 4,
+      borderRadius: 10,
+      backgroundColor: 'rgba(0,0,0,0.62)',
+      alignItems: 'center',
+    },
+    zoomControlLevelText: {
+      color: '#fff',
+      fontSize: 11,
+      fontFamily: 'Inter_700Bold',
     },
 
     // Overlay shown when preview is hidden

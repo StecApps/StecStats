@@ -397,7 +397,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     }
     do {
       try device.lockForConfiguration()
-      let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 8)
+      // Match the 1×–5× scale shown by the recording UI. Keeping this cap in
+      // sync makes each normalized button/pinch step predictable on iOS.
+      let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 5)
       device.videoZoomFactor = 1 + (maxZoom - 1) * normalizedZoom
       device.unlockForConfiguration()
     } catch {

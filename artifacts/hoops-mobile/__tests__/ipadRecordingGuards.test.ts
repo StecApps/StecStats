@@ -4,6 +4,10 @@ import path from 'path';
 describe('iPad recording safeguards', () => {
   const scorekeeperPath = path.resolve(__dirname, '../app/scorekeeper.tsx');
   const source = fs.readFileSync(scorekeeperPath, 'utf8');
+  const nativeCameraSource = fs.readFileSync(
+    path.resolve(__dirname, '../modules/hoops-camera/ios/HoopsCameraSession.swift'),
+    'utf8',
+  );
 
   test('keeps iOS capture orientation responsive to physical device rotation', () => {
     expect(source).toContain('responsiveOrientationWhenOrientationLocked');
@@ -45,6 +49,20 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('if (isRecording && isTablet) {');
     expect(source).toContain('Finish this game before switching cameras.');
     expect(source).toContain('if (webrtcCameraFailedRef.current) return;');
+  });
+
+  test('provides bounded recording zoom controls with a gentler pinch response', () => {
+    expect(source).toContain('const [cameraZoom, setCameraZoom] = useState(0)');
+    expect(source).toContain('const CAMERA_ZOOM_STEP = 0.05');
+    expect(source).toContain('const CAMERA_PINCH_SENSITIVITY = 0.2');
+    expect(source).toContain('testID="camera-zoom-out"');
+    expect(source).toContain('testID="camera-zoom-in"');
+    expect(source).toContain('disabled={cameraZoom <= 0}');
+    expect(source).toContain('disabled={cameraZoom >= 1}');
+    expect(source).toContain('adjustCameraZoom(-CAMERA_ZOOM_STEP)');
+    expect(source).toContain('adjustCameraZoom(CAMERA_ZOOM_STEP)');
+    expect(source).toContain('pinchBaseZoom.value + (e.scale - 1) * CAMERA_PINCH_SENSITIVITY');
+    expect(nativeCameraSource).toContain('min(device.activeFormat.videoMaxZoomFactor, 5)');
   });
 
   test('does not crop the iPad preview or background an active recording for Messages', () => {
