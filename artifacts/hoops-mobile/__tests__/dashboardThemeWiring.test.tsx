@@ -228,23 +228,23 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     'utf8',
   );
 
-  test('uses the classic full-width hero and stacked stat sections on iPads', () => {
+  test('uses the dense console dashboard and explicit actions on iPads', () => {
     expect(rawSrc).toContain('const isTablet = Math.min(width, height) >= 600');
-    expect(rawSrc).toContain('testID="tablet-classic-dashboard"');
-    expect(rawSrc).toContain('LIVE PLAYER STATS');
-    expect(rawSrc).toContain('● CAREER SUMMARY DASHBOARD');
+    expect(rawSrc).toContain('testID="tablet-console-dashboard"');
+    expect(rawSrc).toContain('HEADLINE PRODUCTION');
+    expect(rawSrc).toContain('CAREER DASHBOARD');
     expect(rawSrc).not.toContain("maxWidth: 1180");
-    expect(rawSrc).toContain('glossy={isTablet}');
+    expect(rawSrc).not.toContain('glossy={isTablet}');
     expect(rawSrc).toContain("paddingLeft: (isTablet ? 6 : 16)");
-    expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" flush />');
-    expect(glossyButtonSrc).toContain("? ['#FF8A24', c.primary, '#160803']");
-    expect(glossyButtonSrc).toContain(": [c.primary, '#8A2D09', '#090504']");
     expect(rawSrc).toContain('minWidth: 132');
     expect(rawSrc).toContain('minHeight: 58');
     expect(rawSrc).toContain('borderRadius: 999');
     expect(rawSrc).toContain('SHARE PLAYER');
-    expect(rawSrc).toContain('<SectionHeader title="Playmaking & Defense" />');
-    expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" />');
+    expect(rawSrc).toContain('PLAYMAKING & DEFENSE');
+    expect(rawSrc).toContain('SHOOTING EFFICIENCY');
+    expect(rawSrc).toContain('isLandscape ? { flex: 5 }');
+    expect(rawSrc).toContain('isLandscape ? { flex: 7 }');
+    expect(glossyButtonSrc).toContain("? ['#FF8A24', c.primary, '#160803']");
   });
 
   test('keeps the roster scroller inside safe-area dashboard content', () => {

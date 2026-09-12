@@ -47,6 +47,15 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('{watchUrl(liveCode)}');
   });
 
+  test('never presents Live modals or starts networking over an active recording', () => {
+    expect(source).toContain('if (recordingStartedRef.current || isRecording) {');
+    expect(source).toContain('Recording protected — finish this game before using Live.');
+    expect(source).toContain('Recording protected — Live controls are locked.');
+    expect(source).toContain('setShowGoLiveSheet(false);');
+    expect(source).toContain('<Ionicons name="lock-closed"');
+    expect(source).toContain('LIVE · REC SAFE');
+  });
+
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
     expect(source).toContain("UNDO{'\\n'}MAKE");
     expect(source).toContain("UNDO{'\\n'}MISS");

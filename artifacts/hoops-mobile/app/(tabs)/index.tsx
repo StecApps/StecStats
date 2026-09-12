@@ -276,6 +276,56 @@ const cShootS = StyleSheet.create({
   divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 8 },
 });
 
+// ─── Console Stat (iPad) ──────────────────────────────────────────────────────
+function ConsoleStat({ label, value, sub, accent = false }: { label: string; value: string; sub: string; accent?: boolean }) {
+  const c = useColors();
+  return (
+    <View style={cStatS.cell}>
+      {accent && <View style={[cStatS.accentBar, { backgroundColor: c.primary }]} />}
+      <Text style={[cStatS.label, { color: accent ? c.primary : c.mutedForeground }]}>{label}</Text>
+      <Text style={[cStatS.value, { color: c.foreground }]} adjustsFontSizeToFit numberOfLines={1}>{value}</Text>
+      <Text style={[cStatS.sub, { color: c.mutedForeground }]}>{sub}</Text>
+    </View>
+  );
+}
+const cStatS = StyleSheet.create({
+  cell: { flex: 1, padding: 20, justifyContent: 'center', position: 'relative' },
+  accentBar: { position: 'absolute', left: 0, top: 24, bottom: 24, width: 4, borderRadius: 2 },
+  label: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, paddingLeft: 4 },
+  value: { ...tekoStyle(52), lineHeight: 52, marginBottom: 2, paddingLeft: 4 },
+  sub: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, textTransform: 'uppercase', paddingLeft: 4 },
+});
+
+const consoleS = StyleSheet.create({
+  dashboard: { width: '100%' },
+  grid: { flexDirection: 'column', gap: 16 },
+  gridLandscape: { flexDirection: 'row', alignItems: 'stretch' },
+  col: { gap: 16 },
+  card: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+
+  identityCard: { flex: 1, padding: 24, minHeight: 300 },
+  identityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, zIndex: 10 },
+  liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
+  eyebrow: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1.5 },
+  playerName: { ...tekoStyle(52), lineHeight: 52, letterSpacing: 1 },
+  actionButtons: { flexDirection: 'row', gap: 8 },
+  actionBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  shareBtn: { minWidth: 104, height: 44, borderRadius: 22, borderWidth: 1, paddingHorizontal: 16, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
+  shareBtnText: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 },
+
+  avatarContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 200 },
+  avatarWrap: { width: '100%', height: '100%', aspectRatio: 1, maxWidth: 300, maxHeight: 300, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  avatar: { width: '100%', height: '100%' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  avatarInitials: { ...tekoStyle(100), lineHeight: 100, marginTop: 15 },
+
+  sectionTitle: { fontSize: 12, fontFamily: 'Inter_700Bold', letterSpacing: 2, marginBottom: 12, marginLeft: 4 },
+  statGrid: {},
+  statRow: { flexDirection: 'row' },
+  vDivider: { width: 1 },
+});
+
 // ─── Player Dashboard ─────────────────────────────────────────────────────────
 function PlayerDashboard({ player }: { player: any }) {
   const c = useColors();
@@ -409,109 +459,134 @@ function PlayerDashboard({ player }: { player: any }) {
   const hasPhoto = !!player.photoObjectPath;
 
   if (isTablet) {
-    const summaryCards = [
-      <StatCard key="points" label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} TOTAL`} />,
-      <StatCard key="games" label="Games Played" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} />,
-      <StatCard key="record" label="Win Record" value={`${summary.wins}-${summary.losses}`} sub={`${winRate}% WIN RATE`} />,
-      <StatCard key="rebounds" label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} TOTAL`} />,
-    ];
-    const defenseCards = [
-      <StatCard key="assists" label="Assists / GM" value={summary.apg.toFixed(1)} sub={`${summary.assists} TOTAL`} />,
-      <StatCard key="steals" label="Steals / GM" value={summary.spg.toFixed(1)} sub={`${summary.steals} TOTAL`} />,
-      <StatCard key="blocks" label="Blocks / GM" value={summary.bpg.toFixed(1)} sub={`${summary.blocks} TOTAL`} />,
-      <StatCard key="turnovers" label="Turnovers / GM" value={summary.topg.toFixed(1)} sub={`${summary.turnovers} TOTAL`} />,
-    ];
-    const cardRows = (cards: React.ReactNode[]) => isLandscape ? (
-      <View style={tabletS.fourCardRow}>{cards}</View>
-    ) : (
-      <>
-        <View style={tabletS.twoCardRow}>{cards.slice(0, 2)}</View>
-        <View style={tabletS.twoCardRow}>{cards.slice(2)}</View>
-      </>
-    );
-
     return (
-      <View testID="tablet-classic-dashboard" style={tabletS.dashboard}>
-        <View style={[tabletS.hero, { borderColor: primaryRgba(0.8), backgroundColor: c.card }]}>
-          <LinearGradient
-            pointerEvents="none"
-            colors={[primaryRgba(0.5), primaryRgba(0.16), 'transparent']}
-            locations={[0, 0.46, 1]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-            style={StyleSheet.absoluteFillObject}
-          />
-          <View style={tabletS.flashRow}>
-            <Ionicons name="flash" size={13} color={c.primary} />
-            <Text style={[tabletS.liveLabel, { color: c.primary }]}>LIVE PLAYER STATS</Text>
-            <Ionicons name="flash" size={13} color={c.primary} />
-          </View>
-          <View style={tabletS.avatarArea}>
-            {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
-              <Image
-                source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
-                style={[tabletS.avatar, { borderColor: c.primary }]}
-                contentFit="cover"
-                onError={() => setPhotoLoadFailed(true)}
+      <View testID="tablet-console-dashboard" style={consoleS.dashboard}>
+        <View style={[consoleS.grid, isLandscape && consoleS.gridLandscape]}>
+
+          {/* Left Column */}
+          <View style={[consoleS.col, isLandscape ? { flex: 5 } : undefined]}>
+            <View style={[consoleS.card, consoleS.identityCard, { borderColor: c.border, backgroundColor: c.card }]}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={[primaryRgba(0.08), 'transparent']}
+                locations={[0, 0.9]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
               />
-            ) : (
-              <View style={[tabletS.avatar, { borderColor: c.primary, backgroundColor: primaryRgba(0.16) }]}>
-                <Text style={[tabletS.avatarInitials, { color: c.primary }]}>
-                  {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
-                </Text>
+              <View style={consoleS.identityHeader}>
+                <View style={{ flex: 1, paddingRight: 16 }}>
+                  <View style={consoleS.liveIndicator}>
+                    <View style={[consoleS.liveDot, { backgroundColor: c.primary }]} />
+                    <Text style={[consoleS.eyebrow, { color: c.primary }]}>
+                      {summary.seasonScope === 'career' ? 'CAREER DASHBOARD' : 'SEASON DASHBOARD'}
+                    </Text>
+                  </View>
+                  <Text style={[consoleS.playerName, { color: c.foreground }]} numberOfLines={2}>
+                    {player.name.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={consoleS.actionButtons}>
+                  <TouchableOpacity
+                    accessibilityLabel="Change player photo"
+                    onPress={handlePhotoTap}
+                    activeOpacity={0.65}
+                    style={[consoleS.actionBtn, { borderColor: c.border, backgroundColor: c.card }]}
+                  >
+                    {uploading ? <ActivityIndicator size="small" color={c.foreground} /> : <Ionicons name="camera-outline" size={20} color={c.foreground} />}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    accessibilityLabel="Share player profile"
+                    onPress={handleShareProfile}
+                    disabled={sharing}
+                    activeOpacity={0.65}
+                    style={[consoleS.shareBtn, { borderColor: primaryRgba(0.55), backgroundColor: primaryRgba(0.12) }]}
+                  >
+                    {sharing ? <ActivityIndicator size="small" color={c.foreground} /> : (
+                      <>
+                        <Ionicons name="share-outline" size={17} color={c.primary} />
+                        <Text style={[consoleS.shareBtnText, { color: c.foreground }]}>SHARE PLAYER</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={consoleS.avatarContainer}>
+                <View style={[consoleS.avatarWrap, { borderColor: c.border, backgroundColor: primaryRgba(0.04) }]}>
+                  {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
+                    <Image
+                      source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
+                      style={consoleS.avatar}
+                      contentFit="cover"
+                      onError={() => setPhotoLoadFailed(true)}
+                    />
+                  ) : (
+                    <View style={[consoleS.avatar, consoleS.avatarFallback]}>
+                      <Text style={[consoleS.avatarInitials, { color: c.primary }]}>
+                        {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            {isLandscape && (
+              <View style={[consoleS.card, { borderColor: c.border, backgroundColor: c.card, paddingVertical: 28, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-around' }]}>
+                <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
+                <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
+                <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
               </View>
             )}
-            <GlossyButton
-              accessibilityLabel="Change player photo"
-              onPress={handlePhotoTap}
-              selected
-              style={[tabletS.cameraButton, { backgroundColor: c.primary, borderColor: c.background }]}
-            >
-              {uploading
-                ? <ActivityIndicator size="small" color={c.primaryForeground} />
-                : <Ionicons name="camera" size={14} color={c.primaryForeground} />}
-            </GlossyButton>
           </View>
-          <Text style={[tabletS.playerName, { color: c.foreground }]}>{player.name.toUpperCase()}</Text>
-          <View style={[tabletS.scopeBadge, { backgroundColor: c.background }]}>
-            <Text style={[tabletS.scopeText, { color: c.mutedForeground }]}>
-              {summary.seasonScope === 'career' ? '● CAREER SUMMARY DASHBOARD' : '● CURRENT SEASON SUMMARY'}
-            </Text>
-          </View>
-          <GlossyButton
-            accessibilityLabel="Share player profile"
-            onPress={handleShareProfile}
-            disabled={sharing}
-            selected
-            style={[tabletS.shareButton, { borderColor: c.border, backgroundColor: primaryRgba(0.12) }]}
-          >
-            {sharing
-              ? <ActivityIndicator size="small" color={c.foreground} />
-              : (
-                <>
-                  <Ionicons name="share-outline" size={16} color={c.foreground} />
-                  <Text style={[tabletS.shareButtonText, { color: c.foreground }]}>SHARE PLAYER</Text>
-                </>
-              )}
-          </GlossyButton>
-        </View>
 
-        {cardRows(summaryCards)}
+          {/* Right Column */}
+          <View style={[consoleS.col, isLandscape ? { flex: 7 } : undefined]}>
+            <View>
+              <Text style={[consoleS.sectionTitle, { color: c.mutedForeground }]}>HEADLINE PRODUCTION</Text>
+              <View style={[consoleS.card, consoleS.statGrid, { borderColor: c.border, backgroundColor: c.card }]}>
+                <View style={[consoleS.statRow, { borderBottomWidth: 1, borderBottomColor: c.border }]}>
+                  <ConsoleStat label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} TOTAL`} accent />
+                  <View style={[consoleS.vDivider, { backgroundColor: c.border }]} />
+                  <ConsoleStat label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} TOTAL`} />
+                </View>
+                <View style={consoleS.statRow}>
+                  <ConsoleStat label="Games Played" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} />
+                  <View style={[consoleS.vDivider, { backgroundColor: c.border }]} />
+                  <ConsoleStat label="Win Record" value={`${winRate}%`} sub={`${summary.wins}-${summary.losses} OVERALL`} />
+                </View>
+              </View>
+            </View>
 
-        <SectionHeader title="Playmaking & Defense" />
-        {cardRows(defenseCards)}
+            <View>
+              <Text style={[consoleS.sectionTitle, { color: c.mutedForeground, marginTop: 12 }]}>PLAYMAKING & DEFENSE</Text>
+              <View style={[consoleS.card, consoleS.statGrid, { borderColor: c.border, backgroundColor: c.card }]}>
+                <View style={[consoleS.statRow, { borderBottomWidth: 1, borderBottomColor: c.border }]}>
+                  <ConsoleStat label="Assists / GM" value={summary.apg.toFixed(1)} sub={`${summary.assists} TOTAL`} />
+                  <View style={[consoleS.vDivider, { backgroundColor: c.border }]} />
+                  <ConsoleStat label="Turnovers / GM" value={summary.topg.toFixed(1)} sub={`${summary.turnovers} TOTAL`} />
+                </View>
+                <View style={consoleS.statRow}>
+                  <ConsoleStat label="Steals / GM" value={summary.spg.toFixed(1)} sub={`${summary.steals} TOTAL`} />
+                  <View style={[consoleS.vDivider, { backgroundColor: c.border }]} />
+                  <ConsoleStat label="Blocks / GM" value={summary.bpg.toFixed(1)} sub={`${summary.blocks} TOTAL`} />
+                </View>
+              </View>
+            </View>
 
-        <SectionHeader title="Shooting Efficiency" flush />
-        <View style={tabletS.shootingRow}>
-          <View style={[tabletS.gaugeCard, { borderColor: c.border, backgroundColor: c.card }]}>
-            <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
+            {!isLandscape && (
+              <View>
+                <Text style={[consoleS.sectionTitle, { color: c.mutedForeground, marginTop: 12 }]}>SHOOTING EFFICIENCY</Text>
+                <View style={[consoleS.card, { borderColor: c.border, backgroundColor: c.card, paddingVertical: 28, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-around' }]}>
+                  <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
+                  <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
+                  <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
+                </View>
+              </View>
+            )}
           </View>
-          <View style={[tabletS.gaugeCard, { borderColor: c.border, backgroundColor: c.card }]}>
-            <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
-          </View>
-          <View style={[tabletS.gaugeCard, { borderColor: c.border, backgroundColor: c.card }]}>
-            <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
-          </View>
+
         </View>
         <View style={{ height: 40 }} />
       </View>
@@ -731,118 +806,6 @@ const heroS = StyleSheet.create({
   },
 });
 
-const tabletS = StyleSheet.create({
-  dashboard: {
-    width: '100%',
-  },
-  hero: {
-    minHeight: 220,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 24,
-    marginBottom: 8,
-  },
-  flashRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginBottom: 12,
-  },
-  liveLabel: {
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 2.4,
-  },
-  avatarArea: {
-    position: 'relative',
-    marginBottom: 10,
-  },
-  avatar: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    borderWidth: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitials: {
-    ...tekoStyle(30),
-  },
-  cameraButton: {
-    position: 'absolute',
-    right: -3,
-    bottom: -3,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playerName: {
-    ...tekoStyle(48),
-    letterSpacing: 1.5,
-    textAlign: 'center',
-  },
-  scopeBadge: {
-    marginTop: 6,
-    paddingHorizontal: 13,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  scopeText: {
-    fontSize: 9,
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 1.1,
-  },
-  shareButton: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    minWidth: 126,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    gap: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shareButtonText: {
-    fontSize: 10,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.7,
-  },
-  fourCardRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  twoCardRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  shootingRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  gaugeCard: {
-    flex: 1,
-    minHeight: 174,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18,
-  },
-});
-
 const lsS = StyleSheet.create({
   row: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
   rowTablet: { alignItems: 'flex-start', width: '100%' },
@@ -943,7 +906,7 @@ export default function DashboardScreen() {
       contentContainerStyle={styles.chips}
     >
       {(players as any[]).map((p) => (
-        <PlayerChip key={p.id} player={p} glossy={isTablet} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} />
+        <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} />
       ))}
     </ScrollView>
   );

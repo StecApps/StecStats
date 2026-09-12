@@ -367,6 +367,8 @@ export default function ScorekeeperScreen() {
   const [liveLoading, setLiveLoading] = useState(false);
   const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
   const [isSharingLiveLink, setIsSharingLiveLink] = useState(false);
+  const [cameraNotice, setCameraNotice] = useState<string | null>(null);
+  const cameraNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A timed-out POST may still have committed server-side. Reuse this ID on
   // retries so the server returns that same session instead of creating a
   // second invite link.
@@ -384,6 +386,9 @@ export default function ScorekeeperScreen() {
     anim.start();
     return () => anim.stop();
   }, [isLive]);
+  useEffect(() => () => {
+    if (cameraNoticeTimerRef.current) clearTimeout(cameraNoticeTimerRef.current);
+  }, []);
 
   // ─── Live broadcast helpers ────────────────────────────────────────────────
   function watchUrl(code: string): string {
@@ -393,8 +398,22 @@ export default function ScorekeeperScreen() {
     return publicOrigin ? `${publicOrigin}/watch/${encodeURIComponent(code)}` : '';
   }
 
+  function showCameraNotice(message: string) {
+    setCameraNotice(message);
+    if (cameraNoticeTimerRef.current) clearTimeout(cameraNoticeTimerRef.current);
+    cameraNoticeTimerRef.current = setTimeout(() => {
+      setCameraNotice(null);
+      cameraNoticeTimerRef.current = null;
+    }, 3200);
+  }
+
   function activateLiveBroadcast(code: string) {
     if (isLive) return;
+    if (recordingStartedRef.current || isRecording) {
+      setShowGoLiveSheet(false);
+      showCameraNotice('Recording protected — Live must be started before recording.');
+      return;
+    }
     setIsLive(true);
     // A record-enabled game keeps the native camera exclusively for the
     // durable local recording. The live viewer receives score updates only.
@@ -435,11 +454,12 @@ export default function ScorekeeperScreen() {
 
   async function startLiveBroadcast() {
     if (liveLoading || isLive) return;
-    if (recordingStartedRef.current) {
-      Alert.alert(
-        'Share before recording',
-        'Opening Messages during recording pauses the iPad camera. Start Go Live and share the link first, then start the game clock and recording.',
-      );
+    if (recordingStartedRef.current || isRecording) {
+      // Never present a native Alert/Modal or begin networking over an active
+      // iPad CameraView recording. Native presentation can interrupt the
+      // AVFoundation session even when WebRTC camera capture is disabled.
+      showCameraNotice('Recording protected — finish this game before using Live.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       return;
     }
 
@@ -970,6 +990,9 @@ export default function ScorekeeperScreen() {
     }
     recordingStartedRef.current = true;
     const myGen = ++recordingGenerationRef.current;
+    // Native modal presentation over CameraView can interrupt AVFoundation on
+    // iPad. Recording always wins: close any prepared invite sheet first.
+    setShowGoLiveSheet(false);
     setIsRecording(true);
     try {
       recordingPromiseRef.current = cameraRef.current.recordAsync({ mute: micMuted } as any) as Promise<{ uri: string } | undefined>;
@@ -2356,12 +2379,17 @@ export default function ScorekeeperScreen() {
                   {isRecording ? <View style={styles.recDot} /> : <Ionicons name="videocam" size={10} color="#fff" />}
                   <Text style={styles.recText}>{isRecording ? 'REC' : 'CAM'}</Text>
                 </View>
-                {isLive && (
+                {isLive && (isRecording ? (
+                  <View style={styles.liveBadge}>
+                    <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
+                    <Text style={styles.liveText}>LIVE · REC SAFE</Text>
+                  </View>
+                ) : (
                   <TouchableOpacity onPress={() => setShowGoLiveSheet(true)} style={styles.liveBadge} activeOpacity={0.8}>
                     <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
                     <Text style={styles.liveText}>LIVE</Text>
                   </TouchableOpacity>
-                )}
+                ))}
               </View>
             )}
 
@@ -2427,16 +2455,27 @@ export default function ScorekeeperScreen() {
 
                 {/* Go Live / Live indicator */}
                 <TouchableOpacity
-                  onPress={isLive ? () => setShowGoLiveSheet(true) : startLiveBroadcast}
+                  onPress={() => {
+                    if (recordingStartedRef.current || isRecording) {
+                      showCameraNotice('Recording protected — Live controls are locked.');
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                      return;
+                    }
+                    if (isLive) setShowGoLiveSheet(true);
+                    else startLiveBroadcast();
+                  }}
                   activeOpacity={0.75}
                   disabled={liveLoading}
                   style={[
                     styles.camControlBtn,
                     isLive && { backgroundColor: 'rgba(239,68,68,0.85)' },
+                    isRecording && { opacity: 0.48 },
                   ]}
                 >
                   {liveLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
+                  ) : isRecording ? (
+                    <Ionicons name="lock-closed" size={17} color="#fff" />
                   ) : isLive ? (
                     <Ionicons name="radio" size={18} color="#fff" />
                   ) : (
@@ -2477,14 +2516,10 @@ export default function ScorekeeperScreen() {
 
             {/* LIVE badge — always reachable even when the camera preview is collapsed */}
             {isLive && (
-              <TouchableOpacity
-                onPress={() => setShowGoLiveSheet(true)}
-                activeOpacity={0.8}
-                style={styles.collapsedLiveBadge}
-              >
+              <View style={styles.collapsedLiveBadge}>
                 <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
-                <Text style={styles.liveText}>LIVE</Text>
-              </TouchableOpacity>
+                <Text style={styles.liveText}>{isRecording ? 'LIVE · REC SAFE' : 'LIVE'}</Text>
+              </View>
             )}
 
             {recordVideo && isRecording && !isLive && (
@@ -2515,6 +2550,12 @@ export default function ScorekeeperScreen() {
               {(1 + cameraZoom * 4).toFixed(1)}×
             </Text>
           </Animated.View>
+        )}
+        {cameraNotice && (
+          <View pointerEvents="none" style={styles.cameraNotice}>
+            <Ionicons name="shield-checkmark" size={16} color="#fff" />
+            <Text style={styles.cameraNoticeText}>{cameraNotice}</Text>
+          </View>
         )}
       </View>
       </GestureDetector>
@@ -2697,6 +2738,29 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       left: 10,
       flexDirection: 'column',
       gap: 6,
+    },
+    cameraNotice: {
+      position: 'absolute',
+      top: 58,
+      left: 14,
+      right: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: 'rgba(15,23,42,0.92)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.2)',
+    },
+    cameraNoticeText: {
+      color: '#fff',
+      fontSize: 12,
+      lineHeight: 16,
+      fontFamily: 'Inter_600SemiBold',
+      textAlign: 'center',
     },
     camControlBtn: {
       width: 34,
