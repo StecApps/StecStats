@@ -57,6 +57,17 @@ jest.mock('@/hooks/useColors', () => ({
   })),
 }));
 
+jest.mock('@/modules/hoops-camera/src', () => ({
+  HoopsCameraView: null,
+  isHoopsCameraAvailable: false,
+  isHoopsCameraWebRTCAvailable: false,
+  requestHoopsCameraPermissionsAsync: jest.fn(),
+  startHoopsCameraRecordingAsync: jest.fn(),
+  stopHoopsCameraRecordingAsync: jest.fn(),
+  createHoopsCameraLiveVideoAsync: jest.fn(),
+  releaseHoopsCameraLiveVideoAsync: jest.fn(),
+}));
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: jest.fn(() => ({ top: 0, bottom: 0, left: 0, right: 0 })),
 }));

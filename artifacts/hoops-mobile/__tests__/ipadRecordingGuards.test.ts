@@ -13,14 +13,28 @@ describe('iPad recording safeguards', () => {
   test('does not wait forever when native stopRecording hangs during camera switch', () => {
     expect(source).toContain('Promise.race([');
     expect(source).toContain('new Promise<undefined>((resolve) => setTimeout(resolve, 3_000))');
+    expect(source).toContain('watchdog is feedback only');
+    expect(source).toContain('camera switch will continue when the clip is safe.');
+    expect(source).not.toContain('recordingCompletionRef.current?.resolve(result)');
     expect(source).toContain('recordingGenerationRef.current += 1');
+    expect(source).toContain('recordingPromiseRef.current = completion');
+    expect(source).toContain('startHoopsCameraRecordingAsync(micMuted)');
+    expect(source).not.toContain('could not apply recording mute');
   });
 
-  test('reserves the mobile camera for local recording instead of opening dual capture sessions', () => {
+  test('shares the compiled iOS camera pipeline while preserving old-binary fallback', () => {
     expect(source).toContain('if (recordVideo) {');
     expect(source).not.toContain("Platform.OS === 'android' && recordingStartedRef.current");
     expect(source).not.toContain("Platform.OS === 'android' && webrtcStreamRef.current");
-    expect(source).toContain('webrtcCameraFailedRef.current = recordVideo');
+    expect(source).toContain('recordVideo && !sharedCameraMode');
+    expect(source).toContain('createHoopsCameraLiveVideoAsync');
+    expect(source).toContain('releaseHoopsCameraLiveVideoAsync');
+    expect(source).toContain('if (webrtcStreamRef.current && !sharedCameraMode)');
+    expect(source).toContain('getUserMedia({ audio: true, video: false })');
+    expect(source).toContain('Do not call getUserMedia with video');
+    expect(source).toContain('liveMediaGenerationRef');
+    expect(source).toContain('liveSessionGenerationRef');
+    expect(source).toContain('if (!isCurrentSession()) return;');
     expect(source).toContain("const cameraLandW = isTablet ? '70%' : '55%'");
     expect(source).toContain('const portraitRatio = isTablet ? 0.70');
   });
@@ -47,10 +61,13 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('{watchUrl(liveCode)}');
   });
 
-  test('never presents Live modals or starts networking over an active recording', () => {
-    expect(source).toContain('if (recordingStartedRef.current || isRecording) {');
+  test('starts shared live video in place without presenting a modal over recording', () => {
+    expect(source).toContain('if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {');
     expect(source).toContain('Recording protected — finish this game before using Live.');
     expect(source).toContain('Recording protected — Live controls are locked.');
+    expect(source).toContain('activateLiveBroadcast(code);');
+    expect(source).toContain('Live video started — recording is still protected.');
+    expect(source).toContain('Live video is active. Share the link after recording.');
     expect(source).toContain('setShowGoLiveSheet(false);');
     expect(source).toContain('<Ionicons name="lock-closed"');
     expect(source).toContain('LIVE · REC SAFE');

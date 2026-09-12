@@ -58,9 +58,23 @@ const mediaDevices = {
   }),
 };
 
+// MediaStream is used by the HoopsCamera facade to wrap the native shared
+// video track returned by the patched WebRTC bridge.
+class MediaStream {
+  constructor(info = {}) {
+    this.id = info.streamId || 'mock-stream';
+    this._tracks = info.tracks || [];
+  }
+
+  getTracks() { return this._tracks; }
+  getVideoTracks() { return this._tracks.filter((track) => track.kind === 'video'); }
+  getAudioTracks() { return this._tracks.filter((track) => track.kind === 'audio'); }
+}
+
 module.exports = {
   RTCPeerConnection,
   RTCIceCandidate,
   RTCSessionDescription,
   mediaDevices,
+  MediaStream,
 };

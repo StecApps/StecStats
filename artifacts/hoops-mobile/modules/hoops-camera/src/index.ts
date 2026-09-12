@@ -55,8 +55,9 @@ export type HoopsCameraViewProps = ViewProps & {
 type HoopsCameraNativeModule = {
   getPermissionStatusAsync(): Promise<HoopsCameraPermissionStatus>;
   requestPermissionsAsync(): Promise<HoopsCameraPermissionStatus>;
-  startRecordingAsync(): Promise<HoopsCameraRecording>;
+  startRecordingAsync(muted: boolean): Promise<HoopsCameraRecording>;
   stopRecordingAsync(): Promise<HoopsCameraRecording>;
+  setMicrophoneMutedAsync(muted: boolean): Promise<void>;
   setFacingAsync(facing: CameraFacing): Promise<void>;
   setZoomAsync(zoom: number): Promise<void>;
   addListener<EventName extends keyof HoopsCameraEventMap>(
@@ -167,12 +168,16 @@ export function requestHoopsCameraPermissionsAsync(): Promise<HoopsCameraPermiss
   return requireHoopsCamera().requestPermissionsAsync();
 }
 
-export function startHoopsCameraRecordingAsync(): Promise<HoopsCameraRecording> {
-  return requireHoopsCamera().startRecordingAsync();
+export function startHoopsCameraRecordingAsync(muted = false): Promise<HoopsCameraRecording> {
+  return requireHoopsCamera().startRecordingAsync(muted);
 }
 
 export function stopHoopsCameraRecordingAsync(): Promise<HoopsCameraRecording> {
   return requireHoopsCamera().stopRecordingAsync();
+}
+
+export function setHoopsCameraMicrophoneMutedAsync(muted: boolean): Promise<void> {
+  return requireHoopsCamera().setMicrophoneMutedAsync(muted);
 }
 
 export function setHoopsCameraFacingAsync(facing: CameraFacing): Promise<void> {
@@ -236,6 +241,7 @@ export async function releaseHoopsCameraLiveVideoAsync(): Promise<void> {
 // native module object itself.
 export const startRecordingAsync = startHoopsCameraRecordingAsync;
 export const stopRecordingAsync = stopHoopsCameraRecordingAsync;
+export const setMicrophoneMutedAsync = setHoopsCameraMicrophoneMutedAsync;
 export const setFacingAsync = setHoopsCameraFacingAsync;
 export const setZoomAsync = setHoopsCameraZoomAsync;
 export const createLiveVideoAsync = createHoopsCameraLiveVideoAsync;

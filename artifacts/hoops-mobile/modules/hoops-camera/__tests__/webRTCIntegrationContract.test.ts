@@ -20,6 +20,7 @@ describe('HoopsCamera WebRTC integration contract', () => {
   it('keeps the capture and WebRTC boundaries explicit', () => {
     const iosDirectory = join(__dirname, '..', 'ios');
     const session = readFileSync(join(iosDirectory, 'HoopsCameraSession.swift'), 'utf8');
+    const module = readFileSync(join(iosDirectory, 'HoopsCameraModule.swift'), 'utf8');
     const router = readFileSync(join(iosDirectory, 'HoopsCameraFrameRouter.swift'), 'utf8');
     const podspec = readFileSync(join(iosDirectory, 'HoopsCamera.podspec'), 'utf8');
     const patch = readFileSync(
@@ -33,6 +34,13 @@ describe('HoopsCamera WebRTC integration contract', () => {
     expect(podspec).not.toContain("s.dependency 'react-native-webrtc'");
     expect(router).toContain('DispatchSemaphore(value: 1)');
     expect(session).toContain('alwaysDiscardsLateVideoFrames');
+    expect(session).toContain('setMicrophoneMuted');
+    expect(session).toContain('audioConnection.isEnabled = !microphoneMuted');
+    expect(session).toContain('func startRecording(muted: Bool');
+    expect(session).toContain('self.microphoneMuted = muted');
+    expect(session).toContain('movieOutput.startRecording');
+    expect(module).toContain('setMicrophoneMutedAsync');
+    expect(module).toContain('(muted: Bool, promise: Promise)');
     expect(patch).toContain('self.localTracks[trackId] = videoTrack');
     expect(patch).toContain('RTCCVPixelBuffer');
     expect(patch).toContain('createHoopsCameraVideoStream');

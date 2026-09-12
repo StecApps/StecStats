@@ -129,6 +129,16 @@ jest.mock('@/lib/saveGame',         () => ({ saveGame: jest.fn(), defaultLine: (
 jest.mock('@/lib/uploadStallAlert', () => ({ makeUploadStallHandler: jest.fn(() => jest.fn()) }));
 jest.mock('@/lib/fetchIceServers',  () => ({ fetchIceServers: jest.fn(async () => []) }));
 jest.mock('@/lib/drainPendingViewers', () => ({ drainPendingViewers: jest.fn() }));
+jest.mock('@/modules/hoops-camera/src', () => ({
+  HoopsCameraView: null,
+  isHoopsCameraAvailable: false,
+  isHoopsCameraWebRTCAvailable: false,
+  requestHoopsCameraPermissionsAsync: jest.fn(),
+  startHoopsCameraRecordingAsync: jest.fn(),
+  stopHoopsCameraRecordingAsync: jest.fn(),
+  createHoopsCameraLiveVideoAsync: jest.fn(),
+  releaseHoopsCameraLiveVideoAsync: jest.fn(),
+}));
 
 // ── expo-camera — permissions controlled per-test via the imported mock refs ──
 // NOTE: jest.mock factories are hoisted before variable declarations, so we

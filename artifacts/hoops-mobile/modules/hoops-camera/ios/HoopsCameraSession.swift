@@ -77,6 +77,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   private var recordingPromise: Promise?
   private var facing: AVCaptureDevice.Position = .back
   private var normalizedZoom: CGFloat = 0
+  private var microphoneMuted = false
 
   var eventHandler: ((String, [String: Any]) -> Void)?
   var previewReadyHandler: (() -> Void)?
@@ -239,7 +240,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     }
   }
 
-  func startRecording(promise: Promise) {
+  func startRecording(muted: Bool, promise: Promise) {
     sessionQueue.async {
       guard !self.isRecording else {
         promise.reject(HoopsCameraSessionError.alreadyRecording)
@@ -265,6 +266,8 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       if !self.session.isRunning {
         self.startSessionIfPossible()
       }
+      self.microphoneMuted = muted
+      self.applyMicrophoneMute()
       let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
       let url = cacheDirectory
         .appendingPathComponent("hoops-recording-\(UUID().uuidString)")
@@ -288,6 +291,14 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.recordingPromise = self.recordingPromise ?? promise
       self.stopPromise = promise
       self.movieOutput.stopRecording()
+    }
+  }
+
+  func setMicrophoneMuted(_ value: Bool, promise: Promise? = nil) {
+    sessionQueue.async {
+      self.microphoneMuted = value
+      self.applyMicrophoneMute()
+      promise?.resolve(nil)
     }
   }
 
@@ -391,6 +402,15 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       device.unlockForConfiguration()
     } catch {
       emitError(.recordingFailed("Unable to apply camera zoom: \(error.localizedDescription)"), recoverable: true)
+    }
+  }
+
+  private func applyMicrophoneMute() {
+    // Muting the movie output connection preserves the shared capture session
+    // and its WebRTC video frames. It also works when toggled during an active
+    // recording without stopping/finalizing the current segment.
+    if let audioConnection = movieOutput.connection(with: .audio) {
+      audioConnection.isEnabled = !microphoneMuted
     }
   }
 

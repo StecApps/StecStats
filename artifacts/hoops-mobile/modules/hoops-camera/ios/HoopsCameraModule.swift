@@ -43,12 +43,16 @@ public final class HoopsCameraModule: Module {
       controller.requestPermissions(promise: promise)
     }
 
-    AsyncFunction("startRecordingAsync") { (promise: Promise) in
-      controller.startRecording(promise: promise)
+    AsyncFunction("startRecordingAsync") { (muted: Bool, promise: Promise) in
+      controller.startRecording(muted: muted, promise: promise)
     }
 
     AsyncFunction("stopRecordingAsync") { (promise: Promise) in
       controller.stopRecording(promise: promise)
+    }
+
+    AsyncFunction("setMicrophoneMutedAsync") { (muted: Bool, promise: Promise) in
+      controller.setMicrophoneMuted(muted, promise: promise)
     }
 
     AsyncFunction("setFacingAsync") { (facing: String, promise: Promise) in
