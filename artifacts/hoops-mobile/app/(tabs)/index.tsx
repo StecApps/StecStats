@@ -186,7 +186,7 @@ const chipS = StyleSheet.create({
     minHeight: 58,
     paddingHorizontal: 18,
     paddingVertical: 12,
-    borderRadius: 24,
+    borderRadius: 999,
     borderWidth: 1,
     marginRight: 8,
   },
@@ -487,7 +487,12 @@ function PlayerDashboard({ player }: { player: any }) {
           >
             {sharing
               ? <ActivityIndicator size="small" color={c.foreground} />
-              : <Ionicons name="share-outline" size={18} color={c.foreground} />}
+              : (
+                <>
+                  <Ionicons name="share-outline" size={16} color={c.foreground} />
+                  <Text style={[tabletS.shareButtonText, { color: c.foreground }]}>SHARE PLAYER</Text>
+                </>
+              )}
           </GlossyButton>
         </View>
 
@@ -798,12 +803,20 @@ const tabletS = StyleSheet.create({
     position: 'absolute',
     top: 16,
     right: 16,
-    width: 40,
+    minWidth: 126,
     height: 40,
     borderRadius: 20,
     borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    gap: 7,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  shareButtonText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.7,
   },
   fourCardRow: {
     flexDirection: 'row',

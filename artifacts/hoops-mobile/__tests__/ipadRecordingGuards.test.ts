@@ -47,6 +47,13 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('{watchUrl(liveCode)}');
   });
 
+  test('keeps compact iPad stat controls readable and near the shooting controls', () => {
+    expect(source).toContain("UNDO{'\\n'}MAKE");
+    expect(source).toContain("UNDO{'\\n'}MISS");
+    expect(source).toContain("justifyContent: 'flex-start'");
+    expect(source).not.toContain("justifyContent: isTablet ? 'space-evenly' : 'flex-start'");
+  });
+
   test('shares an absolute encoded public watch URL', () => {
     expect(source).toContain('const publicOrigin = API_BASE');
     expect(source).toContain('/watch/${encodeURIComponent(code)}');

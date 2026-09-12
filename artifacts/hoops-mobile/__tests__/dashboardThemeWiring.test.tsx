@@ -241,6 +241,8 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(glossyButtonSrc).toContain(": [c.primary, '#8A2D09', '#090504']");
     expect(rawSrc).toContain('minWidth: 132');
     expect(rawSrc).toContain('minHeight: 58');
+    expect(rawSrc).toContain('borderRadius: 999');
+    expect(rawSrc).toContain('SHARE PLAYER');
     expect(rawSrc).toContain('<SectionHeader title="Playmaking & Defense" />');
     expect(rawSrc).toContain('<SectionHeader title="Shooting Efficiency" />');
   });

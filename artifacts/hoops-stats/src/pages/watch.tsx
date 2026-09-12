@@ -1177,6 +1177,12 @@ export default function WatchStream() {
           <div className="flex items-center gap-1.5 rounded-full bg-red-600/90 px-3 py-1 text-xs font-bold text-white">
             <Radio className="w-3 h-3" /> SCORE FEED
           </div>
+          <div className="max-w-md px-5 text-center">
+            <p className="text-base font-semibold text-white">The coach is recording locally</p>
+            <p className="mt-1 text-sm text-white/60">
+              Live video is unavailable while the iPad saves the full game video. Scores and plays will update here.
+            </p>
+          </div>
           <div className="flex items-center gap-8">
             <div className="flex flex-col items-center gap-1">
               <span className="text-white/60 text-sm font-semibold uppercase tracking-wider truncate max-w-[30vw]">

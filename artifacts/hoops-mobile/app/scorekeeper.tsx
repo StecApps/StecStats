@@ -1961,7 +1961,7 @@ export default function ScorekeeperScreen() {
                           activeOpacity={0.7}
                           style={[styles.compactUndoBtn, { borderColor: colors.border, opacity: made === 0 ? 0.3 : 1 }]}
                         >
-                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>−Mk</Text>
+                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>UNDO{'\n'}MAKE</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleShoot('undoMiss', s.madeKey as any, s.attKey as any, s.statField)}
@@ -1969,7 +1969,7 @@ export default function ScorekeeperScreen() {
                           activeOpacity={0.7}
                           style={[styles.compactUndoBtn, { borderColor: colors.border, opacity: hasMiss ? 1 : 0.3 }]}
                         >
-                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>−Ms</Text>
+                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>UNDO{'\n'}MISS</Text>
                         </TouchableOpacity>
                       </View>
                     );
@@ -2955,8 +2955,8 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       paddingHorizontal: isTablet ? 5 : 8,
       paddingTop: isTablet ? 8 : 3,
       paddingBottom: isTablet ? 8 : 3,
-      gap: isTablet ? 8 : 5,
-      justifyContent: isTablet ? 'space-evenly' : 'flex-start',
+      gap: isTablet ? 12 : 5,
+      justifyContent: 'flex-start',
     },
     compactShootGrid: { gap: isTablet ? 8 : 4 },
     compactBtnRow: { flexDirection: 'row', gap: 5 },
@@ -3009,17 +3009,24 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactUndoBtn: {
       flex: 1,
-      height: isTablet ? 30 : 20,
+      height: isTablet ? 36 : 24,
       borderRadius: 5,
       borderWidth: 1,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
     },
     compactUndoBtnText: {
-      fontSize: 9,
-      fontFamily: 'Inter_500Medium',
+      fontSize: isTablet ? 9 : 7,
+      lineHeight: isTablet ? 11 : 9,
+      textAlign: 'center',
+      fontFamily: 'Inter_700Bold',
     },
-    compactCountStrip: { flexDirection: 'row', gap: 4, minHeight: isTablet ? 82 : undefined },
+    compactCountStrip: {
+      flexDirection: 'row',
+      gap: 4,
+      minHeight: isTablet ? 90 : undefined,
+      marginTop: isTablet ? 4 : 0,
+    },
     compactCountCard: {
       flex: 1,
       borderRadius: 8,
