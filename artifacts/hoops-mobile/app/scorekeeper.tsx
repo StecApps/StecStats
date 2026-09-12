@@ -119,6 +119,11 @@ type RecordingCameraPreviewProps = {
   onCameraReady: () => void;
 };
 
+// Emergency production safety switch. Build 20260924 can terminate while the
+// shared AVFoundation session initializes on physical iPads. Keep recording on
+// the stable Expo CameraView path until the native lifecycle fix ships.
+const ENABLE_SHARED_CAMERA_MODE = false;
+
 // Recording runs in a native AVFoundation session. Keep CameraView isolated
 // from scoring state updates so a make/miss tap does not resend new style props
 // to the active native recorder while it is writing a movie file.
@@ -373,7 +378,10 @@ export default function ScorekeeperScreen() {
   const cameraReadyRef = useRef(false);
   const pendingRecordRef = useRef(false);
   const sharedCameraMode =
-    Platform.OS === 'ios' && isHoopsCameraAvailable && isHoopsCameraWebRTCAvailable;
+    ENABLE_SHARED_CAMERA_MODE &&
+    Platform.OS === 'ios' &&
+    isHoopsCameraAvailable &&
+    isHoopsCameraWebRTCAvailable;
   const [hoopsCameraPermission, setHoopsCameraPermission] = useState<{
     camera: string;
     microphone: string;

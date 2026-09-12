@@ -243,6 +243,8 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('numberOfLines={1}');
     expect(rawSrc).toContain('adjustsFontSizeToFit');
     expect(rawSrc).toContain('minimumFontScale={0.72}');
+    expect(rawSrc).toContain("playerName: { ...tekoStyle(52), width: '100%', paddingHorizontal: 4");
+    expect(rawSrc).not.toContain('playerName: { ...tekoStyle(52), lineHeight: 52');
     expect(rawSrc).toContain('PLAYMAKING & DEFENSE');
     expect(rawSrc).toContain('SHOOTING EFFICIENCY');
     expect(rawSrc).toContain('isLandscape ? { flex: 4 }');

@@ -310,7 +310,7 @@ const consoleS = StyleSheet.create({
   liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   eyebrow: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1.5 },
-  playerName: { ...tekoStyle(52), lineHeight: 52, letterSpacing: 1, marginBottom: 20 },
+  playerName: { ...tekoStyle(52), width: '100%', paddingHorizontal: 4, letterSpacing: 1, marginBottom: 20 },
   actionButtons: { flexDirection: 'row', gap: 8 },
   actionBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   shareBtn: { minWidth: 104, height: 44, borderRadius: 22, borderWidth: 1, paddingHorizontal: 16, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },

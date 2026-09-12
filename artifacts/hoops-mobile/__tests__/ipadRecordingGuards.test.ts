@@ -91,6 +91,11 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('LIVE · REC SAFE');
   });
 
+  test('keeps the unstable shared native camera disabled for build 20260924', () => {
+    expect(source).toContain('const ENABLE_SHARED_CAMERA_MODE = false');
+    expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
+  });
+
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
     expect(source).toContain("UNDO{'\\n'}MAKE");
     expect(source).toContain("UNDO{'\\n'}MISS");
