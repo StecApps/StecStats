@@ -306,11 +306,11 @@ const consoleS = StyleSheet.create({
   card: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
 
   identityCard: { flex: 1, padding: 24, minHeight: 340 },
-  identityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, zIndex: 10 },
+  identityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, zIndex: 10 },
   liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   liveDot: { width: 6, height: 6, borderRadius: 3 },
   eyebrow: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1.5 },
-  playerName: { ...tekoStyle(52), lineHeight: 52, letterSpacing: 1 },
+  playerName: { ...tekoStyle(52), lineHeight: 52, letterSpacing: 1, marginBottom: 20 },
   actionButtons: { flexDirection: 'row', gap: 8 },
   actionBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   shareBtn: { minWidth: 104, height: 44, borderRadius: 22, borderWidth: 1, paddingHorizontal: 16, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
@@ -478,15 +478,10 @@ function PlayerDashboard({ player }: { player: any }) {
                 style={StyleSheet.absoluteFillObject}
               />
               <View style={consoleS.identityHeader}>
-                <View style={{ flex: 1, paddingRight: 16 }}>
-                  <View style={consoleS.liveIndicator}>
-                    <View style={[consoleS.liveDot, { backgroundColor: c.primary }]} />
-                    <Text style={[consoleS.eyebrow, { color: c.primary }]}>
-                      {summary.seasonScope === 'career' ? 'CAREER DASHBOARD' : 'SEASON DASHBOARD'}
-                    </Text>
-                  </View>
-                  <Text style={[consoleS.playerName, { color: c.foreground }]} numberOfLines={2}>
-                    {player.name.toUpperCase()}
+                <View style={consoleS.liveIndicator}>
+                  <View style={[consoleS.liveDot, { backgroundColor: c.primary }]} />
+                  <Text style={[consoleS.eyebrow, { color: c.primary }]}>
+                    {summary.seasonScope === 'career' ? 'CAREER DASHBOARD' : 'SEASON DASHBOARD'}
                   </Text>
                 </View>
                 <View style={consoleS.actionButtons}>
@@ -514,6 +509,14 @@ function PlayerDashboard({ player }: { player: any }) {
                   </TouchableOpacity>
                 </View>
               </View>
+              <Text
+                style={[consoleS.playerName, { color: c.foreground }]}
+                numberOfLines={2}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+              >
+                {player.name.toUpperCase()}
+              </Text>
 
               <View style={consoleS.avatarContainer}>
                 <View style={[consoleS.avatarWrap, { borderColor: c.border, backgroundColor: primaryRgba(0.04) }]}>
