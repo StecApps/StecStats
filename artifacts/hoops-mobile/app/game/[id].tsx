@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,6 @@ import {
   Share,
   KeyboardAvoidingView,
   Pressable,
-  AppState,
 } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
@@ -31,13 +30,58 @@ import {
 import { useLayoutEffect } from 'react';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
+import { saveReviewVideo } from '@/lib/saveReviewVideo';
 import { setVideoCacheSizeAsync, VideoView, useVideoPlayer } from 'expo-video';
+import * as Updates from 'expo-updates';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
+import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
+import { reelProgressText } from '@/lib/reelProgressText';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
   : '';
+const WEB_BASE = process.env.EXPO_PUBLIC_DOMAIN
+  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+  : 'https://stecstats.com';
+
+async function getPublicReelUrl(
+  gameId: number,
+  reelType: 'highlight' | 'lowlight',
+  getToken: () => Promise<string | null>,
+) {
+  const token = await getToken();
+  if (!token) throw new Error('Your session expired. Please sign in again.');
+  const res = await fetch(`${API_BASE}/api/games/${gameId}/share-token`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Could not open the complete video.');
+  const { shareToken } = await res.json() as { shareToken: string };
+  return `${WEB_BASE}/${reelType}/${shareToken}`;
+}
+const RUNNING_UPDATE_ID = Updates.updateId ?? (Updates.isEmbeddedLaunch ? 'embedded-build' : 'development');
+
+function reelDownloadStatus(download: {
+  status: string;
+  bytesWritten?: number;
+  expectedBytes?: number;
+  error?: string;
+}) {
+  if (download.status === 'downloaded') return 'Downloaded on this device';
+  const progress = download.expectedBytes && download.expectedBytes > 0
+    ? ` · ${Math.min(100, Math.round(((download.bytesWritten ?? 0) / download.expectedBytes) * 100))}%`
+    : download.bytesWritten
+      ? ` · ${(download.bytesWritten / 1024 / 1024).toFixed(1)} MB`
+      : '';
+  const state = download.status === 'failed'
+    ? 'Download failed'
+    : download.status === 'downloading'
+      ? 'Downloading'
+      : 'Queued';
+  return `${state}${progress}${download.error ? ` · ${download.error}` : ''} · OTA ${RUNNING_UPDATE_ID}`;
+}
 
 // Expo Video defaults to a 1 GB LRU cache. A single full-game recording can
 // approach that size, which caused previously watched footage to be evicted
@@ -54,30 +98,44 @@ async function fetchStreamUrl(
   gameId: number,
   type: 'video' | 'highlight' | 'lowlight',
   token: string,
-): Promise<{ url: string; proxyReady: boolean; proxySkipped: boolean; isHls: boolean }> {
+): Promise<{ url: string; downloadUrl: string; proxyReady: boolean; proxySkipped: boolean; isHls: boolean }> {
   const res = await fetch(`${API_BASE}/api/games/${gameId}/stream-token/${type}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Could not get stream token');
-  const { token: streamToken, proxyReady, proxySkipped, proxyType, streamUrl } = await res.json();
+  const { token: streamToken, proxyReady, proxySkipped, proxyType, streamUrl, downloadUrl } = await res.json();
 
   // proxyType==='hls' → long game served as an HLS playlist backed by proxy
   // chunks; AVPlayer on iOS handles M3U8 natively.  Use the playlist URL
   // directly instead of the single-file stream endpoint.
   //
-  // For non-HLS streams the server returns a pre-generated `streamUrl` (a
-  // 5 h GCS signed URL).  Passing it directly to expo-video means ALL seeks
-  // — including HTTP Range requests — go to GCS without touching the server.
-  // This avoids relying on AVPlayer retaining the 302 redirect target across
-  // Range seeks (unspecified behaviour), and means the 4 h stream token is
-  // irrelevant for playback: the GCS URL stays valid for 1 h after the token
-  // expires so the coach can seek freely throughout a long review session.
+  // Native reel downloads must use the server's GCS-SDK range proxy. Replit's
+  // signed object URLs can return the right byte count but incorrect bytes for
+  // non-zero Range resumes, producing a locally "complete" MP4 that stops at
+  // the resume boundary. Web playback and full-game video retain direct URLs.
+  const useReelRangeProxy =
+    Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight');
+  const reelRangeProxyUrl =
+    `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`;
   const url = proxyType === 'hls'
     ? `${API_BASE}/api/games/${gameId}/hls/playlist.m3u8?t=${streamToken}`
-    : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
+    : useReelRangeProxy
+      ? reelRangeProxyUrl
+      : (streamUrl ?? `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}`);
 
   return {
     url,
+    // For reel HLS, streamUrl remains the authenticated resumable MP4 proxy.
+    // It is intentionally separate from the native playback playlist.
+    // Native iOS downloads use the signed GCS URL as a single NSURLSession
+    // background transfer. The expo/fetch Range path never left physical
+    // devices even though it worked in unit tests. If the direct URL is
+    // unavailable, retain the authenticated HTTPS proxy as a fallback.
+    downloadUrl: useReelRangeProxy
+      ? (streamUrl ?? reelRangeProxyUrl)
+      : (downloadUrl?.startsWith('/') ? `${API_BASE}${downloadUrl}` : downloadUrl)
+        ?? streamUrl
+        ?? reelRangeProxyUrl,
     isHls: proxyType === 'hls',
     // proxyReady=false → server is still building the proxy (H.264 or HLS);
     // raw VP9/WebM is unplayable on iOS so we show a spinner and keep polling.
@@ -90,6 +148,7 @@ async function fetchStreamUrl(
 
 type CachedStream = {
   url: string;
+  downloadUrl: string;
   isHls: boolean;
   expiresAt: number;
 };
@@ -104,6 +163,55 @@ function streamCacheKey(gameId: number, type: 'video' | 'highlight' | 'lowlight'
   return `${gameId}:${type}`;
 }
 
+async function getReelPlaybackUrl(
+  gameId: number,
+  type: 'highlight' | 'lowlight',
+  objectPath: string,
+  remoteUrl: string,
+  forceFresh = false,
+) {
+  if (Platform.OS === 'web') return remoteUrl;
+  if (forceFresh) await reelDownloadManager.invalidate(gameId, type, objectPath);
+  const existing = reelDownloadManager.get(gameId, type, objectPath);
+  if (existing?.status === 'downloaded' && existing.uri) return existing.uri;
+  // iOS reel playback is local-only. The production proxy can abort progressive
+  // playback after a few seconds, and an expired signed URL leaves AVPlayer black.
+  // Keep the native surface mounted, but do not attach media until the background
+  // manager has produced a complete local file.
+  await reelDownloadManager.enqueue({ gameId, type, objectPath, url: remoteUrl }, true);
+  return null;
+}
+
+function unsignedStreamIdentity(streamUrl: string) {
+  try {
+    const parsed = new URL(streamUrl);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return streamUrl.split(/[?#]/, 1)[0];
+  }
+}
+
+function highlightClipIdentity(index: number, streamUrl: string) {
+  return `playback-v1/clip-${index}/${unsignedStreamIdentity(streamUrl)}`;
+}
+
+function waitForReelDownload(gameId: number, type: 'highlight' | 'lowlight', objectPath: string) {
+  return new Promise<string>((resolve, reject) => {
+    const inspect = () => {
+      const entry = reelDownloadManager.get(gameId, type, objectPath);
+      if (entry?.status === 'downloaded' && entry.uri) {
+        unsubscribe();
+        resolve(entry.uri);
+      } else if (entry?.status === 'failed') {
+        unsubscribe();
+        reject(new Error(entry.error ?? 'Download failed'));
+      }
+    };
+    const unsubscribe = reelDownloadManager.subscribe(inspect);
+    inspect();
+  });
+}
+
 async function getReusableStreamUrl(
   gameId: number,
   type: 'video' | 'highlight' | 'lowlight',
@@ -114,6 +222,7 @@ async function getReusableStreamUrl(
   if (cached && cached.expiresAt > Date.now()) {
     return {
       url: cached.url,
+      downloadUrl: cached.downloadUrl,
       isHls: cached.isHls,
       proxyReady: true,
       proxySkipped: false,
@@ -124,6 +233,7 @@ async function getReusableStreamUrl(
   if (result.proxyReady) {
     streamUrlCache.set(key, {
       url: result.url,
+      downloadUrl: result.downloadUrl,
       isHls: result.isHls,
       expiresAt: Date.now() + STREAM_URL_REUSE_MS,
     });
@@ -131,12 +241,19 @@ async function getReusableStreamUrl(
   return result;
 }
 
-function playbackSource(url: string, isHls: boolean) {
+function playbackSource(url: string, isHls: boolean, allowCaching = true) {
+  if (url.startsWith('file:')) {
+    return {
+      uri: url,
+      useCaching: false,
+      contentType: 'progressive' as const,
+    };
+  }
   return {
     uri: url,
     // iOS cannot cache HLS through Expo Video, but progressive MP4 footage,
     // highlights, and lowlights are cached on both iOS and Android.
-    useCaching: !isHls || Platform.OS === 'android',
+    useCaching: allowCaching && (!isHls || Platform.OS === 'android'),
     contentType: isHls ? 'hls' as const : 'progressive' as const,
   };
 }
@@ -152,6 +269,294 @@ function configureReviewPlayer(player: ReturnType<typeof useVideoPlayer>) {
 }
 
 type Tab = 'stats' | 'video' | 'highlights' | 'lowlights';
+
+type ReviewEvent = {
+  playerId: number;
+  statField: string;
+  delta: number;
+  videoTimestampMs: number | null;
+};
+
+const REVIEW_STAT_LABELS: Record<string, string> = {
+  ftMade: 'FT Made',
+  ftAttempted: 'FT Miss',
+  twoMade: '2PT Made',
+  twoAttempted: '2PT Miss',
+  threeMade: '3PT Made',
+  threeAttempted: '3PT Miss',
+  assists: 'Assist',
+  rebounds: 'Rebound',
+  steals: 'Steal',
+  turnovers: 'Turnover',
+  blocks: 'Block',
+};
+
+const REVIEW_CATEGORIES = [
+  { key: 'all', label: 'All', color: '#9ca3af', fields: [] as string[] },
+  { key: 'made', label: 'Made', color: '#22c55e', fields: ['twoMade', 'threeMade', 'ftMade'] },
+  { key: 'missed', label: 'Missed', color: '#ef4444', fields: ['twoAttempted', 'threeAttempted', 'ftAttempted'] },
+  { key: 'assist', label: 'Assists', color: '#3b82f6', fields: ['assists'] },
+  { key: 'rebound', label: 'Rebounds', color: '#06b6d4', fields: ['rebounds'] },
+  { key: 'steal', label: 'Steals', color: '#a855f7', fields: ['steals'] },
+  { key: 'block', label: 'Blocks', color: '#6366f1', fields: ['blocks'] },
+  { key: 'turnover', label: 'TOs', color: '#f97316', fields: ['turnovers'] },
+] as const;
+
+function formatReviewTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+  return `${minutes}:${String(remainder).padStart(2, '0')}`;
+}
+
+function reviewEventColor(statField: string) {
+  return REVIEW_CATEGORIES.find((category) => category.fields.includes(statField as never))?.color ?? '#9ca3af';
+}
+
+function FilmRoomSection({
+  game,
+  player,
+  colors,
+}: {
+  game: any;
+  player: ReturnType<typeof useVideoPlayer>;
+  colors: any;
+}) {
+  const [currentTime, setCurrentTime] = useState(0);
+  const [mediaDuration, setMediaDuration] = useState(0);
+  const [activePlayerId, setActivePlayerId] = useState<number | null>(null);
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [timelineWidth, setTimelineWidth] = useState(0);
+
+  useEffect(() => {
+    player.timeUpdateEventInterval = 0.5;
+    const timeSubscription = player.addListener('timeUpdate', ({ currentTime: nextTime }) => {
+      setCurrentTime(nextTime);
+      const duration = player.duration;
+      if (Number.isFinite(duration) && duration > 0) setMediaDuration(duration);
+    });
+    const sourceSubscription = player.addListener('sourceLoad', () => {
+      const duration = player.duration;
+      if (Number.isFinite(duration) && duration > 0) setMediaDuration(duration);
+    });
+    return () => {
+      timeSubscription.remove();
+      sourceSubscription.remove();
+    };
+  }, [player]);
+
+  const toVideoSeconds = useCallback((timestampMs: number) => {
+    const gapAdjustment =
+      game.videoHalf2StartMs != null &&
+      game.videoHalftimeGapMs != null &&
+      timestampMs >= game.videoHalf2StartMs
+        ? game.videoHalftimeGapMs
+        : 0;
+    return (timestampMs - (game.videoOffsetMs ?? 0) - gapAdjustment) / 1000;
+  }, [game.videoHalf2StartMs, game.videoHalftimeGapMs, game.videoOffsetMs]);
+
+  const events = ((game.events ?? []) as ReviewEvent[])
+    .filter((event) => event.videoTimestampMs != null && toVideoSeconds(event.videoTimestampMs) >= 0)
+    .map((event, originalIndex) => ({ ...event, originalIndex }))
+    .sort((a, b) => (a.videoTimestampMs! - b.videoTimestampMs!));
+
+  const players: { id: number; name: string }[] = (game.stats ?? []).reduce((result: { id: number; name: string }[], stat: any) => {
+    if (!result.some((item) => item.id === stat.playerId)) {
+      result.push({ id: stat.playerId, name: stat.playerName ?? `Player ${stat.playerId}` });
+    }
+    return result;
+  }, []);
+  events.forEach((event) => {
+    if (!players.some((item) => item.id === event.playerId)) {
+      players.push({ id: event.playerId, name: `Player ${event.playerId}` });
+    }
+  });
+
+  const filmDuration = game.videoDurationMs != null && game.videoDurationMs > 0
+    ? game.videoDurationMs / 1000
+    : mediaDuration;
+  const isOffFilm = useCallback((event: ReviewEvent) => {
+    if (!filmDuration || event.videoTimestampMs == null) return false;
+    return toVideoSeconds(event.videoTimestampMs) >= filmDuration;
+  }, [filmDuration, toVideoSeconds]);
+
+  const playerFilteredEvents = activePlayerId == null
+    ? events
+    : events.filter((event) => event.playerId === activePlayerId);
+  const filteredEvents = activeCategory === 'all'
+    ? playerFilteredEvents
+    : playerFilteredEvents.filter((event) => {
+      const category = REVIEW_CATEGORIES.find((item) => item.key === activeCategory);
+      return category?.fields.includes(event.statField as never);
+    });
+  const offFilmCount = events.filter(isOffFilm).length;
+  const currentEventIndex = filteredEvents.findLastIndex(
+    (event) => !isOffFilm(event) && toVideoSeconds(event.videoTimestampMs!) <= currentTime + 8,
+  );
+
+  if (events.length === 0) return null;
+
+  const seekToEvent = (event: ReviewEvent) => {
+    if (event.videoTimestampMs == null || isOffFilm(event)) return;
+    player.currentTime = Math.max(0, toVideoSeconds(event.videoTimestampMs) - 8);
+    player.play();
+  };
+
+  const seekOnTimeline = (locationX: number) => {
+    if (!timelineWidth || !filmDuration) return;
+    player.currentTime = Math.max(0, Math.min(filmDuration, (locationX / timelineWidth) * filmDuration));
+  };
+
+  return (
+    <View style={[filmStyle.container, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[filmStyle.header, { borderBottomColor: colors.border }]}>
+        <Ionicons name="play-circle-outline" size={18} color={colors.primary} />
+        <Text style={[filmStyle.headerTitle, { color: colors.foreground }]}>Film Room</Text>
+        <Text style={[filmStyle.headerCount, { color: colors.mutedForeground }]}>
+          {offFilmCount > 0 ? `${events.length - offFilmCount} of ${events.length} on film` : `${events.length} events`}
+        </Text>
+      </View>
+
+      {offFilmCount > 0 && (
+        <Text style={[filmStyle.notice, { color: '#fbbf24', backgroundColor: '#f59e0b18' }]}>
+          {offFilmCount} {offFilmCount === 1 ? 'stat was' : 'stats were'} logged after the recording stopped and {offFilmCount === 1 ? "isn't" : "aren't"} on film.
+        </Text>
+      )}
+
+      <View style={[filmStyle.timelineSection, { borderBottomColor: colors.border }]}>
+        <View style={filmStyle.timelineLabels}>
+          <Text style={[filmStyle.timeText, { color: colors.mutedForeground }]}>{formatReviewTime(currentTime)}</Text>
+          <Text style={[filmStyle.timeText, { color: colors.mutedForeground }]}>{formatReviewTime(filmDuration)}</Text>
+        </View>
+        <Pressable
+          testID="film-room-timeline"
+          onLayout={(event) => setTimelineWidth(event.nativeEvent.layout.width)}
+          onPress={(event) => seekOnTimeline(event.nativeEvent.locationX)}
+          style={[filmStyle.timeline, { backgroundColor: colors.muted }]}
+        >
+          <View style={[filmStyle.timelineFill, { width: `${filmDuration ? Math.min(100, (currentTime / filmDuration) * 100) : 0}%`, backgroundColor: colors.primary }]} />
+          {events.map((event) => {
+            const seconds = toVideoSeconds(event.videoTimestampMs!);
+            const percent = filmDuration ? (seconds / filmDuration) * 100 : -1;
+            if (percent < 0 || percent > 100) return null;
+            return (
+              <Pressable
+                key={event.originalIndex}
+                onPress={(pressEvent) => {
+                  pressEvent.stopPropagation();
+                  seekToEvent(event);
+                }}
+                hitSlop={6}
+                style={[filmStyle.marker, { left: `${percent}%`, backgroundColor: isOffFilm(event) ? colors.mutedForeground : reviewEventColor(event.statField) }]}
+              />
+            );
+          })}
+          <View style={[filmStyle.playhead, { left: `${filmDuration ? Math.min(100, (currentTime / filmDuration) * 100) : 0}%`, backgroundColor: colors.foreground }]} />
+        </Pressable>
+        <Text style={[filmStyle.timelineHint, { color: colors.mutedForeground }]}>Tap the timeline or an event to jump to that moment</Text>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filmStyle.chipRow}>
+        <TouchableOpacity
+          testID="film-room-player-all"
+          onPress={() => setActivePlayerId(null)}
+          style={[filmStyle.chip, { borderColor: activePlayerId == null ? colors.primary : colors.border, backgroundColor: activePlayerId == null ? colors.primary + '20' : colors.background }]}
+        >
+          <Text style={[filmStyle.chipText, { color: activePlayerId == null ? colors.primary : colors.mutedForeground }]}>All players</Text>
+        </TouchableOpacity>
+        {players.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            testID={`film-room-player-${item.id}`}
+            onPress={() => setActivePlayerId(item.id)}
+            style={[filmStyle.chip, { borderColor: activePlayerId === item.id ? colors.primary : colors.border, backgroundColor: activePlayerId === item.id ? colors.primary + '20' : colors.background }]}
+          >
+            <Text style={[filmStyle.chipText, { color: activePlayerId === item.id ? colors.primary : colors.mutedForeground }]} numberOfLines={1}>{item.name}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filmStyle.chipRow}>
+        {REVIEW_CATEGORIES.map((category) => {
+          const count = category.key === 'all'
+            ? playerFilteredEvents.length
+            : playerFilteredEvents.filter((event) => category.fields.includes(event.statField as never)).length;
+          if (count === 0 && category.key !== 'all') return null;
+          const selected = activeCategory === category.key;
+          return (
+            <TouchableOpacity
+              key={category.key}
+              testID={`film-room-category-${category.key}`}
+              onPress={() => setActiveCategory(category.key)}
+              style={[filmStyle.chip, { borderColor: selected ? category.color : colors.border, backgroundColor: selected ? `${category.color}20` : colors.background }]}
+            >
+              <Text style={[filmStyle.chipText, { color: selected ? category.color : colors.mutedForeground }]}>
+                {category.label} {count}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {filteredEvents.length === 0 ? (
+        <Text style={[filmStyle.empty, { color: colors.mutedForeground }]}>No events for these filters.</Text>
+      ) : (
+        filteredEvents.map((event, index) => {
+          const eventPlayer = players.find((item) => item.id === event.playerId);
+          const offFilm = isOffFilm(event);
+          const active = !offFilm && index === currentEventIndex;
+          return (
+            <TouchableOpacity
+              key={`${event.originalIndex}-${index}`}
+              testID={`film-room-event-${event.originalIndex}`}
+              onPress={() => seekToEvent(event)}
+              disabled={offFilm}
+              activeOpacity={0.7}
+              style={[filmStyle.eventRow, { borderTopColor: colors.border, backgroundColor: active ? colors.primary + '14' : 'transparent', opacity: offFilm ? 0.45 : 1 }]}
+            >
+              <View style={[filmStyle.eventPip, { backgroundColor: offFilm ? colors.mutedForeground : reviewEventColor(event.statField) }]} />
+              <Text style={[filmStyle.eventTime, { color: colors.mutedForeground }]}>{formatReviewTime(toVideoSeconds(event.videoTimestampMs!))}</Text>
+              <Text style={[filmStyle.eventLabel, { color: active ? colors.foreground : colors.mutedForeground }]} numberOfLines={1}>
+                <Text style={{ fontFamily: 'Inter_600SemiBold' }}>{eventPlayer?.name ?? 'Player'}</Text>
+                {' — '}{REVIEW_STAT_LABELS[event.statField] ?? event.statField}
+              </Text>
+              <Ionicons name={offFilm ? 'eye-off-outline' : 'play-outline'} size={15} color={offFilm ? colors.mutedForeground : active ? colors.primary : colors.mutedForeground} />
+            </TouchableOpacity>
+          );
+        })
+      )}
+    </View>
+  );
+}
+
+const filmStyle = StyleSheet.create({
+  container: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
+  headerTitle: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  headerCount: { marginLeft: 'auto', fontSize: 11, fontFamily: 'Inter_500Medium' },
+  notice: { paddingHorizontal: 14, paddingVertical: 9, fontSize: 12, fontFamily: 'Inter_400Regular' },
+  timelineSection: { paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1 },
+  timelineLabels: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  timeText: { fontSize: 11, fontFamily: 'Inter_500Medium', fontVariant: ['tabular-nums'] },
+  timeline: { height: 20, borderRadius: 5, overflow: 'hidden', position: 'relative' },
+  timelineFill: { position: 'absolute', left: 0, top: 0, bottom: 0, opacity: 0.22 },
+  marker: { position: 'absolute', top: 2, bottom: 2, width: 4, borderRadius: 2, transform: [{ translateX: -2 }] },
+  playhead: { position: 'absolute', top: 0, bottom: 0, width: 2, transform: [{ translateX: -1 }] },
+  timelineHint: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 7 },
+  chipRow: { gap: 7, paddingHorizontal: 12, paddingVertical: 10 },
+  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, maxWidth: 170 },
+  chipText: { fontSize: 12, fontFamily: 'Inter_600SemiBold' },
+  empty: { textAlign: 'center', fontSize: 13, fontFamily: 'Inter_400Regular', paddingHorizontal: 14, paddingBottom: 16 },
+  eventRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 14, paddingVertical: 9, borderTopWidth: 1 },
+  eventPip: { width: 8, height: 8, borderRadius: 4 },
+  eventTime: { width: 42, fontSize: 11, fontFamily: 'Inter_500Medium', fontVariant: ['tabular-nums'] },
+  eventLabel: { flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular' },
+});
 
 function PlayerStatCard({ stat, rank, colors }: { stat: any; rank: number; colors: any }) {
   const secondaryStats: [string, number][] = [
@@ -281,6 +686,7 @@ const cardStyle = StyleSheet.create({
 function VideoSection({ game, colors }: { game: any; colors: any }) {
   const { getToken } = useAuth();
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [streamIsHls, setStreamIsHls] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // proxyReady=false means the server is still building the H.264 proxy;
   // the raw file (VP9/WebM) is not playable on iOS, so we show a processing
@@ -290,6 +696,9 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   // to transcode on RAM-backed /tmp). Stop polling and show a static message.
   const [proxySkipped, setProxySkipped] = useState(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const optimizingStartedAtRef = useRef<number | null>(null);
+  const replaceGenerationRef = useRef(0);
+  const replaceChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -311,13 +720,16 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           }
           setProxyReady(result.proxyReady);
           if (result.proxyReady) {
+            optimizingStartedAtRef.current = null;
+            setStreamIsHls(result.isHls);
             setStreamUrl(result.url);
-            player.replaceAsync(playbackSource(result.url, result.isHls));
           } else {
-            // Proxy not ready yet — poll every 4 s until it is.
+            if (optimizingStartedAtRef.current == null) optimizingStartedAtRef.current = Date.now();
+            // Encoding a long recording can take several minutes. Avoid flooding
+            // the readiness endpoint while the server owns one background build.
             retryTimerRef.current = setTimeout(() => {
               if (!cancelled.value) loadStream(cancelled);
-            }, 4_000);
+            }, 15_000);
           }
         })
         .catch(() => { if (!cancelled.value) setLoadError(true); });
@@ -334,6 +746,29 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
   }, [game.videoObjectPath, loadStream]);
+
+  // Do not attach the source until streamUrl has caused the VideoView below to
+  // mount. Attaching while this component still renders its loading spinner
+  // leaves AVPlayer with a valid source but no native surface (black crossed-
+  // play screen on iOS).
+  useEffect(() => {
+    if (!streamUrl) return;
+    const generation = ++replaceGenerationRef.current;
+    let cancelled = false;
+    replaceChainRef.current = replaceChainRef.current
+      .catch(() => {})
+      .then(async () => {
+        if (cancelled || generation !== replaceGenerationRef.current) return;
+        await player.replaceAsync(playbackSource(streamUrl, streamIsHls));
+      })
+      .catch(() => {
+        if (!cancelled && generation === replaceGenerationRef.current) setLoadError(true);
+      });
+    return () => {
+      cancelled = true;
+      replaceGenerationRef.current++;
+    };
+  }, [player, streamUrl, streamIsHls]);
 
   if (!game.videoObjectPath) {
     return (
@@ -381,7 +816,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           Optimizing video for playback…
         </Text>
         <Text style={[videoStyle.emptySubText, { color: colors.mutedForeground }]}>
-          This usually takes 1–2 minutes. The page will update automatically.
+          Long recordings can take several minutes. You can leave this screen—the page will update automatically when playable footage is ready.
         </Text>
       </View>
     );
@@ -392,15 +827,28 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   }
 
   return (
-    <ZoomableVideo style={videoStyle.wrap}>
-      <VideoView
-        player={player}
-        style={videoStyle.video}
-        contentFit="cover"
-        allowsFullscreen
-        allowsPictureInPicture
-      />
-    </ZoomableVideo>
+    <>
+      <ZoomableVideo style={videoStyle.wrap}>
+        <VideoView
+          player={player}
+          style={videoStyle.video}
+          contentFit="contain"
+          allowsFullscreen
+          allowsPictureInPicture
+          nativeControls
+        />
+      </ZoomableVideo>
+      <FilmRoomSection game={game} player={player} colors={colors} />
+      <TouchableOpacity
+        testID="save-full-game"
+        onPress={() => saveReviewVideo(streamUrl, `Full Game — vs ${game.opponent}`)}
+        activeOpacity={0.8}
+        style={[reviewAction.rowButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+      >
+        <Feather name="download" size={16} color={colors.primary} />
+        <Text style={[reviewAction.rowButtonText, { color: colors.primary }]}>Save Video</Text>
+      </TouchableOpacity>
+    </>
   );
 }
 
@@ -410,143 +858,570 @@ const videoStyle = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 8 },
   emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   emptySubText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4, opacity: 0.75 },
+  playbackLoading: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 10,
+  },
+  waitingTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
+  waitingText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 19, maxWidth: 300 },
+  playbackError: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  playbackErrorText: {
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
+    textAlign: 'center',
+  },
+  webPlaybackLauncher: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  webPlaybackTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    textAlign: 'center',
+  },
+  webPlaybackText: {
+    maxWidth: 360,
+    fontSize: 13,
+    lineHeight: 19,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+  },
+  diagnosticButton: {
+    minHeight: 38,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  diagnosticButtonText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  downloadedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 7,
+  },
+  downloadedText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  retryButton: {
+    minHeight: 42,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  expandButton: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  segmentedModal: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  segmentedModalHeader: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    top: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    pointerEvents: 'box-none',
+  },
+  modalCloseButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+  },
+  clipProgress: {
+    marginLeft: 'auto',
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    overflow: 'hidden',
+  },
 });
-
-// Module-level maps so processing start times survive tab-switches/remounts.
-// Separate maps for highlight vs lowlight so they don't interfere.
-const processingStartTimes    = new Map<number, number>();
-const lowlightStartTimes      = new Map<number, number>();
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
+  const { downloads, cellularAllowed, downloadManagerReady, setCellularAllowed } = useReelDownloads();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const { data: lowlight, refetch } = useGetGameLowlight(gameId);
   const generateMutation = useGenerateGameLowlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const [streamIsHls, setStreamIsHls] = useState(false);
+  const [playbackLoading, setPlaybackLoading] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [sharingLowlight, setSharingLowlight] = useState(false);
+  const [fullscreenVisible, setFullscreenVisible] = useState(false);
+  const [openingWebPlayer, setOpeningWebPlayer] = useState(false);
+  const [useNativeDiagnostic, setUseNativeDiagnostic] = useState(false);
+  const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
+  const automaticRetryRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const sourceAttachGenerationRef = useRef(0);
+  const sourceAttachChainRef = useRef<Promise<void>>(Promise.resolve());
+  const attachedSourceRef = useRef<string | null>(null);
 
   const player = useVideoPlayer('', configureReviewPlayer);
+  const usesAppFullscreen = Platform.OS === 'ios' && streamIsHls;
 
   // Poll every 3 s while generating
   useEffect(() => {
-    if (lowlight?.status !== 'processing') return;
+    if (lowlight?.status !== 'queued' && lowlight?.status !== 'processing') return;
     const timer = setInterval(() => refetch(), 3000);
     return () => clearInterval(timer);
   }, [lowlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Elapsed-seconds counter, survives tab switches via module-level map
-  useEffect(() => {
-    if (lowlight?.status !== 'processing') {
-      lowlightStartTimes.delete(gameId);
-      setElapsedSec(0);
-      return;
-    }
-    if (!lowlightStartTimes.has(gameId)) {
-      lowlightStartTimes.set(gameId, Date.now());
-    }
-    const getElapsed = () =>
-      Math.floor((Date.now() - (lowlightStartTimes.get(gameId) ?? Date.now())) / 1000);
-    setElapsedSec(getElapsed());
-    const t = setInterval(() => setElapsedSec(getElapsed()), 1000);
-    return () => clearInterval(t);
-  }, [lowlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const lowlightReady = lowlight?.status === 'ready';
+  const lowlightDownload = downloads.find((item) => item.gameId === gameId && item.type === 'lowlight' && item.objectPath === lowlight?.lowlightObjectPath);
 
-  useEffect(() => {
-    if (!lowlightReady) return;
-    let cancelled = false;
-    getToken()
-      .then((token) => {
-        if (!token || cancelled) return;
-        return getReusableStreamUrl(gameId, 'lowlight', token);
-      })
-      .then((result) => {
-        if (!result || cancelled) return;
-        setSignedUrl(result.url);
-        player.replaceAsync(playbackSource(result.url, result.isHls));
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [lowlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // When the app returns from background after the 60-second GCS signed URL
-  // TTL has elapsed, the player shows a black screen because the URL it holds
-  // has expired.  Detect a long background and fetch a completely fresh stream
-  // token + URL (getToken → fetchStreamUrl) so the new GCS redirect is valid.
-  const lowlightBgAtRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!lowlightReady) return;
-    const sub = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background' || nextState === 'inactive') {
-        lowlightBgAtRef.current = Date.now();
-      } else if (nextState === 'active') {
-        const bg = lowlightBgAtRef.current;
-        lowlightBgAtRef.current = null;
-        if (bg !== null && Date.now() - bg > 50_000) {
-          getToken()
-            .then((token) => {
-              if (!token) return;
-              return fetchStreamUrl(gameId, 'lowlight', token);
-            })
-            .then((result) => {
-              if (!result) return;
-              setSignedUrl(result.url);
-              streamUrlCache.set(streamCacheKey(gameId, 'lowlight'), {
-                url: result.url,
-                isHls: result.isHls,
-                expiresAt: Date.now() + STREAM_URL_REUSE_MS,
-              });
-              player.replaceAsync(playbackSource(result.url, result.isHls));
-            })
-            .catch(() => {});
+  const loadLowlightVideo = useCallback(async (forceFresh = false) => {
+    const loadGeneration = ++loadGenerationRef.current;
+    const isCurrentLoad = () => loadGeneration === loadGenerationRef.current;
+    setPlaybackLoading(true);
+    setPlaybackError(null);
+    try {
+      const objectPath = lowlight?.lowlightObjectPath;
+      if (!objectPath) throw new Error('The lowlight file is not available.');
+      const token = await getTokenRef.current();
+      if (!isCurrentLoad()) return;
+      if (!token) throw new Error('Your session expired. Please sign in again.');
+      if (forceFresh) {
+        attachedSourceRef.current = null;
+        streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
+        await reelDownloadManager.invalidate(gameId, 'lowlight', objectPath);
+        if (!isCurrentLoad()) return;
+      }
+      const result = forceFresh
+        ? await fetchStreamUrl(gameId, 'lowlight', token)
+        : await getReusableStreamUrl(gameId, 'lowlight', token);
+      if (!isCurrentLoad()) return;
+      // Native HLS consistently stops during segment 2 on physical iPhones.
+      // Play the complete signed MP4 progressively instead, while keeping the
+      // persistent MP4 transfer running independently for Save/offline use.
+      if (result.isHls && Platform.OS !== 'web') {
+        if (downloadManagerReady) {
+          await reelDownloadManager.enqueue({ gameId, type: 'lowlight', objectPath, url: result.downloadUrl }, true);
         }
+        if (!isCurrentLoad()) return;
+        setStreamIsHls(false);
+        setSignedUrl(result.downloadUrl);
+        setSourceAttachRequest({ url: result.downloadUrl, id: loadGeneration });
+        return;
+      }
+      const playbackUrl = await getReelPlaybackUrl(gameId, 'lowlight', objectPath, result.downloadUrl, forceFresh);
+      if (!isCurrentLoad()) return;
+      if (!playbackUrl) {
+        setSignedUrl(null);
+        setPlaybackLoading(false);
+        return;
+      }
+      setStreamIsHls(false);
+      setSignedUrl(playbackUrl);
+      setSourceAttachRequest({ url: playbackUrl, id: loadGeneration });
+    } catch (error: any) {
+      if (!isCurrentLoad()) return;
+      setSignedUrl(null);
+      setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+      setPlaybackLoading(false);
+    }
+  }, [downloadManagerReady, gameId, lowlight?.lowlightObjectPath, player]);
+
+  useEffect(() => () => {
+    loadGenerationRef.current++;
+    sourceAttachGenerationRef.current++;
+    attachedSourceRef.current = null;
+  }, [lowlight?.lowlightObjectPath]);
+
+  // Commit the local URI first so React has mounted the native VideoView before
+  // AVPlayer receives the source. Serialize replacements so a stale async load
+  // can never overwrite the latest requested reel.
+  useEffect(() => {
+    if (!sourceAttachRequest) return;
+    const generation = sourceAttachRequest.id;
+    sourceAttachGenerationRef.current = generation;
+    let cancelled = false;
+    sourceAttachChainRef.current = sourceAttachChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        if (attachedSourceRef.current === sourceAttachRequest.url) {
+          setPlaybackLoading(false);
+          return;
+        }
+        await player.replaceAsync(playbackSource(sourceAttachRequest.url, streamIsHls));
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        attachedSourceRef.current = sourceAttachRequest.url;
+        setPlaybackLoading(false);
+      })
+      .catch((error: any) => {
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+        setPlaybackLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [player, sourceAttachRequest, streamIsHls]);
+
+  useEffect(() => {
+    if (!lowlightReady) return;
+    automaticRetryRef.current = false;
+    void loadLowlightVideo();
+  }, [lowlightReady, gameId, lowlightDownload?.status, lowlightDownload?.uri, loadLowlightVideo]);
+
+  useEffect(() => {
+    const subscription = player.addListener('statusChange', ({ status, error }) => {
+      if (status !== 'error') return;
+      // An empty player can emit a teardown error as this screen unmounts.
+      // While the reel is still queued/downloading there is no attached source
+      // to repair; forceFresh here would cancel the background transfer, delete
+      // its .part file, and restart from byte zero when the game is reopened.
+      if (!signedUrl ||
+          lowlightDownload?.status === 'queued' ||
+          lowlightDownload?.status === 'downloading') return;
+      setPlaybackError(error?.message ?? 'The lowlight video could not be loaded.');
+      // A local source retry must reattach the same durable file, never use the
+      // forceFresh path (which would delete it). Native AVPlayer occasionally
+      // reports a transient source error while its surface is remounting.
+      if (signedUrl.startsWith('file:')) {
+        if (!automaticRetryRef.current) {
+          automaticRetryRef.current = true;
+          attachedSourceRef.current = null;
+          void loadLowlightVideo();
+        }
+        return;
+      }
+      if (!automaticRetryRef.current) {
+        automaticRetryRef.current = true;
+        void loadLowlightVideo(true);
       }
     });
-    return () => sub.remove();
-  }, [lowlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => subscription.remove();
+  }, [player, signedUrl, lowlightDownload?.status, loadLowlightVideo]);
+
+  async function handleSaveLowlight() {
+    const objectPath = lowlight?.lowlightObjectPath;
+    if (!objectPath || !signedUrl) return;
+    // Never hand the HLS manifest to the photo-library saver. The parallel
+    // token-bound MP4 download is the durable save/offline fallback.
+    const saveUrl = streamIsHls
+      ? lowlightDownload?.uri ?? await waitForReelDownload(gameId, 'lowlight', objectPath)
+      : signedUrl;
+    await saveReviewVideo(saveUrl, 'Game Lowlights');
+  }
+
+  async function handleShareLowlight() {
+    if (sharingLowlight) return;
+    setSharingLowlight(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch(`${API_BASE}/api/games/${gameId}/share-token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Could not generate share link');
+      const { shareToken } = await res.json() as { shareToken: string };
+      const url = `${WEB_BASE}/lowlight/${shareToken}`;
+      await Share.share({
+        title: 'Game Lowlights',
+        message: `Watch our game lowlights: ${url}`,
+        url,
+      });
+    } catch (error: any) {
+      if (error?.message !== 'User did not share') {
+        Alert.alert('Share Failed', 'Could not create the lowlight link. Please try again.');
+      }
+    } finally {
+      setSharingLowlight(false);
+    }
+  }
+
+  async function handleOpenLowlightPlayer() {
+    if (openingWebPlayer) return;
+    setOpeningWebPlayer(true);
+    try {
+      const url = await getPublicReelUrl(gameId, 'lowlight', getToken);
+      await WebBrowser.openBrowserAsync(url);
+    } catch (error: any) {
+      Alert.alert('Could Not Open Video', error?.message ?? 'Please try again.');
+    } finally {
+      setOpeningWebPlayer(false);
+    }
+  }
+
+  async function handleRegenerateLowlight() {
+    if (generateMutation.isPending) return;
+    try {
+      attachedSourceRef.current = null;
+      await reelDownloadManager.invalidate(gameId, 'lowlight', lowlight?.lowlightObjectPath);
+      streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
+      setSignedUrl(null);
+      await generateMutation.mutateAsync({ gameId });
+      refetch();
+    } catch {
+      Alert.alert('Could Not Regenerate', 'Please try again in a moment.');
+    }
+  }
+
+  async function handleCancelLowlight() {
+    try {
+      const token = await getToken();
+      await fetch(`${API_BASE}/api/games/${gameId}/lowlight`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      refetch();
+    } catch {
+      Alert.alert('Could Not Cancel', 'The lowlight reel is still processing. Please try again.');
+    }
+  }
 
   if (!lowlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (lowlight.status === 'ready') {
-    if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
     return (
-      <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
-        <VideoView
-          player={player}
-          style={{ flex: 1 }}
-          contentFit="contain"
-          allowsFullscreen
-          allowsPictureInPicture
-          nativeControls
-        />
-      </ZoomableVideo>
+      <View style={{ flex: 1, backgroundColor: colors.card }}>
+        <ZoomableVideo style={{ flex: 1, backgroundColor: colors.card }}>
+          {Platform.OS === 'ios' && !useNativeDiagnostic ? (
+            <View style={[videoStyle.webPlaybackLauncher, { backgroundColor: colors.background }]}>
+              <Feather name="play-circle" size={42} color={colors.primary} />
+              <Text style={[videoStyle.webPlaybackTitle, { color: colors.foreground }]}>Play Complete Lowlight</Text>
+              <Text style={[videoStyle.webPlaybackText, { color: colors.mutedForeground }]}>
+                Opens the proven browser player instead of the unreliable iOS native video path.
+              </Text>
+              <TouchableOpacity
+                testID="open-lowlight-web-player"
+                onPress={handleOpenLowlightPlayer}
+                disabled={openingWebPlayer}
+                style={[videoStyle.retryButton, { backgroundColor: colors.primary, opacity: openingWebPlayer ? 0.65 : 1 }]}
+              >
+                {openingWebPlayer ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="play" size={16} color="#fff" />}
+                <Text style={videoStyle.retryButtonText}>{openingWebPlayer ? 'Opening…' : 'Play Full Video'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="try-lowlight-native-player"
+                onPress={() => setUseNativeDiagnostic(true)}
+                style={[videoStyle.diagnosticButton, { borderColor: colors.border }]}
+              >
+                <Text style={[videoStyle.diagnosticButtonText, { color: colors.mutedForeground }]}>Try Native Player</Text>
+              </TouchableOpacity>
+            </View>
+          ) : playbackError && !playbackLoading ? (
+            <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
+              <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
+              <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
+                This lowlight could not be downloaded.
+              </Text>
+              <TouchableOpacity
+                testID="retry-lowlight-playback"
+                onPress={() => {
+                  automaticRetryRef.current = false;
+                  void loadLowlightVideo(true);
+                }}
+                style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+              >
+                <Feather name="refresh-cw" size={15} color="#fff" />
+                <Text style={videoStyle.retryButtonText}>Retry Video</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              {!fullscreenVisible && <VideoView
+                player={player}
+                style={{ flex: 1 }}
+                contentFit="cover"
+                fullscreenOptions={{ enable: !usesAppFullscreen, autoExitOnRotate: false }}
+                allowsPictureInPicture
+                nativeControls
+              />}
+              {usesAppFullscreen && !fullscreenVisible && (
+                <TouchableOpacity
+                  testID="expand-lowlight"
+                  accessibilityLabel="Open lowlight full screen"
+                  onPress={() => setFullscreenVisible(true)}
+                  style={videoStyle.expandButton}
+                >
+                  <Feather name="maximize" size={20} color="#fff" />
+                </TouchableOpacity>
+              )}
+              {(!signedUrl || playbackLoading) && (
+                <View style={[videoStyle.playbackLoading, { backgroundColor: colors.background }]}>
+                  {lowlightDownload?.status === 'downloading' || playbackLoading ? (
+                    <>
+                      <ActivityIndicator color={colors.primary} />
+                      <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Downloading lowlights…</Text>
+                      <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>The video will appear here when it is ready.</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Feather name="wifi-off" size={28} color={colors.mutedForeground} />
+                      <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Waiting to download</Text>
+                      <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>
+                        Connect to Wi‑Fi, or download now using cellular data.
+                      </Text>
+                      {!cellularAllowed && (
+                        <TouchableOpacity
+                          testID="download-lowlight-cellular"
+                          onPress={async () => {
+                            await setCellularAllowed(true);
+                            automaticRetryRef.current = false;
+                            void loadLowlightVideo(true);
+                          }}
+                          style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+                        >
+                          <Feather name="download" size={15} color="#fff" />
+                          <Text style={videoStyle.retryButtonText}>Download now</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+                </View>
+              )}
+            </>
+          )}
+        </ZoomableVideo>
+        {usesAppFullscreen && fullscreenVisible && (
+          <Modal
+            testID="lowlight-modal"
+            visible
+            animationType="fade"
+            supportedOrientations={['portrait', 'landscape']}
+            onRequestClose={() => setFullscreenVisible(false)}
+          >
+            <View style={videoStyle.segmentedModal}>
+              <VideoView
+                player={player}
+                style={StyleSheet.absoluteFill}
+                contentFit="contain"
+                fullscreenOptions={{ enable: false }}
+                nativeControls
+                allowsPictureInPicture
+              />
+              <View style={videoStyle.segmentedModalHeader}>
+                <TouchableOpacity
+                  testID="close-lowlight"
+                  accessibilityLabel="Close full screen lowlight"
+                  onPress={() => setFullscreenVisible(false)}
+                  style={videoStyle.modalCloseButton}
+                >
+                  <Feather name="x" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
+        {Platform.OS !== 'web' && lowlightDownload && (
+          <View style={videoStyle.downloadedBadge}>
+            <Feather name={lowlightDownload.status === 'failed' ? 'alert-circle' : lowlightDownload.status === 'downloaded' ? 'check-circle' : 'download'} size={14} color={colors.primary} />
+            <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
+              {reelDownloadStatus(lowlightDownload)}
+            </Text>
+          </View>
+        )}
+        <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            testID="share-lowlight-video"
+            onPress={handleShareLowlight}
+            disabled={sharingLowlight}
+            style={[ytStyle.btn, { backgroundColor: colors.primary, flex: 1, opacity: sharingLowlight ? 0.65 : 1 }]}
+            activeOpacity={0.8}
+          >
+            {sharingLowlight ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Feather name="share-2" size={16} color="#fff" />
+            )}
+            <Text style={ytStyle.btnText}>{sharingLowlight ? 'Preparing…' : 'Share Link'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            testID="save-lowlight-video"
+            onPress={handleSaveLowlight}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1 }]}
+            activeOpacity={0.8}
+          >
+            <Feather name="download" size={16} color={colors.foreground} />
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>Save Video</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            testID="regenerate-lowlights"
+            onPress={handleRegenerateLowlight}
+            disabled={generateMutation.isPending}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1, opacity: generateMutation.isPending ? 0.55 : 1 }]}
+            activeOpacity={0.8}
+          >
+            {generateMutation.isPending ? (
+              <ActivityIndicator size="small" color={colors.foreground} />
+            ) : (
+              <Ionicons name="refresh-outline" size={16} color={colors.foreground} />
+            )}
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>{generateMutation.isPending ? 'Starting…' : 'Regenerate'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     );
   }
 
-  if (lowlight.status === 'processing') {
-    const pct = Math.min(97, Math.round(100 * (1 - Math.exp(-elapsedSec / 2000))));
-    const label =
-      elapsedSec < 60   ? 'Finding missed shots & turnovers…'
-      : elapsedSec < 900  ? 'Downloading game footage…'
-      : elapsedSec < 4500 ? 'Compressing clips…'
-      : 'Finalizing…';
-    const mins = Math.floor(elapsedSec / 60);
-    const secs = elapsedSec % 60;
-    const elapsed = mins > 0
-      ? `${mins}m ${String(secs).padStart(2, '0')}s`
-      : `${secs}s`;
+  if (lowlight.status === 'queued' || lowlight.status === 'processing') {
     return (
       <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
         <ActivityIndicator color={colors.destructive ?? '#ef4444'} size="large" />
         <Text style={[videoStyle.emptyText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-          {label}
+          Preparing Lowlight video…
         </Text>
-        <View style={{ width: '100%', height: 6, backgroundColor: colors.muted, borderRadius: 3, overflow: 'hidden' }}>
-          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.destructive ?? '#ef4444', borderRadius: 3 }} />
-        </View>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
-          {pct}% · {elapsed} elapsed — typically 30–90 min for a full game
+          {lowlight.status === 'queued' ? 'Waiting for an available video worker' : reelProgressText(lowlight)}
         </Text>
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }]}>
+          You can leave this screen. We’ll notify you when it’s ready.
+        </Text>
+        <TouchableOpacity
+          testID="cancel-lowlights"
+          onPress={handleCancelLowlight}
+          activeOpacity={0.7}
+          style={[reviewAction.cancelButton, { borderColor: colors.border }]}
+        >
+          <Text style={[reviewAction.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -587,11 +1462,14 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
 type PrivacyStatus = 'public' | 'unlisted' | 'private';
 function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
+  const { downloads, cellularAllowed, downloadManagerReady, setCellularAllowed } = useReelDownloads();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const router = useRouter();
   const { data: highlight, refetch } = useGetGameHighlight(gameId);
   const generateMutation = useGenerateGameHighlight();
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const [streamIsHls, setStreamIsHls] = useState(false);
 
   // YouTube upload state — seed from the highlight response so the link
   // persists across remounts (the URL is persisted in the DB on the server).
@@ -600,6 +1478,29 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [uploadPrivacy, setUploadPrivacy] = useState<PrivacyStatus>('unlisted');
   const [uploading, setUploading] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState<string | null>(null);
+  const [sharingClip, setSharingClip] = useState(false);
+  const [savingClip, setSavingClip] = useState(false);
+  const [openingWebPlayer, setOpeningWebPlayer] = useState(false);
+  const [useNativeDiagnostic, setUseNativeDiagnostic] = useState(false);
+  const [playbackLoading, setPlaybackLoading] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [playbackInterrupted, setPlaybackInterrupted] = useState(false);
+  const [sourceAttachRequest, setSourceAttachRequest] = useState<{ url: string; id: number } | null>(null);
+  const automaticRetryRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const sourceAttachGenerationRef = useRef(0);
+  const sourceAttachChainRef = useRef<Promise<void>>(Promise.resolve());
+  const attachedSourceRef = useRef<string | null>(null);
+  const playbackStartedRef = useRef(false);
+  const playbackPositionRef = useRef(0);
+  const playbackDurationRef = useRef(0);
+  const pendingResumePositionRef = useRef(0);
+  const reachedEndRef = useRef(false);
+  const fullscreenRef = useRef(false);
+  const [currentClipPosition, setCurrentClipPosition] = useState(0);
+  const [segmentedFullscreenVisible, setSegmentedFullscreenVisible] = useState(false);
+  const shouldAutoPlayRef = useRef(false);
+  const prefetchedClipRef = useRef<string | null>(null);
 
   const player = useVideoPlayer('', configureReviewPlayer);
 
@@ -610,87 +1511,390 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     }
   }, [highlight?.youtubeUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll every 3 s while the server is generating the reel
+  // Poll every 3 s while the reel is queued or actively encoding.
   useEffect(() => {
-    if (highlight?.status !== 'processing') return;
+    if (highlight?.status !== 'queued' && highlight?.status !== 'processing') return;
     const timer = setInterval(() => refetch(), 3000);
     return () => clearInterval(timer);
   }, [highlight?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Drive the elapsed-seconds counter while processing.
-  // Use the module-level map so navigating away and back doesn't reset the clock.
-  useEffect(() => {
-    if (highlight?.status !== 'processing') {
-      processingStartTimes.delete(gameId);
-      setElapsedSec(0);
-      return;
-    }
-    if (!processingStartTimes.has(gameId)) {
-      processingStartTimes.set(gameId, Date.now());
-    }
-    const getElapsed = () => Math.floor((Date.now() - (processingStartTimes.get(gameId) ?? Date.now())) / 1000);
-    setElapsedSec(getElapsed());
-    const t = setInterval(() => setElapsedSec(getElapsed()), 1000);
-    return () => clearInterval(t);
-  }, [highlight?.status, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Use the stream-token approach (from the seek-fix task) so the video can
   // be seeked without freezing — signed object-storage URLs don't support
   // Range requests reliably in production.
   const highlightReady = highlight?.status === 'ready';
+  const segmentedClips = useMemo(
+    () => [...(highlight?.clips ?? [])].sort((a, b) => a.index - b.index),
+    [highlight?.clips],
+  );
+  // Generator v11+ rebuilds the combined reel as one continuous CFR H.264/AAC
+  // timeline. Prefer that single file on iOS: replacing local sources between
+  // standalone clips still halts at 20-second boundaries on physical devices.
+  const enableSegmentedIosHighlights = false;
+  const usesSegmentedPlayback =
+    enableSegmentedIosHighlights &&
+    Platform.OS === 'ios' &&
+    highlight?.playbackVersion === 1 &&
+    segmentedClips.length > 0;
+  const currentClip = usesSegmentedPlayback ? segmentedClips[currentClipPosition] : undefined;
+  const currentClipObjectPath = currentClip
+    ? highlightClipIdentity(currentClip.index, currentClip.streamUrl)
+    : null;
+  const combinedHighlightDownload = downloads.find((item) =>
+    item.gameId === gameId &&
+    item.type === 'highlight' &&
+    item.objectPath === highlight?.highlightObjectPath);
+  const currentClipDownload = currentClipObjectPath
+    ? downloads.find((item) =>
+        item.gameId === gameId &&
+        item.type === 'highlight' &&
+        item.objectPath === currentClipObjectPath)
+    : undefined;
+  const highlightDownload = usesSegmentedPlayback ? currentClipDownload : combinedHighlightDownload;
+  const usesAppFullscreen =
+    Platform.OS === 'ios' && (usesSegmentedPlayback || streamIsHls);
+
+  const loadHighlightVideo = useCallback(async (
+    forceFresh = false,
+    disableCaching = false,
+  ) => {
+    const loadGeneration = ++loadGenerationRef.current;
+    const isCurrentLoad = () => loadGeneration === loadGenerationRef.current;
+    setPlaybackLoading(true);
+    setPlaybackError(null);
+    setPlaybackInterrupted(false);
+    try {
+      if (usesSegmentedPlayback) {
+        if (!currentClip || !currentClipObjectPath) {
+          throw new Error('The highlight clip is not available.');
+        }
+        if (forceFresh) {
+          attachedSourceRef.current = null;
+          await reelDownloadManager.invalidate(gameId, 'highlight', currentClipObjectPath);
+          if (!isCurrentLoad()) return;
+        }
+        const existing = reelDownloadManager.get(gameId, 'highlight', currentClipObjectPath);
+        if (existing?.status === 'downloaded' && existing.uri) {
+          setSignedUrl(existing.uri);
+          setSourceAttachRequest({ url: existing.uri, id: loadGeneration });
+          return;
+        }
+        await reelDownloadManager.enqueue({
+          gameId,
+          type: 'highlight',
+          objectPath: currentClipObjectPath,
+          url: currentClip.streamUrl,
+        }, true);
+        if (!isCurrentLoad()) return;
+        setSignedUrl(null);
+        setPlaybackLoading(false);
+        return;
+      }
+      const objectPath = highlight?.highlightObjectPath;
+      if (!objectPath) throw new Error('The highlight file is not available.');
+      const token = await getTokenRef.current();
+      if (!isCurrentLoad()) return;
+      if (!token) throw new Error('Your session expired. Please sign in again.');
+
+      if (forceFresh) {
+        attachedSourceRef.current = null;
+        pendingResumePositionRef.current = 0;
+        playbackStartedRef.current = false;
+        playbackPositionRef.current = 0;
+        playbackDurationRef.current = 0;
+        reachedEndRef.current = false;
+        streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
+        await reelDownloadManager.invalidate(gameId, 'highlight', objectPath);
+        if (!isCurrentLoad()) return;
+      }
+      const result = forceFresh
+        ? await fetchStreamUrl(gameId, 'highlight', token)
+        : await getReusableStreamUrl(gameId, 'highlight', token);
+      if (!isCurrentLoad()) return;
+
+      if (result.isHls && Platform.OS !== 'web') {
+        if (downloadManagerReady) {
+          await reelDownloadManager.enqueue({ gameId, type: 'highlight', objectPath, url: result.downloadUrl }, true);
+        }
+        if (!isCurrentLoad()) return;
+        setStreamIsHls(false);
+        setSignedUrl(result.downloadUrl);
+        setSourceAttachRequest({ url: result.downloadUrl, id: loadGeneration });
+        return;
+      }
+      const playbackUrl = await getReelPlaybackUrl(
+        gameId,
+        'highlight',
+        objectPath,
+        result.downloadUrl,
+        forceFresh,
+      );
+      if (!isCurrentLoad()) return;
+      if (!playbackUrl) {
+        setSignedUrl(null);
+        setPlaybackLoading(false);
+        return;
+      }
+      if (result.proxyReady) {
+        streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
+          url: result.url,
+          downloadUrl: result.downloadUrl,
+          isHls: result.isHls,
+          expiresAt: Date.now() + STREAM_URL_REUSE_MS,
+        });
+      }
+      setStreamIsHls(false);
+      setSignedUrl(playbackUrl);
+      setSourceAttachRequest({ url: playbackUrl, id: loadGeneration });
+    } catch (error: any) {
+      if (!isCurrentLoad()) return;
+      setSignedUrl(null);
+      setPlaybackError(error?.message ?? 'The highlight video could not be loaded.');
+      setPlaybackLoading(false);
+    }
+  }, [
+    downloadManagerReady,
+    gameId,
+    highlight?.highlightObjectPath,
+    player,
+    usesSegmentedPlayback,
+    currentClip?.index,
+    currentClip?.streamUrl,
+    currentClipObjectPath,
+  ]);
+
+  useEffect(() => () => {
+    loadGenerationRef.current++;
+    sourceAttachGenerationRef.current++;
+    attachedSourceRef.current = null;
+  }, [highlight?.highlightObjectPath, currentClipObjectPath]);
+
+  // Attach only after the local URI state has committed and the native surface
+  // exists. The serialized generation guard ensures the newest local source wins
+  // if download discovery, tab navigation, and a manual retry overlap.
+  useEffect(() => {
+    if (!sourceAttachRequest) return;
+    const generation = sourceAttachRequest.id;
+    sourceAttachGenerationRef.current = generation;
+    let cancelled = false;
+    sourceAttachChainRef.current = sourceAttachChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        if (attachedSourceRef.current === sourceAttachRequest.url) {
+          setPlaybackLoading(false);
+          return;
+        }
+        const resumePosition = pendingResumePositionRef.current;
+        playbackStartedRef.current = false;
+        reachedEndRef.current = false;
+        if (resumePosition <= 0) {
+          playbackPositionRef.current = 0;
+          playbackDurationRef.current = 0;
+        }
+        await player.replaceAsync(playbackSource(sourceAttachRequest.url, streamIsHls));
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        attachedSourceRef.current = sourceAttachRequest.url;
+        playbackDurationRef.current = Number.isFinite(player.duration) ? player.duration : 0;
+        pendingResumePositionRef.current = 0;
+        if (resumePosition > 0.25) {
+          const duration = playbackDurationRef.current;
+          const safeResumePosition = duration > 1
+            ? Math.min(resumePosition, duration - 1)
+            : resumePosition;
+          player.currentTime = Math.max(0, safeResumePosition - 0.25);
+          playbackPositionRef.current = player.currentTime;
+          playbackStartedRef.current = true;
+          player.play();
+        } else if (shouldAutoPlayRef.current) {
+          shouldAutoPlayRef.current = false;
+          player.play();
+        }
+        setPlaybackLoading(false);
+      })
+      .catch((error: any) => {
+        if (cancelled || generation !== sourceAttachGenerationRef.current) return;
+        setPlaybackError(error?.message ?? 'The highlight video could not be loaded.');
+        setPlaybackLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [player, sourceAttachRequest, streamIsHls]);
 
   useEffect(() => {
     if (!highlightReady) return;
     let cancelled = false;
-    getToken()
-      .then((token) => {
-        if (!token || cancelled) return;
-        return getReusableStreamUrl(gameId, 'highlight', token);
-      })
-      .then((result) => {
-        if (!result || cancelled) return;
-        setSignedUrl(result.url);
-        player.replaceAsync(playbackSource(result.url, result.isHls));
-      })
-      .catch(() => {});
+    automaticRetryRef.current = false;
+    void loadHighlightVideo().then(() => {
+      if (cancelled) return;
+    });
     return () => { cancelled = true; };
-  }, [highlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [highlightReady, gameId, highlightDownload?.status, highlightDownload?.uri, loadHighlightVideo]);
 
-  // When the app returns from background after the 60-second GCS signed URL
-  // TTL has elapsed, the player shows a black screen because the URL it holds
-  // has expired.  Detect a long background and fetch a completely fresh stream
-  // token + URL (getToken → fetchStreamUrl) so the new GCS redirect is valid.
-  const highlightBgAtRef = useRef<number | null>(null);
+  // Keep enough native playback state to distinguish an initial source failure
+  // from an interruption after AVPlayer has already shown valid frames. Retrying
+  // the latter automatically replaces the active source and dismisses iOS
+  // fullscreen playback even though the downloaded MP4 is still valid.
   useEffect(() => {
-    if (!highlightReady) return;
-    const sub = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background' || nextState === 'inactive') {
-        highlightBgAtRef.current = Date.now();
-      } else if (nextState === 'active') {
-        const bg = highlightBgAtRef.current;
-        highlightBgAtRef.current = null;
-        if (bg !== null && Date.now() - bg > 50_000) {
-          getToken()
-            .then((token) => {
-              if (!token) return;
-              return fetchStreamUrl(gameId, 'highlight', token);
-            })
-            .then((result) => {
-              if (!result) return;
-              setSignedUrl(result.url);
-              streamUrlCache.set(streamCacheKey(gameId, 'highlight'), {
-                url: result.url,
-                isHls: result.isHls,
-                expiresAt: Date.now() + STREAM_URL_REUSE_MS,
+    player.timeUpdateEventInterval = 0.5;
+    const advanceSegmentedClip = () => {
+      if (
+        !usesSegmentedPlayback ||
+        reachedEndRef.current ||
+        currentClipPosition >= segmentedClips.length - 1
+      ) {
+        return false;
+      }
+      reachedEndRef.current = true;
+      shouldAutoPlayRef.current = true;
+      attachedSourceRef.current = null;
+      setPlaybackError(null);
+      setPlaybackInterrupted(false);
+      setCurrentClipPosition((position) => position + 1);
+      return true;
+    };
+    const timeSubscription = player.addListener('timeUpdate', ({ currentTime }) => {
+      if (Number.isFinite(currentTime)) {
+        playbackPositionRef.current = currentTime;
+        if (currentTime > 0.25) playbackStartedRef.current = true;
+        // AVPlayer occasionally reaches the final frame of a local MP4 without
+        // Expo Video forwarding playToEnd. Use the server-validated manifest
+        // duration as a guarded fallback so segmented playback still advances.
+        const expectedEnd = (currentClip?.durationMs ?? 0) / 1000;
+        if (
+          expectedEnd > 0 &&
+          currentTime >= expectedEnd - 0.15
+        ) {
+          advanceSegmentedClip();
+        }
+      }
+      if (Number.isFinite(player.duration) && player.duration > 0) {
+        playbackDurationRef.current = player.duration;
+      }
+    });
+    const playingSubscription = player.addListener('playingChange', ({ isPlaying }) => {
+      if (isPlaying) {
+        playbackStartedRef.current = true;
+        if (usesSegmentedPlayback) {
+          const nextClip = segmentedClips[currentClipPosition + 1];
+          if (nextClip) {
+            const nextObjectPath = highlightClipIdentity(nextClip.index, nextClip.streamUrl);
+            if (prefetchedClipRef.current !== nextObjectPath) {
+              prefetchedClipRef.current = nextObjectPath;
+              void reelDownloadManager.enqueue({
+                gameId,
+                type: 'highlight',
+                objectPath: nextObjectPath,
+                url: nextClip.streamUrl,
               });
-              player.replaceAsync(playbackSource(result.url, result.isHls));
-            })
-            .catch(() => {});
+            }
+          }
+        }
+      } else if (usesSegmentedPlayback && playbackStartedRef.current) {
+        // Some iOS versions emit neither playToEnd nor a final timeUpdate for a
+        // local MP4. playingChange still arrives after AVPlayer reaches its final
+        // frame, and player.currentTime has the terminal position by then.
+        const expectedEnd = (currentClip?.durationMs ?? 0) / 1000;
+        if (
+          expectedEnd > 0 &&
+          player.currentTime >= expectedEnd - 0.35
+        ) {
+          advanceSegmentedClip();
         }
       }
     });
-    return () => sub.remove();
-  }, [highlightReady, gameId]); // eslint-disable-line react-hooks/exhaustive-deps
+    const endSubscription = player.addListener('playToEnd', () => {
+      if (advanceSegmentedClip()) return;
+      reachedEndRef.current = true;
+      if (Number.isFinite(player.duration) && player.duration > 0) {
+        playbackDurationRef.current = player.duration;
+        playbackPositionRef.current = player.duration;
+      }
+    });
+    return () => {
+      timeSubscription.remove();
+      playingSubscription.remove();
+      endSubscription.remove();
+    };
+  }, [
+    player,
+    usesSegmentedPlayback,
+    segmentedClips,
+    currentClipPosition,
+    currentClip?.durationMs,
+    gameId,
+  ]);
+
+  // AVPlayer can reject a signed source after Expo Video has accepted it, so
+  // replaceAsync resolving is not sufficient proof that playback is available.
+  // Retry once with a fresh URL and native caching disabled; this bypasses a
+  // stale/corrupt cache entry while preserving caching for the normal path.
+  useEffect(() => {
+    const subscription = player.addListener('statusChange', ({ status, error }) => {
+      if (status !== 'error') return;
+      // Ignore native player teardown errors until there is a real attached
+      // source. Retrying an empty/downloading player is destructive because
+      // forceFresh invalidates the active background download and its .part.
+      if (!signedUrl ||
+          highlightDownload?.status === 'queued' ||
+          highlightDownload?.status === 'downloading') return;
+      const message = error?.message ?? 'The highlight video could not be loaded.';
+      const interruptedLocalPlayback = signedUrl.startsWith('file:') &&
+        (playbackStartedRef.current || playbackPositionRef.current > 0.25);
+      console.warn('[HighlightPlayback] AVPlayer error', {
+        gameId,
+        currentTime: playbackPositionRef.current,
+        duration: playbackDurationRef.current || player.duration,
+        fullscreen: fullscreenRef.current,
+        message,
+      });
+      // Recover one unexpected local interruption automatically from the last
+      // known timestamp. This reattaches the same durable file; it never
+      // invalidates the download or requests media bytes again.
+      if (interruptedLocalPlayback && !automaticRetryRef.current) {
+        automaticRetryRef.current = true;
+        pendingResumePositionRef.current = playbackPositionRef.current;
+        shouldAutoPlayRef.current = true;
+        attachedSourceRef.current = null;
+        setPlaybackInterrupted(false);
+        setPlaybackError(null);
+        setPlaybackLoading(true);
+        void loadHighlightVideo();
+        return;
+      }
+      setPlaybackInterrupted(interruptedLocalPlayback);
+      setPlaybackError(message);
+      if (interruptedLocalPlayback) return;
+      // Reattach a completed local MP4 once after a transient native source
+      // error. In particular, do not call forceFresh: that would delete the
+      // durable file while AVPlayer may still have it open.
+      if (signedUrl.startsWith('file:')) {
+        if (usesSegmentedPlayback) return;
+        if (!automaticRetryRef.current) {
+          automaticRetryRef.current = true;
+          attachedSourceRef.current = null;
+          void loadHighlightVideo();
+        }
+        return;
+      }
+      if (!automaticRetryRef.current) {
+        automaticRetryRef.current = true;
+        void loadHighlightVideo(true, Platform.OS === 'ios');
+      }
+    });
+    return () => subscription.remove();
+  }, [player, signedUrl, highlightDownload?.status, loadHighlightVideo, gameId, usesSegmentedPlayback]);
+
+  function handleRetryHighlightPlayback() {
+    automaticRetryRef.current = false;
+    if (playbackInterrupted && signedUrl?.startsWith('file:')) {
+      pendingResumePositionRef.current = playbackPositionRef.current;
+      attachedSourceRef.current = null;
+      setPlaybackError(null);
+      setPlaybackInterrupted(false);
+      void loadHighlightVideo();
+      return;
+    }
+    void loadHighlightVideo(true, Platform.OS === 'ios');
+  }
 
   async function handleYoutubeUpload() {
     if (!uploadTitle.trim() || uploading) return;
@@ -741,63 +1945,339 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     }
   }
 
+  async function handleShareClip() {
+    if (sharingClip) return;
+    setSharingClip(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Not signed in');
+      const res = await fetch(`${API_BASE}/api/games/${gameId}/share-token`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Could not generate share link');
+      const { shareToken } = await res.json() as { shareToken: string };
+      const url = `${WEB_BASE}/highlight/${shareToken}`;
+      await Share.share({
+        title: 'Game Highlights',
+        message: `Watch our game highlights: ${url}`,
+        url,
+      });
+    } catch (error: any) {
+      if (error?.message !== 'User did not share') {
+        Alert.alert('Share Failed', 'Could not create the highlight link. Please try again.');
+      }
+    } finally {
+      setSharingClip(false);
+    }
+  }
+
+  async function handleOpenHighlightPlayer() {
+    if (openingWebPlayer) return;
+    setOpeningWebPlayer(true);
+    try {
+      const url = await getPublicReelUrl(gameId, 'highlight', getToken);
+      await WebBrowser.openBrowserAsync(url);
+    } catch (error: any) {
+      Alert.alert('Could Not Open Video', error?.message ?? 'Please try again.');
+    } finally {
+      setOpeningWebPlayer(false);
+    }
+  }
+
+  async function handleSaveClip() {
+    if (savingClip) return;
+    setSavingClip(true);
+    try {
+      let saveUrl = signedUrl;
+      if (usesSegmentedPlayback) {
+        const objectPath = highlight?.highlightObjectPath;
+        if (!objectPath) throw new Error('The combined highlight is not available.');
+        const downloaded = reelDownloadManager.get(gameId, 'highlight', objectPath);
+        if (downloaded?.status === 'downloaded' && downloaded.uri) {
+          saveUrl = downloaded.uri;
+        } else {
+          const token = await getTokenRef.current();
+          if (!token) throw new Error('Your session expired. Please sign in again.');
+          const result = await getReusableStreamUrl(gameId, 'highlight', token);
+          if (Platform.OS === 'web') {
+            saveUrl = result.url;
+          } else {
+            await reelDownloadManager.enqueue({
+              gameId,
+              type: 'highlight',
+              objectPath,
+              url: result.downloadUrl,
+            }, true);
+            saveUrl = await waitForReelDownload(gameId, 'highlight', objectPath);
+          }
+        }
+      }
+      if (!saveUrl) throw new Error('The highlight video is not ready.');
+      await saveReviewVideo(saveUrl, 'Game Highlights');
+    } catch (error: any) {
+      Alert.alert('Save Failed', error?.message ?? 'The highlight video could not be saved.');
+    } finally {
+      setSavingClip(false);
+    }
+  }
+
+  async function handleRegenerate() {
+    if (generateMutation.isPending) return;
+    try {
+      attachedSourceRef.current = null;
+      await reelDownloadManager.invalidate(gameId, 'highlight', highlight?.highlightObjectPath);
+      streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
+      setSignedUrl(null);
+      setCurrentClipPosition(0);
+      setSegmentedFullscreenVisible(false);
+      await generateMutation.mutateAsync({ gameId });
+      refetch();
+    } catch {
+      Alert.alert('Could Not Regenerate', 'Please try again in a moment.');
+    }
+  }
+
+  async function handleCancelGeneration() {
+    try {
+      const token = await getToken();
+      await fetch(`${API_BASE}/api/games/${gameId}/highlight`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      refetch();
+    } catch {
+      Alert.alert('Could Not Cancel', 'The highlight reel is still processing. Please try again.');
+    }
+  }
+
   if (!highlight) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
 
   if (highlight.status === 'ready') {
-    if (!signedUrl) return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
     return (
       <View style={{ flex: 1, backgroundColor: colors.card }}>
-        {/* ZoomableVideo from the pinch-to-zoom task wraps only the player */}
+        {/* Segmented iOS playback deliberately never enters AVPlayerViewController. */}
         <ZoomableVideo style={{ flex: 1 }}>
-          <VideoView
+          {Platform.OS === 'ios' && !useNativeDiagnostic ? (
+            <View style={[videoStyle.webPlaybackLauncher, { backgroundColor: colors.background }]}>
+              <Feather name="play-circle" size={42} color={colors.primary} />
+              <Text style={[videoStyle.webPlaybackTitle, { color: colors.foreground }]}>Play Complete Highlight</Text>
+              <Text style={[videoStyle.webPlaybackText, { color: colors.mutedForeground }]}>
+                Opens the proven browser player instead of the unreliable iOS native video path.
+              </Text>
+              <TouchableOpacity
+                testID="open-highlight-web-player"
+                onPress={handleOpenHighlightPlayer}
+                disabled={openingWebPlayer}
+                style={[videoStyle.retryButton, { backgroundColor: colors.primary, opacity: openingWebPlayer ? 0.65 : 1 }]}
+              >
+                {openingWebPlayer ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="play" size={16} color="#fff" />}
+                <Text style={videoStyle.retryButtonText}>{openingWebPlayer ? 'Opening…' : 'Play Full Video'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="try-highlight-native-player"
+                onPress={() => setUseNativeDiagnostic(true)}
+                style={[videoStyle.diagnosticButton, { borderColor: colors.border }]}
+              >
+                <Text style={[videoStyle.diagnosticButtonText, { color: colors.mutedForeground }]}>Try Native Player</Text>
+              </TouchableOpacity>
+            </View>
+          ) : <>
+          {!segmentedFullscreenVisible && <VideoView
             player={player}
             style={{ flex: 1 }}
-            contentFit="contain"
-            allowsFullscreen
+            contentFit="cover"
+            fullscreenOptions={{ enable: !usesAppFullscreen, autoExitOnRotate: false }}
             allowsPictureInPicture
             nativeControls
-          />
+            onFirstFrameRender={() => {
+              playbackStartedRef.current = true;
+              if (Number.isFinite(player.duration) && player.duration > 0) {
+                playbackDurationRef.current = player.duration;
+              }
+            }}
+            onFullscreenEnter={() => {
+              fullscreenRef.current = true;
+            }}
+            onFullscreenExit={() => {
+              fullscreenRef.current = false;
+              console.info('[HighlightPlayback] Fullscreen exited', {
+                gameId,
+                currentTime: playbackPositionRef.current,
+                duration: playbackDurationRef.current || player.duration,
+                reachedEnd: reachedEndRef.current,
+              });
+            }}
+          />}
+          {usesAppFullscreen && !segmentedFullscreenVisible && (
+            <TouchableOpacity
+              testID="expand-segmented-highlight"
+              accessibilityLabel="Open highlight full screen"
+              onPress={() => setSegmentedFullscreenVisible(true)}
+              style={videoStyle.expandButton}
+            >
+              <Feather name="maximize" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
+          {playbackError && !playbackLoading ? (
+            <View style={[videoStyle.playbackError, { backgroundColor: colors.background }]}>
+              <Feather name="alert-circle" size={28} color={colors.mutedForeground} />
+              <Text style={[videoStyle.playbackErrorText, { color: colors.foreground }]}>
+                {playbackInterrupted
+                  ? `Playback was interrupted at ${formatReviewTime(playbackPositionRef.current)}. The complete Highlight is still downloaded on this device.`
+                  : 'This highlight could not be loaded.'}
+              </Text>
+              <TouchableOpacity
+                testID="retry-highlight-playback"
+                onPress={handleRetryHighlightPlayback}
+                style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+              >
+                <Feather name={playbackInterrupted ? 'play' : 'refresh-cw'} size={15} color="#fff" />
+                <Text style={videoStyle.retryButtonText}>
+                  {playbackInterrupted ? 'Resume Playback' : 'Retry Video'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (!signedUrl || playbackLoading) && (
+            <View style={[videoStyle.playbackLoading, { backgroundColor: colors.background }]}>
+              {highlightDownload?.status === 'downloading' || playbackLoading ? (
+                <>
+                  <ActivityIndicator color={colors.primary} />
+                  <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Downloading highlights…</Text>
+                  <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>The video will appear here when it is ready.</Text>
+                </>
+              ) : (
+                <>
+                  <Feather name="wifi-off" size={28} color={colors.mutedForeground} />
+                  <Text style={[videoStyle.waitingTitle, { color: colors.foreground }]}>Waiting to download</Text>
+                  <Text style={[videoStyle.waitingText, { color: colors.mutedForeground }]}>
+                    Connect to Wi‑Fi, or download now using cellular data.
+                  </Text>
+                  {!cellularAllowed && (
+                    <TouchableOpacity
+                      testID="download-highlight-cellular"
+                      onPress={async () => {
+                        await setCellularAllowed(true);
+                        automaticRetryRef.current = false;
+                        void loadHighlightVideo(true, Platform.OS === 'ios');
+                      }}
+                      style={[videoStyle.retryButton, { backgroundColor: colors.primary }]}
+                    >
+                      <Feather name="download" size={15} color="#fff" />
+                      <Text style={videoStyle.retryButtonText}>Download now</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </View>
+          )}
+          </>}
         </ZoomableVideo>
+        {usesAppFullscreen && segmentedFullscreenVisible && (
+          <Modal
+            testID="segmented-highlight-modal"
+            visible
+            animationType="fade"
+            supportedOrientations={['portrait', 'landscape']}
+            onRequestClose={() => setSegmentedFullscreenVisible(false)}
+          >
+            <View style={videoStyle.segmentedModal}>
+              <VideoView
+                player={player}
+                style={StyleSheet.absoluteFill}
+                contentFit="contain"
+                fullscreenOptions={{ enable: false }}
+                nativeControls
+                allowsPictureInPicture
+              />
+              <View style={videoStyle.segmentedModalHeader}>
+                <TouchableOpacity
+                  testID="close-segmented-highlight"
+                  accessibilityLabel="Close full screen highlight"
+                  onPress={() => setSegmentedFullscreenVisible(false)}
+                  style={videoStyle.modalCloseButton}
+                >
+                  <Feather name="x" size={24} color="#fff" />
+                </TouchableOpacity>
+                {usesSegmentedPlayback && (
+                  <Text style={videoStyle.clipProgress}>
+                    Clip {currentClipPosition + 1} of {segmentedClips.length}
+                  </Text>
+                )}
+              </View>
+            </View>
+          </Modal>
+        )}
+        {Platform.OS !== 'web' && highlightDownload && (
+          <View style={videoStyle.downloadedBadge}>
+            <Feather name={highlightDownload.status === 'failed' ? 'alert-circle' : highlightDownload.status === 'downloaded' ? 'check-circle' : 'download'} size={14} color={colors.primary} />
+            <Text style={[videoStyle.downloadedText, { color: colors.primary }]}>
+              {reelDownloadStatus(highlightDownload)}
+            </Text>
+          </View>
+        )}
 
-        {/* YouTube upload row */}
+        {/* Sharing works without YouTube; YouTube remains an optional destination. */}
         <View style={[ytStyle.bar, { borderTopColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            onPress={handleShareClip}
+            disabled={sharingClip}
+            style={[ytStyle.btn, { backgroundColor: colors.primary, flex: 1, opacity: sharingClip ? 0.65 : 1 }]}
+            activeOpacity={0.8}
+          >
+            {sharingClip ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Feather name="share-2" size={16} color="#fff" />
+            )}
+            <Text style={ytStyle.btnText}>{sharingClip ? 'Preparing…' : 'Share Clip'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            testID="save-highlight-video"
+            onPress={handleSaveClip}
+            disabled={savingClip}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1 }]}
+            activeOpacity={0.8}
+          >
+            {savingClip ? <ActivityIndicator size="small" color={colors.foreground} /> : <Feather name="download" size={16} color={colors.foreground} />}
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>{savingClip ? 'Saving…' : 'Save Video'}</Text>
+          </TouchableOpacity>
           {youtubeUrl ? (
-            <>
-              <TouchableOpacity
-                onPress={() => Linking.openURL(youtubeUrl)}
-                style={[ytStyle.btn, { backgroundColor: '#FF0000', flex: 1 }]}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="logo-youtube" size={16} color="#fff" />
-                <Text style={ytStyle.btnText}>View on YouTube</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() =>
-                  Share.share({
-                    message: `Watch our game highlights: ${youtubeUrl}`,
-                    url: youtubeUrl,
-                  })
-                }
-                style={[ytStyle.btn, { backgroundColor: colors.muted }]}
-                activeOpacity={0.8}
-              >
-                <Feather name="share-2" size={16} color={colors.foreground} />
-                <Text style={[ytStyle.btnText, { color: colors.foreground }]}>Share</Text>
-              </TouchableOpacity>
-            </>
+            <TouchableOpacity
+              onPress={() => Linking.openURL(youtubeUrl)}
+              style={[ytStyle.btn, { backgroundColor: '#FF0000', flex: 1 }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-youtube" size={16} color="#fff" />
+              <Text style={ytStyle.btnText}>YouTube</Text>
+            </TouchableOpacity>
           ) : (
             <TouchableOpacity
               onPress={() => {
                 setUploadTitle('Highlight Reel');
                 setUploadModalVisible(true);
               }}
-              style={[ytStyle.btn, { backgroundColor: '#FF0000' }]}
+              style={[ytStyle.btn, { backgroundColor: '#FF0000', flex: 1 }]}
               activeOpacity={0.8}
             >
               <Ionicons name="logo-youtube" size={16} color="#fff" />
-              <Text style={ytStyle.btnText}>Upload to YouTube</Text>
+              <Text style={ytStyle.btnText}>YouTube</Text>
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            testID="regenerate-highlights"
+            onPress={handleRegenerate}
+            disabled={generateMutation.isPending}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1, opacity: generateMutation.isPending ? 0.55 : 1 }]}
+            activeOpacity={0.8}
+          >
+            {generateMutation.isPending ? (
+              <ActivityIndicator size="small" color={colors.foreground} />
+            ) : (
+              <Ionicons name="refresh-outline" size={16} color={colors.foreground} />
+            )}
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>{generateMutation.isPending ? 'Starting…' : 'Regenerate'}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Upload modal */}
@@ -897,34 +2377,49 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     );
   }
 
-  if (highlight.status === 'processing') {
-    // Synthetic progress — exponential approach towards 97 %.
-    // Time constant 2000 s → reaches ~80 % at 54 min, ~92 % at 84 min.
-    // Caps below 100 % so the bar never claims done before the server confirms.
-    const pct = Math.min(97, Math.round(100 * (1 - Math.exp(-elapsedSec / 2000))));
-    const label =
-      elapsedSec < 60   ? 'Finding highlight moments…'
-      : elapsedSec < 900  ? 'Downloading game footage…'
-      : elapsedSec < 4500 ? 'Compressing clips…'
-      : 'Finalizing…';
-    const mins = Math.floor(elapsedSec / 60);
-    const secs = elapsedSec % 60;
-    const elapsed = mins > 0
-      ? `${mins}m ${String(secs).padStart(2, '0')}s`
-      : `${secs}s`;
+  if (highlight.status === 'queued') {
     return (
       <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
         <ActivityIndicator color={colors.primary} size="large" />
         <Text style={[videoStyle.emptyText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
-          {label}
+          Highlight queued
         </Text>
-        {/* Progress bar */}
-        <View style={{ width: '100%', height: 6, backgroundColor: colors.muted, borderRadius: 3, overflow: 'hidden' }}>
-          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: colors.primary, borderRadius: 3 }} />
-        </View>
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }]}>
+          All video workers are busy. Encoding will start automatically when a spot opens.
+        </Text>
+        <TouchableOpacity
+          testID="cancel-highlights"
+          onPress={handleCancelGeneration}
+          activeOpacity={0.7}
+          style={[reviewAction.cancelButton, { borderColor: colors.border }]}
+        >
+          <Text style={[reviewAction.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (highlight.status === 'processing') {
+    return (
+      <View style={[videoStyle.empty, { gap: 12, paddingHorizontal: 24 }]}>
+        <ActivityIndicator color={colors.primary} size="large" />
+        <Text style={[videoStyle.emptyText, { color: colors.foreground, fontFamily: 'Inter_600SemiBold' }]}>
+          Preparing Highlight video…
+        </Text>
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12 }]}>
-          {pct}% · {elapsed} elapsed — typically 30–90 min for a full game
+          {reelProgressText(highlight)}
         </Text>
+        <Text style={[videoStyle.emptyText, { color: colors.mutedForeground, fontSize: 12, textAlign: 'center' }]}>
+          You can leave this screen. We’ll notify you when it’s ready.
+        </Text>
+        <TouchableOpacity
+          testID="cancel-highlights"
+          onPress={handleCancelGeneration}
+          activeOpacity={0.7}
+          style={[reviewAction.cancelButton, { borderColor: colors.border }]}
+        >
+          <Text style={[reviewAction.cancelText, { color: colors.mutedForeground }]}>Cancel</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -956,9 +2451,28 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   );
 }
 
+const reviewAction = StyleSheet.create({
+  rowButton: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  rowButtonText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
+  cancelButton: { borderWidth: 1, borderRadius: 9, paddingHorizontal: 18, paddingVertical: 9 },
+  cancelText: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
+});
+
 const ytStyle = StyleSheet.create({
   bar: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -972,6 +2486,8 @@ const ytStyle = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 18,
     paddingVertical: 11,
+    minWidth: 130,
+    justifyContent: 'center',
   },
   btnText: {
     color: '#fff',
@@ -1038,10 +2554,6 @@ const ytStyle = StyleSheet.create({
     alignItems: 'center',
   },
 });
-const WEB_BASE = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
-  : 'https://stecstats.com';
-
 export default function GameDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const gameId = Number(id);

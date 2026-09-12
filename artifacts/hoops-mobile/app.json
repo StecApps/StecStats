@@ -15,7 +15,8 @@
     },
     "ios": {
       "bundleIdentifier": "com.hoopsstats.coach",
-      "supportsTablet": false,
+      "supportsTablet": true,
+      "requireFullScreen": true,
       "infoPlist": {
         "NSCameraUsageDescription": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
         "NSMicrophoneUsageDescription": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
@@ -25,7 +26,7 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "20260831"
+      "buildNumber": "20260922"
     },
     "android": {
       "adaptiveIcon": {
@@ -69,6 +70,13 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "StecStats accesses your photo library when you choose to save game videos.",
+          "savePhotosPermission": "StecStats saves game recordings, highlights, and lowlights to your Photos library."
+        }
+      ],
+      [
         "expo-video",
         {
           "supportsBackgroundPlayback": false,
@@ -91,18 +99,9 @@
     "updates": {
       "url": "https://u.expo.dev/2115ac2f-b1d6-42f5-a109-9dd376d0121a",
       "enabled": true,
-      "checkAutomatically": "NEVER"
+      "checkAutomatically": "ON_LOAD"
     },
-    "runtimeVersion": "1.0.0-rescue-20260830",
-    "extra": {
-      "eas": {
-        "projectId": ""
-      }
-    },
-    "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
-    },
+    "runtimeVersion": "1.0.0-playback-lab-20260920",
     "extra": {
       "router": {
         "origin": "https://replit.com/"
@@ -110,6 +109,10 @@
       "eas": {
         "projectId": "2115ac2f-b1d6-42f5-a109-9dd376d0121a"
       }
+    },
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
     },
     "owner": "sstec"
   }

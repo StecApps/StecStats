@@ -220,11 +220,13 @@ jest.mock('@/lib/tekoStyle', () => ({
 
 const mockUseListPlayers = jest.fn();
 const mockUseGetPlayerSummary = jest.fn();
+const mockUseGetMe = jest.fn();
 const mockUseUpdatePlayer = jest.fn(() => ({ mutateAsync: jest.fn() }));
 
 jest.mock('@workspace/api-client-react', () => ({
   useListPlayers: (...args: any[]) => mockUseListPlayers(...args),
   useGetPlayerSummary: (...args: any[]) => mockUseGetPlayerSummary(...args),
+  useGetMe: (...args: any[]) => mockUseGetMe(...args),
   useUpdatePlayer: (...args: any[]) => mockUseUpdatePlayer(...args),
   // Mirrors the real implementation: getListPlayersQueryKey() => ['/api/players']
   getListPlayersQueryKey: () => ['/api/players'],
@@ -290,9 +292,43 @@ function findTexts(tree: any, substr: string): any[] {
   );
 }
 
+const activeRenderers = new Set<renderer.ReactTestRenderer>();
+const activeQueryClients = new Set<QueryClient>();
+
+/** Track test-owned resources so React Query timers cannot outlive a test. */
+function makeTestQueryClient(
+  config: ConstructorParameters<typeof QueryClient>[0] = {
+    defaultOptions: { queries: { retry: false } },
+  },
+): QueryClient {
+  const qc = new QueryClient(config);
+  activeQueryClients.add(qc);
+  return qc;
+}
+
+function trackRenderer(tree: renderer.ReactTestRenderer): renderer.ReactTestRenderer {
+  activeRenderers.add(tree);
+  return tree;
+}
+
+afterEach(async () => {
+  await act(async () => {
+    for (const tree of activeRenderers) {
+      tree.unmount();
+    }
+  });
+  activeRenderers.clear();
+
+  for (const qc of activeQueryClients) {
+    await qc.cancelQueries();
+    qc.clear();
+  }
+  activeQueryClients.clear();
+});
+
 /** Create a fresh QueryClient and spy on its resetQueries() method. */
 function makeSpyQc() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = makeTestQueryClient();
   const resetSpy = jest.spyOn(qc, 'resetQueries');
   return { qc, resetSpy };
 }
@@ -320,6 +356,10 @@ beforeEach(() => {
     },
     isLoading: false,
   });
+  mockUseGetMe.mockReturnValue({
+    data: { firstName: 'Test' },
+    isLoading: false,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -328,7 +368,7 @@ beforeEach(() => {
 
 describe('QueryClient cache semantics — resetQueries() vs invalidateQueries()', () => {
   test('resetQueries() removes a cached 401 error — query status becomes pending', async () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const qc = makeTestQueryClient();
     injectCachedError(qc);
 
     expect(qc.getQueryState(PLAYERS_QUERY_KEY)?.status).toBe('error');
@@ -341,7 +381,7 @@ describe('QueryClient cache semantics — resetQueries() vs invalidateQueries()'
   });
 
   test('invalidateQueries() does NOT remove a cached error — entry survives', async () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const qc = makeTestQueryClient();
     injectCachedError(qc);
 
     await qc.invalidateQueries({ queryKey: PLAYERS_QUERY_KEY });
@@ -353,7 +393,7 @@ describe('QueryClient cache semantics — resetQueries() vs invalidateQueries()'
   });
 
   test('a cached error has fetchStatus=idle — it will not re-fetch on its own', () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const qc = makeTestQueryClient();
     injectCachedError(qc);
 
     const state = qc.getQueryState(PLAYERS_QUERY_KEY);
@@ -362,7 +402,7 @@ describe('QueryClient cache semantics — resetQueries() vs invalidateQueries()'
   });
 
   test('after resetQueries(), the error is cleared — next consumer starts in loading state', async () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const qc = makeTestQueryClient();
     injectCachedError(qc);
 
     await qc.resetQueries({ queryKey: PLAYERS_QUERY_KEY });
@@ -391,11 +431,11 @@ describe('ApiAuthSetup (production component) — resetQueries() fires on sign-i
       getToken: jest.fn(() => Promise.resolve('test-token')),
       ...authState,
     });
-    return renderer.create(
+    return trackRenderer(renderer.create(
       <QueryClientProvider client={qc}>
         <ApiAuthSetup />
       </QueryClientProvider>,
-    );
+    ));
   }
 
   test('resetQueries() is called exactly once when isSignedIn transitions false → true', async () => {
@@ -459,11 +499,11 @@ describe('ApiAuthSetup (production component) — resetQueries() fires on sign-i
       userId: 'user_first',
     });
     await act(async () => {
-      instance = renderer.create(
+      instance = trackRenderer(renderer.create(
         <QueryClientProvider client={qc}>
           <ApiAuthSetup />
         </QueryClientProvider>,
-      );
+      ));
     });
     expect(resetSpy).toHaveBeenCalledTimes(1);
 
@@ -544,15 +584,15 @@ describe('DashboardScreen — loading state never shows error copy', () => {
   });
 
   beforeEach(() => {
-    screenQc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    screenQc = makeTestQueryClient();
   });
 
   function renderScreen() {
-    return renderer.create(
+    return trackRenderer(renderer.create(
       <QueryClientProvider client={screenQc}>
         <DashboardScreen />
       </QueryClientProvider>,
-    );
+    ));
   }
 
   test('renders ActivityIndicator when isLoading=true — not "No players yet"', async () => {
@@ -661,7 +701,7 @@ describe('Full integration sequence — real ApiAuthSetup + real useQuery', () =
     // retryOnMount:false mirrors the QueryObserver setting above — the QC-level
     // option ensures ApiAuthSetup (which uses the same client) also doesn't
     // inadvertently trigger a retry when it first mounts.
-    const qc = new QueryClient({
+    const qc = makeTestQueryClient({
       defaultOptions: { queries: { retry: false, retryOnMount: false } },
     });
 
@@ -680,12 +720,12 @@ describe('Full integration sequence — real ApiAuthSetup + real useQuery', () =
 
     let instance!: renderer.ReactTestRenderer;
     await act(async () => {
-      instance = renderer.create(
+      instance = trackRenderer(renderer.create(
         <QueryClientProvider client={qc}>
           <ApiAuthSetup />
           <QueryObserver queryFn={queryFn} states={states} />
         </QueryClientProvider>,
-      );
+      ));
     });
 
     // Observer rendered at least once — sees the cached error
@@ -704,10 +744,16 @@ describe('Full integration sequence — real ApiAuthSetup + real useQuery', () =
           <QueryObserver queryFn={queryFn} states={states} />
         </QueryClientProvider>,
       );
-      // Flush pending promise resolutions so queryFn result settles
-      await Promise.resolve();
-      await Promise.resolve();
     });
+
+    // React Query schedules observer notifications after the auth promise
+    // resolves. Poll the rendered state inside act() rather than relying on a
+    // fixed number of microtasks or an elapsed-time guess.
+    for (let attempt = 0; attempt < 50 && !states.includes('data'); attempt += 1) {
+      await act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      });
+    }
 
     // queryFn must have been called — cache was reset and the query re-fetched
     expect(queryFn).toHaveBeenCalled();
@@ -723,7 +769,7 @@ describe('Full integration sequence — real ApiAuthSetup + real useQuery', () =
   test('negative control: without ApiAuthSetup, the 401 error blocks re-fetch', async () => {
     // Confirms that resetQueries() is the active mechanism. Without ApiAuthSetup
     // the cached error is never evicted and the queryFn is never called.
-    const qc = new QueryClient({
+    const qc = makeTestQueryClient({
       defaultOptions: { queries: { retry: false, retryOnMount: false } },
     });
     injectCachedError(qc);
@@ -732,12 +778,12 @@ describe('Full integration sequence — real ApiAuthSetup + real useQuery', () =
     const states: string[] = [];
 
     await act(async () => {
-      renderer.create(
+      trackRenderer(renderer.create(
         <QueryClientProvider client={qc}>
           {/* ApiAuthSetup intentionally absent — no resetQueries() will fire */}
           <QueryObserver queryFn={queryFn} states={states} />
         </QueryClientProvider>,
-      );
+      ));
       await Promise.resolve();
       await Promise.resolve();
     });

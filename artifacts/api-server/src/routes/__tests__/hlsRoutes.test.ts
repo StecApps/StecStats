@@ -167,11 +167,21 @@ vi.mock("../../lib/videoDuration", () => ({
 vi.mock("../../lib/highlightGenerator", () => ({
   PROXY_VERSION: 1,
   PROXY_CHUNK_DURATION_SEC: 360,
+  HLS_SEGMENT_DURATION_SEC: 60,
   ensureGameProxyInBackground: vi.fn(),
   cancelHighlightGeneration: vi.fn(),
   cancelProxyBuild: vi.fn(),
   makeProxyChunkGcsPath: vi.fn().mockImplementation(
     (_ownerId: number, _gameId: number, i: number) => `/chunks/${i}`,
+  ),
+  makeHlsChunkGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number, i: number) => `/hls-chunks/${i}`,
+  ),
+  makeHlsSegmentMetadataGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number, i: number) => `/hls-meta/${i}`,
+  ),
+  makeHlsSentinelGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number) => `/hls-sentinel`,
   ),
   // getReadyProxyChunkCount checks whether the HLS build is complete.
   // Returns SENTINEL.chunkCount when ready, -1 when not.
@@ -180,6 +190,9 @@ vi.mock("../../lib/highlightGenerator", () => ({
   ),
   getPlayableProxyChunkCount: vi.fn().mockImplementation(async () =>
     hlsSentinelMode.value === "ready" ? SENTINEL.chunkCount : hlsPlayableCount.value,
+  ),
+  readPlayableHlsSegmentDurations: vi.fn().mockImplementation(async () =>
+    Array.from({ length: hlsPlayableCount.value }, (_, i) => i === 0 ? 61.25 : 60),
   ),
   // readHlsSentinel returns the full sentinel including per-segment durations.
   readHlsSentinel: vi.fn().mockImplementation(async () =>
@@ -230,6 +243,7 @@ vi.mock("fs", async () => {
 // Real imports (after mocks)
 // ---------------------------------------------------------------------------
 import gamesRouter from "../games";
+import { ensureAllProxyChunksInBackground } from "../../lib/highlightGenerator";
 
 // ---------------------------------------------------------------------------
 // Test server
@@ -396,8 +410,16 @@ describe("GET /api/games/:gameId/hls/playlist.m3u8 — M3U8 correctness", () => 
     expect(res.headers.get("cache-control")).toContain("no-cache");
     const text = await res.text();
     expect(text).toContain("#EXT-X-PLAYLIST-TYPE:EVENT");
+    expect(text).toContain("#EXT-X-TARGETDURATION:62");
+    expect(text).toContain("#EXTINF:61.250,");
     expect(text).not.toContain("#EXT-X-ENDLIST");
     expect(text.match(/^segment\//gm)).toHaveLength(1);
+    expect(ensureAllProxyChunksInBackground).toHaveBeenCalledWith(
+      LONG_GAME_ID,
+      COACH.id,
+      expect.any(String),
+      expect.any(Number),
+    );
   });
 });
 

@@ -25,11 +25,15 @@ jest.mock('@clerk/expo', () => ({
   useAuth: jest.fn(() => ({
     getToken: jest.fn(() => Promise.resolve('test-token')),
     userId: 'test-user-id',
+    isLoaded: true,
+    isSignedIn: true,
   })),
+  useUser: jest.fn(() => ({ user: { firstName: 'Coach' } })),
 }));
 
 jest.mock('expo-router', () => ({
   useRouter: jest.fn(() => ({ back: jest.fn() })),
+  useFocusEffect: jest.fn(),
 }));
 
 jest.mock('@workspace/api-client-react', () => ({
@@ -67,6 +71,7 @@ jest.mock('@workspace/api-client-react', () => ({
   })),
   useUpdatePlayer: jest.fn(() => ({ mutateAsync: jest.fn() })),
   getListPlayersQueryKey: jest.fn(() => ['players']),
+  useGetMe: jest.fn(() => ({ data: { firstName: 'Coach' } })),
 }));
 
 jest.mock('@tanstack/react-query', () => ({
@@ -82,6 +87,14 @@ jest.mock('expo-linear-gradient', () => {
   return {
     LinearGradient: ({ children, colors: _c, ...rest }: any) =>
       React.createElement('LinearGradient', rest, children ?? null),
+  };
+});
+
+jest.mock('expo-blur', () => {
+  const React = require('react');
+  return {
+    BlurView: ({ children, ...rest }: any) =>
+      React.createElement('BlurView', rest, children ?? null),
   };
 });
 
@@ -138,6 +151,7 @@ jest.mock('react-native', () => {
     View: hostEl('View'),
     Text: hostEl('Text'),
     ScrollView: hostEl('ScrollView'),
+    useWindowDimensions: () => ({ width: 390, height: 844 }),
     TouchableOpacity: hostEl('TouchableOpacity'),
     ActivityIndicator: hostEl('ActivityIndicator'),
     RefreshControl: hostEl('RefreshControl'),
@@ -209,6 +223,38 @@ function flatStyle(style: any): Record<string, any> {
 describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
   const srcPath = path.resolve(__dirname, '../app/(tabs)/index.tsx');
   const rawSrc = fs.readFileSync(srcPath, 'utf8');
+  const glossyButtonSrc = fs.readFileSync(
+    path.resolve(__dirname, '../components/GlossyButton.tsx'),
+    'utf8',
+  );
+
+  test('uses the dense console dashboard and explicit actions on iPads', () => {
+    expect(rawSrc).toContain('const isTablet = Math.min(width, height) >= 600');
+    expect(rawSrc).toContain('testID="tablet-console-dashboard"');
+    expect(rawSrc).toContain('HEADLINE PRODUCTION');
+    expect(rawSrc).toContain('CAREER DASHBOARD');
+    expect(rawSrc).not.toContain("maxWidth: 1180");
+    expect(rawSrc).not.toContain('glossy={isTablet}');
+    expect(rawSrc).toContain("paddingLeft: (isTablet ? 6 : 16)");
+    expect(rawSrc).toContain('minWidth: 132');
+    expect(rawSrc).toContain('minHeight: 58');
+    expect(rawSrc).toContain('borderRadius: 999');
+    expect(rawSrc).toContain('SHARE PLAYER');
+    expect(rawSrc).toContain('PLAYMAKING & DEFENSE');
+    expect(rawSrc).toContain('SHOOTING EFFICIENCY');
+    expect(rawSrc).toContain('isLandscape ? { flex: 4 }');
+    expect(rawSrc).toContain('statsColLandscape: { flex: 8 }');
+    expect(rawSrc).toContain('gridLandscape: { flexDirection: \'row\', alignItems: \'stretch\', minHeight: 580 }');
+    expect(rawSrc).toContain('cell: { flex: 1, minHeight: 130');
+    expect(rawSrc).toContain('shootingCardLandscape: { minHeight: 154');
+    expect(glossyButtonSrc).toContain("? ['#FF8A24', c.primary, '#160803']");
+  });
+
+  test('keeps the roster scroller inside safe-area dashboard content', () => {
+    expect(rawSrc).toContain('style={styles.chipScroller}');
+    expect(rawSrc).toContain('paddingTop: insets.top');
+    expect(rawSrc).not.toContain('styles.pinnedChipBar');
+  });
 
   // Strip single-line comments before scanning so a comment that mentions a
   // hex value (for documentation) doesn't cause a false positive.
@@ -302,9 +348,9 @@ describe('Dashboard runtime — theme tokens flow from colors.dark.primary', () 
 
   test('hero card borderColor is rgba() derived from colors.dark.primary', () => {
     const json = tree.toJSON();
-    const expectedBorder = hexToRgba(SENTINEL, 0.60);
+    const expectedBorder = hexToRgba(SENTINEL, 0.8);
 
-    // heroS.card is applied as [heroS.card, { borderColor: primaryRgba(0.40), ... }]
+    // heroS.card receives the current primary color at the configured opacity.
     const heroCards = findNodes(
       json,
       (n) => {

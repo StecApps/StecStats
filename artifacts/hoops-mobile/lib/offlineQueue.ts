@@ -274,15 +274,27 @@ export async function removeQueuedGame(clientId: string): Promise<void> {
  * a network-level error (TypeError) means we're offline.
  */
 export async function checkConnectivity(apiBase: string): Promise<boolean> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
     const url = apiBase ? `${apiBase}/api/healthz` : '/api/healthz';
-    const res = await fetch(url, { method: 'GET', signal: controller.signal });
-    clearTimeout(timer);
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error('Connectivity probe timed out'));
+      }, 4000);
+    });
+    // Race explicitly as well as passing AbortSignal. Some React Native fetch
+    // implementations have failed to settle promptly after aborting a request.
+    const res = await Promise.race([
+      fetch(url, { method: 'GET', signal: controller.signal }),
+      deadline,
+    ]);
     return res.status < 600; // any HTTP response = network is up
   } catch {
     return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

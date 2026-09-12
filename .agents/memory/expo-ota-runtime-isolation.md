@@ -7,4 +7,4 @@ When Expo uses the app version as its runtime version, every binary with that un
 
 **Why:** A physical-device startup abort symbolicated to Expo Updates error recovery after several rebuilt binaries continued selecting the same runtime. The repeated crashes were consistent with a failing OTA being relaunched and exhausting Expo's recovery pipeline.
 
-**How to apply:** For a recovery binary, assign a new explicit runtime version and prevent update checks during startup so the embedded bundle launches first. Do not publish an update for the recovery runtime until the binary is verified.
+**How to apply:** For a recovery binary, assign a new explicit runtime version and prevent update checks during startup so the embedded bundle launches first. Do not publish an update for the recovery runtime until the binary is verified. After verification, ship a new native build with `checkAutomatically: ON_LOAD`; leaving it at `NEVER` while relying on an uncalled JavaScript updater creates a catch-22 where no future OTA can deliver its own fix.

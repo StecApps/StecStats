@@ -63,14 +63,22 @@ export async function applyVideoOffsetFixes(): Promise<void> {
           // Reels cut with the old (or missing) sync are stale — clear them
           // so they regenerate from the corrected event→video mapping.
           highlightObjectPath: null,
+          highlightClipManifest: null,
+          highlightPlaybackVersion: null,
           highlightStatus: null,
           highlightError: null,
           highlightStartedAt: null,
+          highlightProgressStage: null,
+          highlightProgressCompleted: null,
+          highlightProgressTotal: null,
           highlightGeneratorVersion: null,
           lowlightObjectPath: null,
           lowlightStatus: null,
           lowlightError: null,
           lowlightStartedAt: null,
+          lowlightProgressStage: null,
+          lowlightProgressCompleted: null,
+          lowlightProgressTotal: null,
           lowlightGeneratorVersion: null,
         })
         .where(and(eq(gamesTable.id, fix.gameId), replaceable))
@@ -129,5 +137,25 @@ export async function applySchemaAdditions(): Promise<void> {
   // when the coach's lowlight reel is ready. Reset to false when a new lowlight
   // job starts so the notification fires again if the reel is regenerated.
   await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_notification_sent boolean DEFAULT false`);
-  logger.info("Schema additions applied (highlight_youtube_url, users name columns, client_game_id, push_token, deletion lifecycle, highlight_notification_sent for teams+games, lowlight_notification_sent for games)");
+  logger.info("Schema additions applied");
+}
+
+export async function applyReelLeaseSchemaAdditions(): Promise<void> {
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_run_token uuid`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_lease_expires_at timestamp`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_run_token uuid`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_lease_expires_at timestamp`);
+  // Generated game queries select these immediately, and publication relies on
+  // them being present alongside the lease columns. This boot step is fatal on
+  // failure (see index.ts), so an older production DB never accepts traffic
+  // with a partially upgraded Highlight schema.
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_clip_manifest jsonb`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_playback_version integer`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_progress_stage text`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_progress_completed integer`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS highlight_progress_total integer`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_progress_stage text`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_progress_completed integer`);
+  await db.execute(sql`ALTER TABLE games ADD COLUMN IF NOT EXISTS lowlight_progress_total integer`);
+  logger.info("Database-owned game reel lease, playback, and progress columns are ready");
 }

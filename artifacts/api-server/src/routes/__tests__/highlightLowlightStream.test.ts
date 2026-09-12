@@ -1,5 +1,5 @@
 /**
- * Highlight / lowlight streaming — redirect-ALL design regression test
+ * Highlight / lowlight streaming — direct-GCS fallback and native API ranges
  *
  * The /games/:gameId/stream/:type endpoint redirects ALL requests — both
  * full-file loads and Range seeks — to a 3600 s GCS signed URL.  This
@@ -47,6 +47,7 @@
 
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import express from "express";
+import { createHmac } from "crypto";
 import { createServer, type Server } from "http";
 import type { AddressInfo } from "net";
 
@@ -235,6 +236,15 @@ vi.mock("../../lib/objectStorage", () => {
       lastStreamObjectPath.value = objectPath;
       return {
         getMetadata: vi.fn().mockResolvedValue([{ contentType: "video/mp4", size: 5_000_000 }]),
+         download: vi.fn().mockResolvedValue([Buffer.from(JSON.stringify({
+           version: 1,
+           segmentDurationSec: 4,
+           durationMs: 8_040,
+           segments: [4, 4].map((durationSec, index) => ({
+             objectPath: `${reelMode.value === "lowlight" ? PATH_LOWLIGHT : PATH_HIGHLIGHT}.hls/segment-${index}.ts`,
+             durationSec,
+           })),
+         }))]),
         createReadStream: vi.fn().mockImplementation((opts?: { start?: number; end?: number }) => {
           streamCalls.createReadStream += 1;
           const s = new Readable({ read() {} });
@@ -296,6 +306,21 @@ vi.mock("../../lib/highlightGenerator", () => ({
   getHighlightCoverage: vi.fn().mockResolvedValue({ eligibleMoments: 5, onFilmMoments: 3 }),
   generateHighlight: vi.fn(),
   cancelHighlightJob: vi.fn(),
+  cancelHighlightRun: vi.fn(),
+  HLS_SEGMENT_DURATION_SEC: 60,
+  makeProxyChunkGcsPath: vi.fn(),
+  makeHlsChunkGcsPath: vi.fn(),
+  makeHlsSegmentMetadataGcsPath: vi.fn(),
+  makeHlsSentinelGcsPath: vi.fn(),
+  getReadyProxyChunkCount: vi.fn(),
+  getPlayableProxyChunkCount: vi.fn(),
+  readHlsSentinel: vi.fn(),
+  readPlayableHlsSegmentDurations: vi.fn(),
+  ensureAllProxyChunksInBackground: vi.fn(),
+  acquireProxyChunkLocally: vi.fn().mockResolvedValue({
+    localPath: "/tmp/reel.mp4",
+    release: vi.fn().mockResolvedValue(undefined),
+  }),
 }));
 
 vi.mock("../../lib/lowlightGenerator", () => ({
@@ -311,10 +336,20 @@ vi.mock("../../lib/musicTracks", () => ({
   MUSIC_TRACKS: [],
 }));
 
-vi.mock("child_process", () => ({
-  execFile: vi.fn(),
-  spawn: vi.fn(),
-}));
+vi.mock("child_process", () => {
+  const { EventEmitter } = require("events");
+  const { PassThrough } = require("stream");
+  return {
+    execFile: vi.fn(),
+    spawn: vi.fn(() => {
+      const proc = new EventEmitter();
+      proc.stdout = new PassThrough();
+      proc.stderr = new PassThrough();
+      process.nextTick(() => { proc.stdout.end("20\n"); proc.emit("close", 0); });
+      return proc;
+    }),
+  };
+});
 
 vi.mock("fs", async () => {
   const { Readable } = await import("stream");
@@ -347,6 +382,7 @@ vi.mock("fs", async () => {
 // ---------------------------------------------------------------------------
 import gamesRouter from "../games";
 import highlightsRouter from "../highlights";
+import { acquireProxyChunkLocally } from "../../lib/highlightGenerator";
 
 // ---------------------------------------------------------------------------
 // Express app
@@ -390,6 +426,46 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe("Stored reel HLS playback", () => {
+  it("serves the completed manifest playlist and stored segment without encoding", async () => {
+    reelMode.value = "highlight";
+    vi.mocked(acquireProxyChunkLocally).mockClear();
+    const token = await mintToken(GAME_ID, "highlight");
+
+    const playlistResponse = await reelPlaylist(GAME_ID, token);
+    expect(playlistResponse.status).toBe(200);
+    const playlist = await playlistResponse.text();
+    expect(playlist).toContain("#EXT-X-TARGETDURATION:5");
+    expect(playlist.match(/#EXTINF:4\.000,/g)).toHaveLength(2);
+    expect(playlist).toContain("#EXT-X-PLAYLIST-TYPE:VOD");
+    expect(playlist).toContain("#EXT-X-ENDLIST");
+    expect(playlist.endsWith("\n")).toBe(true);
+    expect(playlist).toContain("#EXT-X-INDEPENDENT-SEGMENTS");
+    const segmentUrl = playlist.split("\n").find((line) =>
+      line.startsWith(`/api/games/${GAME_ID}/hls/segment/1?t=`));
+    expect(segmentUrl).toBeTruthy();
+
+    const segmentResponse = await fetch(
+      `${baseUrl}${segmentUrl}`,
+    );
+    expect(segmentResponse.status).toBe(200);
+    expect(acquireProxyChunkLocally).toHaveBeenCalledWith(
+      `${PATH_HIGHLIGHT}.hls/segment-1.ts`,
+    );
+  });
+
+  it("rejects a fractional segment index without dereferencing the manifest", async () => {
+    reelMode.value = "lowlight";
+    vi.mocked(acquireProxyChunkLocally).mockClear();
+    const token = await mintToken(GAME_ID, "lowlight");
+    const response = await fetch(
+      `${baseUrl}/api/games/${GAME_ID}/hls/segment/0.5?t=${token}`,
+    );
+    expect(response.status).toBe(401);
+    expect(acquireProxyChunkLocally).not.toHaveBeenCalled();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -410,6 +486,10 @@ async function mintTokenFull(gameId: number, type: string) {
   const res = await fetch(`${baseUrl}/api/games/${gameId}/stream-token/${type}`);
   if (!res.ok) throw new Error(`stream-token returned ${res.status}: ${await res.text()}`);
   return res.json() as Promise<{ token: string; streamUrl?: string; proxyReady: boolean; proxySkipped?: boolean }>;
+}
+
+async function reelPlaylist(gameId: number, token: string) {
+  return fetch(`${baseUrl}/api/games/${gameId}/hls/playlist.m3u8?t=${token}`);
 }
 
 /**
@@ -437,6 +517,18 @@ async function streamWithRange(
   return fetch(`${baseUrl}/api/games/${gameId}/stream/${type}?t=${token}`, {
     headers: { Range: `bytes=${start}-${end}` },
     redirect: "manual",
+  });
+}
+
+async function streamThroughApiWithRange(
+  gameId: number,
+  type: string,
+  token: string,
+  start: number,
+  end: number,
+) {
+  return fetch(`${baseUrl}/api/games/${gameId}/stream/${type}?t=${token}&proxy=1`, {
+    headers: { Range: `bytes=${start}-${end}` },
   });
 }
 
@@ -598,6 +690,62 @@ describe("Range seek request → 302 redirect to GCS signed URL (not 206)", () =
 
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe(SIGNED_URL);
+  });
+});
+
+describe("Native reel stream → authenticated GCS SDK byte ranges", () => {
+  it("accepts a signed token that was not minted in this server process", async () => {
+    reelMode.value = "highlight";
+    const payload = Buffer.from(JSON.stringify({
+      objectPath: PATH_HIGHLIGHT,
+      expiresAt: Date.now() + 60_000,
+      ownerId: COACH_A.id,
+      entitlementOkUntil: Date.now() + 60_000,
+      gameId: GAME_ID,
+      streamType: "highlight",
+    })).toString("base64url");
+    const signature = createHmac("sha256", process.env.SESSION_SECRET!)
+      .update(payload)
+      .digest("base64url");
+
+    const res = await streamThroughApiWithRange(
+      GAME_ID,
+      "highlight",
+      `${payload}.${signature}`,
+      0,
+      1023,
+    );
+
+    expect(res.status).toBe(206);
+    expect((await res.arrayBuffer()).byteLength).toBe(1024);
+    expect(lastStreamObjectPath.value).toBe(PATH_HIGHLIGHT);
+  });
+
+  it("serves a highlight range as 206 without redirecting AVPlayer to GCS", async () => {
+    reelMode.value = "highlight";
+    const token = await mintToken(GAME_ID, "highlight");
+
+    const res = await streamThroughApiWithRange(GAME_ID, "highlight", token, 0, 1023);
+
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-type")).toContain("video/mp4");
+    expect(res.headers.get("accept-ranges")).toBe("bytes");
+    expect(res.headers.get("content-range")).toBe("bytes 0-1023/5000000");
+    expect(res.headers.get("content-length")).toBe("1024");
+    expect((await res.arrayBuffer()).byteLength).toBe(1024);
+    expect(lastStreamObjectPath.value).toBe(PATH_HIGHLIGHT);
+    expect(streamCalls.createReadStream).toBe(1);
+  });
+
+  it("rejects an invalid lowlight range without opening the object stream", async () => {
+    reelMode.value = "lowlight";
+    const token = await mintToken(GAME_ID, "lowlight");
+
+    const res = await streamThroughApiWithRange(GAME_ID, "lowlight", token, 6_000_000, 6_000_100);
+
+    expect(res.status).toBe(416);
+    expect(res.headers.get("content-range")).toBe("bytes */5000000");
+    expect(streamCalls.createReadStream).toBe(0);
   });
 });
 

@@ -1,0 +1,146 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index dbe016c..e48013f 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -4,6 +4,12 @@ packages:
+   - lib/integrations/*
+   - scripts
+ 
++allowBuilds:
++  '@clerk/shared': true
++  browser-tabs-lock: true
++  core-js: true
++  esbuild: true
++
+ autoInstallPeers: false
+ 
+ catalog:
+@@ -36,15 +42,6 @@ minimumReleaseAgeExclude:
+   - '@replit/*'
+   - stripe-replit-sync
+ 
+-onlyBuiltDependencies:
+-  - '@swc/core'
+
+stevenstec@Mac StecStats % cd /Users/stevenstec/Downloads/StecStats
+
+git restore pnpm-workspace.yaml
+stevenstec@Mac StecStats % node <<'NODE'
+const fs = require("fs");
+const path = "package.json";
+const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+
+pkg.packageManager = "pnpm@10.26.1";
+delete pkg.pnpm;
+
+fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+NODE
+stevenstec@Mac StecStats % corepack pnpm@10.26.1 install --no-frozen-lockfile
+CI=true corepack pnpm@10.26.1 install --frozen-lockfile
+Scope: all 11 workspace projects
+✔ The modules directories will be removed and reinstalled from scratch. Proceed? (Y/n) · true
+
+Recreating /Users/stevenstec/Downloads/StecStats/node_modules
+y
+artifacts/hoops-stats                    |  WARN  deprecated recharts@2.15.4
+ WARN  14 deprecated subdependencies found: @xmldom/xmldom@0.8.13, @xmldom/xmldom@0.9.10, abab@2.0.6, crypto-js@4.2.0, domexception@4.0.0, fstream@1.0.12, glob@10.5.0, glob@7.2.3, inflight@1.0.6, lodash.isequal@4.5.0, node-domexception@1.0.0, rimraf@2.7.1, rimraf@3.0.2, whatwg-encoding@2.0.0
+Packages: +1577
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 1582, reused 1576, downloaded 0, added 1577, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 24ms
+ WARN  Issues with peer dependencies found
+artifacts/hoops-mobile
+├─┬ @testing-library/react-native 14.0.1
+│ └── ✕ missing peer test-renderer@^1.0.0
+└─┬ @clerk/expo 4.6.1
+  ├─┬ @clerk/clerk-js 6.30.2
+  │ ├─┬ @solana/wallet-adapter-base 0.9.27
+  │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+  │ ├─┬ @solana/wallet-standard 1.1.4
+  │ │ └─┬ @solana/wallet-standard-wallet-adapter 1.1.6
+  │ │   ├─┬ @solana/wallet-standard-wallet-adapter-react 1.1.6
+  │ │   │ └─┬ @solana/wallet-standard-wallet-adapter-base 1.1.5
+  │ │   │   ├── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │   │   ├── ✕ missing peer bs58@^6.0.0
+  │ │   │   └─┬ @solana/wallet-adapter-base 0.9.27
+  │ │   │     └── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │   └─┬ @solana/wallet-standard-wallet-adapter-base 1.1.5
+  │ │     ├── ✕ missing peer @solana/web3.js@^1.98.0
+  │ │     └── ✕ missing peer bs58@^6.0.0
+  │ └─┬ @solana/wallet-adapter-react 0.15.39
+  │   ├── ✕ missing peer @solana/web3.js@^1.98.0
+  │   ├─┬ @solana/wallet-adapter-base 0.9.27
+  │   │ └── ✕ missing peer @solana/web3.js@^1.98.0
+  │   ├─┬ @solana-mobile/wallet-adapter-mobile 2.3.0
+  │   │ ├── ✕ missing peer @solana/web3.js@^1.98.4
+  │   │ ├─┬ @solana/wallet-adapter-base 0.9.27
+  │   │ │ └── ✕ missing peer @solana/web3.js@^1.98.0
+  │   │ └─┬ @solana-mobile/mobile-wallet-adapter-protocol-web3js 2.3.0
+  │   │   └── ✕ missing peer @solana/web3.js@^1.98.4
+  │   └─┬ @solana/wallet-standard-wallet-adapter-react 1.1.6
+  │     ├── ✕ missing peer @solana/web3.js@^1.98.0
+  │     └── ✕ missing peer bs58@^6.0.0
+  └─┬ @clerk/react 6.14.8
+    ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+    ├── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+    └─┬ @clerk/shared 4.30.2
+      ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+      └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+Peer dependencies that should be installed:
+  @solana/web3.js@">=1.98.4 <2.0.0-0"  test-renderer@^1.0.0                 
+  bs58@">=6.0.0 <7.0.0-0"
+
+artifacts/hoops-stats
+├─┬ @clerk/backend 3.11.6
+│ └─┬ @clerk/shared 4.25.4
+│   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+│   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+├─┬ @clerk/react 6.11.3
+│ ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+│ ├── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+│ └─┬ @clerk/shared 4.23.0
+│   ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+│   └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+└─┬ @clerk/themes 2.4.57
+  └─┬ @clerk/shared 3.47.7
+    ├── ✕ unmet peer react@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+    └── ✕ unmet peer react-dom@"^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0": found 19.1.0
+
+dependencies:
++ @replit/connectors-sdk 0.4.1
++ @replit/revenuecat-sdk 5.0.0
++ stripe 22.3.0
++ stripe-replit-sync 1.0.0
+
+devDependencies:
++ prettier 3.8.4 (3.9.6 is available)
++ typescript 5.9.3 (7.0.2 is available)
+
+Done in 21s using pnpm v10.26.1
+Scope: all 11 workspace projects
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +1
++
+Progress: resolved 1, reused 1, downloaded 0, added 1, done
+
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+. preinstall: Done
+Done in 1s using pnpm v10.26.1
+stevenstec@Mac StecStats % y
+zsh: command not found: y
+stevenstec@Mac StecStats % 

@@ -26,6 +26,9 @@ const {
   dbUpdateMock,
   countEligibleMock,
   generateHighlightMock,
+  launchReelJobMock,
+  signedUrlMock,
+  deleteObjectMock,
 } = vi.hoisted(() => {
   const currentUser = {
     value: { id: 7, clerkUserId: "clerk_coach", email: "coach@example.com" } as {
@@ -42,6 +45,9 @@ const {
   const findFirstMock = vi.fn();
   const countEligibleMock = vi.fn().mockResolvedValue(3);
   const generateHighlightMock = vi.fn().mockResolvedValue(undefined);
+  const launchReelJobMock = vi.fn();
+  const signedUrlMock = vi.fn();
+  const deleteObjectMock = vi.fn().mockResolvedValue(undefined);
 
   return {
     currentUser,
@@ -51,6 +57,9 @@ const {
     dbUpdateMock,
     countEligibleMock,
     generateHighlightMock,
+    launchReelJobMock,
+    signedUrlMock,
+    deleteObjectMock,
   };
 });
 
@@ -81,6 +90,7 @@ vi.mock("@workspace/db", () => ({
       gamesTable: { findFirst: findFirstMock },
     },
     update: dbUpdateMock,
+    transaction: vi.fn().mockImplementation(async (work) => work({})),
   },
   gamesTable: "gamesTable",
   usersTable: "usersTable",
@@ -92,10 +102,23 @@ vi.mock("../../lib/entitlements", () => ({
   isPro: vi.fn().mockReturnValue(true),
 }));
 
+vi.mock("../../lib/objectStorage", () => ({
+  ObjectStorageService: class {
+    getObjectEntitySignedURL = signedUrlMock;
+    deleteObjectEntity = deleteObjectMock;
+  },
+}));
+
+vi.mock("../../lib/highlightDerivatives", () => ({
+  captureAndInvalidateHighlight: vi.fn().mockResolvedValue(null),
+  cleanupCapturedHighlightDerivatives: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../lib/highlightGenerator", () => ({
   countEligibleMoments: countEligibleMock,
   generateHighlight: generateHighlightMock,
   cancelHighlightJob: vi.fn(),
+  cancelHighlightRun: vi.fn(),
   getHighlightCoverage: vi.fn().mockResolvedValue({ eligibleMoments: 3, onFilmMoments: 3 }),
   GENERATOR_VERSION: 10,
 }));
@@ -106,6 +129,13 @@ vi.mock("../../lib/videoDuration", () => ({
 
 vi.mock("../../lib/musicTracks", () => ({
   getMusicTrackPath: vi.fn().mockReturnValue(undefined),
+}));
+
+vi.mock("../../lib/reelLease", () => ({
+  launchReelJob: launchReelJobMock,
+  resumeReelJob: vi.fn(),
+  cancelReelJob: vi.fn(),
+  invalidateOutdatedReadyReel: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("drizzle-orm", async (importActual) => {
@@ -145,6 +175,8 @@ function makeGame(overrides: Partial<{
   highlightNotificationSent: boolean;
   highlightStartedAt: Date | null;
   videoObjectPath: string | null;
+  highlightClipManifest: unknown;
+  highlightPlaybackVersion: number | null;
 }> = {}) {
   return {
     id: 99,
@@ -155,6 +187,8 @@ function makeGame(overrides: Partial<{
     highlightNotificationSent: overrides.highlightNotificationSent ?? false,
     highlightStartedAt: overrides.highlightStartedAt ?? null,
     highlightObjectPath: null,
+    highlightClipManifest: overrides.highlightClipManifest ?? null,
+    highlightPlaybackVersion: overrides.highlightPlaybackVersion ?? null,
     highlightError: null,
     highlightGeneratorVersion: null,
     highlightMusicTrack: null,
@@ -171,6 +205,48 @@ beforeEach(() => {
   dbUpdateMock.mockReturnValue({ set: dbUpdateSetMock });
   countEligibleMock.mockResolvedValue(3);
   generateHighlightMock.mockResolvedValue(undefined);
+  launchReelJobMock.mockResolvedValue({
+    token: "00000000-0000-4000-8000-000000000001",
+    startedAt: null,
+    leaseExpiresAt: new Date(Date.now() + 600_000),
+  });
+  signedUrlMock.mockResolvedValue("https://storage.example/signed-clip");
+});
+
+describe("GET /games/:gameId/highlight/clips/:clipIndex", () => {
+  it("resolves only an owned clip index from the published manifest", async () => {
+    const objectPath =
+      "/objects/uploads/7/highlight_clips/99/00000000-0000-4000-8000-000000000001/clip_0.mp4";
+    findFirstMock.mockResolvedValue(makeGame({
+      highlightStatus: "ready",
+      highlightPlaybackVersion: 1,
+      highlightClipManifest: [{ index: 0, durationMs: 1234, objectPath }],
+    }));
+
+    const res = await fetch(`${baseUrl}/games/99/highlight/clips/0`, {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://storage.example/signed-clip");
+    expect(signedUrlMock).toHaveBeenCalledWith(objectPath, 3600);
+  });
+
+  it("never signs an object path outside the game's server namespace", async () => {
+    findFirstMock.mockResolvedValue(makeGame({
+      highlightStatus: "ready",
+      highlightClipManifest: [{
+        index: 0,
+        durationMs: 1234,
+        objectPath: "/objects/uploads/8/private-master.mp4",
+      }],
+    }));
+
+    const res = await fetch(`${baseUrl}/games/99/highlight/clips/0`, {
+      redirect: "manual",
+    });
+    expect(res.status).toBe(404);
+    expect(signedUrlMock).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -187,8 +263,12 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
 
     // The DB update must include highlightNotificationSent: false so the new
     // reel triggers a fresh notification when it completes.
-    expect(dbUpdateSetMock).toHaveBeenCalledWith(
+    expect(launchReelJobMock).toHaveBeenCalledWith(
+      99,
+      "highlight",
       expect.objectContaining({ highlightNotificationSent: false }),
+      undefined,
+      expect.objectContaining({ generate: generateHighlightMock }),
     );
   });
 
@@ -199,8 +279,12 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
 
     await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
 
-    expect(dbUpdateSetMock).toHaveBeenCalledWith(
+    expect(launchReelJobMock).toHaveBeenCalledWith(
+      99,
+      "highlight",
       expect.objectContaining({ highlightNotificationSent: false }),
+      undefined,
+      expect.any(Object),
     );
   });
 
@@ -211,22 +295,32 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
 
     await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
 
-    expect(dbUpdateSetMock).toHaveBeenCalledWith(
+    expect(launchReelJobMock).toHaveBeenCalledWith(
+      99,
+      "highlight",
       expect.objectContaining({ highlightNotificationSent: false }),
+      undefined,
+      expect.any(Object),
     );
   });
 
-  it("sets highlightStatus to processing in the same DB call", async () => {
+  it("reports a newly claimed highlight as queued", async () => {
     findFirstMock.mockResolvedValue(makeGame({ highlightNotificationSent: true }));
 
-    await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
+    const response = await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
+    const body = await response.json() as { status: string; startedAt: string | null };
 
-    expect(dbUpdateSetMock).toHaveBeenCalledWith(
+    expect(launchReelJobMock).toHaveBeenCalledWith(
+      99,
+      "highlight",
       expect.objectContaining({
-        highlightStatus: "processing",
         highlightNotificationSent: false,
       }),
+      undefined,
+      expect.any(Object),
     );
+    expect(body.status).toBe("queued");
+    expect(body.startedAt).toBeNull();
   });
 
   it("does NOT reset or update the DB when a job is already in flight", async () => {
@@ -239,10 +333,10 @@ describe("POST /games/:gameId/highlight — highlightNotificationSent flag reset
       }),
     );
 
+    launchReelJobMock.mockResolvedValueOnce(null);
     const res = await fetch(`${baseUrl}/games/99/highlight`, { method: "POST" });
     // Should still 202 but without re-triggering the job
     expect(res.status).toBe(202);
-    // The route must NOT call db.update when it detects alreadyRunning
-    expect(dbUpdateMock).not.toHaveBeenCalled();
+    expect(generateHighlightMock).not.toHaveBeenCalled();
   });
 });

@@ -92,6 +92,25 @@ async function makeVideoClip(outPath: string, durationSec: number): Promise<void
   ]);
 }
 
+async function makeOffsetTsClip(
+  outPath: string,
+  durationSec: number,
+  timestampOffsetSec: number,
+  color: string,
+): Promise<void> {
+  await ffmpegRun([
+    "-y",
+    "-f", "lavfi",
+    "-i", `color=c=${color}:size=320x240:rate=30:duration=${durationSec}`,
+    "-vf", `setpts=PTS+${timestampOffsetSec}/TB`,
+    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "36",
+    "-profile:v", "main", "-pix_fmt", "yuv420p",
+    "-g", "30", "-keyint_min", "30", "-sc_threshold", "0",
+    "-an", "-f", "mpegts",
+    outPath,
+  ]);
+}
+
 /**
  * WAV music track: 0.5 s digital silence, then a continuous 880 Hz sine tone.
  *
@@ -161,6 +180,26 @@ describe("concatSegments (single-pass) — music continuity across clip boundari
   // 1. Correct path: single-pass concat+music
   // ──────────────────────────────────────────────────────────────────────────
   it(
+    "does not start the final concat after its generation lease is cancelled",
+    async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const reelPath = path.join(tmpDir, "reel_cancelled.mp4");
+
+      await expect(
+        concatSegments(
+          [clip1, clip2],
+          tmpDir,
+          reelPath,
+          false,
+          musicPath,
+          controller.signal,
+        ),
+      ).rejects.toThrow("Cancelled");
+    },
+  );
+
+  it(
     "single-pass concat+music: music is audible at the clip boundary (track plays through)",
     async () => {
       // Single ffmpeg invocation: concat list + music input → final reel.
@@ -179,6 +218,26 @@ describe("concatSegments (single-pass) — music continuity across clip boundari
           `but measured ${vol.toFixed(1)} dB. ` +
           "The music may have been truncated or not mixed across the full reel.",
       ).toBeGreaterThan(LOUD_DB_MIN);
+    },
+    120_000,
+  );
+
+  it(
+    "single-pass concat+music: game-audio reels decode through the final clip",
+    async () => {
+      const withAudio1 = path.join(tmpDir, "with_audio_1.mp4");
+      const withAudio2 = path.join(tmpDir, "with_audio_2.mp4");
+      await mixMusicIntoReel(clip1, withAudio1, musicPath, false);
+      await mixMusicIntoReel(clip2, withAudio2, musicPath, false);
+
+      const reelPath = path.join(tmpDir, "reel_game_audio.mp4");
+      await concatSegments([withAudio1, withAudio2], tmpDir, reelPath, true, musicPath);
+
+      await expect(
+        execFileAsync("ffmpeg", ["-v", "error", "-i", reelPath, "-f", "null", "-"]),
+      ).resolves.toBeDefined();
+      const vol = await meanVolumeAt(reelPath, PROBE_START, PROBE_DURATION);
+      expect(vol).toBeGreaterThan(LOUD_DB_MIN);
     },
     120_000,
   );
@@ -216,6 +275,41 @@ describe("concatSegments (single-pass) — music continuity across clip boundari
     },
     120_000,
   );
+});
+
+describe("concatSegments — continuous iOS-safe video timeline", () => {
+  it("removes timestamp gaps between independently rendered TS clips", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "reel-timeline-"));
+    try {
+      const clip1 = path.join(tmpDir, "clip1.ts");
+      const clip2 = path.join(tmpDir, "clip2.ts");
+      const reel = path.join(tmpDir, "reel.mp4");
+      await makeOffsetTsClip(clip1, 3, 12, "blue");
+      await makeOffsetTsClip(clip2, 3, 47, "red");
+
+      await concatSegments([clip1, clip2], tmpDir, reel, false);
+
+      const { stdout } = await execFileAsync("ffprobe", [
+        "-v", "error",
+        "-select_streams", "v:0",
+        "-count_frames",
+        "-show_entries", "stream=start_time,duration,nb_read_frames",
+        "-of", "json",
+        reel,
+      ]);
+      const stream = JSON.parse(stdout).streams?.[0];
+      expect(Number(stream?.start_time)).toBeLessThan(0.1);
+      expect(Number(stream?.duration)).toBeGreaterThan(5.8);
+      expect(Number(stream?.duration)).toBeLessThan(6.2);
+      expect(Number(stream?.nb_read_frames)).toBeGreaterThanOrEqual(175);
+
+      await expect(
+        execFileAsync("ffmpeg", ["-v", "error", "-i", reel, "-f", "null", "-"]),
+      ).resolves.toBeDefined();
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }, 120_000);
 });
 
 // ---------------------------------------------------------------------------

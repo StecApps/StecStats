@@ -28,6 +28,11 @@ import {
   getListTeamGamesQueryKey,
   getListAllGamesQueryKey,
 } from '@workspace/api-client-react';
+import {
+  loadPendingMasterUpload,
+  syncPendingMasterUploadIfAvailable,
+} from './pendingMasterUpload';
+import { requestUploadUrl } from '@workspace/api-client-react';
 
 // ── Exported for testing ──────────────────────────────────────────────────────
 
@@ -115,11 +120,36 @@ export function useOfflineQueueSync(apiBase: string) {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevOnlineRef = useRef(true);
 
+  async function syncPendingMaster() {
+    const pending = await loadPendingMasterUpload().catch((err) => {
+      console.warn('[PendingMaster] Could not read pending master:', (err as Error).message);
+      return null;
+    });
+    if (!pending) return;
+    // Scorekeeper may be performing the same durable item in foreground. Never
+    // start a second upload/PATCH while its lease is active.
+    await syncPendingMasterUploadIfAvailable(pending, {
+      apiBase,
+      getToken,
+      // Reuse the generated API request's endpoint contract through the shared
+      // client setup rather than constructing a second presign implementation.
+      requestUploadUrl: async (data) => requestUploadUrl(data),
+    }).then(() => {
+      qc.invalidateQueries({ queryKey: getListAllGamesQueryKey() });
+      qc.invalidateQueries({ queryKey: getListTeamGamesQueryKey(pending.teamId) });
+    }).catch((err) => {
+      // The durable marker (including local URI) remains for the next usable
+      // cellular/Wi-Fi probe or foreground/relaunch.
+      console.warn('[PendingMaster] Upload deferred:', (err as Error).message);
+    });
+  }
+
   async function syncQueued() {
     // Guard against concurrent syncs — only one flush at a time.
     if (syncInFlightRef.current) return;
     syncInFlightRef.current = true;
     try {
+      await syncPendingMaster();
       const { synced, syncedGames } = await syncQueuedGames({
         apiBase,
         isSignedIn: !!isSignedIn,

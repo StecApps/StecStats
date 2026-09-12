@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
-import { randomUUID } from "crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { and, asc, eq, gt, inArray, isNull } from "drizzle-orm";
 import { execFile, spawn } from "child_process";
 import { promises as fs, createWriteStream, createReadStream } from "fs";
@@ -14,6 +14,7 @@ import {
   playersTable,
   teamsTable,
   gameEventsTable,
+  retainedGameFilmsTable,
   usersTable,
 } from "@workspace/db";
 import {
@@ -35,13 +36,29 @@ import { getObjectAclPolicy, setObjectAclPolicy, ObjectPermission } from "../lib
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
+import { retainGameMasterFilm } from "../lib/gameFilmRetention";
+import {
+  buildContinuous720pEncodeArgs,
+  buildContinuousConcatArgs,
+} from "../lib/videoTimeline";
+import {
+  captureAndInvalidateHighlight,
+  cleanupCapturedHighlightDerivatives,
+  cleanupReelHlsDerivative,
+  readReelHlsManifest,
+} from "../lib/highlightDerivatives";
 import {
   PROXY_VERSION,
   PROXY_CHUNK_DURATION_SEC,
+  HLS_SEGMENT_DURATION_SEC,
   makeProxyChunkGcsPath,
+  makeHlsChunkGcsPath,
+  makeHlsSegmentMetadataGcsPath,
+  makeHlsSentinelGcsPath,
   getReadyProxyChunkCount,
   getPlayableProxyChunkCount,
   readHlsSentinel,
+  readPlayableHlsSegmentDurations,
   acquireProxyChunkLocally,
   ensureAllProxyChunksInBackground,
   ensureGameProxyInBackground,
@@ -609,6 +626,47 @@ router.get("/games/public/:shareToken/highlight", publicGameRateLimit, async (re
   });
 });
 
+router.get("/games/public/:shareToken/lowlight", publicGameRateLimit, async (req, res) => {
+  const shareToken = String(req.params["shareToken"] ?? "");
+  if (!UUID_RE.test(shareToken)) {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  const game = await db.query.gamesTable.findFirst({
+    where: eq(gamesTable.shareToken, shareToken),
+  });
+  if (!game) return res.status(404).json({ error: "Game not found" });
+
+  if (game.ownerId != null) {
+    const owner = await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, game.ownerId),
+    });
+    if (!owner) return res.status(404).json({ error: "Not found" });
+  }
+
+  if (!game.lowlightObjectPath || game.lowlightStatus !== "ready") {
+    return res.status(404).json({ error: "Lowlight reel not available" });
+  }
+
+  const team = await db.query.teamsTable.findFirst({
+    where: eq(teamsTable.id, game.teamId),
+  });
+  const videoUrl = await objectStorageService.getObjectEntitySignedURL(
+    game.lowlightObjectPath,
+    3600,
+  );
+
+  return res.json({
+    teamName: team?.name ?? "",
+    opponent: game.opponent,
+    date: game.date,
+    result: game.result,
+    teamScore: game.teamScore,
+    opponentScore: game.opponentScore,
+    videoUrl,
+  });
+});
+
 router.post("/games", requireAuth, async (req, res) => {
   // Extract optional clientId before Zod strips it (Zod drops unknown fields by default).
   // Used to deduplicate offline-queued game syncs — same clientId returns the existing game.
@@ -741,6 +799,10 @@ router.post("/games", requireAuth, async (req, res) => {
       );
     }
 
+    if (videoObjectPath) {
+      await retainGameMasterFilm(tx, ownerId, createdGame.id, videoObjectPath);
+    }
+
     if (videoObjectPath) scheduleVideoDurationProbe(createdGame.id, videoObjectPath);
 
     return createdGame;
@@ -841,7 +903,28 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
     }
   }
 
+  // PATCH replaces the complete stats/events collection, and videoOffsetMs can
+  // remap every moment. Fence workers before committing so an old run cannot
+  // republish derivatives generated from the previous timeline.
+  cancelHighlightGeneration(gameId);
+  let capturedHighlight: Awaited<ReturnType<typeof captureAndInvalidateHighlight>> = null;
   await db.transaction(async (tx) => {
+    capturedHighlight = await captureAndInvalidateHighlight(tx, gameId, ownerId);
+    // Record masters before changing active linkage. This is deliberately
+    // before the UPDATE so a transaction rollback cannot expose an untracked
+    // outgoing master to generic cleanup.
+    if (existing.videoObjectPath && videoObjectPath !== existing.videoObjectPath) {
+      await retainGameMasterFilm(
+        tx,
+        ownerId,
+        gameId,
+        objectStorageService.normalizeObjectEntityPath(existing.videoObjectPath),
+      );
+    }
+    if (videoObjectPath && videoObjectPath !== existing.videoObjectPath) {
+      await retainGameMasterFilm(tx, ownerId, gameId, videoObjectPath);
+    }
+
     await tx
       .update(gamesTable)
       .set({
@@ -853,21 +936,17 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
         opponentScore: body.opponentScore,
         videoObjectPath,
         videoOffsetMs: body.videoOffsetMs ?? null,
-        // Only invalidate the reels when the video file itself changes.
-        // If the video is unchanged, the clips are still valid.
-        ...(videoObjectPath !== existing.videoObjectPath
-          ? {
-              highlightObjectPath: null,
-              highlightStatus: "idle",
-              highlightError: null,
-              highlightStartedAt: null,
-              lowlightObjectPath: null,
-              lowlightStatus: "idle",
-              lowlightError: null,
-              lowlightStartedAt: null,
-              videoDurationMs: null,
-            }
-          : {}),
+        lowlightObjectPath: null,
+        lowlightStatus: "idle",
+        lowlightError: null,
+        lowlightStartedAt: null,
+        lowlightProgressStage: null,
+        lowlightProgressCompleted: null,
+        lowlightProgressTotal: null,
+        lowlightGeneratorVersion: null,
+        lowlightRunToken: null,
+        lowlightLeaseExpiresAt: null,
+        ...(videoObjectPath !== existing.videoObjectPath ? { videoDurationMs: null } : {}),
       })
       .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
 
@@ -893,6 +972,7 @@ router.patch("/games/:gameId", requireAuth, async (req, res) => {
     }
   });
 
+  await cleanupCapturedHighlightDerivatives(capturedHighlight);
   if (videoObjectPath && videoObjectPath !== existing.videoObjectPath) {
     scheduleVideoDurationProbe(gameId, videoObjectPath);
   }
@@ -905,13 +985,14 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   const { gameId } = DeleteGameParams.parse(req.params);
   const ownerId = req.appUser!.id;
 
-  // Fetch the game first so we can clean up its GCS objects after deletion.
+  // Fetch the game first so we can clean up replaceable derivatives after deletion.
   const game = await db.query.gamesTable.findFirst({
     where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)),
     columns: {
       id: true,
       videoObjectPath: true,
       highlightObjectPath: true,
+      highlightClipManifest: true,
       lowlightObjectPath: true,
       videoProxyObjectPath: true,
     },
@@ -928,12 +1009,60 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   cancelHighlightGeneration(gameId);
   cancelProxyBuild(gameId);
 
-  // Delete the DB row first so concurrent requests can no longer reference it.
-  await db
-    .delete(gamesTable)
-    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+  let deletionSnapshot: {
+    videoObjectPath: string | null;
+    lowlightObjectPath: string | null;
+    videoProxyObjectPath: string | null;
+  } | null = null;
+  let capturedHighlight: Awaited<ReturnType<typeof captureAndInvalidateHighlight>> = null;
+  await db.transaction(async (tx) => {
+    const [lockedGame] = await tx
+      .select({
+        videoObjectPath: gamesTable.videoObjectPath,
+        lowlightObjectPath: gamesTable.lowlightObjectPath,
+        videoProxyObjectPath: gamesTable.videoProxyObjectPath,
+      })
+      .from(gamesTable)
+      .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)))
+      .for("update");
+    if (!lockedGame) return;
+    deletionSnapshot = lockedGame;
 
-  // Delete GCS blobs in parallel. Normalize paths first so legacy rows that
+    // The row lock makes capture/fencing and hard deletion one atomic flow.
+    // A publisher that committed after the initial request read is captured;
+    // one that arrives later blocks and fails after this row is removed.
+    capturedHighlight = await captureAndInvalidateHighlight(tx, gameId, ownerId);
+
+    // Cover legacy games created before the retention ledger existed. Keep
+    // retention capture and hard deletion in this same locked transaction.
+    if (lockedGame.videoObjectPath) {
+      const masterPath = objectStorageService.normalizeObjectEntityPath(lockedGame.videoObjectPath);
+      await tx.insert(retainedGameFilmsTable)
+        .values({ ownerId, originalGameId: gameId, objectPath: masterPath })
+        .onConflictDoNothing();
+    }
+
+    await tx
+      .delete(gamesTable)
+      .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+  });
+  const committedSnapshot = deletionSnapshot as {
+    videoObjectPath: string | null;
+    lowlightObjectPath: string | null;
+    videoProxyObjectPath: string | null;
+  } | null;
+  if (!committedSnapshot) {
+    res.status(204).send();
+    return;
+  }
+
+  await cleanupCapturedHighlightDerivatives(capturedHighlight);
+
+  // Delete replaceable derivative blobs in parallel. The original video is a
+  // retained master and is deliberately omitted; its durable retention-ledger
+  // record continues protecting it after this row is hard-deleted. Account
+  // deletion/privacy erasure is the documented exception.
+  // Normalize paths first so legacy rows that
   // stored an absolute GCS URL (instead of /objects/...) are handled correctly.
   // Log errors but don't fail the response — the row is already gone and the
   // blob is orphaned at worst, not cross-accessible.
@@ -949,10 +1078,15 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
     );
   };
 
-  deleteIfPresent(game.videoObjectPath, "video");
-  deleteIfPresent(game.highlightObjectPath, "highlight");
-  deleteIfPresent(game.lowlightObjectPath, "lowlight");
-  deleteIfPresent(game.videoProxyObjectPath, "proxy");
+  deleteIfPresent(committedSnapshot.lowlightObjectPath, "lowlight");
+  if (committedSnapshot.lowlightObjectPath) {
+    deletions.push(
+      cleanupReelHlsDerivative(committedSnapshot.lowlightObjectPath).catch((err) =>
+        req.log.error({ err, gameId }, "Failed to delete game lowlight HLS derivative")
+      ),
+    );
+  }
+  deleteIfPresent(committedSnapshot.videoProxyObjectPath, "proxy");
 
   // Sweep proxy chunks: /objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}
   // These intermediate GCS objects are not stored in the DB row — enumerate
@@ -981,6 +1115,35 @@ router.delete("/games/:gameId", requireAuth, async (req, res) => {
   deletions.push(sweepProxyChunks().catch((err) =>
     req.log.error({ err, gameId }, "Failed to sweep proxy chunks for deleted game")
   ));
+
+  const sweepPlaybackHls = async () => {
+    let i = 0;
+    while (true) {
+      const chunkPath = makeHlsChunkGcsPath(ownerId, gameId, i);
+      try {
+        const file = await objectStorageService.getObjectEntityFile(chunkPath);
+        const [md] = await file.getMetadata();
+        if (!md || Number(md.size ?? 0) === 0) break;
+        await Promise.all([
+          objectStorageService.deleteObjectEntity(chunkPath),
+          objectStorageService.deleteObjectEntity(
+            makeHlsSegmentMetadataGcsPath(ownerId, gameId, i),
+          ).catch(() => {}),
+        ]);
+        i++;
+      } catch {
+        break;
+      }
+    }
+    await objectStorageService.deleteObjectEntity(
+      makeHlsSentinelGcsPath(ownerId, gameId),
+    ).catch(() => {});
+  };
+  if (committedSnapshot.videoObjectPath) {
+    deletions.push(sweepPlaybackHls().catch((err) =>
+      req.log.error({ err, gameId }, "Failed to sweep playback HLS objects for deleted game")
+    ));
+  }
 
   await Promise.all(deletions);
 
@@ -1116,7 +1279,31 @@ router.post("/games/merge", requireAuth, async (req, res) => {
   const mergedResult: "W" | "L" = mergedTeamScore >= mergedOpponentScore ? "W" : "L";
   const mergedVideoDurationMs = cumulative > 0 ? cumulative : null;
 
+  // Stop local encoders first; the transaction below durably clears every run
+  // token so workers on other instances are fenced from stale publication.
+  for (const gameId of allGameIds) cancelHighlightGeneration(gameId);
+  const capturedHighlights: NonNullable<
+    Awaited<ReturnType<typeof captureAndInvalidateHighlight>>
+  >[] = [];
   await db.transaction(async (tx) => {
+    for (const game of [...games].sort((a, b) => a.id - b.id)) {
+      const captured = await captureAndInvalidateHighlight(tx, game.id, ownerId);
+      if (captured) capturedHighlights.push(captured);
+    }
+    // A merge can later replace the primary path (or hide donor rows). Record
+    // every source master before either operation so no merge path can make
+    // coach footage eligible for generic cleanup.
+    for (const game of games) {
+      if (game.videoObjectPath) {
+        await retainGameMasterFilm(
+          tx,
+          ownerId,
+          game.id,
+          objectStorageService.normalizeObjectEntityPath(game.videoObjectPath),
+        );
+      }
+    }
+
     // Update primary game — clear stale reels, update scores + duration.
     await tx
       .update(gamesTable)
@@ -1125,16 +1312,16 @@ router.post("/games/merge", requireAuth, async (req, res) => {
         opponentScore: mergedOpponentScore,
         result: mergedResult,
         videoDurationMs: mergedVideoDurationMs,
-        highlightObjectPath: null,
-        highlightStatus: "idle",
-        highlightError: null,
-        highlightStartedAt: null,
-        highlightGeneratorVersion: null,
         lowlightObjectPath: null,
         lowlightStatus: "idle",
         lowlightError: null,
         lowlightStartedAt: null,
+        lowlightProgressStage: null,
+        lowlightProgressCompleted: null,
+        lowlightProgressTotal: null,
         lowlightGeneratorVersion: null,
+        lowlightRunToken: null,
+        lowlightLeaseExpiresAt: null,
         videoProxyObjectPath: null,
         videoProxyVersion: null,
       })
@@ -1181,9 +1368,22 @@ router.post("/games/merge", requireAuth, async (req, res) => {
     // Mark secondary games as merged (hidden from listings, not deleted).
     await tx
       .update(gamesTable)
-      .set({ mergedIntoGameId: primaryGameId })
+      .set({
+        mergedIntoGameId: primaryGameId,
+        lowlightObjectPath: null,
+        lowlightStatus: "idle",
+        lowlightError: null,
+        lowlightStartedAt: null,
+        lowlightProgressStage: null,
+        lowlightProgressCompleted: null,
+        lowlightProgressTotal: null,
+        lowlightGeneratorVersion: null,
+        lowlightRunToken: null,
+        lowlightLeaseExpiresAt: null,
+      })
       .where(and(inArray(gamesTable.id, secondaryGameIds), eq(gamesTable.ownerId, ownerId)));
   });
+  await Promise.all(capturedHighlights.map(cleanupCapturedHighlightDerivatives));
 
   // Background video concat when 2+ games have recordings.
   const gamesWithVideo = ordered.filter((g) => g.videoObjectPath);
@@ -1194,10 +1394,21 @@ router.post("/games/merge", requireAuth, async (req, res) => {
   } else if (gamesWithVideo.length === 1 && gamesWithVideo[0].id !== primaryGameId) {
     // Only a secondary had video — adopt it onto the primary.
     const donor = gamesWithVideo[0];
-    await db
-      .update(gamesTable)
-      .set({ videoObjectPath: donor.videoObjectPath, videoDurationMs: donor.videoDurationMs })
-      .where(eq(gamesTable.id, primaryGameId));
+    await db.transaction(async (tx) => {
+      // The merge transaction above retains this too; repeat safely here so
+      // this overwrite remains protected if merge implementation changes.
+      if (donor.videoObjectPath) {
+        await retainGameMasterFilm(tx, ownerId, donor.id, donor.videoObjectPath);
+      }
+      const primary = games.find((game) => game.id === primaryGameId);
+      if (primary?.videoObjectPath) {
+        await retainGameMasterFilm(tx, ownerId, primaryGameId, primary.videoObjectPath);
+      }
+      await tx
+        .update(gamesTable)
+        .set({ videoObjectPath: donor.videoObjectPath, videoDurationMs: donor.videoDurationMs })
+        .where(and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)));
+    });
     if (donor.videoObjectPath) scheduleVideoDurationProbe(primaryGameId, donor.videoObjectPath);
   }
 
@@ -1211,11 +1422,11 @@ router.post("/games/merge", requireAuth, async (req, res) => {
  * it, and update the primary game's videoObjectPath.  Runs in the background
  * after the merge API response has been sent.
  *
- * Uses ffmpeg -f concat -c copy so no re-encode is needed regardless of
- * the source container (WebM or MP4).  The output is the same format as the
- * first input file.
+ * Re-encodes the final concat to one continuous CFR H.264/AAC timeline.
+ * Stream-copying independently recorded sources can preserve a timestamp or
+ * keyframe discontinuity that AVPlayer exposes at the first clip boundary.
  */
-async function startBackgroundVideoConcat(
+export async function startBackgroundVideoConcat(
   primaryGameId: number,
   ownerId: number,
   orderedGames: Array<{ id: number; videoObjectPath: string | null; videoDurationMs: number | null }>,
@@ -1255,9 +1466,7 @@ async function startBackgroundVideoConcat(
       return;
     }
 
-    // Determine output extension from first segment.
-    const firstExt = path.extname(localPaths[0]);
-    const outPath = path.join(tmpDir, `merged${firstExt}`);
+    const outPath = path.join(tmpDir, "merged.mp4");
 
     // Build ffmpeg concat list file.
     const concatListPath = path.join(tmpDir, "concat.txt");
@@ -1266,21 +1475,32 @@ async function startBackgroundVideoConcat(
 
     log.info({ primaryGameId, outPath }, "merge-video: running ffmpeg concat");
     await new Promise<void>((resolve, reject) => {
-      execFile(
-        "ffmpeg",
-        ["-y", "-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy", outPath],
-        { maxBuffer: 5 * 1024 * 1024, timeout: 10 * 60 * 1000 },
-        (err, _stdout, stderr) =>
-          err ? reject(new Error(`ffmpeg concat: ${stderr?.slice(-600)}`)) : resolve(),
-      );
+      const proc = spawn("ffmpeg", buildContinuousConcatArgs(concatListPath, outPath));
+      let stderrTail = "";
+      const timeout = setTimeout(() => {
+        proc.kill("SIGKILL");
+        reject(new Error("ffmpeg normalized concat timed out after 4 hours"));
+      }, 4 * 60 * 60 * 1000);
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderrTail = (stderrTail + chunk.toString()).slice(-8_000);
+      });
+      proc.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+      proc.on("close", (code) => {
+        clearTimeout(timeout);
+        code === 0
+          ? resolve()
+          : reject(new Error(`ffmpeg normalized concat exited ${code}: ${stderrTail.slice(-1200)}`));
+      });
     });
 
     log.info({ primaryGameId }, "merge-video: uploading merged file");
-    const contentType = firstExt === ".webm" ? "video/webm" : "video/mp4";
     const newObjectPath = await objectStorageService.uploadLocalFileAsObjectEntity(
       outPath,
       ownerId,
-      contentType,
+      "video/mp4",
     );
 
     // Guard: if the primary game was deleted while the concat job was running,
@@ -1288,7 +1508,7 @@ async function startBackgroundVideoConcat(
     // (after the slow upload) and clean up if the game is gone.
     const stillExists = await db.query.gamesTable.findFirst({
       columns: { id: true },
-      where: eq(gamesTable.id, primaryGameId),
+      where: and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)),
     });
     if (!stillExists) {
       log.warn(
@@ -1307,15 +1527,34 @@ async function startBackgroundVideoConcat(
       return;
     }
 
-    await db
-      .update(gamesTable)
-      .set({
-        videoObjectPath: newObjectPath,
-        videoProxyObjectPath: null,
-        videoProxyVersion: null,
-        videoDurationMs: null, // will be probed
-      })
-      .where(eq(gamesTable.id, primaryGameId));
+    await db.transaction(async (tx) => {
+      // Re-read inside the transaction: protect source masters and only
+      // attach the new film while the primary still belongs to this owner.
+      const primary = await tx.query.gamesTable.findFirst({
+        where: and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)),
+      });
+      if (!primary) return;
+
+      if (primary.videoObjectPath) {
+        await retainGameMasterFilm(tx, ownerId, primaryGameId, primary.videoObjectPath);
+      }
+      for (const game of orderedGames) {
+        if (game.videoObjectPath) {
+          await retainGameMasterFilm(tx, ownerId, game.id, game.videoObjectPath);
+        }
+      }
+      // Ledger insert precedes the overwrite in this same transaction.
+      await retainGameMasterFilm(tx, ownerId, primaryGameId, newObjectPath);
+      await tx
+        .update(gamesTable)
+        .set({
+          videoObjectPath: newObjectPath,
+          videoProxyObjectPath: null,
+          videoProxyVersion: null,
+          videoDurationMs: null, // will be probed
+        })
+        .where(and(eq(gamesTable.id, primaryGameId), eq(gamesTable.ownerId, ownerId)));
+    });
 
     scheduleVideoDurationProbe(primaryGameId, newObjectPath);
     log.info({ primaryGameId, newObjectPath }, "merge-video: done");
@@ -1471,23 +1710,45 @@ router.patch("/games/:gameId/video", requireAuth, async (req, res) => {
     }
   }
 
-  await db
-    .update(gamesTable)
-    .set({
-      videoObjectPath,
-      highlightObjectPath: null,
-      highlightStatus: "idle",
-      highlightError: null,
-      highlightStartedAt: null,
-      lowlightObjectPath: null,
-      lowlightStatus: "idle",
-      lowlightError: null,
-      lowlightStartedAt: null,
-      videoDurationMs: null,
-    })
-    .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
-
-  scheduleVideoDurationProbe(gameId, videoObjectPath);
+  // A replay of an already-completed background upload must not invalidate
+  // derivatives or enqueue another duration probe.
+  if (videoObjectPath !== game.videoObjectPath) {
+    cancelHighlightGeneration(gameId);
+    let capturedHighlight: Awaited<ReturnType<typeof captureAndInvalidateHighlight>> = null;
+    await db.transaction(async (tx) => {
+      capturedHighlight = await captureAndInvalidateHighlight(tx, gameId, ownerId);
+      // Retain before changing active linkage; onConflict makes upload
+      // retries safe.
+      if (game.videoObjectPath) {
+        await retainGameMasterFilm(
+          tx,
+          ownerId,
+          gameId,
+          objectStorageService.normalizeObjectEntityPath(game.videoObjectPath),
+        );
+      }
+      await retainGameMasterFilm(tx, ownerId, gameId, videoObjectPath);
+      await tx
+        .update(gamesTable)
+        .set({
+          videoObjectPath,
+          lowlightObjectPath: null,
+          lowlightStatus: "idle",
+          lowlightError: null,
+          lowlightStartedAt: null,
+          lowlightProgressStage: null,
+          lowlightProgressCompleted: null,
+          lowlightProgressTotal: null,
+          lowlightGeneratorVersion: null,
+          lowlightRunToken: null,
+          lowlightLeaseExpiresAt: null,
+          videoDurationMs: null,
+        })
+        .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+    });
+    await cleanupCapturedHighlightDerivatives(capturedHighlight);
+    scheduleVideoDurationProbe(gameId, videoObjectPath);
+  }
 
   req.log.info({ gameId, videoObjectPath }, "game video attached via background upload");
   res.json({ ok: true });
@@ -1616,7 +1877,7 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
     // 'original' keeps the existing codec stream via -c copy.
     // The final concat step always uses -c copy (streams are already at target res).
     const ffmpegEncodeArgs: string[] = repairQuality === '720p'
-      ? ["-vf", "scale=-2:720", "-c:v", "libx264", "-crf", "23", "-preset", "veryfast", "-c:a", "aac", "-movflags", "+faststart"]
+      ? buildContinuous720pEncodeArgs()
       : ["-c", "copy", "-movflags", "+faststart"];
     // Set by the WebM two-half path; stored to DB for highlight timestamp correction.
     let videoHalf2StartMs: number | null = null;
@@ -1786,12 +2047,27 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
               code === 0 ? resolve() : reject(new Error(`ffmpeg webm-concat: ${stderr.slice(-500)}`)));
             proc.on("error", reject);
           });
+        } else if (repairQuality === "720p") {
+          // A concat-demuxed WebM can look like one valid container while still
+          // carrying a timestamp/keyframe discontinuity between recordings.
+          // A requested 720p repair must therefore rebuild the whole timeline.
+          const rawFull = path.join(tmpDir, "raw.bin");
+          log.info({ gameId }, "repair-video: downloading WebM for continuous timeline rebuild");
+          await downloadGCSRange(srcFile, rawFull);
+          log.info({ gameId }, "repair-video: normalizing single WebM timeline");
+          await new Promise<void>((resolve, reject) => {
+            execFile(
+              "ffmpeg",
+              ["-y", "-fflags", "+genpts", "-i", rawFull, ...ffmpegEncodeArgs, tmpOut],
+              { maxBuffer: 8 * 1024 * 1024, timeout: 4 * 60 * 60 * 1000 },
+              (err, _stdout, stderr) =>
+                err ? reject(new Error(`ffmpeg WebM normalize: ${stderr?.slice(-1200)}`)) : resolve(),
+            );
+          });
+          await fs.unlink(rawFull).catch(() => {});
         } else {
-          // Single continuous WebM — the original file is already a valid playable
-          // WebM (VP9/Opus). Attempting to ffmpeg-remux a 2+ GB file on the
-          // production server risks an OOM crash before completion.  Instead just
-          // reset the metadata: the player uses the original source directly and
-          // highlights are regenerated from the correct timestamps.
+          // Original-quality mode remains metadata-only for an ordinary single
+          // WebM. Coaches can explicitly choose 720p to force normalization.
           log.info({ gameId }, "repair-video: single WebM — skipping ffmpeg, resetting metadata only");
           // Do NOT clear highlight/lowlight reels here: the video file is
           // unchanged (same path, same content), so any existing reels are
@@ -1799,16 +2075,22 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
           // definitively proved don't apply. Clearing reels here caused
           // users to lose their generated reels after pressing Repair when
           // the video was already a single continuous recording.
-          await db
-            .update(gamesTable)
-            .set({
-              videoObjectPath:      sourceObjectPath,
-              videoProxyObjectPath: null,
-              videoProxyVersion:    null,
-              videoHalf2StartMs:    null,
-              videoHalftimeGapMs:   null,
-            })
-            .where(eq(gamesTable.id, gameId));
+          await db.transaction(async (tx) => {
+            if (game.videoObjectPath) {
+              await retainGameMasterFilm(tx, ownerId, gameId, game.videoObjectPath);
+            }
+            await retainGameMasterFilm(tx, ownerId, gameId, sourceObjectPath);
+            await tx
+              .update(gamesTable)
+              .set({
+                videoObjectPath:      sourceObjectPath,
+                videoProxyObjectPath: null,
+                videoProxyVersion:    null,
+                videoHalf2StartMs:    null,
+                videoHalftimeGapMs:   null,
+              })
+              .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+          });
           scheduleVideoDurationProbe(gameId, sourceObjectPath);
           log.info({ gameId }, "repair-video: done (single WebM metadata reset)");
           return; // skip the upload step below; tmpDir cleanup runs in finally
@@ -1838,21 +2120,38 @@ router.post("/games/:gameId/repair-video", requireAuth, async (req, res) => {
       "video/mp4",
     );
 
-    await db
-      .update(gamesTable)
-      .set({
-        videoObjectPath: newObjectPath,
-        videoProxyObjectPath: null,       // force proxy rebuild from repaired video
-        videoProxyVersion: null,
-        highlightStatus: "idle",
-        highlightObjectPath: null,
-        lowlightStatus: "idle",
-        lowlightObjectPath: null,
-        videoHalf2StartMs,
-        videoHalftimeGapMs,
-        videoDurationMs: null,
-      })
-      .where(eq(gamesTable.id, gameId));
+    cancelHighlightGeneration(gameId);
+    let capturedHighlight: Awaited<ReturnType<typeof captureAndInvalidateHighlight>> = null;
+    await db.transaction(async (tx) => {
+      capturedHighlight = await captureAndInvalidateHighlight(tx, gameId, ownerId);
+      if (game.videoObjectPath) {
+        await retainGameMasterFilm(tx, ownerId, gameId, game.videoObjectPath);
+      }
+      // Keep repaired output as a master before it becomes the active path.
+      await retainGameMasterFilm(tx, ownerId, gameId, newObjectPath);
+      await tx
+        .update(gamesTable)
+        .set({
+          videoObjectPath: newObjectPath,
+          videoProxyObjectPath: null,       // force proxy rebuild from repaired video
+          videoProxyVersion: null,
+          lowlightStatus: "idle",
+          lowlightObjectPath: null,
+          lowlightError: null,
+          lowlightStartedAt: null,
+          lowlightProgressStage: null,
+          lowlightProgressCompleted: null,
+          lowlightProgressTotal: null,
+          lowlightGeneratorVersion: null,
+          lowlightRunToken: null,
+          lowlightLeaseExpiresAt: null,
+          videoHalf2StartMs,
+          videoHalftimeGapMs,
+          videoDurationMs: null,
+        })
+        .where(and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, ownerId)));
+    });
+    await cleanupCapturedHighlightDerivatives(capturedHighlight);
 
     scheduleVideoDurationProbe(gameId, newObjectPath);
 
@@ -1917,6 +2216,13 @@ interface StreamTokenEntry {
   /** Stored duration lets a growing HLS playlist bound chunk probes. */
   hlsDurationMs?: number;
   /**
+   * Reel HLS is a completed VOD made from the exact published combined MP4.
+   * These claims are signed with the object path, so neither a query parameter
+   * nor a regenerated reel can select another type/run's segments.
+   */
+  hlsSegmentDurationSec?: number;
+  hlsSegmentCount?: number;
+  /**
    * Pre-generated GCS signed URL returned alongside the token so the mobile
    * client can pass it directly to expo-video/AVPlayer without going through
    * the /stream/:type redirect.
@@ -1933,6 +2239,64 @@ interface StreamTokenEntry {
 }
 
 const streamTokens = new Map<string, StreamTokenEntry>();
+
+/**
+ * Stream tokens must be valid across every autoscaled API instance. Keep a
+ * per-instance map only as an entitlement re-check cache; the HMAC-signed token
+ * is the source of truth when AVPlayer lands on a different instance.
+ */
+function signStreamToken(entry: StreamTokenEntry): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) throw new Error("SESSION_SECRET is required to issue stream tokens");
+  const payload = Buffer.from(JSON.stringify({
+    objectPath: entry.objectPath,
+    expiresAt: entry.expiresAt,
+    ownerId: entry.ownerId,
+    entitlementOkUntil: entry.entitlementOkUntil,
+    gameId: entry.gameId,
+    streamType: entry.streamType,
+    isHls: entry.isHls,
+    hlsDurationMs: entry.hlsDurationMs,
+    hlsSegmentDurationSec: entry.hlsSegmentDurationSec,
+    hlsSegmentCount: entry.hlsSegmentCount,
+  })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+function verifyStreamToken(token: string): StreamTokenEntry | null {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) return null;
+  const parts = token.split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+
+  const expected = Buffer.from(createHmac("sha256", secret).update(parts[0]).digest("base64url"));
+  const supplied = Buffer.from(parts[1]);
+  if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) return null;
+
+  try {
+    const value = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as Partial<StreamTokenEntry>;
+    if (
+      typeof value.objectPath !== "string"
+      || !Number.isSafeInteger(value.expiresAt)
+      || !Number.isSafeInteger(value.ownerId)
+      || !Number.isSafeInteger(value.entitlementOkUntil)
+      || !Number.isSafeInteger(value.gameId)
+      || typeof value.streamType !== "string"
+    ) return null;
+    return value as StreamTokenEntry;
+  } catch {
+    return null;
+  }
+}
+
+function resolveStreamToken(token: string): StreamTokenEntry | null {
+  const cached = streamTokens.get(token);
+  if (cached) return cached;
+  const verified = verifyStreamToken(token);
+  if (verified) streamTokens.set(token, verified);
+  return verified;
+}
 
 // Token TTL: 4 hours.
 //
@@ -2039,9 +2403,10 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
         // the non-HLS stream token (4 h).  This gives HLS the same
         // post-token-expiry seek window: segment requests remain valid for 1 h
         // after the stream-token TTL (STREAM_TOKEN_TTL_MS) would have expired.
-        const hlsToken = randomUUID();
-        streamTokens.set(hlsToken, {
-          objectPath: "",
+        const hlsEntry: StreamTokenEntry = {
+          // Keep the source path in the portable token so playlist refreshes on
+          // a replacement server instance can resume an interrupted HLS build.
+          objectPath: game.videoObjectPath,
           expiresAt: Date.now() + STREAM_SIGNED_URL_TTL_S * 1000,
           ownerId,
           entitlementOkUntil: Date.now() + STREAM_ENTITLEMENT_RECHECK_MS,
@@ -2049,14 +2414,16 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
           streamType: "hls",
           isHls: true,
           hlsDurationMs: game.videoDurationMs,
-        });
+        };
+        const hlsToken = signStreamToken(hlsEntry);
+        streamTokens.set(hlsToken, hlsEntry);
         return void res.json({
           token: hlsToken,
           proxyReady: true,
           proxyType: "hls",
           availableDurationSec: Math.min(
             game.videoDurationMs / 1000,
-            playableChunkCount * PROXY_CHUNK_DURATION_SEC,
+            playableChunkCount * HLS_SEGMENT_DURATION_SEC,
           ),
           isComplete: completeChunkCount > 0,
         });
@@ -2066,8 +2433,14 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
       return void res.json({ token: randomUUID(), proxyReady: false, proxySkipped: false });
     }
 
-    if (!hasValidProxy) ensureGameProxyInBackground(gameId, ownerId);
-    objectPath = hasValidProxy ? game.videoProxyObjectPath! : game.videoObjectPath;
+    if (!hasValidProxy) {
+      // iOS cannot play the raw WebM/fMP4 recording reliably. Previously we
+      // started the proxy build but immediately returned the raw source as
+      // proxyReady=true, producing the black Film Room seen on shorter games.
+      ensureGameProxyInBackground(gameId, ownerId);
+      return void res.json({ token: randomUUID(), proxyReady: false, proxySkipped: false });
+    }
+    objectPath = game.videoProxyObjectPath!;
   } else if (type === "highlight") {
     if (game.highlightStatus !== "ready" || !game.highlightObjectPath) {
       return void res.status(404).json({ error: "No highlight available" });
@@ -2081,6 +2454,43 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
   }
 
   if (!objectPath) return void res.status(404).json({ error: "No video available" });
+
+  if (type === "highlight" || type === "lowlight") {
+    // Native AVPlayer is markedly more reliable with a small completed HLS VOD
+    // than progressive playback of a generated reel. Keep the MP4 route below
+    // for Save/share/offline downloads, but bind playback segments to this
+    // exact derivative object and reel type in the signed token.
+    // This initial token deliberately contains no duration. Do not download or
+    // inspect the manifest during authenticated token issuance: native playback
+    // starts immediately and AVPlayer fetches the stored manifest only when it
+    // requests the playlist.
+    const hlsEntry: StreamTokenEntry = {
+      objectPath,
+      expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
+      ownerId,
+      entitlementOkUntil: Date.now() + STREAM_ENTITLEMENT_RECHECK_MS,
+      gameId,
+      streamType: type,
+      isHls: true,
+    };
+    hlsEntry.streamUrl = await objectStorageService.getObjectEntitySignedURL(
+      objectPath,
+      STREAM_SIGNED_URL_TTL_S,
+    );
+    const hlsToken = signStreamToken(hlsEntry);
+    streamTokens.set(hlsToken, hlsEntry);
+    return void res.json({
+      token: hlsToken,
+      proxyType: "hls",
+      proxyReady: true,
+      streamUrl: hlsEntry.streamUrl,
+      // Keep this path relative. req.protocol reflects the internal HTTP hop
+      // behind Replit's TLS proxy unless Express explicitly trusts that proxy;
+      // returning it as an absolute URL makes iOS ATS reject the download
+      // before any request reaches this server.
+      downloadUrl: `/api/games/${gameId}/stream/${type}?t=${hlsToken}&proxy=1`,
+    });
+  }
 
   // Pre-generate the GCS signed URL and return it as `streamUrl` so the mobile
   // client can give it directly to expo-video/AVPlayer.  This means all seeks
@@ -2100,8 +2510,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     STREAM_SIGNED_URL_TTL_S,
   );
 
-  const token = randomUUID();
-  streamTokens.set(token, {
+  const streamEntry: StreamTokenEntry = {
     objectPath,
     expiresAt: Date.now() + STREAM_TOKEN_TTL_MS,
     ownerId,
@@ -2115,7 +2524,9 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
     // Cache the signed URL so /stream/:type can reuse it without a second
     // GCS signing call.
     streamUrl,
-  });
+  };
+  const token = signStreamToken(streamEntry);
+  streamTokens.set(token, streamEntry);
 
   // proxyReady: true  → URL is an H.264 proxy MP4 (safe on all platforms)
   // proxyReady: false → URL is the raw recording (VP9/WebM); iOS cannot play it
@@ -2139,7 +2550,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
  */
 router.get("/games/:gameId/stream/:type", async (req, res) => {
   const token = String(req.query.t ?? "");
-  const entry = streamTokens.get(token);
+  const entry = resolveStreamToken(token);
   if (!entry || Date.now() > entry.expiresAt) {
     return void res.status(401).json({ error: "Invalid or expired stream token" });
   }
@@ -2183,6 +2594,85 @@ router.get("/games/:gameId/stream/:type", async (req, res) => {
   }
 
   try {
+    if (req.query.proxy === "1" && (routeType === "highlight" || routeType === "lowlight")) {
+      const objectFile = await objectStorageService.getObjectEntityFile(entry.objectPath);
+      const [metadata] = await objectFile.getMetadata();
+      const totalSize = Number(metadata.size);
+      if (!Number.isSafeInteger(totalSize) || totalSize <= 0) {
+        throw new Error("Invalid media object size");
+      }
+
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Content-Type", String(metadata.contentType || "video/mp4"));
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      if (metadata.md5Hash) {
+        res.setHeader("X-Content-MD5", Buffer.from(String(metadata.md5Hash), "base64").toString("hex"));
+      }
+
+      const rangeHeader = req.headers.range;
+      let start = 0;
+      let end = totalSize - 1;
+
+      if (rangeHeader) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+        if (!match || (!match[1] && !match[2])) {
+          res.setHeader("Content-Range", `bytes */${totalSize}`);
+          return void res.status(416).end();
+        }
+
+        if (!match[1]) {
+          const suffixLength = Number(match[2]);
+          if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+            res.setHeader("Content-Range", `bytes */${totalSize}`);
+            return void res.status(416).end();
+          }
+          start = Math.max(0, totalSize - suffixLength);
+        } else {
+          start = Number(match[1]);
+        }
+        if (match[2] && match[1]) {
+          end = Math.min(Number(match[2]), totalSize - 1);
+        }
+
+        if (
+          !Number.isSafeInteger(start)
+          || !Number.isSafeInteger(end)
+          || start < 0
+          || start >= totalSize
+          || end < start
+        ) {
+          res.setHeader("Content-Range", `bytes */${totalSize}`);
+          return void res.status(416).end();
+        }
+
+        res.status(206);
+        res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+        res.setHeader("Content-Length", String(end - start + 1));
+      } else {
+        res.status(200);
+        res.setHeader("Content-Length", String(totalSize));
+      }
+
+      if (req.method === "HEAD") {
+        return void res.end();
+      }
+
+      const mediaStream = objectFile.createReadStream({ start, end });
+      mediaStream.on("error", (error) => {
+        req.log.error({ err: error, gameId: routeGameId, routeType }, "stream: GCS read failed");
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Failed to stream video" });
+        } else {
+          res.destroy(error);
+        }
+      });
+      res.on("close", () => {
+        if (!mediaStream.destroyed) mediaStream.destroy();
+      });
+      mediaStream.pipe(res);
+      return;
+    }
+
     // Redirect ALL requests — both initial full-file loads and Range seeks —
     // to a 3600 s GCS signed URL so the client streams directly from GCS,
     // bypassing the Replit reverse proxy entirely.
@@ -2252,7 +2742,7 @@ async function revalidateHlsEntitlement(entry: StreamTokenEntry, token: string):
  */
 router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
   const token = String(req.query.t ?? "");
-  const entry = streamTokens.get(token);
+  const entry = resolveStreamToken(token);
   if (!entry || !entry.isHls || Date.now() > entry.expiresAt) {
     return void res.status(401).end();
   }
@@ -2263,22 +2753,88 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     return void res.status(403).json({ error: "Subscription required" });
   }
 
+  if (entry.streamType === "highlight" || entry.streamType === "lowlight") {
+    // The initial reel token is intentionally cheap. The playlist request reads
+    // the already-published manifest and signs a second portable token with the
+    // exact finite VOD shape. No source download or encoding happens here.
+    const manifest = await readReelHlsManifest(entry.objectPath);
+    if (!manifest) {
+      return void res.status(503).json({ error: "Reel playlist is being prepared — try again shortly" });
+    }
+    const segmentEntry: StreamTokenEntry = {
+      ...entry,
+      hlsDurationMs: manifest.durationMs,
+      hlsSegmentDurationSec: manifest.segmentDurationSec,
+      hlsSegmentCount: manifest.segments.length,
+    };
+    const segmentToken = signStreamToken(segmentEntry);
+    streamTokens.set(segmentToken, segmentEntry);
+    const maxAdvertisedSegmentDuration = Math.max(
+      ...manifest.segments.map((segment) => segment.durationSec),
+      1,
+    );
+    // FFmpeg rounds EXTINF values to milliseconds. A segment advertised as
+    // exactly 4.000s can still have a 4.023s MPEG-TS timeline after muxing.
+    // AVPlayer rejects that playlist before requesting segment zero when the
+    // target is also 4. Give exact integer boundaries one second of headroom.
+    const targetDuration = Number.isInteger(maxAdvertisedSegmentDuration)
+      ? maxAdvertisedSegmentDuration + 1
+      : Math.ceil(maxAdvertisedSegmentDuration);
+    const lines = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:3",
+      `#EXT-X-TARGETDURATION:${targetDuration}`,
+      "#EXT-X-PLAYLIST-TYPE:VOD",
+      "#EXT-X-MEDIA-SEQUENCE:0",
+      "#EXT-X-INDEPENDENT-SEGMENTS",
+    ];
+    for (let i = 0; i < segmentEntry.hlsSegmentCount!; i++) {
+      const duration = manifest.segments[i]!.durationSec;
+      lines.push(`#EXTINF:${duration.toFixed(3)},`);
+      // Use an absolute-path URI so native players do not need to resolve a
+      // tokenized playlist URL against a relative segment path.
+      lines.push(`/api/games/${gameId}/hls/segment/${i}?t=${segmentToken}`);
+    }
+    lines.push("#EXT-X-ENDLIST");
+    res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+    res.setHeader("Cache-Control", "private, max-age=60");
+    return void res.end(`${lines.join("\n")}\n`);
+  }
+
   // Read the sentinel for exact per-segment durations (ffprobe-measured at
   // encode time) rather than using PROXY_CHUNK_DURATION_SEC estimates.
   // The sentinel is written by ensureAllProxyChunksInBackground only after
   // every chunk is safely in GCS, so its presence alone confirms readiness.
   const sentinel = await readHlsSentinel(entry.ownerId, gameId);
+  if (!sentinel && entry.objectPath && entry.hlsDurationMs) {
+    // The original fire-and-forget worker can disappear on deploy/autoscale.
+    // AVPlayer refreshes an EVENT playlist while watching, so every refresh is
+    // also a durable opportunity to resume from the first missing GCS segment.
+    ensureAllProxyChunksInBackground(
+      gameId,
+      entry.ownerId,
+      entry.objectPath,
+      entry.hlsDurationMs,
+    );
+  }
   const chunkCount = sentinel?.chunkCount
     ?? await getPlayableProxyChunkCount(
       gameId,
       entry.ownerId,
-      entry.hlsDurationMs ?? PROXY_CHUNK_DURATION_SEC * 1000,
+      entry.hlsDurationMs ?? HLS_SEGMENT_DURATION_SEC * 1000,
     );
   if (chunkCount < 1) {
     return void res.status(503).json({ error: "First video segment not ready — try again shortly" });
   }
   const segmentDurationsSec = sentinel?.segmentDurationsSec
-    ?? Array<number>(chunkCount).fill(PROXY_CHUNK_DURATION_SEC);
+    ?? await readPlayableHlsSegmentDurations(
+      gameId,
+      entry.ownerId,
+      entry.hlsDurationMs ?? HLS_SEGMENT_DURATION_SEC * 1000,
+    );
+  if (segmentDurationsSec.length < chunkCount) {
+    return void res.status(503).json({ error: "Video timing is still being finalized — try again shortly" });
+  }
 
   // #EXT-X-TARGETDURATION must be >= ceil of the longest actual segment
   // (RFC 8216 §4.3.3.1).  Derive from measured durations, not the nominal
@@ -2297,7 +2853,7 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
     // happen in practice but guards against corrupt sentinel data).
     const dur = (segmentDurationsSec[i] ?? 0) > 0
       ? segmentDurationsSec[i]!
-      : PROXY_CHUNK_DURATION_SEC;
+      : HLS_SEGMENT_DURATION_SEC;
     lines.push(`#EXTINF:${dur.toFixed(3)},`);
     // Relative URL so AVPlayer resolves it against the playlist base path.
     lines.push(`segment/${i}?t=${token}`);
@@ -2313,10 +2869,9 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
 
 /**
  * GET /games/:gameId/hls/segment/:chunkIndex?t=<token>
- * Downloads the H.264 proxy chunk for chunkIndex from GCS, remuxes it to
- * MPEG-TS via ffmpeg -c copy, and streams the result to the client.  The
- * remux is a container-format change only — no video or audio re-encoding —
- * so it completes in a few seconds regardless of chunk length.
+ * Downloads a full-game proxy chunk or cached reel MP4 and streams a TS HLS
+ * segment. Full-game chunks are remuxed; short reel windows are re-encoded so
+ * every segment begins with an independently decodable keyframe.
  *
  * The GCS chunk is cached in shared /tmp for the duration of the stream
  * (ref-counted via acquireProxyChunkLocally) so concurrent segment requests
@@ -2324,13 +2879,18 @@ router.get("/games/:gameId/hls/playlist.m3u8", async (req, res) => {
  */
 router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
   const token = String(req.query.t ?? "");
-  const entry = streamTokens.get(token);
+  const entry = resolveStreamToken(token);
   if (!entry || !entry.isHls || Date.now() > entry.expiresAt) {
     return void res.status(401).end();
   }
   const gameId = Number(req.params.gameId);
   const chunkIndex = Number(req.params.chunkIndex);
-  if (isNaN(gameId) || isNaN(chunkIndex) || chunkIndex < 0 || entry.gameId !== gameId) {
+  if (
+    isNaN(gameId)
+    || !Number.isSafeInteger(chunkIndex)
+    || chunkIndex < 0
+    || entry.gameId !== gameId
+  ) {
     return void res.status(401).end();
   }
 
@@ -2338,8 +2898,20 @@ router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
     return void res.status(403).json({ error: "Subscription required" });
   }
 
-  const chunkGcsPath = makeProxyChunkGcsPath(entry.ownerId, gameId, chunkIndex);
-  let chunk: Awaited<ReturnType<typeof acquireProxyChunkLocally>>;
+  const isReel = entry.streamType === "highlight" || entry.streamType === "lowlight";
+  if (isReel && (
+    !Number.isSafeInteger(entry.hlsSegmentCount)
+    || !Number.isFinite(entry.hlsSegmentDurationSec)
+    || chunkIndex >= entry.hlsSegmentCount!
+  )) return void res.status(404).end();
+  const reelManifest = isReel ? await readReelHlsManifest(entry.objectPath) : null;
+  if (isReel && (!reelManifest || reelManifest.segments.length !== entry.hlsSegmentCount)) {
+    return void res.status(404).end();
+  }
+  const chunkGcsPath = isReel
+    ? reelManifest!.segments[chunkIndex]!.objectPath
+    : makeHlsChunkGcsPath(entry.ownerId, gameId, chunkIndex);
+  let chunk: { localPath: string; release: () => void | Promise<void> };
   try {
     chunk = await acquireProxyChunkLocally(chunkGcsPath);
   } catch (err) {
@@ -2350,15 +2922,23 @@ router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
   res.setHeader("Content-Type", "video/mp2t");
   res.setHeader("Cache-Control", "private, max-age=3600");
 
-  // Remux MP4 → MPEG-TS via ffmpeg -c copy (container change only, no re-encode).
-  const ffmpegProc = spawn("nice", [
+  if (isReel) {
+    createReadStream(chunk.localPath).pipe(res);
+    res.on("close", () => { Promise.resolve(chunk.release()).catch(() => {}); });
+    return;
+  }
+  const ffmpegArgs = [
     "-n", "10", "ffmpeg",
     "-y",
     "-i", chunk.localPath,
+    // Output-side seek decodes to the requested timestamp. Re-encoding the
+    // bounded reel window guarantees an opening IDR frame, unlike stream-copy
+    // which may start on an undecodable non-keyframe.
     "-c", "copy",
     "-f", "mpegts",
     "pipe:1",
-  ]);
+  ];
+  const ffmpegProc = spawn("nice", ffmpegArgs);
   ffmpegProc.stderr.resume(); // discard stderr to avoid pipe backpressure
 
   ffmpegProc.stdout.pipe(res);
@@ -2367,7 +2947,7 @@ router.get("/games/:gameId/hls/segment/:chunkIndex", async (req, res) => {
   const releaseOnce = () => {
     if (released) return;
     released = true;
-    chunk.release().catch(() => {});
+    Promise.resolve(chunk.release()).catch(() => {});
   };
 
   ffmpegProc.on("close", () => {

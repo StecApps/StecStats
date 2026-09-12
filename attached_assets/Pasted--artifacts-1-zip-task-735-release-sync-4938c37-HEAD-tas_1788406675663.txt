@@ -1,0 +1,78 @@
+?? "artifacts (1).zip"
+task-735-release-sync
+4938c37 (HEAD -> task-735-release-sync) Align pnpm patch lockfile format with EAS
+From https://github.com/StecApps/StecStats
+ * branch            task-735-release-sync -> FETCH_HEAD
+> 4938c37 (HEAD -> task-735-release-sync) Align pnpm patch lockfile format with EAS
+> 73c9331 Implement video replay and caching features for API and mobile app
+> 19e6c14 Published your App
+> d179846 Update mobile app store review notes and reply content
+< b6cde94 (origin/task-735-release-sync) fix(mobile): refresh data when account changes
+> 5e011c3 fix(mobile): refresh data when account changes
+> 5751a94 Published your App
+> ed32780 Add screenshot to attached assets
+< 4de7288 fix(auth): keep oldest duplicate account canonical
+> 9c5c6fb fix(auth): keep oldest duplicate account canonical
+> 241785a Add new documentation screenshots
+> 660652a Add screenshot to attached assets
+stevenstec@Mac StecStats % cd /Users/stevenstec/Downloads/StecStats
+
+git branch backup/task-735-before-merge
+git merge --no-ff origin/task-735-release-sync \
+  -m "Merge GitHub release branch with EAS dependency fix"
+Merge made by the 'ort' strategy.
+stevenstec@Mac StecStats % cd /Users/stevenstec/Downloads/StecStats
+
+corepack pnpm@10.26.1 install --frozen-lockfile
+git status --short
+git log -1 --oneline
+git push -u origin task-735-release-sync
+Scope: all 11 workspace projects
+Lockfile is up to date, resolution step is skipped
+Packages: +1
++
+Progress: resolved 1, reused 1, downloaded 0, added 1, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 18ms
+Done in 1s using pnpm v10.26.1
+?? .config/
+?? "artifacts (1).zip"
+efe1f1b (HEAD -> task-735-release-sync) Merge GitHub release branch with EAS dependency fix
+Enumerating objects: 104, done.
+Counting objects: 100% (86/86), done.
+Delta compression using up to 12 threads
+Compressing objects: 100% (45/45), done.
+Writing objects: 100% (54/54), 1.06 MiB | 218.04 MiB/s, done.
+Total 54 (delta 34), reused 26 (delta 8), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (34/34), completed with 24 local objects.
+To https://github.com/StecApps/StecStats.git
+   b6cde94..efe1f1b  task-735-release-sync -> task-735-release-sync
+branch 'task-735-release-sync' set up to track 'origin/task-735-release-sync'.
+stevenstec@Mac StecStats % cd /Users/stevenstec/Downloads/StecStats
+
+git status --short
+git branch --show-current
+git rev-parse --short HEAD
+git fetch origin task-735-release-sync
+git rev-parse --short origin/task-735-release-sync
+?? .config/
+?? "artifacts (1).zip"
+task-735-release-sync
+efe1f1b
+From https://github.com/StecApps/StecStats
+ * branch            task-735-release-sync -> FETCH_HEAD
+efe1f1b
+stevenstec@Mac StecStats % ?? .config/
+?? artifacts (1).zip
+zsh: no matches found: ??
+stevenstec@Mac StecStats % Repository: StecApps/StecStats
+Branch: task-735-release-sync
+Commit: efe1f1b
+Profile: production
+Platform: iOS
+zsh: command not found: Repository:
+zsh: command not found: Branch:
+zsh: command not found: Commit:
+zsh: command not found: Profile:
+zsh: command not found: Platform:
+stevenstec@Mac StecStats % 

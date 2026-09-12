@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { Loader2, AlertCircle, Film } from "lucide-react";
 
-interface PublicHighlight {
+interface PublicReel {
   teamName: string;
   opponent: string;
   date: string;
@@ -14,7 +14,8 @@ interface PublicHighlight {
 
 type Status = "loading" | "not-found" | "unavailable" | "error" | "ok";
 
-function injectOGTags(h: PublicHighlight) {
+function injectOGTags(h: PublicReel, reelType: "highlight" | "lowlight") {
+  const reelLabel = reelType === "highlight" ? "Highlight" : "Lowlight";
   const result = h.result === "W" ? "Win" : "Loss";
   const score = `${h.teamScore}–${h.opponentScore}`;
   const dateStr = new Date(h.date).toLocaleDateString(undefined, {
@@ -22,8 +23,8 @@ function injectOGTags(h: PublicHighlight) {
     day: "numeric",
     year: "numeric",
   });
-  const title = `${h.teamName} Highlight Reel vs ${h.opponent} · ${score} ${result} | StecStats`;
-  const description = `${dateStr} · Watch the ${h.teamName} ${score} ${result.toLowerCase()} game highlight reel vs ${h.opponent} on StecStats.`;
+  const title = `${h.teamName} ${reelLabel} Reel vs ${h.opponent} · ${score} ${result} | StecStats`;
+  const description = `${dateStr} · Watch the ${h.teamName} ${score} ${result.toLowerCase()} game ${reelType} reel vs ${h.opponent} on StecStats.`;
 
   document.title = title;
 
@@ -49,35 +50,36 @@ function injectOGTags(h: PublicHighlight) {
   setMeta("twitter:description", description, "name");
 }
 
-export default function HighlightPublic() {
+function PublicReelPage({ reelType }: { reelType: "highlight" | "lowlight" }) {
+  const reelLabel = reelType === "highlight" ? "Highlight" : "Lowlight";
   const { shareToken } = useParams<{ shareToken: string }>();
   const [status, setStatus] = useState<Status>("loading");
-  const [highlight, setHighlight] = useState<PublicHighlight | null>(null);
+  const [highlight, setHighlight] = useState<PublicReel | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!shareToken) { setStatus("not-found"); return; }
-    fetch(`/api/games/public/${shareToken}/highlight`)
+    fetch(`/api/games/public/${shareToken}/${reelType}`)
       .then((res) => {
         if (res.status === 404) {
           return res.json().then((d) => {
-            setStatus(d?.error === "Highlight reel not available" ? "unavailable" : "not-found");
+            setStatus(d?.error === `${reelLabel} reel not available` ? "unavailable" : "not-found");
             return null;
           });
         }
         if (!res.ok) { setStatus("error"); return null; }
-        return res.json() as Promise<PublicHighlight>;
+        return res.json() as Promise<PublicReel>;
       })
       .then((data) => {
         if (!data) return;
         setHighlight(data);
         setStatus("ok");
-        injectOGTags(data);
+        injectOGTags(data, reelType);
       })
       .catch(() => setStatus("error"));
 
     return () => { document.title = "StecStats"; };
-  }, [shareToken]);
+  }, [reelLabel, reelType, shareToken]);
 
   const dateLabel = highlight
     ? new Date(highlight.date).toLocaleDateString(undefined, {
@@ -110,7 +112,7 @@ export default function HighlightPublic() {
         {status === "not-found" && (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 py-20 text-center">
             <AlertCircle className="w-10 h-10 text-muted-foreground" />
-            <p className="text-foreground font-semibold text-lg">Highlight not found</p>
+            <p className="text-foreground font-semibold text-lg">{reelLabel} not found</p>
             <p className="text-muted-foreground text-sm max-w-xs">
               This link may have been revoked or may not exist.
             </p>
@@ -120,7 +122,7 @@ export default function HighlightPublic() {
         {status === "unavailable" && (
           <div className="flex-1 flex flex-col items-center justify-center gap-4 py-20 text-center">
             <Film className="w-10 h-10 text-muted-foreground" />
-            <p className="text-foreground font-semibold text-lg">Highlight reel not ready yet</p>
+            <p className="text-foreground font-semibold text-lg">{reelLabel} reel not ready yet</p>
             <p className="text-muted-foreground text-sm max-w-xs">
               The coach hasn't generated a highlight reel for this game yet.
             </p>
@@ -146,7 +148,7 @@ export default function HighlightPublic() {
               />
               <div className="relative flex flex-col items-center px-6 py-5 gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-primary flex items-center gap-1.5">
-                  <Film className="w-3 h-3" /> Highlight Reel
+                  <Film className="w-3 h-3" /> {reelLabel} Reel
                 </p>
                 {/* Teams */}
                 <div className="flex items-center gap-3 w-full justify-center mt-1">
@@ -205,4 +207,12 @@ export default function HighlightPublic() {
       </main>
     </div>
   );
+}
+
+export default function HighlightPublic() {
+  return <PublicReelPage reelType="highlight" />;
+}
+
+export function LowlightPublic() {
+  return <PublicReelPage reelType="lowlight" />;
 }

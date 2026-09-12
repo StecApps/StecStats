@@ -32,7 +32,8 @@ import AdminFeedback from "@/pages/admin";
 import Layout from "@/components/layout";
 import FeedbackButton from "@/components/feedback-button";
 import PlayerProfile from "@/pages/player-profile";
-import HighlightPublic from "@/pages/highlight-public";
+import HighlightPublic, { LowlightPublic } from "@/pages/highlight-public";
+import { trackEvent } from "@/lib/analytics";
 
 const queryClient = new QueryClient();
 
@@ -471,8 +472,9 @@ function SignupConversionTracker() {
 
     try {
       gtag("event", "conversion", { send_to: "AW-11081270024/OET1CPKO9vUYEIiG-6Mp" });
-      localStorage.setItem(ADS_CONVERSION_KEY, "1");
     } catch {}
+    trackEvent("signup_completed", { entry_path: "/sign-up" });
+    try { localStorage.setItem(ADS_CONVERSION_KEY, "1"); } catch {}
   }, [isLoading, players]);
 
   return null;
@@ -703,6 +705,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/player/:shareToken" component={PlayerProfile} />
             <Route path="/game/:shareToken" component={GamePublic} />
             <Route path="/highlight/:shareToken" component={HighlightPublic} />
+            <Route path="/lowlight/:shareToken" component={LowlightPublic} />
             <Route path="/privacy" component={PrivacyPolicy} />
             <Route path="/terms" component={TermsOfService} />
             <Route path="/account-deletion" component={AccountDeletion} />

@@ -1,0 +1,39 @@
+Last login: Tue Sep  1 23:24:01 on ttys000
+stevenstec@Mac hoops-mobile % pwd
+ls
+pnpm --filter @workspace/hoops-mobile run ios:release:prepare
+/Users/stevenstec/Downloads/hoops-mobile
+__mocks__			hooks
+__tests__			ios
+android				jest.config.js
+app				lib
+app-store			local-ios-release.env.example
+app.json			LOCAL-XCODE-BUILD.md
+assets				metro.config.js
+babel.config.js			package.json
+components			packages
+constants			plugins
+DEPLOY.md			scripts
+docs				server
+eas.json			tsconfig.json
+expo-env.d.ts
+[ERR_PNPM_WORKSPACE_PKG_NOT_FOUND] In : "@workspace/api-client-react@workspace:*" is in the dependencies but no package named "@workspace/api-client-react" is present in the workspace
+
+This error happened while installing a direct dependency of /Users/stevenstec/Downloads/hoops-mobile
+
+Packages found in the workspace: @workspace/hoops-mobile
+Progress: resolved 1, reused 0, downloaded 0, added 0
+[ERROR] Command failed with exit code 1: '/opt/homebrew/Cellar/node@22/22.23.2/bin/node' /Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/bin/pnpm.mjs install
+
+pnpm: Command failed with exit code 1: '/opt/homebrew/Cellar/node@22/22.23.2/bin/node' /Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/bin/pnpm.mjs install
+    at getFinalError (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:89319:14)
+    at makeError (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:91626:21)
+    at getSyncResult (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93470:10)
+    at spawnSubprocessSync (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93430:14)
+    at execaCoreSync (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93360:23)
+    at callBoundExeca (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:95888:23)
+    at boundExeca (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:95865:49)
+    at sync2 (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:96024:10)
+    at runPnpmCli (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:273513:5)
+    at runDepsStatusCheck (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:274731:7)
+stevenstec@Mac hoops-mobile % 

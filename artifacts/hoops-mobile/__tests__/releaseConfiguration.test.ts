@@ -19,6 +19,8 @@ describe('iOS release configuration and legal surfaces', () => {
     const eas = JSON.parse(read('artifacts/hoops-mobile/eas.json'));
 
     expect(app.expo.ios.bundleIdentifier).toBe('com.hoopsstats.coach');
+    expect(app.expo.ios.supportsTablet).toBe(true);
+    expect(app.expo.ios.requireFullScreen).toBe(true);
     expect(
       eas.build.production.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY,
     ).toMatch(/^appl_/);

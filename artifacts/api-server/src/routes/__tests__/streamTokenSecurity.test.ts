@@ -272,6 +272,12 @@ vi.mock("../../lib/objectStorage", () => {
       lastObjectPathRequested.value = objectPath;
       return {
         getMetadata: vi.fn().mockResolvedValue([{ contentType: "video/mp4", size: 1024 }]),
+         download: vi.fn().mockResolvedValue([Buffer.from(JSON.stringify({
+           version: 1,
+           segmentDurationSec: 4,
+           durationMs: 4_000,
+           segments: [{ objectPath: `${PATH_A_HIGHLIGHT}.hls/segment-0.ts`, durationSec: 4 }],
+         }))]),
         createReadStream: vi.fn().mockImplementation(() => {
           const s = new Readable({ read() {} });
           process.nextTick(() => s.push(null)); // immediate EOF
@@ -316,6 +322,7 @@ vi.mock("../../lib/videoDuration", () => ({
 vi.mock("../../lib/highlightGenerator", () => ({
   PROXY_VERSION: 1,
   PROXY_CHUNK_DURATION_SEC: 360,
+  HLS_SEGMENT_DURATION_SEC: 60,
   ensureGameProxyInBackground: vi.fn(),
   cancelHighlightGeneration: vi.fn(),
   cancelProxyBuild: vi.fn(),
@@ -324,19 +331,42 @@ vi.mock("../../lib/highlightGenerator", () => ({
   makeProxyChunkGcsPath: vi.fn().mockImplementation(
     (_ownerId: number, _gameId: number, i: number) => `/chunks/${i}`,
   ),
+  makeHlsChunkGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number, i: number) => `/hls-chunks/${i}`,
+  ),
+  makeHlsSegmentMetadataGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number, i: number) => `/hls-meta/${i}`,
+  ),
+  makeHlsSentinelGcsPath: vi.fn().mockImplementation(
+    (_ownerId: number, _gameId: number) => `/hls-sentinel`,
+  ),
   getReadyProxyChunkCount: vi.fn().mockImplementation(() => Promise.resolve(hlsChunkCount.value)),
   getPlayableProxyChunkCount: vi.fn().mockImplementation(() =>
     Promise.resolve(hlsChunkCount.value > 0 ? hlsChunkCount.value : 0),
   ),
+  readPlayableHlsSegmentDurations: vi.fn().mockResolvedValue([60, 60]),
   readHlsSentinel: vi.fn().mockImplementation(() => Promise.resolve(hlsSentinel.value)),
   ensureAllProxyChunksInBackground: vi.fn(),
-  acquireProxyChunkLocally: vi.fn(),
+  acquireProxyChunkLocally: vi.fn().mockResolvedValue({
+    localPath: "/tmp/reel.mp4",
+    release: vi.fn().mockResolvedValue(undefined),
+  }),
 }));
 
-vi.mock("child_process", () => ({
-  execFile: vi.fn(),
-  spawn: vi.fn(),
-}));
+vi.mock("child_process", () => {
+  const { EventEmitter } = require("events");
+  const { PassThrough } = require("stream");
+  return {
+    execFile: vi.fn(),
+    spawn: vi.fn(() => {
+      const proc = new EventEmitter();
+      proc.stdout = new PassThrough();
+      proc.stderr = new PassThrough();
+      process.nextTick(() => { proc.stdout.end("20\n"); proc.emit("close", 0); });
+      return proc;
+    }),
+  };
+});
 
 vi.mock("fs", async () => {
   const { Readable } = await import("stream");
@@ -368,6 +398,7 @@ vi.mock("fs", async () => {
 // Real imports (after mocks are registered)
 // ---------------------------------------------------------------------------
 import gamesRouter from "../games";
+import { ensureGameProxyInBackground } from "../../lib/highlightGenerator";
 
 // ---------------------------------------------------------------------------
 // Express app shared across all tests
@@ -403,6 +434,18 @@ beforeEach(() => {
   hlsChunkCount.value = -1;
   hlsSentinel.value = null;
   vi.useRealTimers();
+});
+
+describe("GET /api/games/:gameId/stream-token/video — proxy readiness", () => {
+  it("does not label an unproxied short recording playable on iOS", async () => {
+    gameFinderMode.value = "game-b";
+    const res = await fetch(`${baseUrl}/api/games/${GAME_B_ID}/stream-token/video`);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { proxyReady: boolean; streamUrl?: string };
+    expect(body.proxyReady).toBe(false);
+    expect(body.streamUrl).toBeUndefined();
+    expect(ensureGameProxyInBackground).toHaveBeenCalledWith(GAME_B_ID, COACH_A.id);
+  });
 });
 
 afterEach(() => {

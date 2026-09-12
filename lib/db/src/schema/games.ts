@@ -8,6 +8,7 @@ import {
   pgEnum,
   uuid,
   boolean,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -30,13 +31,29 @@ export const gamesTable = pgTable("games", {
   opponentScore: integer("opponent_score").notNull(),
   videoObjectPath: text("video_object_path"),
   highlightObjectPath: text("highlight_object_path"),
+  // Ordered standalone native-playback clips. Object paths remain server-only;
+  // API responses derive short-lived signed URLs from these entries.
+  highlightClipManifest: jsonb("highlight_clip_manifest").$type<
+    Array<{ index: number; objectPath: string; durationMs: number }>
+  >(),
+  highlightPlaybackVersion: integer("highlight_playback_version"),
   highlightStatus: text("highlight_status"),
   highlightError: text("highlight_error"),
   highlightStartedAt: timestamp("highlight_started_at"),
+  highlightProgressStage: text("highlight_progress_stage"),
+  highlightProgressCompleted: integer("highlight_progress_completed"),
+  highlightProgressTotal: integer("highlight_progress_total"),
+  highlightRunToken: uuid("highlight_run_token"),
+  highlightLeaseExpiresAt: timestamp("highlight_lease_expires_at"),
   lowlightObjectPath: text("lowlight_object_path"),
   lowlightStatus: text("lowlight_status"),
   lowlightError: text("lowlight_error"),
   lowlightStartedAt: timestamp("lowlight_started_at"),
+  lowlightProgressStage: text("lowlight_progress_stage"),
+  lowlightProgressCompleted: integer("lowlight_progress_completed"),
+  lowlightProgressTotal: integer("lowlight_progress_total"),
+  lowlightRunToken: uuid("lowlight_run_token"),
+  lowlightLeaseExpiresAt: timestamp("lowlight_lease_expires_at"),
   // Version of the reel-generation code that produced the stored reels.
   // NULL/older than the current GENERATOR_VERSION means the reel was built
   // with outdated clip-timing logic and must be invalidated so it can be

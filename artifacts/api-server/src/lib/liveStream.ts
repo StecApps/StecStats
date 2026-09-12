@@ -199,7 +199,7 @@ function generateCode(length = 6): string {
 const HEARTBEAT_THROTTLE_MS = 10 * 60 * 1000;
 const SCORE_PERSIST_THROTTLE_MS = 2_000; // 2 s — debounces rapid score taps
 
-class LiveStreamRegistry {
+export class LiveStreamRegistry {
   private sessions = new Map<string, LiveSession>();
   private lastHeartbeatAt = new Map<string, number>();
   private lastScorePersistAt = new Map<string, number>();
@@ -255,12 +255,8 @@ class LiveStreamRegistry {
    * the drop and rejoin the same session once the server comes back up
    * instead of the invite link being permanently dead.
    */
-  async createSession(meta: LiveSessionMeta): Promise<LiveSession> {
-    let code = generateCode();
-    while (this.sessions.has(code) || (await this.codeExistsInDb(code))) {
-      code = generateCode();
-    }
-    const session: LiveSession = {
+  async createSession(meta: LiveSessionMeta, preferredCode?: string): Promise<LiveSession> {
+    const makeSession = (code: string): LiveSession => ({
       code,
       meta,
       createdAt: Date.now(),
@@ -271,28 +267,61 @@ class LiveStreamRegistry {
       broadcasterLeftTimer: null,
       broadcasterHasVideo: true, // updated when a mobile broadcaster joins
       broadcasterVideoMode: 'webrtc' as const,
-    };
-    this.sessions.set(code, session);
-    try {
-      await db.insert(liveSessionsTable).values({
-        code,
-        opponent: meta.opponent,
-        teamName: meta.teamName,
-        active: true,
-      });
-    } catch (err) {
-      logger.error({ err, code }, "Failed to persist live session, invite will not survive a restart");
-    }
-    return session;
-  }
+    });
 
-  private async codeExistsInDb(code: string): Promise<boolean> {
-    const rows = await db
-      .select({ id: liveSessionsTable.id })
-      .from(liveSessionsTable)
-      .where(eq(liveSessionsTable.code, code))
-      .limit(1);
-    return rows.length > 0;
+    // The preferred code is a server-derived idempotency key. DB uniqueness,
+    // rather than an in-process check, arbitrates concurrent requests handled
+    // by different processes/instances.
+    if (preferredCode) {
+      const code = preferredCode.toUpperCase();
+      const existing = this.sessions.get(code);
+      if (existing) return existing;
+
+      const inserted = await db
+        .insert(liveSessionsTable)
+        .values({
+          code,
+          opponent: meta.opponent,
+          teamName: meta.teamName,
+          active: true,
+        })
+        .onConflictDoNothing()
+        .returning({ code: liveSessionsTable.code });
+
+      if (inserted.length === 0) {
+        const resumed = await this.getOrResumeSession(code);
+        if (resumed) return resumed;
+        throw new Error("Idempotent live session code is no longer available");
+      }
+
+      const raced = this.sessions.get(code);
+      if (raced) return raced;
+      const session = makeSession(code);
+      this.sessions.set(code, session);
+      return session;
+    }
+
+    // Legacy clients do not send requestId and retain random invite codes.
+    // The unique constraint also protects random generation across instances.
+    for (;;) {
+      const code = generateCode();
+      if (this.sessions.has(code)) continue;
+      const inserted = await db
+        .insert(liveSessionsTable)
+        .values({
+          code,
+          opponent: meta.opponent,
+          teamName: meta.teamName,
+          active: true,
+        })
+        .onConflictDoNothing()
+        .returning({ code: liveSessionsTable.code });
+      if (inserted.length === 0) continue;
+
+      const session = makeSession(code);
+      this.sessions.set(code, session);
+      return session;
+    }
   }
 
   getSession(code: string): LiveSession | undefined {

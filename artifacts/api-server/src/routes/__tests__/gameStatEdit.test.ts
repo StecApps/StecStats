@@ -91,6 +91,15 @@ const { COACH_A, currentUser, store } = vi.hoisted(() => {
     resetStats: () => {
       store.stats = initialStats();
       store.games[0].result = "W";
+      Object.assign(store.games[0], {
+        highlightObjectPath: null,
+        highlightClipManifest: null,
+        highlightPlaybackVersion: null,
+        highlightStatus: "idle",
+        highlightGeneratorVersion: null,
+        highlightRunToken: null,
+        highlightLeaseExpiresAt: null,
+      });
     },
     /**
      * Set before calling DELETE /api/games/:gameId so the db.delete(gamesTable)
@@ -181,6 +190,13 @@ vi.mock("@workspace/db", () => {
     let pendingStatsDelete = false;
 
     return {
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            for: vi.fn().mockImplementation(async () => [store.games[0]]),
+          }),
+        }),
+      }),
       update: vi.fn().mockImplementation((table: string) => ({
         set: vi.fn().mockImplementation((vals: any) => ({
           where: vi.fn().mockImplementation(() => {
@@ -473,6 +489,34 @@ describe("PATCH /api/games/:gameId — made ≤ attempted invariant", () => {
 // ---------------------------------------------------------------------------
 
 describe("PATCH /api/games/:gameId — career stat round-trip", () => {
+  it("fences and clears combined and segmented Highlight derivatives on every stat/event replacement", async () => {
+    Object.assign(store.games[0], {
+      highlightObjectPath: "/objects/uploads/1/old-highlight.mp4",
+      highlightClipManifest: [{
+        index: 0,
+        durationMs: 1000,
+        objectPath: "/objects/uploads/1/highlight_clips/10/old-run/clip_0.mp4",
+      }],
+      highlightPlaybackVersion: 1,
+      highlightStatus: "ready",
+      highlightGeneratorVersion: 12,
+      highlightRunToken: "00000000-0000-4000-8000-000000000001",
+      highlightLeaseExpiresAt: new Date(),
+    });
+
+    const res = await patchGame(10, buildPatchBody({ assists: 6 }));
+    expect(res.status).toBe(200);
+    expect(store.games[0]).toMatchObject({
+      highlightObjectPath: null,
+      highlightClipManifest: null,
+      highlightPlaybackVersion: null,
+      highlightStatus: "idle",
+      highlightGeneratorVersion: null,
+      highlightRunToken: null,
+      highlightLeaseExpiresAt: null,
+    });
+  });
+
   it("PATCH response points field reflects twoMade*2 + threeMade*3 + ftMade*1", async () => {
     // 4 FT + 2 twos + 2 threes = 4 + 4 + 6 = 14 pts
     const res = await patchGame(10, buildPatchBody({

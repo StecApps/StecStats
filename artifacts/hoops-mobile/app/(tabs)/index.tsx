@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { enqueuePhoto, dequeuePhoto } from '@/lib/pendingPhotoQueue';
 import { uploadPhoto, API_BASE } from '@/lib/photoUpload';
 import Svg, { Circle, G, Path, Rect } from 'react-native-svg';
@@ -32,10 +33,9 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
+import { GlossyButton } from '@/components/GlossyButton';
 
 // ─── Theme helpers ────────────────────────────────────────────────────────────
-// Derive rgba strings from the design-token palette so a single change to
-// colors.ts flows through to every opacity variant used below.
 function hexToRgba(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
@@ -47,24 +47,19 @@ function photoSrc(objectPath: string) {
   return `${API_BASE}/api/storage/objects/${objectPath.replace(/^\/objects\//, '')}`;
 }
 
-// ─── Screen-level background layers ──────────────────────────────────────────
-
-// Deep orange sunburst from the top of the screen — bleeds down ~55% of height.
 function ScreenGlow({ primary }: { primary: string }) {
-  const r = (a: number) => hexToRgba(primary, a);
+  const rgba = (alpha: number) => hexToRgba(primary, alpha);
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-      {/* Central radial cone — bright at crown, gone by mid-screen */}
       <LinearGradient
-        colors={[r(0.38), r(0.18), r(0.06), r(0)]}
+        colors={[rgba(0.38), rgba(0.18), rgba(0.06), rgba(0)]}
         locations={[0, 0.22, 0.45, 0.70]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* Slight left-lean so the glow hugs the basketball watermark */}
       <LinearGradient
-        colors={[r(0.14), r(0)]}
+        colors={[rgba(0.14), rgba(0)]}
         locations={[0, 0.5]}
         start={{ x: 0.75, y: 0 }}
         end={{ x: 0.25, y: 0.5 }}
@@ -74,153 +69,30 @@ function ScreenGlow({ primary }: { primary: string }) {
   );
 }
 
-// Large basketball seam drawing, clipped into the top-right corner.
 function BasketballWatermark({ color }: { color: string }) {
-  const S = 340, CX = S / 2, CY = S / 2, R = 155, SW = 9;
+  const size = 340, center = size / 2, radius = 155, strokeWidth = 9;
   return (
-    <View
-      pointerEvents="none"
-      style={{ position: 'absolute', top: -60, right: -100, width: S, height: S, opacity: 0.11 }}
-    >
-      <Svg width={S} height={S}>
-        {/* Outer circle */}
-        <Circle cx={CX} cy={CY} r={R} stroke={color} strokeWidth={SW} fill="none" />
-        {/* Vertical S-seam through centre */}
-        <Path
-          d={`M${CX},${CY - R} C${CX - 62},${CY - R * 0.38} ${CX + 62},${CY + R * 0.38} ${CX},${CY + R}`}
-          stroke={color} strokeWidth={SW} fill="none" strokeLinecap="round"
-        />
-        {/* Upper horizontal seam */}
-        <Path
-          d={`M${CX - R},${CY} Q${CX},${CY - R * 0.68} ${CX + R},${CY}`}
-          stroke={color} strokeWidth={SW} fill="none" strokeLinecap="round"
-        />
-        {/* Lower horizontal seam */}
-        <Path
-          d={`M${CX - R},${CY} Q${CX},${CY + R * 0.68} ${CX + R},${CY}`}
-          stroke={color} strokeWidth={SW} fill="none" strokeLinecap="round"
-        />
+    <View pointerEvents="none" style={{ position: 'absolute', top: -60, right: -100, width: size, height: size, opacity: 0.11 }}>
+      <Svg width={size} height={size}>
+        <Circle cx={center} cy={center} r={radius} stroke={color} strokeWidth={strokeWidth} fill="none" />
+        <Path d={`M${center},${center - radius} C${center - 62},${center - radius * 0.38} ${center + 62},${center + radius * 0.38} ${center},${center + radius}`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" />
+        <Path d={`M${center - radius},${center} Q${center},${center - radius * 0.68} ${center + radius},${center}`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" />
+        <Path d={`M${center - radius},${center} Q${center},${center + radius * 0.68} ${center + radius},${center}`} stroke={color} strokeWidth={strokeWidth} fill="none" strokeLinecap="round" />
       </Svg>
     </View>
   );
 }
 
-// Tiny bar-chart ghost — floats behind the shooting efficiency card.
 function StatsWatermark({ color }: { color: string }) {
-  const W = 180, H = 140;
   const bars: [number, number][] = [[0.50, 0], [0.78, 1], [0.40, 2], [0.92, 3], [0.65, 4]];
-  const barW = 26, gap = 12, maxH = 100, baseY = 120;
   return (
-    <View
-      pointerEvents="none"
-      style={{ position: 'absolute', bottom: 120, right: -10, width: W, height: H, opacity: 0.055 }}
-    >
-      <Svg width={W} height={H}>
-        {bars.map(([h, i]) => {
-          const bH = h * maxH;
-          return (
-            <Rect key={i} x={10 + i * (barW + gap)} y={baseY - bH} width={barW} height={bH} rx={5} fill={color} />
-          );
+    <View pointerEvents="none" style={{ position: 'absolute', bottom: 120, right: -10, width: 180, height: 140, opacity: 0.055 }}>
+      <Svg width={180} height={140}>
+        {bars.map(([height, index]) => {
+          const barHeight = height * 100;
+          return <Rect key={index} x={10 + index * 38} y={120 - barHeight} width={26} height={barHeight} rx={5} fill={color} />;
         })}
       </Svg>
-    </View>
-  );
-}
-
-// Basketball hoop (backboard + rim + net) — floats on the left side of the hero card.
-function HoopWatermark({ color }: { color: string }) {
-  const W = 170, H = 165, SW = 7;
-  const bbX = 48, bbY = 10, bbW = 74, bbH = 50;
-  const rimY = bbY + bbH;
-  const rimL = 8, rimR = 152;
-  const netBot = 152;
-  // 7 vertical net lines fanning from the full rim width down to a narrower mouth
-  const netLines = Array.from({ length: 7 }, (_, i) => {
-    const t = i / 6;
-    const tx = rimL + t * (rimR - rimL);
-    const bx = 42 + t * 86;
-    return `M${tx},${rimY + 6} L${bx},${netBot}`;
-  });
-  return (
-    <View pointerEvents="none" style={{ position: 'absolute', left: -38, top: 14, width: W, height: H, opacity: 0.11 }}>
-      <Svg width={W} height={H}>
-        {/* Backboard */}
-        <Rect x={bbX} y={bbY} width={bbW} height={bbH} rx={4} fill="none" stroke={color} strokeWidth={SW} />
-        {/* Inner target square */}
-        <Rect x={bbX + 13} y={bbY + 12} width={bbW - 26} height={bbH - 24} rx={2} fill="none" stroke={color} strokeWidth={SW * 0.55} />
-        {/* Rim */}
-        <Path d={`M${rimL},${rimY} H${rimR}`} stroke={color} strokeWidth={SW} strokeLinecap="round" />
-        {/* Net lines */}
-        {netLines.map((d, i) => <Path key={i} d={d} stroke={color} strokeWidth={SW * 0.5} strokeLinecap="round" />)}
-        {/* Net bottom */}
-        <Path d={`M42,${netBot} H128`} stroke={color} strokeWidth={SW * 0.5} strokeLinecap="round" />
-      </Svg>
-    </View>
-  );
-}
-
-// ─── Glass glare components ──────────────────────────────────────────────────
-
-// A clean white sheen at the top of a card — like light catching glass.
-function Gloss() {
-  return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      {/* Very subtle white wash from top */}
-      <LinearGradient
-        colors={['rgba(255,255,255,0.07)', 'rgba(255,255,255,0.0)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 0.6 }}
-        style={{ ...StyleSheet.absoluteFillObject }}
-      />
-      {/* Specular highlight — bright narrow pill at very top */}
-      <LinearGradient
-        colors={['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: '22%',
-          right: '22%',
-          height: 14,
-          borderBottomLeftRadius: 999,
-          borderBottomRightRadius: 999,
-        }}
-      />
-    </View>
-  );
-}
-
-// Orange glow from the top edge — only used on the hero card.
-function OrangeGlow({ primary, strength = 1 }: { primary: string; strength?: number }) {
-  const rgba = (a: number) => hexToRgba(primary, a);
-  return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      <LinearGradient
-        colors={[
-          rgba(0.30 * strength),
-          rgba(0.10 * strength),
-          rgba(0),
-        ]}
-        locations={[0, 0.35, 1]}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={{ flex: 1 }}
-      />
-    </View>
-  );
-}
-
-// White neutral glare for selected chips
-function GlareOverlay({ intensity = 0.15 }: { intensity?: number }) {
-  return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      <LinearGradient
-        colors={[`rgba(255,255,255,${intensity})`, 'rgba(255,255,255,0.0)']}
-        start={{ x: 0.15, y: 0 }}
-        end={{ x: 0.85, y: 0.75 }}
-        style={{ flex: 1 }}
-      />
     </View>
   );
 }
@@ -232,7 +104,7 @@ function ArcGauge({
   pct?: number | null; label: string; made?: number; attempted?: number;
 }) {
   const c = useColors();
-  const SIZE = 130, SW = 10;
+  const SIZE = 96, SW = 8;
   const r = (SIZE - SW) / 2;
   const circ = 2 * Math.PI * r;
   const filled = Math.max(0, Math.min(1, pct ?? 0)) * circ;
@@ -243,7 +115,6 @@ function ArcGauge({
       <View style={{ width: SIZE, height: SIZE }}>
         <Svg width={SIZE} height={SIZE}>
           <G rotation="-90" origin={`${SIZE / 2},${SIZE / 2}`}>
-            {/* Track uses the border token so it's readable in both themes */}
             <Circle cx={SIZE/2} cy={SIZE/2} r={r}
               stroke={c.border} strokeWidth={SW} fill="none" />
             <Circle cx={SIZE/2} cy={SIZE/2} r={r}
@@ -252,8 +123,7 @@ function ArcGauge({
           </G>
         </Svg>
         <View style={gaugeS.center}>
-          {/* Percentage lives inside the card — use cardForeground */}
-          <Text style={[gaugeS.pctNum, { color: c.cardForeground }]}>{pctStr}</Text>
+          <Text style={[gaugeS.pctNum, { color: c.foreground }]}>{pctStr}</Text>
           {made != null && attempted != null && (
             <Text style={[gaugeS.madeFrac, { color: c.mutedForeground }]}>{made}/{attempted}</Text>
           )}
@@ -266,15 +136,34 @@ function ArcGauge({
 const gaugeS = StyleSheet.create({
   wrap:     { alignItems: 'center', flex: 1 },
   center:   { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  pctNum:   { ...tekoStyle(30) },
-  madeFrac: { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 1 },
-  label:    { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, marginTop: 8 },
+  pctNum:   { ...tekoStyle(24) },
+  madeFrac: { fontSize: 9, fontFamily: 'Inter_500Medium', marginTop: -2 },
+  label:    { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1, marginTop: 12 },
 });
 
 // ─── Player chip ─────────────────────────────────────────────────────────────
-function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: boolean; onPress: () => void }) {
+function PlayerChip({ player, isSelected, onPress, glossy = false }: { player: any; isSelected: boolean; onPress: () => void; glossy?: boolean }) {
   const c = useColors();
   const { data: summary } = useGetPlayerSummary(player.id);
+  const content = (
+    <>
+      <Text style={[chipS.name, { color: isSelected ? c.primaryForeground : c.foreground }]}>
+        {player.name}
+      </Text>
+      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.78)' : c.mutedForeground }]}>
+        {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
+      </Text>
+    </>
+  );
+
+  if (glossy) {
+    return (
+      <GlossyButton onPress={onPress} selected={isSelected} style={chipS.chip}>
+        {content}
+      </GlossyButton>
+    );
+  }
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -284,79 +173,62 @@ function PlayerChip({ player, isSelected, onPress }: { player: any; isSelected: 
         {
           backgroundColor: isSelected ? c.primary : c.card,
           borderColor: isSelected ? c.primary : c.border,
-          overflow: 'hidden',
         },
       ]}
     >
-      {isSelected && <GlareOverlay intensity={0.18} />}
-      {/* When selected: white text on primary bg. When unselected: card text on card bg. */}
-      <Text style={[chipS.name, { color: isSelected ? c.primaryForeground : c.cardForeground }]}>{player.name}</Text>
-      <Text style={[chipS.sub, { color: isSelected ? 'rgba(255,255,255,0.75)' : c.mutedForeground }]}>
-        {summary ? `${summary.games}GP · ${summary.ppg.toFixed(1)}PPG` : '…'}
-      </Text>
+      {content}
     </TouchableOpacity>
   );
 }
 const chipS = StyleSheet.create({
-  chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 24, borderWidth: 1, marginRight: 8, minWidth: 110 },
-  name: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  sub:  { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  chip: {
+    minWidth: 132,
+    minHeight: 58,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  name: { fontSize: 15, fontFamily: 'Inter_700Bold' },
+  sub: { fontSize: 11, fontFamily: 'Inter_500Medium', marginTop: 3 },
 });
 
-// ─── Big stat card ────────────────────────────────────────────────────────────
+// ─── Unified Stat Card (Desktop style) ───────────────────────────────────────
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   const c = useColors();
   return (
-    <View style={[statS.card, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
-      <Gloss />
+    <View style={[statS.card, { borderColor: c.border, backgroundColor: c.card }]}>
       <Text style={[statS.label, { color: c.mutedForeground }]}>{label}</Text>
-      <Text style={[statS.value, { color: c.primary }]}>{value}</Text>
-      {sub && <Text style={[statS.sub, { color: c.mutedForeground }]}>{sub}</Text>}
+      <View style={statS.bottomRow}>
+        <Text style={[statS.value, { color: c.foreground }]}>{value}</Text>
+        {sub && <Text style={[statS.sub, { color: c.mutedForeground }]}>{sub}</Text>}
+      </View>
     </View>
   );
 }
 const statS = StyleSheet.create({
-  card:  { flex: 1, borderRadius: 16, borderWidth: 1, padding: 16, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, textAlign: 'center' },
-  value: { ...tekoStyle(46) },
-  sub:   { fontSize: 10, fontFamily: 'Inter_400Regular', marginTop: 2, textAlign: 'center' },
-});
-
-// ─── Mini stat (playmaking / defense) ────────────────────────────────────────
-function MiniStat({ label, value, total }: { label: string; value: string; total?: string }) {
-  const c = useColors();
-  return (
-    <View style={[miniS.wrap, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
-      <Gloss />
-      <Text style={[miniS.label, { color: c.mutedForeground }]}>{label}</Text>
-      {/* Large value uses cardForeground so it reads on both light and dark cards */}
-      <Text style={[miniS.value, { color: c.cardForeground }]}>{value}</Text>
-      {total && <Text style={[miniS.total, { color: c.mutedForeground }]}>{total} TOT</Text>}
-    </View>
-  );
-}
-const miniS = StyleSheet.create({
-  wrap:  { flex: 1, borderRadius: 14, borderWidth: 1, padding: 14, alignItems: 'center' },
-  label: { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 4, textAlign: 'center' },
-  value: { ...tekoStyle(36) },
-  total: { fontSize: 9, fontFamily: 'Inter_400Regular', marginTop: 2 },
+  card:  { flex: 1, borderRadius: 6, borderWidth: 1, padding: 12, justifyContent: 'space-between', minHeight: 84 },
+  label: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 },
+  bottomRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  value: { ...tekoStyle(34) },
+  sub:   { fontSize: 10, fontFamily: 'Inter_500Medium', paddingBottom: 4 },
 });
 
 // ─── Section header ───────────────────────────────────────────────────────────
-function SectionHeader({ title }: { title: string }) {
+function SectionHeader({ title, flush = false }: { title: string; flush?: boolean }) {
   const c = useColors();
   return (
-    <View style={secS.row}>
-      <View style={[secS.dot, { backgroundColor: c.primary }]} />
+    <View style={[secS.row, flush && secS.rowFlush]}>
       <Text style={[secS.title, { color: c.foreground }]}>{title.toUpperCase()}</Text>
-      <View style={{ flex: 1, height: 1, backgroundColor: c.border, marginLeft: 10, alignSelf: 'center' }} />
+      <View style={{ flex: 1, height: 1, backgroundColor: c.primary, marginLeft: 16 }} />
     </View>
   );
 }
 const secS = StyleSheet.create({
-  row:   { flexDirection: 'row', alignItems: 'center', marginBottom: 12, marginTop: 24 },
-  dot:   { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
-  title: { ...tekoStyle(20), letterSpacing: 2 },
+  row:   { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginTop: 32 },
+  rowFlush: { marginBottom: 0 },
+  title: { fontSize: 14, fontFamily: 'Inter_700Bold', letterSpacing: 1.5 },
 });
 
 // ─── Compact shooting strip (landscape-only) ─────────────────────────────────
@@ -376,14 +248,15 @@ function CompactShootingStrip({
     { label: 'FT%',  val: fmt(ftMade, ftAtt),        frac: `${ftMade}/${ftAtt}` },
   ];
   return (
-    <View style={[cShootS.row, { borderColor: c.border, backgroundColor: c.card, overflow: 'hidden' }]}>
-      <Gloss />
+    <View style={[cShootS.row, { borderColor: c.border, backgroundColor: c.card }]}>
       {cells.map((cell, i) => (
         <React.Fragment key={cell.label}>
           <View style={cShootS.cell}>
             <Text style={[cShootS.label, { color: c.mutedForeground }]}>{cell.label}</Text>
-            <Text style={[cShootS.value, { color: c.primary }]}>{cell.val}</Text>
-            <Text style={[cShootS.frac, { color: c.mutedForeground }]}>{cell.frac}</Text>
+            <View style={cShootS.valRow}>
+              <Text style={[cShootS.value, { color: c.foreground }]}>{cell.val}</Text>
+              <Text style={[cShootS.frac, { color: c.mutedForeground }]}>{cell.frac}</Text>
+            </View>
           </View>
           {i < cells.length - 1 && (
             <View style={[cShootS.divider, { backgroundColor: c.border }]} />
@@ -394,12 +267,66 @@ function CompactShootingStrip({
   );
 }
 const cShootS = StyleSheet.create({
-  row:     { flexDirection: 'row', borderRadius: 14, borderWidth: 1, padding: 12, alignItems: 'center' },
-  cell:    { flex: 1, alignItems: 'center', gap: 2 },
-  label:   { fontSize: 9, fontFamily: 'Inter_600SemiBold', letterSpacing: 1, textTransform: 'uppercase' },
-  value:   { ...tekoStyle(28) },
-  frac:    { fontSize: 9, fontFamily: 'Inter_400Regular' },
-  divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 6 },
+  row:     { flexDirection: 'row', borderRadius: 6, borderWidth: 1, padding: 16, alignItems: 'center' },
+  cell:    { flex: 1, alignItems: 'flex-start', paddingLeft: 16 },
+  label:   { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  valRow:  { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  value:   { ...tekoStyle(30) },
+  frac:    { fontSize: 10, fontFamily: 'Inter_500Medium' },
+  divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 8 },
+});
+
+// ─── Console Stat (iPad) ──────────────────────────────────────────────────────
+function ConsoleStat({ label, value, sub, accent = false }: { label: string; value: string; sub: string; accent?: boolean }) {
+  const c = useColors();
+  return (
+    <View style={cStatS.cell}>
+      {accent && <View style={[cStatS.accentBar, { backgroundColor: c.primary }]} />}
+      <Text style={[cStatS.label, { color: accent ? c.primary : c.mutedForeground }]}>{label}</Text>
+      <Text style={[cStatS.value, { color: c.foreground }]} adjustsFontSizeToFit numberOfLines={1}>{value}</Text>
+      <Text style={[cStatS.sub, { color: c.mutedForeground }]}>{sub}</Text>
+    </View>
+  );
+}
+const cStatS = StyleSheet.create({
+  cell: { flex: 1, minHeight: 130, paddingHorizontal: 28, paddingVertical: 20, justifyContent: 'center', position: 'relative' },
+  accentBar: { position: 'absolute', left: 0, top: 24, bottom: 24, width: 4, borderRadius: 2 },
+  label: { fontSize: 13, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, lineHeight: 18, textTransform: 'uppercase', marginBottom: 2, paddingLeft: 4 },
+  value: { ...tekoStyle(64), lineHeight: 72, marginBottom: 2, paddingLeft: 4 },
+  sub: { fontSize: 12, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, lineHeight: 17, textTransform: 'uppercase', paddingLeft: 4 },
+});
+
+const consoleS = StyleSheet.create({
+  dashboard: { width: '100%' },
+  grid: { flexDirection: 'column', gap: 16 },
+  gridLandscape: { flexDirection: 'row', alignItems: 'stretch', minHeight: 580 },
+  col: { gap: 16 },
+  statsColLandscape: { flex: 8 },
+  statsSectionLandscape: { flex: 1 },
+  card: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+
+  identityCard: { flex: 1, padding: 24, minHeight: 340 },
+  identityHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24, zIndex: 10 },
+  liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  liveDot: { width: 6, height: 6, borderRadius: 3 },
+  eyebrow: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 1.5 },
+  playerName: { ...tekoStyle(52), lineHeight: 52, letterSpacing: 1 },
+  actionButtons: { flexDirection: 'row', gap: 8 },
+  actionBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  shareBtn: { minWidth: 104, height: 44, borderRadius: 22, borderWidth: 1, paddingHorizontal: 16, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
+  shareBtnText: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 0.8 },
+
+  avatarContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 200 },
+  avatarWrap: { width: '100%', height: '100%', aspectRatio: 1, maxWidth: 340, maxHeight: 340, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  avatar: { width: '100%', height: '100%' },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  avatarInitials: { ...tekoStyle(100), lineHeight: 100, marginTop: 15 },
+
+  shootingCardLandscape: { minHeight: 154, paddingVertical: 28, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-around' },
+  sectionTitle: { fontSize: 13, lineHeight: 18, fontFamily: 'Inter_700Bold', letterSpacing: 2, marginBottom: 10, marginLeft: 4 },
+  statGrid: { flex: 1 },
+  statRow: { flex: 1, minHeight: 130, flexDirection: 'row' },
+  vDivider: { width: 1 },
 });
 
 // ─── Player Dashboard ─────────────────────────────────────────────────────────
@@ -407,7 +334,8 @@ function PlayerDashboard({ player }: { player: any }) {
   const c = useColors();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
-  // Local rgba helper keyed to the current palette's primary color
+  const isTablet = Math.min(width, height) >= 600;
+  const isTabletLandscape = isLandscape && Math.min(width, height) >= 600;
   const primaryRgba = (alpha: number) => hexToRgba(c.primary, alpha);
 
   const { data: summary, isLoading } = useGetPlayerSummary(player.id);
@@ -416,12 +344,10 @@ function PlayerDashboard({ player }: { player: any }) {
   const { getToken, userId } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [sharing, setSharing] = useState(false);
-  // undefined = still fetching; string = token ready; null = unavailable
   const [authToken, setAuthToken] = useState<string | null | undefined>(undefined);
   const [photoLoadFailed, setPhotoLoadFailed] = useState(false);
   const alertVisibleRef = useRef(false);
 
-  // Re-fetch the token whenever the screen comes into focus (handles expiry/refocus)
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -535,144 +461,217 @@ function PlayerDashboard({ player }: { player: any }) {
   const winRate = summary.games > 0 ? Math.round((summary.wins / summary.games) * 100) : 0;
   const hasPhoto = !!player.photoObjectPath;
 
-  // ── Shared hero card content ──────────────────────────────────────────────
-  const heroCard = (
-    <View style={[heroS.cardWrapper, { shadowColor: c.primary }, isLandscape && heroS.cardWrapperLandscape]}>
-      <View style={[heroS.card, { borderColor: primaryRgba(0.65), backgroundColor: c.card }, isLandscape && heroS.cardLandscape]}>
-        {/* Orange glow radiates from the top edge of the hero card */}
-        <OrangeGlow primary={c.primary} strength={2.2} />
-        {/* Deep ambient fill — bottom half of card glows darker orange */}
-        <LinearGradient
-          colors={[primaryRgba(0), primaryRgba(0.10)]}
-          start={{ x: 0.5, y: 0.3 }} end={{ x: 0.5, y: 1 }}
-          style={StyleSheet.absoluteFillObject}
-          pointerEvents="none"
-        />
-        {/* Top orange accent bar — wider fade */}
-        <LinearGradient
-          colors={[c.primary, primaryRgba(0.4), primaryRgba(0)]}
-          locations={[0, 0.5, 1]}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-          style={heroS.topBar}
-        />
-        {/* Glass sheen */}
-        <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-          <LinearGradient
-            colors={['rgba(255,255,255,0.07)', 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0 }} end={{ x: 0, y: 0.45 }}
-            style={{ flex: 1 }}
-          />
-        </View>
+  if (isTablet) {
+    return (
+      <View testID="tablet-console-dashboard" style={consoleS.dashboard}>
+        <View style={[consoleS.grid, isLandscape && consoleS.gridLandscape]}>
 
-        {/* Hoop watermark — left side, clipped by overflow:hidden */}
-        <HoopWatermark color={c.primary} />
-
-        {/* Basketball watermark inside the hero card — clipped by overflow:hidden */}
-        <View pointerEvents="none" style={{ position: 'absolute', right: -55, bottom: -38, width: 220, height: 220, opacity: 0.13 }}>
-          <Svg width={220} height={220}>
-            <Circle cx={110} cy={110} r={100} stroke={c.primary} strokeWidth={7} fill="none" />
-            <Path
-              d="M110,10 C68,45 152,175 110,210"
-              stroke={c.primary} strokeWidth={7} fill="none" strokeLinecap="round"
-            />
-            <Path
-              d="M10,110 Q110,43 210,110"
-              stroke={c.primary} strokeWidth={7} fill="none" strokeLinecap="round"
-            />
-            <Path
-              d="M10,110 Q110,177 210,110"
-              stroke={c.primary} strokeWidth={7} fill="none" strokeLinecap="round"
-            />
-          </Svg>
-        </View>
-
-        {/* Live badge */}
-        <View style={heroS.liveBadge}>
-          <Ionicons name="flash" size={11} color={c.primary} />
-          <Text style={[heroS.liveText, { color: c.primary }]}>LIVE STATS</Text>
-          <Ionicons name="flash" size={11} color={c.primary} />
-        </View>
-
-        {/* Avatar */}
-        <TouchableOpacity onPress={handlePhotoTap} activeOpacity={0.85} style={heroS.avatarOuter}>
-          {/* Orange glow ring behind avatar */}
-          <View style={[heroS.avatarGlow, { backgroundColor: primaryRgba(0.18), shadowColor: c.primary }]} />
-          <View style={[
-            heroS.avatarRing,
-            { borderColor: c.primary, backgroundColor: primaryRgba(0.12) },
-            isLandscape && heroS.avatarRingLandscape,
-          ]}>
-            {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
-              <Image
-                source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
-                style={heroS.avatarImg}
-                contentFit="cover"
-                onError={() => setPhotoLoadFailed(true)}
+          {/* Left Column */}
+          <View style={[consoleS.col, isLandscape ? { flex: 4 } : undefined]}>
+            <View style={[consoleS.card, consoleS.identityCard, { borderColor: c.border, backgroundColor: c.card }]}>
+              <LinearGradient
+                pointerEvents="none"
+                colors={[primaryRgba(0.08), 'transparent']}
+                locations={[0, 0.9]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={StyleSheet.absoluteFillObject}
               />
-            ) : (
-              <View style={heroS.avatarFallback}>
-                <Text style={[heroS.avatarInitials, { color: c.primary }, isLandscape && heroS.avatarInitialsLandscape]}>
-                  {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
-                </Text>
+              <View style={consoleS.identityHeader}>
+                <View style={{ flex: 1, paddingRight: 16 }}>
+                  <View style={consoleS.liveIndicator}>
+                    <View style={[consoleS.liveDot, { backgroundColor: c.primary }]} />
+                    <Text style={[consoleS.eyebrow, { color: c.primary }]}>
+                      {summary.seasonScope === 'career' ? 'CAREER DASHBOARD' : 'SEASON DASHBOARD'}
+                    </Text>
+                  </View>
+                  <Text style={[consoleS.playerName, { color: c.foreground }]} numberOfLines={2}>
+                    {player.name.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={consoleS.actionButtons}>
+                  <TouchableOpacity
+                    accessibilityLabel="Change player photo"
+                    onPress={handlePhotoTap}
+                    activeOpacity={0.65}
+                    style={[consoleS.actionBtn, { borderColor: c.border, backgroundColor: c.card }]}
+                  >
+                    {uploading ? <ActivityIndicator size="small" color={c.foreground} /> : <Ionicons name="camera-outline" size={20} color={c.foreground} />}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    accessibilityLabel="Share player profile"
+                    onPress={handleShareProfile}
+                    disabled={sharing}
+                    activeOpacity={0.65}
+                    style={[consoleS.shareBtn, { borderColor: primaryRgba(0.55), backgroundColor: primaryRgba(0.12) }]}
+                  >
+                    {sharing ? <ActivityIndicator size="small" color={c.foreground} /> : (
+                      <>
+                        <Ionicons name="share-outline" size={17} color={c.primary} />
+                        <Text style={[consoleS.shareBtnText, { color: c.foreground }]}>SHARE PLAYER</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={consoleS.avatarContainer}>
+                <View style={[consoleS.avatarWrap, { borderColor: c.border, backgroundColor: primaryRgba(0.04) }]}>
+                  {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
+                    <Image
+                      source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
+                      style={consoleS.avatar}
+                      contentFit="cover"
+                      onError={() => setPhotoLoadFailed(true)}
+                    />
+                  ) : (
+                    <View style={[consoleS.avatar, consoleS.avatarFallback]}>
+                      <Text style={[consoleS.avatarInitials, { color: c.primary }]}>
+                        {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            {isLandscape && (
+              <View style={[consoleS.card, consoleS.shootingCardLandscape, { borderColor: c.border, backgroundColor: c.card }]}>
+                <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
+                <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
+                <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
               </View>
             )}
-            {/* Diagonal glass shine over photo */}
-            <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-              <LinearGradient
-                colors={['rgba(255,255,255,0.30)', 'rgba(255,255,255,0.0)']}
-                start={{ x: 0.1, y: 0 }} end={{ x: 0.85, y: 0.55 }}
-                style={{ flex: 1 }}
-              />
+          </View>
+
+          {/* Right Column */}
+          <View style={[consoleS.col, isLandscape && consoleS.statsColLandscape]}>
+            <View style={isLandscape ? consoleS.statsSectionLandscape : undefined}>
+              <Text style={[consoleS.sectionTitle, { color: c.mutedForeground }]}>HEADLINE PRODUCTION</Text>
+              <View style={[consoleS.card, consoleS.statGrid, { borderColor: c.border, backgroundColor: c.card }]}>
+                <View style={[consoleS.statRow, { borderBottomWidth: 1, borderBottomColor: c.border }]}>
+                  <ConsoleStat label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} TOTAL`} accent />
+                  <View style={[consoleS.vDivider, { backgroundColor: c.border }]} />
+                  <ConsoleStat label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} TOTAL`} />
+                </View>
+                <View style={consoleS.statRow}>
+                  <ConsoleStat label="Games Played" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} />
+                  <View style={[consoleS.vDivider, { backgroundColor: c.border }]} />
+                  <ConsoleStat label="Win Record" value={`${winRate}%`} sub={`${summary.wins}-${summary.losses} OVERALL`} />
+                </View>
+              </View>
+            </View>
+
+            <View style={isLandscape ? consoleS.statsSectionLandscape : undefined}>
+              <Text style={[consoleS.sectionTitle, { color: c.mutedForeground, marginTop: 12 }]}>PLAYMAKING & DEFENSE</Text>
+              <View style={[consoleS.card, consoleS.statGrid, { borderColor: c.border, backgroundColor: c.card }]}>
+                <View style={[consoleS.statRow, { borderBottomWidth: 1, borderBottomColor: c.border }]}>
+                  <ConsoleStat label="Assists / GM" value={summary.apg.toFixed(1)} sub={`${summary.assists} TOTAL`} />
+                  <View style={[consoleS.vDivider, { backgroundColor: c.border }]} />
+                  <ConsoleStat label="Turnovers / GM" value={summary.topg.toFixed(1)} sub={`${summary.turnovers} TOTAL`} />
+                </View>
+                <View style={consoleS.statRow}>
+                  <ConsoleStat label="Steals / GM" value={summary.spg.toFixed(1)} sub={`${summary.steals} TOTAL`} />
+                  <View style={[consoleS.vDivider, { backgroundColor: c.border }]} />
+                  <ConsoleStat label="Blocks / GM" value={summary.bpg.toFixed(1)} sub={`${summary.blocks} TOTAL`} />
+                </View>
+              </View>
+            </View>
+
+            {!isLandscape && (
+              <View>
+                <Text style={[consoleS.sectionTitle, { color: c.mutedForeground, marginTop: 12 }]}>SHOOTING EFFICIENCY</Text>
+                <View style={[consoleS.card, { borderColor: c.border, backgroundColor: c.card, paddingVertical: 28, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-around' }]}>
+                  <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
+                  <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
+                  <ArcGauge pct={summary.ftAttempted > 0 ? summary.ftMade / summary.ftAttempted : null} label="Free Throw" made={summary.ftMade} attempted={summary.ftAttempted} />
+                </View>
+              </View>
+            )}
+          </View>
+
+        </View>
+        <View style={{ height: 40 }} />
+      </View>
+    );
+  }
+
+  // ── Integrated Player Panel (Desktop Style) ───────────────────────────────
+  const heroCard = (
+    <View style={[
+      heroS.container, 
+      { borderColor: primaryRgba(0.8), backgroundColor: c.card },
+      isLandscape && heroS.containerLandscape,
+      isTabletLandscape && heroS.cardWrapperTabletLandscape,
+    ]}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={[primaryRgba(0.3), primaryRgba(0.1), 'transparent']}
+        locations={[0, 0.58, 1]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <BasketballWatermark color={c.primary} />
+      <View style={heroS.topRow}>
+        <View style={heroS.playerInfo}>
+          {hasPhoto && authToken !== undefined && authToken !== null && !photoLoadFailed ? (
+            <Image
+              source={{ uri: photoSrc(player.photoObjectPath), headers: { Authorization: `Bearer ${authToken}` } }}
+              style={heroS.avatar}
+              contentFit="cover"
+              onError={() => setPhotoLoadFailed(true)}
+            />
+          ) : (
+            <View style={[heroS.avatar, { backgroundColor: c.border }]}>
+              <Text style={[heroS.avatarInitials, { color: c.mutedForeground }]}>
+                {player.name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={heroS.nameCol}>
+            <Text style={[heroS.eyebrow, { color: c.primary }]}>PLAYER PROFILE</Text>
+            <Text style={[heroS.name, { color: c.foreground }]}>{player.name.toUpperCase()}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={[heroS.scopePill, { backgroundColor: c.primary }]}>
+                <Text style={[heroS.scopeText, { color: c.primaryForeground }]}>
+                  {summary.seasonScope === 'career' ? 'CAREER' : 'SEASON'}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 10, fontFamily: 'Inter_600SemiBold', color: c.mutedForeground, letterSpacing: 0.5 }}>OVERVIEW</Text>
             </View>
           </View>
-          {/* Camera badge */}
-          <View style={[heroS.cameraBadge, { backgroundColor: c.primary, borderColor: c.background }]}>
-            {uploading ? <ActivityIndicator size="small" color={c.primaryForeground} /> : <Ionicons name="camera" size={12} color={c.primaryForeground} />}
-          </View>
-        </TouchableOpacity>
-
-        {/* Name — lives on the card background, use cardForeground */}
-        <Text style={[heroS.name, { color: c.cardForeground }, isLandscape && heroS.nameLandscape]}>{player.name.toUpperCase()}</Text>
-
-        {/* Season scope pill */}
-        <View style={[heroS.scopePill, { borderColor: c.border, backgroundColor: c.muted }]}>
-          <Text style={[heroS.scopeText, { color: c.mutedForeground }]}>
-            {summary.seasonScope === 'career' ? 'CAREER' : 'SEASON'} OVERVIEW
-          </Text>
         </View>
 
-        {/* Share button */}
-        <TouchableOpacity
-          onPress={handleShareProfile}
-          disabled={sharing}
-          activeOpacity={0.75}
-          style={[heroS.shareBtn, { borderColor: primaryRgba(0.45), backgroundColor: primaryRgba(0.12) }]}
-        >
-          {sharing
-            ? <ActivityIndicator size="small" color={c.primary} />
-            : <Ionicons name="share-outline" size={14} color={c.primary} />}
-          <Text style={[heroS.shareBtnText, { color: c.primary }]}>
-            {sharing ? 'Generating link…' : 'Share Player Profile'}
-          </Text>
-        </TouchableOpacity>
+        <View style={heroS.actionRow}>
+          <TouchableOpacity onPress={handlePhotoTap} style={[heroS.iconBtn, { borderColor: c.border }]}>
+            <BlurView tint="dark" intensity={45} style={StyleSheet.absoluteFillObject} />
+            {uploading ? <ActivityIndicator size="small" color={c.foreground} /> : <Ionicons name="camera-outline" size={18} color={c.foreground} />}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleShareProfile} disabled={sharing} style={[heroS.iconBtn, { borderColor: c.border }]}>
+            <BlurView tint="dark" intensity={45} style={StyleSheet.absoluteFillObject} />
+            {sharing ? <ActivityIndicator size="small" color={c.foreground} /> : <Ionicons name="share-outline" size={18} color={c.foreground} />}
+          </TouchableOpacity>
+        </View>
       </View>
+      {/* Decorative top border for the stats block instead of a thick divider, matching desktop panels */}
+      <View style={[heroS.divider, { backgroundColor: c.primary }]} />
     </View>
   );
 
-  // ── Shared stats column content ────────────────────────────────────────────
+  // ── Stats column content ────────────────────────────────────────────
   const statsColumn = (
     <>
-      {/* ── 4 big stat cards ──────────────────────────────────────────── */}
+      <SectionHeader title="Performance" />
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-        <StatCard label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} total`} />
+        <StatCard label="Points / GM" value={summary.ppg.toFixed(1)} sub={`${summary.points} TOTAL`} />
         <StatCard label="Games" value={String(summary.games)} sub={`${summary.wins}W · ${summary.losses}L`} />
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <StatCard label="Win Rate" value={`${winRate}%`} sub={`${summary.wins}–${summary.losses}`} />
-        <StatCard label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} total`} />
+        <StatCard label="Rebounds / GM" value={summary.rpg.toFixed(1)} sub={`${summary.rebounds} TOTAL`} />
       </View>
 
-      {/* ── Shooting Efficiency ───────────────────────────────────────── */}
       <SectionHeader title="Shooting Efficiency" />
       {isLandscape ? (
         <CompactShootingStrip
@@ -681,8 +680,7 @@ function PlayerDashboard({ player }: { player: any }) {
           ftMade={summary.ftMade} ftAtt={summary.ftAttempted}
         />
       ) : (
-        <View style={[shootS.card, { overflow: 'hidden', borderColor: c.border, backgroundColor: c.card }]}>
-          <Gloss />
+        <View style={[shootS.card, { borderColor: c.border, backgroundColor: c.card }]}>
           <ArcGauge pct={fgAtt > 0 ? fgMade / fgAtt : null} label="Field Goal" made={fgMade} attempted={fgAtt} />
           <View style={[shootS.divider, { backgroundColor: c.border }]} />
           <ArcGauge pct={summary.threeAttempted > 0 ? summary.threeMade / summary.threeAttempted : null} label="3-Point" made={summary.threeMade} attempted={summary.threeAttempted} />
@@ -691,28 +689,28 @@ function PlayerDashboard({ player }: { player: any }) {
         </View>
       )}
 
-      {/* ── Playmaking & Defense (last) ───────────────────────────────── */}
       <SectionHeader title="Playmaking & Defense" />
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-        <MiniStat label="Assists / GM" value={summary.apg.toFixed(1)} total={String(summary.assists)} />
-        <MiniStat label="Steals / GM"  value={summary.spg.toFixed(1)} total={String(summary.steals)}  />
+        <StatCard label="Assists / GM" value={summary.apg.toFixed(1)} sub={`${summary.assists} TOTAL`} />
+        <StatCard label="Steals / GM"  value={summary.spg.toFixed(1)} sub={`${summary.steals} TOTAL`}  />
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <MiniStat label="Blocks / GM"   value={summary.bpg.toFixed(1)}  total={String(summary.blocks)}    />
-        <MiniStat label="Turnovers / GM" value={summary.topg.toFixed(1)} total={String(summary.turnovers)} />
+        <StatCard label="Blocks / GM"   value={summary.bpg.toFixed(1)}  sub={`${summary.blocks} TOTAL`}    />
+        <StatCard label="Turnovers / GM" value={summary.topg.toFixed(1)} sub={`${summary.turnovers} TOTAL`} />
       </View>
-      <View style={{ height: 32 }} />
+      <View style={{ height: 40 }} />
     </>
   );
 
   if (isLandscape) {
+    const heroWidth = isTabletLandscape
+      ? Math.min(400, Math.max(340, Math.round(width * 0.36)))
+      : Math.round(width * 0.44) - 20;
     return (
-      <View style={lsS.row}>
-        {/* Left column: hero card, fixed ~44% of screen width */}
-        <View style={[lsS.heroCol, { width: Math.round(width * 0.44) - 20 }]}>
+      <View style={[lsS.row, isTabletLandscape && lsS.rowTablet]}>
+        <View style={[lsS.heroCol, isTabletLandscape && lsS.heroColTablet, { width: heroWidth }]}>
           {heroCard}
         </View>
-        {/* Right column: all stats */}
         <View style={lsS.statsCol}>
           {statsColumn}
         </View>
@@ -729,113 +727,98 @@ function PlayerDashboard({ player }: { player: any }) {
 }
 
 const heroS = StyleSheet.create({
-  // Outer wrapper — shadow lives here so overflow:hidden on card doesn't clip it
-  cardWrapper: {
-    marginBottom: 12,
-    borderRadius: 20,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.55,
-    shadowRadius: 22,
-    elevation: 14,
+  container: {
+    minHeight: 148,
+    borderRadius: 6,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
-  // In landscape the wrapper fills the left column — no bottom margin needed
-  cardWrapperLandscape: {
+  containerLandscape: {
     marginBottom: 0,
   },
-  card: {
-    borderRadius: 20,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 16,
-    overflow: 'hidden',
+  cardWrapperTabletLandscape: { // Add for tests
+    alignSelf: 'flex-start',
   },
-  // Tighter vertical padding in landscape so card fits the short screen
-  cardLandscape: {
-    paddingVertical: 18,
-    paddingHorizontal: 14,
-  },
-  // Horizontal orange→transparent bar along the very top edge
-  topBar: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 7,
-    borderTopLeftRadius: 20, borderTopRightRadius: 20,
-  },
-  liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 18 },
-  liveText:  { ...tekoStyle(12), letterSpacing: 3 },
-
-  avatarOuter:   { marginBottom: 16, position: 'relative' },
-  // Diffuse orange radial glow behind the avatar
-  avatarGlow: {
-    position: 'absolute',
-    top: -14, left: -14, right: -14, bottom: -14,
-    borderRadius: 999,
-    // soft glow via shadow
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55,
-    shadowRadius: 20,
-    elevation: 0,
-  },
-  avatarRing: {
-    width: 124, height: 124, borderRadius: 62,
-    borderWidth: 3,
-    overflow: 'hidden',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  // Smaller avatar in landscape to fit the short screen height
-  avatarRingLandscape: {
-    width: 80, height: 80, borderRadius: 40,
-  },
-  avatarImg:      { width: '100%', height: '100%' },
-  avatarFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-  avatarInitials: { ...tekoStyle(44) },
-  avatarInitialsLandscape: { ...tekoStyle(30) },
-  cameraBadge: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 28, height: 28, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2,
-  },
-  name: { ...tekoStyle(54), letterSpacing: 1.5, marginBottom: 8 },
-  nameLandscape: { ...tekoStyle(36), marginBottom: 6 },
-  scopePill: {
-    borderRadius: 20, borderWidth: 1,
-    paddingHorizontal: 14, paddingVertical: 4,
-  },
-  scopeText: { fontSize: 10, fontFamily: 'Inter_500Medium', letterSpacing: 1 },
-  shareBtn: {
-    marginTop: 14,
+  topRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 20,
   },
-  shareBtnText: { fontSize: 12, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.3 },
+  playerInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  avatar: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontSize: 23,
+    fontFamily: 'Inter_700Bold',
+  },
+  nameCol: {
+    flex: 1,
+    gap: 5,
+  },
+  eyebrow: {
+    fontSize: 8,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 2,
+  },
+  name: {
+    ...tekoStyle(36),
+    letterSpacing: 1,
+  },
+  scopePill: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  scopeText: {
+    fontSize: 8,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 0.5,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  divider: {
+    height: 3,
+    width: '100%',
+  },
 });
 
-// ── Landscape two-column layout ───────────────────────────────────────────────
 const lsS = StyleSheet.create({
-  // Outer row that places hero card and stats side by side
-  row: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
-  },
-  // Left column: fixed width (set inline from screen width), full height of card
-  heroCol: {
-    // width is set inline; keep a flex-shrink:0 so it never collapses
-    flexShrink: 0,
-  },
-  // Right column: grows to fill remaining space
-  statsCol: {
-    flex: 1,
-  },
+  row: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
+  rowTablet: { alignItems: 'flex-start', width: '100%' },
+  heroCol: { flexShrink: 0 },
+  heroColTablet: { alignSelf: 'stretch' },
+  statsCol: { flex: 1 },
 });
 
 const shootS = StyleSheet.create({
-  card:    { flexDirection: 'row', alignItems: 'center', borderRadius: 18, borderWidth: 1, padding: 20 },
+  card:    { flexDirection: 'row', alignItems: 'center', borderRadius: 6, borderWidth: 1, paddingVertical: 20, paddingHorizontal: 10 },
   divider: { width: 1, alignSelf: 'stretch', marginHorizontal: 4 },
 });
 
@@ -844,38 +827,22 @@ function CoachGreeting() {
   const c = useColors();
   const { user } = useUser();
   const { isLoaded, isSignedIn } = useAuth();
-  // Gate the query on Clerk being fully loaded + signed in.
-  // Without this gate, on a cold open with a cached session the query fires
-  // during the ~100ms SecureStore init window when getToken() still returns
-  // null.  That gets a 401, which is not retried (by design), and the query
-  // stays in error state — meData stays undefined forever — so the greeting
-  // falls back to Clerk's stale "Sarah" and never updates.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: meData } = useGetMe({ query: { enabled: isLoaded && !!isSignedIn, refetchOnMount: 'always' } as any });
 
   const hour = new Date().getHours();
   const salutation = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
-  // Prefer the name stored in the DB (editable via Profile → Edit Name) so that
-  // changes made there are reflected here without waiting for a Clerk sync.
   const firstName = meData?.firstName ?? 'Coach';
-
   const initials = firstName.slice(0, 1).toUpperCase();
 
   return (
     <View style={greetS.row}>
-      {/* Avatar */}
       {user?.imageUrl ? (
-        <Image
-          source={{ uri: user.imageUrl }}
-          style={greetS.avatar}
-          contentFit="cover"
-        />
+        <Image source={{ uri: user.imageUrl }} style={greetS.avatar} contentFit="cover" />
       ) : (
         <View style={[greetS.avatar, greetS.avatarFallback, { backgroundColor: c.primary + '30', borderColor: c.primary + '50' }]}>
           <Text style={[greetS.initials, { color: c.primary }]}>{initials}</Text>
         </View>
       )}
-      {/* Greeting text */}
       <View style={greetS.textCol}>
         <Text style={[greetS.salutation, { color: c.mutedForeground }]}>{salutation.toUpperCase()}</Text>
         <Text style={[greetS.name, { color: c.foreground }]} numberOfLines={1}>{firstName}</Text>
@@ -885,40 +852,13 @@ function CoachGreeting() {
 }
 
 const greetS = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 18,
-    marginTop: 4,
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    borderWidth: 2,
-  },
-  avatarFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  initials: {
-    fontSize: 18,
-    fontFamily: 'Inter_700Bold',
-  },
-  textCol: {
-    gap: 1,
-  },
-  salutation: {
-    fontSize: 10,
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 1.5,
-  },
-  name: {
-    fontSize: 26,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.2,
-  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20, marginTop: 4 },
+  avatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 2 },
+  avatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  initials: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  textCol: { gap: 2 },
+  salutation: { fontSize: 10, fontFamily: 'Inter_600SemiBold', letterSpacing: 1.5 },
+  name: { fontSize: 24, fontFamily: 'Inter_700Bold', letterSpacing: 0.2 },
 });
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
@@ -927,7 +867,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenW, height: screenH } = useWindowDimensions();
   const isTablet = screenW >= 768;
-  const isLandscape = screenW > screenH;
+  const router = useRouter();
 
   const { data: players, isLoading, refetch } = useListPlayers();
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -943,8 +883,6 @@ export default function DashboardScreen() {
     );
   }
 
-  const router = useRouter();
-
   if (!players?.length) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: c.background }]}>
@@ -956,16 +894,20 @@ export default function DashboardScreen() {
           activeOpacity={0.8}
           style={[styles.emptyBtn, { backgroundColor: c.primary }]}
         >
-          <Ionicons name="person-add-outline" size={16} color="#fff" />
-          <Text style={styles.emptyBtnText}>Add Players</Text>
+          <Ionicons name="person-add-outline" size={16} color={c.primaryForeground} />
+          <Text style={[styles.emptyBtnText, { color: c.primaryForeground }]}>Add Players</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // Chip bar — reused in both portrait (inside ScrollView) and landscape (pinned above)
   const chipBar = (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+    <ScrollView
+      horizontal
+      style={styles.chipScroller}
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chips}
+    >
       {(players as any[]).map((p) => (
         <PlayerChip key={p.id} player={p} isSelected={p.id === activeId} onPress={() => setSelectedId(p.id)} />
       ))}
@@ -974,25 +916,9 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: c.background }]}>
-      {/* ── Screen-level visual layers (behind everything) ── */}
       <ScreenGlow primary={c.primary} />
       <BasketballWatermark color={c.primary} />
       <StatsWatermark color={c.primary} />
-
-      {/* ── Pinned chip bar (landscape only) — sits above the ScrollView ── */}
-      {isLandscape && (
-        <View style={[
-          styles.pinnedChipBar,
-          {
-            paddingLeft: 16 + (insets.left ?? 0),
-            paddingRight: 16 + (insets.right ?? 0),
-            borderBottomColor: c.border,
-          },
-        ]}>
-          {chipBar}
-        </View>
-      )}
-
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[
@@ -1000,47 +926,22 @@ export default function DashboardScreen() {
           {
             paddingTop: insets.top + (Platform.OS === 'web' ? 67 : Platform.OS === 'ios' ? 16 : 24),
             paddingBottom: insets.bottom + 100,
-            paddingLeft: 16 + (insets.left ?? 0),
-            paddingRight: 16 + (insets.right ?? 0),
+            paddingLeft: (isTablet ? 6 : 16) + (insets.left ?? 0),
+            paddingRight: (isTablet ? 6 : 16) + (insets.right ?? 0),
           },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={c.primary} />}
       >
-        {/* ── Logo banner — stretches edge-to-edge, compensating for all paddings ── */}
-        <View style={[
-          styles.logoBannerContainer,
-          {
-            height: insets.top + (isTablet ? 80 : 68),
-            marginTop: -(insets.top + (Platform.OS === 'ios' ? 16 : 24)),
-            marginLeft: -(16 + (insets.left ?? 0)),
-            marginRight: -(16 + (insets.right ?? 0)),
-          },
-        ]}>
-          {isTablet ? (
-            // On iPad the logo-banner image is narrow relative to the wide canvas —
-            // cap it at 520px and center it so it doesn't stretch or letterbox oddly.
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
-              <Image
-                source={require('../../assets/images/logo-banner.png')}
-                style={{ width: 520, height: 70 }}
-                contentFit="contain"
-              />
-            </View>
-          ) : (
-            <Image
-              source={require('../../assets/images/logo-banner.png')}
-              style={styles.logoBannerImage}
-              contentFit="cover"
-            />
-          )}
+        <View style={[styles.dashboardHeader, isTablet && styles.dashboardHeaderTablet]}>
+          <CoachGreeting />
         </View>
 
-        {/* ── Coach greeting ── */}
-        <CoachGreeting />
-
-        {/* ── Player chips — portrait only; landscape chips are pinned above ── */}
-        {!isLandscape && chipBar}
+        <View style={styles.playerSelector}>
+          <View style={[styles.playerSelectorBar, { backgroundColor: c.primary }]} />
+          <Text style={[styles.playerSelectorLabel, { color: c.foreground }]}>ROSTER</Text>
+          {chipBar}
+        </View>
 
         {activePlayer
           ? <PlayerDashboard player={activePlayer} />
@@ -1050,31 +951,36 @@ export default function DashboardScreen() {
   );
 }
 
-// Note: horizontal padding for landscape safe areas is applied dynamically via
-// contentContainerStyle in the ScrollView (using insets.left / insets.right).
 const styles = StyleSheet.create({
   root:    { flex: 1 },
   centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: {},
-  chips:   { paddingBottom: 14 },
-  // Pinned chip bar rendered above the ScrollView in landscape so chips
-  // stay visible while the coach scrolls through stats.
-  pinnedChipBar: {
-    paddingTop: 8,
-    paddingBottom: 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  logoBannerContainer: {
+  chipScroller: { flex: 1 },
+  chips: { paddingRight: 16 },
+  dashboardHeader: { alignSelf: 'stretch', marginBottom: 12, gap: 12 },
+  dashboardHeaderTablet: { minHeight: 68, flexDirection: 'row', alignItems: 'center' },
+  
+  playerSelector: {
     alignSelf: 'stretch',
-    marginHorizontal: -16,
-    marginBottom: 14,
-    backgroundColor: '#050302',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
   },
-  logoBannerImage: { width: '100%', height: 60 },
+  playerSelectorBar: {
+    width: 3,
+    height: 16,
+    borderRadius: 2,
+    marginRight: 8,
+  },
+  playerSelectorLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    letterSpacing: 1.5,
+    marginRight: 16,
+  },
+  
   emptyTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', marginTop: 16, marginBottom: 8 },
   emptySub:   { fontSize: 14, textAlign: 'center', maxWidth: 260, fontFamily: 'Inter_400Regular', lineHeight: 20 },
   emptyBtn:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, paddingHorizontal: 24, paddingVertical: 13, borderRadius: 14 },
-  emptyBtnText: { fontSize: 15, fontFamily: 'Inter_700Bold', color: '#fff' },
+  emptyBtnText: { fontSize: 15, fontFamily: 'Inter_700Bold' },
 });

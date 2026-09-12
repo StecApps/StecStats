@@ -1,9 +1,19 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import { createHmac } from "crypto";
 import { liveStreamRegistry, getIceServers, getTurnAvailable } from "../lib/liveStream";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 
 const router: IRouter = Router();
+const LIVE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+
+export function deriveLiveSessionCode(ownerId: number, requestId: string, secret: string): string {
+  return createHmac("sha256", secret)
+    .update(`live-session:${ownerId}:${requestId}`)
+    .digest("hex")
+    .slice(0, 16)
+    .toUpperCase();
+}
 
 /**
  * GET /live/ice-servers
@@ -40,13 +50,34 @@ router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
-  const { opponent, teamName } = req.body ?? {};
+  const { opponent, teamName, requestId } = req.body ?? {};
   if (typeof opponent !== "string" || !opponent.trim() || typeof teamName !== "string" || !teamName.trim()) {
     res.status(400).json({ error: "Missing or invalid required fields" });
     return;
   }
+  if (requestId !== undefined && (
+    typeof requestId !== "string" || !LIVE_REQUEST_ID_PATTERN.test(requestId)
+  )) {
+    res.status(400).json({
+      error: "requestId must be 16-128 characters using only letters, numbers, '_' or '-'",
+    });
+    return;
+  }
 
-  const session = await liveStreamRegistry.createSession({ opponent, teamName });
+  let preferredCode: string | undefined;
+  if (requestId !== undefined) {
+    const secret = process.env.SESSION_SECRET;
+    if (!secret) {
+      res.status(500).json({ error: "Server is not configured for idempotent live sessions" });
+      return;
+    }
+    preferredCode = deriveLiveSessionCode(req.appUser!.id, requestId, secret);
+  }
+
+  const session = await liveStreamRegistry.createSession(
+    { opponent, teamName },
+    preferredCode,
+  );
   res.json({ code: session.code });
 });
 

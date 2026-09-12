@@ -2,6 +2,8 @@ import { spawn } from "child_process";
 import { promises as fs, createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
 import { randomUUID } from "crypto";
+import { createServer } from "http";
+import type { AddressInfo } from "net";
 import os from "os";
 import path from "path";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
@@ -13,20 +15,125 @@ import {
   teamsTable,
   usersTable,
 } from "@workspace/db";
+import {
+  markReelEncodingStarted,
+  startReelLeaseHeartbeat,
+  updateReelProgressIfOwner,
+  updateReelIfOwner,
+} from "./reelLease";
 import { sendExpoPush } from "./expoPush";
 import { ObjectStorageService } from "./objectStorage";
+import {
+  cleanupReelHlsDerivative,
+  reelHlsManifestPath,
+  reelHlsSegmentPath,
+  type ReelHlsManifest,
+} from "./highlightDerivatives";
 import { logger } from "./logger";
+import { planProxyChunkBuild } from "./reelChunkPlan";
 
 const objectStorageService = new ObjectStorageService();
+
+/**
+ * Expose one private GCS object to ffmpeg through a loopback-only HTTP server.
+ * ffmpeg needs a seekable input for MP4/WebM probing, while production GCS
+ * signed-URL Range reads have been unreliable. Each Range is fulfilled through
+ * the authenticated GCS SDK without buffering the full recording in /tmp.
+ */
+async function withObjectRangeServer<T>(
+  objectPath: string,
+  signal: AbortSignal,
+  work: (url: string) => Promise<T>,
+): Promise<T> {
+  if (signal.aborted) throw new HighlightError("Cancelled");
+  const file = await objectStorageService.getObjectEntityFile(objectPath);
+  const [metadata] = await file.getMetadata();
+  const size = Number(metadata.size ?? 0);
+  if (!Number.isFinite(size) || size <= 0) throw new Error("Source video has no readable size");
+  if (signal.aborted) throw new HighlightError("Cancelled");
+
+  const sourceToken = randomUUID();
+  const sourcePath = `/source/${sourceToken}`;
+  const activeStreams = new Set<ReturnType<typeof file.createReadStream>>();
+  const server = createServer((req, res) => {
+    if (req.url !== sourcePath) {
+      res.writeHead(404).end();
+      return;
+    }
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      res.writeHead(405).end();
+      return;
+    }
+    const rangeHeader = req.headers.range;
+    const match = rangeHeader == null
+      ? null
+      : /^bytes=(\d+)-(\d*)$/i.exec(String(rangeHeader));
+    if (rangeHeader != null && !match) {
+      res.writeHead(416, { "Content-Range": `bytes */${size}` }).end();
+      return;
+    }
+    const start = match ? Number(match[1]) : 0;
+    const requestedEnd = match?.[2] ? Number(match[2]) : size - 1;
+    if (
+      !Number.isSafeInteger(start)
+      || !Number.isSafeInteger(requestedEnd)
+      || start < 0
+      || start >= size
+      || requestedEnd < start
+    ) {
+      res.writeHead(416, { "Content-Range": `bytes */${size}` }).end();
+      return;
+    }
+    const end = Math.min(requestedEnd, size - 1);
+    const partial = Boolean(match);
+    res.writeHead(partial ? 206 : 200, {
+      "Accept-Ranges": "bytes",
+      "Content-Type": String(metadata.contentType ?? "application/octet-stream"),
+      "Content-Length": String(end - start + 1),
+      ...(partial ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}),
+    });
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    const readStream = file.createReadStream({ start, end });
+    activeStreams.add(readStream);
+    readStream.once("close", () => activeStreams.delete(readStream));
+    pipeline(readStream, res).catch((err) => res.destroy(err));
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const abort = () => {
+    for (const stream of activeStreams) {
+      stream.destroy(new HighlightError("Cancelled"));
+    }
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    if (signal.aborted) throw new HighlightError("Cancelled");
+    const address = server.address() as AddressInfo;
+    return await work(`http://127.0.0.1:${address.port}${sourcePath}`);
+  } finally {
+    signal.removeEventListener("abort", abort);
+    for (const stream of activeStreams) {
+      stream.destroy();
+    }
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
 
 // Separate per-game abort controllers for highlight vs lowlight jobs.
 // Using a shared map caused the second job to overwrite the first's
 // controller, so Cancel aborted the wrong signal and the proxy download
 // (which uses the first job's signal) kept running, causing OOM loops.
-const highlightAbortControllers = new Map<number, AbortController>();
-const lowlightAbortControllers = new Map<number, AbortController>();
+const highlightAbortControllers = new Map<string, AbortController>();
+const lowlightAbortControllers = new Map<string, AbortController>();
 const proxyBuildAbortControllers = new Map<number, AbortController>();
 const hlsBuildAbortControllers = new Map<number, AbortController>();
+const activeReelGames = new Set<number>();
 const teamHighlightOwners = new Map<number, number>();
 const ownersWithDeletionInProgress = new Set<number>();
 
@@ -65,13 +172,26 @@ async function assertOwnerMediaWritesAllowed(ownerId: number): Promise<void> {
 }
 
 export function cancelHighlightJob(gameId: number): void {
-  highlightAbortControllers.get(gameId)?.abort();
+  for (const [key, controller] of highlightAbortControllers) {
+    if (key.startsWith(`${gameId}:`)) controller.abort();
+  }
 }
 export function cancelLowlightJob(gameId: number): void {
-  lowlightAbortControllers.get(gameId)?.abort();
+  for (const [key, controller] of lowlightAbortControllers) {
+    if (key.startsWith(`${gameId}:`)) controller.abort();
+  }
+}
+export function cancelHighlightRun(gameId: number, runToken: string): void {
+  highlightAbortControllers.get(`${gameId}:${runToken}`)?.abort();
+}
+export function cancelLowlightRun(gameId: number, runToken: string): void {
+  lowlightAbortControllers.get(`${gameId}:${runToken}`)?.abort();
 }
 export function cancelProxyBuild(gameId: number): void {
   proxyBuildAbortControllers.get(gameId)?.abort();
+  hlsBuildAbortControllers.get(gameId)?.abort();
+}
+export function cancelHlsBuild(gameId: number): void {
   hlsBuildAbortControllers.get(gameId)?.abort();
 }
 /** @deprecated use cancelHighlightJob / cancelLowlightJob */
@@ -98,8 +218,8 @@ export async function cancelAndWaitForGameProcessing(
   const deadline = Date.now() + timeoutMs;
   while (
     gameIds.some((gameId) =>
-      highlightAbortControllers.has(gameId) ||
-      lowlightAbortControllers.has(gameId) ||
+      Array.from(highlightAbortControllers.keys()).some((key) => key.startsWith(`${gameId}:`)) ||
+      Array.from(lowlightAbortControllers.keys()).some((key) => key.startsWith(`${gameId}:`)) ||
       proxyBuildAbortControllers.has(gameId) ||
       hlsBuildAbortControllers.has(gameId),
     )
@@ -194,7 +314,20 @@ const MAX_SEGMENT_SEC = 300;
 //      lag; 2 s tail captures the play completing after the button press.
 // v10 = orientation-aware reel clips: portrait proxy chunks now produce portrait
 //       output instead of being forced into a landscape 1280×720 box.
-export const GENERATOR_VERSION = 10;
+// v11 = final reel concat rebuilds one continuous CFR H.264/AAC timeline instead
+//       of stream-copying TS timestamp discontinuities that stall iOS AVPlayer.
+// v12 = publish each merged highlight segment as a validated Apple-safe MP4.
+// v15 = publish a complete four-second VOD HLS derivative before marking each
+//       Highlight or Lowlight ready, eliminating per-playback segment encodes.
+export const GENERATOR_VERSION = 15;
+export const HIGHLIGHT_PLAYBACK_VERSION = 1;
+export const REEL_HLS_SEGMENT_DURATION_SEC = 4;
+
+export interface HighlightClipManifestEntry {
+  index: number;
+  objectPath: string;
+  durationMs: number;
+}
 
 // Version stamp for the compressed proxy video (videoProxyObjectPath).
 // Bump when the proxy encoding changes in a way that requires a rebuild.
@@ -617,6 +750,19 @@ export async function acquireSourceVideo(
 // minutes to transcode at real-time speed, then is uploaded to GCS immediately.
 // A server restart loses at most PROXY_CHUNK_DURATION_SEC of progress.
 export const PROXY_CHUNK_DURATION_SEC = 360; // 6 minutes
+// Full inline proxy builds are still capped because they can monopolize the
+// encoder for longer than a reel lease. Targeted reel builds are exempt: they
+// stream through the authenticated loopback Range server, upload each completed
+// chunk immediately, and resume from GCS after a restart without storing the
+// full master recording in tmpfs.
+const MAX_INLINE_FULL_PROXY_DURATION_SEC = 1200;
+// Film Room uses its own short-segment namespace so AVPlayer can start after
+// roughly one minute of source has encoded. Reel extraction keeps the larger
+// six-minute proxy chunks to minimize GCS operations and cross-chunk joins.
+export const HLS_SEGMENT_DURATION_SEC = 60;
+// Yield the global ffmpeg queue after two playback segments so one long game
+// cannot block every other game's first playable segment for tens of minutes.
+const HLS_FFMPEG_BATCH_DURATION_SEC = HLS_SEGMENT_DURATION_SEC * 2;
 
 /**
  * Quick duration probe for a source video. Used to determine how many chunks
@@ -717,11 +863,17 @@ async function encodeChunksToGcs(
    * GCS and will be built lazily (by a background proxy build or next request).
    * Omit (or pass undefined) to encode the full video as before. */
   maxDurationSec?: number,
+  chunkDurationSec: number = PROXY_CHUNK_DURATION_SEC,
+  chunkPathFactory?: (chunkIndex: number) => string,
+  /** Direct ffmpeg duration cap for a fairness batch. Unlike maxDurationSec,
+   * this is relative to this invocation and adds no extra chunk headroom. */
+  encodeDurationSec?: number,
+  onChunkComplete?: (chunkIndex: number) => Promise<void>,
 ): Promise<{ actualNumChunks: number; segmentDurationsSec: number[] }> {
   const numChunks = existFlags.length;
-  const gcsChunkPath = (i: number) =>
-    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`;
-  const startSec = firstMissing * PROXY_CHUNK_DURATION_SEC;
+  const gcsChunkPath = chunkPathFactory ?? ((i: number) =>
+    `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${i}`);
+  const startSec = firstMissing * chunkDurationSec;
 
   // When maxDurationSec is set (targeted reel generation), cap the encode at
   // that point in the file.  Add one extra chunk of headroom so that the last
@@ -729,7 +881,7 @@ async function encodeChunksToGcs(
   // For full-game proxy builds (maxDurationSec undefined) there is no cap.
   const encodeLimitSec =
     maxDurationSec != null && maxDurationSec > startSec
-      ? maxDurationSec - startSec + PROXY_CHUNK_DURATION_SEC
+      ? maxDurationSec - startSec + chunkDurationSec
       : null;
 
   logger.info(
@@ -746,15 +898,20 @@ async function encodeChunksToGcs(
   // than issuing a mid-file Range: bytes= request.  For local file inputs,
   // keep the fast pre-input seek (lseek is O(1) on disk).
   const isUrlSource = srcPath.startsWith("http");
+  const isSeekableLoopbackSource = /^http:\/\/127\.0\.0\.1(?::\d+)?\//.test(srcPath);
+  const useFastInputSeek = firstMissing > 0 && (!isUrlSource || isSeekableLoopbackSource);
+  const outputDurationSec = encodeDurationSec ?? encodeLimitSec;
   const ffmpegArgs = [
     "-y",
-    ...((!isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
+    "-progress", "pipe:1",
+    "-nostats",
+    ...(useFastInputSeek ? ["-ss", String(startSec)] : []),
     "-i", srcPath,
     // Slow (decode-and-discard) seek for URL sources — avoids range requests.
-    ...((isUrlSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
+    ...((isUrlSource && !isSeekableLoopbackSource && firstMissing > 0) ? ["-ss", String(startSec)] : []),
     // Stop encoding early when only a subset of chunks is needed (reel-targeted
     // build).  Full-game builds (encodeLimitSec === null) have no -t flag.
-    ...(encodeLimitSec != null ? ["-t", String(Math.ceil(encodeLimitSec))] : []),
+    ...(outputDurationSec != null ? ["-t", String(Math.ceil(outputDurationSec))] : []),
     "-c:v", "libx264",
     "-preset", "ultrafast",
     "-crf", "33",
@@ -787,7 +944,7 @@ async function encodeChunksToGcs(
     "-c:a", "aac",
     "-b:a", "128k",
     "-f", "segment",
-    "-segment_time", String(PROXY_CHUNK_DURATION_SEC),
+    "-segment_time", String(chunkDurationSec),
     // Start segment numbering at firstMissing so filenames match GCS keys.
     "-segment_start_number", String(firstMissing),
     "-reset_timestamps", "1",
@@ -800,7 +957,45 @@ async function encodeChunksToGcs(
   // segment (whose entry appears in the list when ffmpeg opens it but is
   // only fully flushed when ffmpeg exits) is safe to upload.
   let ffmpegDone = false;
-  const ffmpegPromise = runFfmpegQueued(ffmpegArgs, 90 * 60 * 1000).finally(
+  let progressBuffer = "";
+  let lastMediaTimeUs = -1;
+  let lastLoggedMediaMinute = -1;
+  const ffmpegPromise = runFfmpegQueued(
+    ffmpegArgs,
+    90 * 60 * 1000,
+    signal,
+    {
+      // Playback HLS is opportunistic background work. Reel proxy generation
+      // is foreground work requested by the coach and must not be starved.
+      niceLevel: chunkPathFactory ? 10 : 0,
+      // A live lease only proves Node is alive. Kill FFmpeg when its own media
+      // clock stops so a wedged GCS read cannot occupy the worker indefinitely.
+      stallTimeoutMs: 5 * 60 * 1000,
+      onStdout: (chunk) => {
+        progressBuffer += chunk;
+        const lines = progressBuffer.split(/\r?\n/);
+        progressBuffer = lines.pop() ?? "";
+        let advanced = false;
+        for (const line of lines) {
+          const match = /^out_time_(?:us|ms)=(\d+)$/.exec(line.trim());
+          if (!match) continue;
+          const mediaTimeUs = Number(match[1]);
+          if (!Number.isFinite(mediaTimeUs) || mediaTimeUs <= lastMediaTimeUs) continue;
+          lastMediaTimeUs = mediaTimeUs;
+          advanced = true;
+          const mediaMinute = Math.floor(mediaTimeUs / 60_000_000);
+          if (mediaMinute > lastLoggedMediaMinute) {
+            lastLoggedMediaMinute = mediaMinute;
+            logger.info(
+              { gameId, mediaTimeSec: Math.round(mediaTimeUs / 1_000_000), firstMissing },
+              "Proxy: ffmpeg media clock advancing",
+            );
+          }
+        }
+        return advanced;
+      },
+    },
+  ).finally(
     () => { ffmpegDone = true; },
   );
 
@@ -855,6 +1050,10 @@ async function encodeChunksToGcs(
             continue;
           }
         }
+        // Probe before upload/deletion. Playback-HLS metadata is uploaded last,
+        // making it the atomic marker that a chunk and its exact timing are ready.
+        const segDur = await probeSegmentDurationSec(localPath);
+        const actualDurationSec = segDur > 0 ? segDur : chunkDurationSec;
         if (!existFlags[chunkIdx]) {
           if (signal?.aborted) throw new HighlightError("Cancelled");
           await assertOwnerMediaWritesAllowed(ownerId);
@@ -862,14 +1061,15 @@ async function encodeChunksToGcs(
           await objectStorageService.uploadLocalFileToObjectPath(
             localPath, gcsChunkPath(chunkIdx), "video/mp4",
           );
+          if (chunkPathFactory) {
+            await writeHlsSegmentMetadata(ownerId, gameId, chunkIdx, actualDurationSec);
+          }
           logger.info({ gameId, chunk: chunkIdx, numChunks }, "Proxy chunk: saved to GCS");
         } else {
           logger.info({ gameId, chunk: chunkIdx }, "Proxy chunk: already in GCS, skipping");
         }
-        // Probe the actual segment duration BEFORE deletion so the HLS
-        // sentinel can store exact EXTINF values (no post-hoc GCS re-download).
-        const segDur = await probeSegmentDurationSec(localPath);
-        segmentDurationsSec.push(segDur > 0 ? segDur : PROXY_CHUNK_DURATION_SEC);
+        segmentDurationsSec.push(actualDurationSec);
+        await onChunkComplete?.(chunkIdx);
         if (deleteAfterUpload) {
           await fs.unlink(localPath).catch(() => {});
         }
@@ -1029,7 +1229,69 @@ async function proxyChunkExistsInGcs(objectPath: string): Promise<boolean> {
 export function makeProxyChunkGcsPath(ownerId: number, gameId: number, chunkIndex: number): string {
   return `/objects/uploads/${ownerId}/proxy_chunk_v${PROXY_VERSION}_${gameId}_${chunkIndex}`;
 }
-const chunkEnsureInFlight = new Map<string, Promise<string[]>>();
+
+/** Playback-only HLS chunks. Never reuse these for reel timestamp extraction. */
+export function makeHlsChunkGcsPath(ownerId: number, gameId: number, chunkIndex: number): string {
+  return `/objects/uploads/${ownerId}/playback_hls_v${PROXY_VERSION}_s${HLS_SEGMENT_DURATION_SEC}_${gameId}_${chunkIndex}`;
+}
+
+/** Written only after its matching playback chunk is complete in GCS. */
+export function makeHlsSegmentMetadataGcsPath(ownerId: number, gameId: number, chunkIndex: number): string {
+  return `/objects/uploads/${ownerId}/playback_hls_meta_v${PROXY_VERSION}_s${HLS_SEGMENT_DURATION_SEC}_${gameId}_${chunkIndex}.json`;
+}
+
+async function hlsSegmentReadyInGcs(
+  ownerId: number,
+  gameId: number,
+  chunkIndex: number,
+): Promise<boolean> {
+  const mediaReady = await proxyChunkExistsInGcs(
+    makeHlsChunkGcsPath(ownerId, gameId, chunkIndex),
+  );
+  if (!mediaReady) return false;
+  try {
+    const metadata = await objectStorageService.getObjectEntityFile(
+      makeHlsSegmentMetadataGcsPath(ownerId, gameId, chunkIndex),
+    );
+    const [md] = await metadata.getMetadata();
+    return Number(md.size ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function writeHlsSegmentMetadata(
+  ownerId: number,
+  gameId: number,
+  chunkIndex: number,
+  durationSec: number,
+): Promise<void> {
+  const tmpFile = path.join(os.tmpdir(), `hls_segment_${gameId}_${chunkIndex}_${Date.now()}.json`);
+  await fs.writeFile(tmpFile, JSON.stringify({ durationSec }));
+  try {
+    await assertOwnerMediaWritesAllowed(ownerId);
+    await objectStorageService.uploadLocalFileToObjectPath(
+      tmpFile,
+      makeHlsSegmentMetadataGcsPath(ownerId, gameId, chunkIndex),
+      "application/json",
+    );
+  } finally {
+    await fs.unlink(tmpFile).catch(() => {});
+  }
+}
+interface ChunkEnsureSubscriber {
+  signal?: AbortSignal;
+  onProgress?: (completed: number, total: number) => Promise<void>;
+  onAbort?: () => void;
+}
+
+interface ChunkEnsureEntry {
+  controller: AbortController;
+  subscribers: Set<ChunkEnsureSubscriber>;
+  promise: Promise<string[]>;
+}
+
+const chunkEnsureInFlight = new Map<string, ChunkEnsureEntry>();
 
 /**
  * Ensure every proxy chunk for a game exists in GCS and return their object
@@ -1048,15 +1310,70 @@ function ensureProxyChunksInGcs(
    * the last chunk they need pass this so the encoder stops early rather than
    * transcoding the entire game. Omit for full-game builds. */
   maxChunkNeeded?: number,
+  onProgress?: (completed: number, total: number) => Promise<void>,
 ): Promise<string[]> {
   const key = `${gameId}:${maxChunkNeeded ?? "all"}`;
-  const inFlight = chunkEnsureInFlight.get(key);
-  if (inFlight) return inFlight;
-  const p = doEnsureProxyChunksInGcs(gameId, ownerId, game, signal, maxChunkNeeded).finally(() => {
-    chunkEnsureInFlight.delete(key);
+  let entry = chunkEnsureInFlight.get(key);
+  if (!entry) {
+    const controller = new AbortController();
+    entry = {
+      controller,
+      subscribers: new Set(),
+      promise: Promise.resolve([]),
+    };
+    chunkEnsureInFlight.set(key, entry);
+    const capturedEntry = entry;
+    const fanOutProgress = async (completed: number, total: number): Promise<void> => {
+      await Promise.all([...capturedEntry.subscribers].map(async (subscriber) => {
+        if (!subscriber.signal?.aborted) {
+          await subscriber.onProgress?.(completed, total);
+        }
+      }));
+    };
+    entry.promise = doEnsureProxyChunksInGcs(
+      gameId, ownerId, game, controller.signal, maxChunkNeeded, fanOutProgress,
+    ).finally(() => {
+      for (const subscriber of capturedEntry.subscribers) {
+        if (subscriber.onAbort) {
+          subscriber.signal?.removeEventListener("abort", subscriber.onAbort);
+        }
+      }
+      capturedEntry.subscribers.clear();
+      if (chunkEnsureInFlight.get(key) === capturedEntry) {
+        chunkEnsureInFlight.delete(key);
+      }
+    });
+  }
+
+  const subscriber: ChunkEnsureSubscriber = { signal, onProgress };
+  entry.subscribers.add(subscriber);
+  if (signal) {
+    subscriber.onAbort = () => {
+      entry!.subscribers.delete(subscriber);
+      if (entry!.subscribers.size === 0) entry!.controller.abort();
+    };
+    if (signal.aborted) subscriber.onAbort();
+    else signal.addEventListener("abort", subscriber.onAbort, { once: true });
+  }
+
+  if (signal?.aborted) {
+    return Promise.reject(new HighlightError("Cancelled"));
+  }
+  if (!signal) return entry.promise;
+  let rejectWaiter: (() => void) | undefined;
+  const aborted = new Promise<string[]>((_, reject) => {
+    rejectWaiter = () => reject(new HighlightError("Cancelled"));
+    signal.addEventListener("abort", rejectWaiter, { once: true });
   });
-  chunkEnsureInFlight.set(key, p);
-  return p;
+  return Promise.race([
+    entry.promise,
+    aborted,
+  ]).finally(() => {
+    entry!.subscribers.delete(subscriber);
+    if (subscriber.onAbort) signal.removeEventListener("abort", subscriber.onAbort);
+    if (rejectWaiter) signal.removeEventListener("abort", rejectWaiter);
+    if (entry!.subscribers.size === 0) entry!.controller.abort();
+  });
 }
 
 async function doEnsureProxyChunksInGcs(
@@ -1065,6 +1382,7 @@ async function doEnsureProxyChunksInGcs(
   game: { videoObjectPath: string | null; videoDurationMs: number | null },
   signal?: AbortSignal,
   maxChunkNeeded?: number,
+  onProgress?: (completed: number, total: number) => Promise<void>,
 ): Promise<string[]> {
   const durationMs = game.videoDurationMs ?? 0;
   if (durationMs <= 0) {
@@ -1085,6 +1403,23 @@ async function doEnsureProxyChunksInGcs(
       proxyChunkExistsInGcs(gcsChunkPath(i)),
     ),
   );
+  const chunkPlan = planProxyChunkBuild(existFlags, maxChunkNeeded);
+  const progressTotal = chunkPlan.requiredChunkCount;
+  const completedChunks = new Set(
+    existFlags.slice(0, progressTotal).flatMap((exists, index) => exists ? [index] : []),
+  );
+  await onProgress?.(completedChunks.size, progressTotal);
+
+  if (maxChunkNeeded != null && chunkPlan.firstMissing === -1) {
+    logger.info(
+      { gameId, count: chunkPlan.requiredChunkCount, maxChunkNeeded },
+      "Proxy chunks: targeted range already present in GCS",
+    );
+    return Array.from(
+      { length: chunkPlan.requiredChunkCount },
+      (_, i) => gcsChunkPath(i),
+    );
+  }
 
   if (existFlags.every(Boolean)) {
     // Probe past the estimate to discover the TRUE chunk count (the duration-
@@ -1105,35 +1440,22 @@ async function doEnsureProxyChunksInGcs(
     throw new HighlightError("Game has no recorded video");
   }
 
-  // Duration gate: building proxy chunks requires transcoding the full source
-  // (libx264 re-encode of a VP8/WebM source). On the production container the
-  // CPU throughput is roughly 0.35× real-time, so a 33-min game takes ~94 min
-  // to transcode — exceeding PROCESS_TIMEOUT_MS and causing a stale timeout.
-  //
-  // For long videos, skip the inline proxy build and let the caller fall back
-  // to parallel-download + direct source extraction (which now completes in
-  // ~10–15 min thanks to the parallel range downloader).  The proxy path still
-  // runs for shorter games where it finishes well within the timeout, and any
-  // game whose chunks are ALREADY fully in GCS (existFlags.every(Boolean)) is
-  // served from cache regardless of duration (handled above).
-  //
-  // EXCEPTION: when maxChunkNeeded is set, only a subset of chunks are built.
-  // The effective encode duration is (maxChunkNeeded+1) * PROXY_CHUNK_DURATION_SEC
-  // which is often well under the timeout even for long games.
-  const MAX_INLINE_PROXY_DURATION_SEC = 1200; // 20 minutes (full-game limit)
+  // Full-game proxy builds remain capped so one request cannot monopolize the
+  // encoder for longer than the job watchdog. Targeted reel builds deliberately
+  // bypass this gate: their completed chunks are durable in GCS, so a restart
+  // resumes at firstMissing instead of repeating the whole game.
   const durSec = durationMs / 1000;
-  const effectiveDurSec =
-    maxChunkNeeded != null
-      ? Math.min(durSec, (maxChunkNeeded + 1) * PROXY_CHUNK_DURATION_SEC)
-      : durSec;
-  if (effectiveDurSec > MAX_INLINE_PROXY_DURATION_SEC) {
+  if (maxChunkNeeded == null && durSec > MAX_INLINE_FULL_PROXY_DURATION_SEC) {
     throw new HighlightError(
       `Video is ${Math.round(durSec / 60)} min — too long for inline proxy build ` +
-      `(limit ${MAX_INLINE_PROXY_DURATION_SEC / 60} min). Using direct source extraction.`,
+      `(limit ${MAX_INLINE_FULL_PROXY_DURATION_SEC / 60} min).`,
     );
   }
 
-  const firstMissing = existFlags.findIndex((e) => !e);
+  const firstMissing = chunkPlan.firstMissing;
+  if (firstMissing < 0) {
+    throw new HighlightError("Could not identify a missing proxy chunk");
+  }
   // When the caller only needs a subset of chunks, tell the encoder to stop
   // after the last needed chunk. This prevents encoding the entire game when
   // all highlight moments are in the first few minutes.
@@ -1152,21 +1474,60 @@ async function doEnsureProxyChunksInGcs(
   );
   await fs.mkdir(workDir, { recursive: true });
   try {
-    const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
     let actualNumChunks: number;
-    try {
-      // deleteAfterUpload: local chunk files are removed as soon as each one
-      // is safely in GCS — extraction re-downloads only the chunks it needs.
-      ({ actualNumChunks } = await encodeChunksToGcs(
-        gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal, maxDurationSec,
+    if (maxChunkNeeded != null) {
+      // Long targeted reel builds must never download the complete master into
+      // RAM-backed /tmp. The loopback server translates ffmpeg Range requests
+      // into authenticated GCS SDK reads while encodeChunksToGcs durably
+      // uploads and deletes each completed proxy chunk.
+      const localController = signal == null ? new AbortController() : null;
+      const rangeSignal = signal ?? localController!.signal;
+      ({ actualNumChunks } = await withObjectRangeServer(
+        game.videoObjectPath,
+        rangeSignal,
+        (sourceUrl) => encodeChunksToGcs(
+          gameId,
+          ownerId,
+          sourceUrl,
+          workDir,
+          existFlags,
+          firstMissing,
+          true,
+          rangeSignal,
+          maxDurationSec,
+          PROXY_CHUNK_DURATION_SEC,
+          undefined,
+          undefined,
+          async (chunkIndex) => {
+            if (chunkIndex < progressTotal) completedChunks.add(chunkIndex);
+            await onProgress?.(completedChunks.size, progressTotal);
+          },
+        ),
       ));
-    } finally {
-      release();
+      localController?.abort();
+    } else {
+      const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, signal);
+      try {
+        ({ actualNumChunks } = await encodeChunksToGcs(
+          gameId, ownerId, srcPath, workDir, existFlags, firstMissing, true, signal,
+          maxDurationSec, PROXY_CHUNK_DURATION_SEC, undefined, undefined,
+          async (chunkIndex) => {
+            if (chunkIndex < progressTotal) completedChunks.add(chunkIndex);
+            await onProgress?.(completedChunks.size, progressTotal);
+          },
+        ));
+      } finally {
+        release();
+      }
     }
     return Array.from({ length: actualNumChunks }, (_, i) => gcsChunkPath(i));
   } finally {
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+function rawSourceFallbackIsUnsafe(game: { videoDurationMs: number | null }): boolean {
+  return (game.videoDurationMs ?? 0) / 1000 > MAX_INLINE_FULL_PROXY_DURATION_SEC;
 }
 
 const proxyLocalCache = new Map<number, SourceVideoEntry>();
@@ -1395,20 +1756,58 @@ export function ensureGameProxyInBackground(gameId: number, ownerId: number): vo
 type Moment = { timeSec: number; caption: string };
 type Segment = { start: number; end: number; moments: Moment[] };
 
-function run(cmd: string, args: string[], timeoutMs: number = PROCESS_TIMEOUT_MS): Promise<string> {
+function run(
+  cmd: string,
+  args: string[],
+  timeoutMs: number = PROCESS_TIMEOUT_MS,
+  signal?: AbortSignal,
+  options?: {
+    stallTimeoutMs?: number;
+    onStdout?: (chunk: string) => boolean;
+  },
+): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new HighlightError("Cancelled"));
+      return;
+    }
     const child = spawn(cmd, args);
     let stderr = "";
     let stdout = "";
+    let lastProgressAt = Date.now();
+    const abort = () => {
+      child.kill("SIGKILL");
+      reject(new HighlightError("Cancelled"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    const cleanup = () => {
+      clearTimeout(timer);
+      if (stallTimer) clearInterval(stallTimer);
+      signal?.removeEventListener("abort", abort);
+    };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error(`${cmd} process timed out after ${timeoutMs / 1000}s`));
     }, timeoutMs);
-    child.stdout.on("data", (d) => (stdout += d.toString()));
+    const stallTimer = options?.stallTimeoutMs
+      ? setInterval(() => {
+          if (Date.now() - lastProgressAt >= options.stallTimeoutMs!) {
+            child.kill("SIGKILL");
+            reject(new Error(
+              `${cmd} media progress stalled for ${Math.round(options.stallTimeoutMs! / 60_000)} minutes`,
+            ));
+          }
+        }, 30_000)
+      : null;
+    child.stdout.on("data", (d) => {
+      const chunk = d.toString();
+      stdout += chunk;
+      if (options?.onStdout?.(chunk)) lastProgressAt = Date.now();
+    });
     child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("error", (err) => { clearTimeout(timer); reject(err); });
+    child.on("error", (err) => { cleanup(); reject(err); });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      cleanup();
       if (code === 0) resolve(stdout);
       else reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-2000)}`));
     });
@@ -1423,16 +1822,34 @@ function run(cmd: string, args: string[], timeoutMs: number = PROCESS_TIMEOUT_MS
 // at a time, globally, regardless of how many reel jobs are in flight.
 let _ffmpegQueueTail: Promise<void> = Promise.resolve();
 
-function runFfmpegQueued(args: string[], timeoutMs?: number): Promise<string> {
+function runFfmpegQueued(
+  args: string[],
+  timeoutMs?: number,
+  signal?: AbortSignal,
+  options?: {
+    niceLevel?: number;
+    stallTimeoutMs?: number;
+    onStdout?: (chunk: string) => boolean;
+  },
+): Promise<string> {
   let unlock!: () => void;
   const token = new Promise<void>((r) => { unlock = r; });
   const prev = _ffmpegQueueTail;
   _ffmpegQueueTail = token;
-  // nice -n 10: ffmpeg runs at reduced OS priority so Node's event loop
-  // always preempts it for healthchecks/API calls, but ffmpeg still gets
-  // plenty of CPU between requests. -n 19 was too aggressive — the download
-  // process starved ffmpeg so badly that encoding took >20 min per chunk.
-  return prev.then(() => run("nice", ["-n", "10", "ffmpeg", ...args], timeoutMs)).finally(unlock);
+  // Background playback work stays at reduced priority, while user-requested
+  // reel work can opt into normal priority. Even nice -n 10 can starve on a
+  // single-vCPU production worker under frequent mobile polling.
+  const niceLevel = options?.niceLevel ?? 10;
+  return prev.then(() => {
+    if (signal?.aborted) throw new HighlightError("Cancelled");
+    return run(
+      "nice",
+      ["-n", String(niceLevel), "ffmpeg", ...args],
+      timeoutMs,
+      signal,
+      options,
+    );
+  }).finally(unlock);
 }
 
 // Module-level reel-generation serializer.
@@ -1492,34 +1909,48 @@ async function ffprobe(args: string[]): Promise<string> {
 
 async function setGameStatus(
   gameId: number,
+  runToken: string,
   status: "processing" | "ready" | "failed",
-  extra: { highlightObjectPath?: string | null; highlightError?: string | null } = {},
-): Promise<void> {
-  await db
-    .update(gamesTable)
-    .set({
+  extra: {
+    highlightObjectPath?: string | null;
+    highlightError?: string | null;
+    highlightClipManifest?: HighlightClipManifestEntry[] | null;
+    highlightPlaybackVersion?: number | null;
+  } = {},
+): Promise<boolean> {
+  return updateReelIfOwner(gameId, "highlight", runToken, {
       highlightStatus: status,
       // Stamp the generator version on completion so stale reels (built by
       // older clip-timing code) can be detected and invalidated on read.
       ...(status === "ready" ? { highlightGeneratorVersion: GENERATOR_VERSION } : {}),
+      ...(status !== "ready"
+        ? { highlightClipManifest: null, highlightPlaybackVersion: null }
+        : {}),
+      highlightProgressStage: status === "ready" ? "ready" : null,
+      highlightProgressCompleted: status === "ready" ? 1 : null,
+      highlightProgressTotal: status === "ready" ? 1 : null,
       ...extra,
-    })
-    .where(eq(gamesTable.id, gameId));
+      highlightRunToken: null,
+      highlightLeaseExpiresAt: null,
+    });
 }
 
 async function setGameLowlightStatus(
   gameId: number,
+  runToken: string,
   status: "processing" | "ready" | "failed",
   extra: { lowlightObjectPath?: string | null; lowlightError?: string | null } = {},
-): Promise<void> {
-  await db
-    .update(gamesTable)
-    .set({
+): Promise<boolean> {
+  return updateReelIfOwner(gameId, "lowlight", runToken, {
       lowlightStatus: status,
       ...(status === "ready" ? { lowlightGeneratorVersion: GENERATOR_VERSION } : {}),
+      lowlightProgressStage: status === "ready" ? "ready" : null,
+      lowlightProgressCompleted: status === "ready" ? 1 : null,
+      lowlightProgressTotal: status === "ready" ? 1 : null,
       ...extra,
-    })
-    .where(eq(gamesTable.id, gameId));
+      lowlightRunToken: null,
+      lowlightLeaseExpiresAt: null,
+    });
 }
 
 async function setTeamStatus(
@@ -1717,6 +2148,7 @@ async function renderGameSegments(
   // Peak tmpfs usage stays at ~2 chunks (~550 MB) no matter how long the
   // game is — the full-proxy concat needed ~2.8 GB and was OOM-killed.
   chunkedSrc?: { chunkObjectPaths: string[]; signal?: AbortSignal },
+  onClipComplete?: (completed: number, total: number) => Promise<void>,
 ): Promise<{ segPaths: string[]; hasAudio: boolean }> {
   const chunked = chunkedSrc != null && chunkedSrc.chunkObjectPaths.length > 0;
   if (!chunked && srcPath == null) {
@@ -2005,6 +2437,7 @@ async function renderGameSegments(
   }
 
   let segments = buildSegments(eligible, duration, nameById, offsetMs, half2StartMs, halftimeGapMs);
+  await onClipComplete?.(0, segments.length);
   if (segments.length === 0) return { segPaths: [], hasAudio };
 
   // Chunked mode: pre-compute which chunk indices contain ≥1 segment using
@@ -2379,6 +2812,7 @@ async function renderGameSegments(
               await renderOne(seg, segIdx, { path: await ensureChunk(ci), seek: localSeek }),
             );
           }
+          await onClipComplete?.(segPaths.length, segments.length);
           segIdx++;
         }
 
@@ -2416,9 +2850,19 @@ async function renderGameSegments(
 
   // Process in ordered batches — results within each batch are parallel but
   // the overall array order matches segment order for the concat step.
+  let completedRenders = 0;
+  let progressPublication = Promise.resolve();
   for (let b = 0; b < segments.length; b += RENDER_CONCURRENCY) {
     const batch = segments.slice(b, b + RENDER_CONCURRENCY);
-    const results = await Promise.all(batch.map((seg, j) => renderOne(seg, b + j)));
+    const results = await Promise.all(batch.map(async (seg, j) => {
+      const result = await renderOne(seg, b + j);
+      const completed = ++completedRenders;
+      progressPublication = progressPublication.then(() =>
+        onClipComplete?.(completed, segments.length),
+      );
+      await progressPublication;
+      return result;
+    }));
     segPaths.push(...results);
   }
 
@@ -2431,6 +2875,7 @@ export async function concatSegments(
   outPath: string,
   hasAudio: boolean,
   musicTrackPath?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const listPath = path.join(tmpDir, `list_${path.basename(outPath)}.txt`);
   await fs.writeFile(
@@ -2447,8 +2892,9 @@ export async function concatSegments(
     //
     // Input 0: MPEG-TS segments via concat demuxer.
     // Input 1: music track looped for the full reel duration.
-    // Video is stream-copied; audio is decoded, mixed, and re-encoded to AAC
-    // (so aac_adtstoasc is not needed — we're not copying TS audio packets).
+    // Re-encode the final timeline rather than stream-copying independently
+    // timestamp-reset TS clips. AVPlayer can seek across copied discontinuities
+    // but stalls/turns black when normal playback reaches the first one.
     const concatArgs = [
       "-y",
       "-f", "concat", "-safe", "0", "-i", listPath,
@@ -2459,42 +2905,59 @@ export async function concatSegments(
       // Blend original game audio (weight 1) with background music (weight 0.2).
       // duration=first trims the music to the video length.
       concatArgs.push(
-        "-filter_complex", "[0:a][1:a]amix=inputs=2:duration=first:weights=1 0.2[aout]",
-        "-map", "0:v",
+        "-filter_complex", "[0:v]setpts=N/(30*TB)[vout];[0:a]asetpts=N/SR/TB[game];[1:a]asetpts=N/SR/TB[music];[game][music]amix=inputs=2:duration=first:weights=1 0.2[aout]",
+        "-map", "[vout]",
         "-map", "[aout]",
       );
     } else {
       // No source audio — music only, trimmed to video length.
       concatArgs.push(
-        "-filter_complex", "[1:a]volume=0.3[aout]",
-        "-map", "0:v",
+        "-filter_complex", "[0:v]setpts=N/(30*TB)[vout];[1:a]asetpts=N/SR/TB,volume=0.3[aout]",
+        "-map", "[vout]",
         "-map", "[aout]",
       );
     }
 
     concatArgs.push(
-      "-c:v", "copy",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+      "-profile:v", "main", "-pix_fmt", "yuv420p", "-r", "30",
       "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
       "-shortest",
+      "-avoid_negative_ts", "make_zero",
       "-movflags", "+faststart",
       outPath,
     );
 
-    await runFfmpegQueued(concatArgs);
+    await runFfmpegQueued(concatArgs, undefined, signal);
     return;
   }
 
-  // No music: plain stream-copy concat.
+  // No music: rebuild one continuous CFR timeline. Stream-copying separately
+  // encoded TS clips leaves discontinuities that iOS exposes as a 10–15 second
+  // playback stall even though manual seeking still works.
   const concatArgs = [
     "-y",
     "-f", "concat",
     "-safe", "0",
     "-i", listPath,
-    "-c", "copy",
+    "-filter:v", "setpts=N/(30*TB)",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+    "-profile:v", "main", "-pix_fmt", "yuv420p", "-r", "30",
   ];
-  if (hasAudio) concatArgs.push("-bsf:a", "aac_adtstoasc");
-  concatArgs.push("-movflags", "+faststart", outPath);
-  await runFfmpegQueued(concatArgs);
+  if (hasAudio) {
+    concatArgs.push(
+      "-filter:a", "asetpts=N/SR/TB",
+      "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
+    );
+  } else {
+    concatArgs.push("-an");
+  }
+  concatArgs.push(
+    "-avoid_negative_ts", "make_zero",
+    "-movflags", "+faststart",
+    outPath,
+  );
+  await runFfmpegQueued(concatArgs, undefined, signal);
 }
 
 /**
@@ -2559,7 +3022,12 @@ export async function mixMusicIntoReel(
   await runFfmpegQueued(args);
 }
 
-async function uploadHighlight(outPath: string, ownerId: number): Promise<string> {
+async function uploadHighlight(
+  outPath: string,
+  ownerId: number,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (signal?.aborted) throw new HighlightError("Cancelled");
   await assertOwnerMediaWritesAllowed(ownerId);
   // Use GCS SDK streaming upload (pipeline → createWriteStream) instead of
   // reading the whole file into a Buffer and POSTing to a signed URL.
@@ -2572,8 +3040,18 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
+      if (signal?.aborted) throw new HighlightError("Cancelled");
       await assertOwnerMediaWritesAllowed(ownerId);
-      await objectStorageService.uploadLocalFileToObjectPath(outPath, objectPath, "video/mp4");
+      await objectStorageService.uploadLocalFileToObjectPath(
+        outPath,
+        objectPath,
+        "video/mp4",
+        signal,
+      );
+      if (signal?.aborted) {
+        await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+        throw new HighlightError("Cancelled");
+      }
       await objectStorageService
         .trySetObjectEntityAclPolicy(objectPath, {
           owner: String(ownerId),
@@ -2583,7 +3061,9 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
       return objectPath;
     } catch (err) {
       lastErr = err;
-      if (err instanceof HighlightError) throw err;
+      if (err instanceof HighlightError || signal?.aborted) {
+        throw new HighlightError("Cancelled");
+      }
       if (attempt < MAX_ATTEMPTS) {
         const delayMs = attempt * 5000;
         logger.warn({ err, attempt, delayMs, outPath }, "Upload attempt failed, retrying");
@@ -2594,16 +3074,195 @@ async function uploadHighlight(outPath: string, ownerId: number): Promise<string
   throw lastErr;
 }
 
+async function buildAndUploadReelHls(
+  outPath: string,
+  combinedPath: string,
+  ownerId: number,
+  tmpDir: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const hlsDir = path.join(tmpDir, `reel-hls-${randomUUID()}`);
+  await fs.mkdir(hlsDir, { recursive: true });
+  const playlistPath = path.join(hlsDir, "index.m3u8");
+  try {
+    await runFfmpegQueued([
+      "-y", "-i", outPath,
+      "-map", "0:v:0", "-map", "0:a:0?",
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+      "-c:a", "aac", "-ar", "44100", "-b:a", "128k", "-ac", "2",
+      "-force_key_frames", `expr:gte(t,n_forced*${REEL_HLS_SEGMENT_DURATION_SEC})`,
+      "-f", "hls",
+      "-hls_time", String(REEL_HLS_SEGMENT_DURATION_SEC),
+      "-hls_playlist_type", "vod",
+      "-hls_segment_filename", path.join(hlsDir, "segment-%d.ts"),
+      playlistPath,
+    ], undefined, signal, { niceLevel: 0 });
+    const playlist = await fs.readFile(playlistPath, "utf8");
+    const durations = [...playlist.matchAll(/^#EXTINF:([\d.]+),/gm)]
+      .map((match) => Number.parseFloat(match[1]!));
+    if (durations.length < 1 || durations.some((duration) => !Number.isFinite(duration) || duration <= 0)) {
+      throw new HighlightError("Generated reel HLS playlist has invalid segment timing");
+    }
+    const uploaded: string[] = [];
+    try {
+      for (let index = 0; index < durations.length; index++) {
+        if (signal.aborted) throw new HighlightError("Cancelled");
+        const objectPath = reelHlsSegmentPath(combinedPath, index);
+        await objectStorageService.uploadLocalFileToObjectPath(
+          path.join(hlsDir, `segment-${index}.ts`),
+          objectPath,
+          "video/mp2t",
+          signal,
+        );
+        uploaded.push(objectPath);
+      }
+      const manifest: ReelHlsManifest = {
+        version: 1,
+        segmentDurationSec: REEL_HLS_SEGMENT_DURATION_SEC,
+        durationMs: Math.round(durations.reduce((sum, duration) => sum + duration, 0) * 1000),
+        segments: durations.map((durationSec, index) => ({
+          objectPath: reelHlsSegmentPath(combinedPath, index),
+          durationSec,
+        })),
+      };
+      const manifestLocalPath = path.join(hlsDir, "manifest.json");
+      await fs.writeFile(manifestLocalPath, JSON.stringify(manifest));
+      await objectStorageService.uploadLocalFileToObjectPath(
+        manifestLocalPath,
+        reelHlsManifestPath(combinedPath),
+        "application/json",
+        signal,
+      );
+    } catch (err) {
+      await Promise.all(uploaded.map((objectPath) =>
+        objectStorageService.deleteObjectEntity(objectPath).catch(() => {}),
+      ));
+      throw err;
+    }
+  } finally {
+    await fs.rm(hlsDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function encodeAndValidateNativeClip(
+  segmentPath: string,
+  clipPath: string,
+  hasAudio: boolean,
+  signal: AbortSignal,
+): Promise<number> {
+  const args = ["-y", "-i", segmentPath];
+  if (!hasAudio) {
+    args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
+  }
+  args.push(
+    "-map", "0:v:0",
+    "-map", hasAudio ? "0:a:0?" : "1:a:0",
+    "-vf", "fps=30,format=yuv420p",
+    "-c:v", "libx264",
+    "-preset", "veryfast",
+    "-profile:v", "main",
+    "-pix_fmt", "yuv420p",
+    "-r", "30",
+    "-vsync", "cfr",
+    "-c:a", "aac",
+    "-ar", "44100",
+    "-ac", "2",
+    "-b:a", "128k",
+    "-shortest",
+    "-movflags", "+faststart",
+    clipPath,
+  );
+  await runFfmpegQueued(args, undefined, signal);
+
+  const raw = await ffprobe([
+    "-v", "error",
+    "-show_entries", "format=duration:stream=codec_type,codec_name,profile,pix_fmt,avg_frame_rate",
+    "-of", "json",
+    clipPath,
+  ]);
+  const probe = JSON.parse(raw) as {
+    format?: { duration?: string };
+    streams?: Array<{
+      codec_type?: string;
+      codec_name?: string;
+      profile?: string;
+      pix_fmt?: string;
+      avg_frame_rate?: string;
+    }>;
+  };
+  const video = probe.streams?.find((stream) => stream.codec_type === "video");
+  const audio = probe.streams?.find((stream) => stream.codec_type === "audio");
+  const durationMs = Math.round(Number(probe.format?.duration) * 1000);
+  const [rateNumerator, rateDenominator] = String(video?.avg_frame_rate ?? "").split("/").map(Number);
+  const frameRate = rateDenominator ? rateNumerator / rateDenominator : rateNumerator;
+  if (
+    video?.codec_name !== "h264"
+    || video.pix_fmt !== "yuv420p"
+    || !["Main", "High", "Constrained Baseline", "Baseline"].includes(video.profile ?? "")
+    || !Number.isFinite(frameRate)
+    || Math.abs(frameRate - 30) > 0.01
+    || audio?.codec_name !== "aac"
+    || !Number.isFinite(durationMs)
+    || durationMs <= 0
+  ) {
+    throw new HighlightError("Standalone highlight clip failed Apple playback validation");
+  }
+  return durationMs;
+}
+
+async function uploadNativeClip(
+  clipPath: string,
+  ownerId: number,
+  gameId: number,
+  runToken: string,
+  index: number,
+  signal: AbortSignal,
+): Promise<string> {
+  if (signal.aborted) throw new HighlightError("Cancelled");
+  await assertOwnerMediaWritesAllowed(ownerId);
+  const objectPath =
+    `/objects/uploads/${ownerId}/highlight_clips/${gameId}/${runToken}/clip_${index}.mp4`;
+  try {
+    await objectStorageService.uploadLocalFileToObjectPath(
+      clipPath,
+      objectPath,
+      "video/mp4",
+      signal,
+    );
+    if (signal.aborted) {
+      throw new HighlightError("Cancelled");
+    }
+    await objectStorageService.trySetObjectEntityAclPolicy(objectPath, {
+      owner: String(ownerId),
+      visibility: "private",
+    });
+    return objectPath;
+  } catch (err) {
+    await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+    throw err;
+  }
+}
+
 /**
  * Generate an MP4 highlight reel for a game and persist the result.
  * Runs fully async (fire-and-forget); progress is tracked via the game's
  * highlightStatus column.
  */
-export async function generateHighlight(gameId: number, musicTrackPath?: string): Promise<void> {
+export async function generateHighlight(gameId: number, musicTrackPath: string | undefined, runToken: string): Promise<void> {
   const ac = new AbortController();
-  highlightAbortControllers.set(gameId, ac);
+  const abortKey = `${gameId}:${runToken}`;
+  const stopHeartbeat = startReelLeaseHeartbeat(
+    gameId,
+    "highlight",
+    runToken,
+    () => ac.abort(),
+  );
+  highlightAbortControllers.set(abortKey, ac);
   let tmpDir: string | null = null;
   let releaseReelSlot: (() => void) | null = null;
+  let reelMarkedActive = false;
+  const uploadedClipPaths: string[] = [];
+  let uploadedCombinedPath: string | null = null;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -2645,7 +3304,13 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       logger.info({ gameId }, "Highlight: waiting for reel slot");
       await slotReady;
     }
+    activeReelGames.add(gameId);
+    reelMarkedActive = true;
+    cancelHlsBuild(gameId);
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
+    if (!await markReelEncodingStarted(gameId, "highlight", runToken)) {
+      throw new HighlightError("Cancelled");
+    }
 
     // Cut clips directly from individual proxy chunks in GCS — downloaded on
     // demand and deleted as the render walk moves past them, so peak tmpfs
@@ -2690,6 +3355,11 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     try {
       const chunkObjectPaths = await ensureProxyChunksInGcs(
         gameId, game.ownerId, game, ac.signal, highlightMaxChunkNeeded,
+        (completed, total) =>
+          updateReelProgressIfOwner(gameId, "highlight", runToken, "proxy", completed, total)
+            .then((owned) => {
+              if (!owned) ac.abort();
+            }),
       );
       highlightChunksConfirmed = true;
       rendered = await renderGameSegments(
@@ -2699,14 +3369,20 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
         game.videoHalftimeGapMs ?? undefined,
         game.videoDurationMs ?? undefined,
         { chunkObjectPaths, signal: ac.signal },
+        (completed, total) =>
+          updateReelProgressIfOwner(gameId, "highlight", runToken, "clips", completed, total)
+            .then((owned) => {
+              if (!owned) ac.abort();
+            }),
       );
     } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
-      if (highlightChunksConfirmed) {
-        // Chunks are confirmed in GCS — raw-source fallback would OOM the server.
-        // Surface a retryable error; chunks stay in GCS for the next attempt.
+      if (highlightChunksConfirmed || rawSourceFallbackIsUnsafe(game)) {
+        // Chunks are confirmed, or this is a long game whose full master must
+        // never be downloaded into tmpfs. Surface a retryable error; any proxy
+        // chunks already uploaded remain durable for the next attempt.
         logger.error({ err: chunkErr, gameId },
-          "Highlight: chunk extraction failed with chunks confirmed — refusing raw-source fallback to prevent OOM");
+          "Highlight: chunk pipeline failed — refusing unsafe raw-source fallback");
         throw new HighlightError(
           "Highlight generation timed out. Please try again.",
         );
@@ -2721,6 +3397,12 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
           game.videoHalf2StartMs ?? undefined,
           game.videoHalftimeGapMs ?? undefined,
           game.videoDurationMs ?? undefined,
+          undefined,
+          (completed, total) =>
+            updateReelProgressIfOwner(gameId, "highlight", runToken, "clips", completed, total)
+              .then((owned) => {
+                if (!owned) ac.abort();
+              }),
         );
       } finally {
         release();
@@ -2735,7 +3417,31 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
     // concatSegments) so the track plays continuously across all clips without
     // resetting at each boundary, and no intermediate file is written to disk.
     const outPath = path.join(tmpDir, "highlight.mp4");
-    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath);
+    await updateReelProgressIfOwner(gameId, "highlight", runToken, "finalizing", 0, 1);
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath, ac.signal);
+    if (ac.signal.aborted) throw new HighlightError("Cancelled");
+
+    const clipManifest: HighlightClipManifestEntry[] = [];
+    for (let index = 0; index < segPaths.length; index++) {
+      const clipPath = path.join(tmpDir, `native_clip_${index}.mp4`);
+      const durationMs = await encodeAndValidateNativeClip(
+        segPaths[index]!,
+        clipPath,
+        hasAudio,
+        ac.signal,
+      );
+      const objectPath = await uploadNativeClip(
+        clipPath,
+        game.ownerId,
+        gameId,
+        runToken,
+        index,
+        ac.signal,
+      );
+      uploadedClipPaths.push(objectPath);
+      clipManifest.push({ index, durationMs, objectPath });
+      await fs.unlink(clipPath).catch(() => {});
+    }
 
     // Guard: check the game still exists before writing any new GCS object.
     // If the game was deleted while we were generating, discard the output
@@ -2747,30 +3453,60 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
       });
       if (!stillExists) {
         logger.warn({ gameId }, "Highlight: game was deleted mid-generation — discarding output");
+        await Promise.all(uploadedClipPaths.map((clip) =>
+          objectStorageService.deleteObjectEntity(clip).catch(() => {}),
+        ));
+        uploadedClipPaths.length = 0;
         return;
       }
     }
 
-    const objectPath = await uploadHighlight(outPath, game.ownerId);
+    const objectPath = await uploadHighlight(outPath, game.ownerId, ac.signal);
+    uploadedCombinedPath = objectPath;
+    await buildAndUploadReelHls(outPath, objectPath, game.ownerId, tmpDir, ac.signal);
 
-    await setGameStatus(gameId, "ready", {
+    const published = await setGameStatus(gameId, runToken, "ready", {
       highlightObjectPath: objectPath,
+      highlightClipManifest: clipManifest,
+      highlightPlaybackVersion: HIGHLIGHT_PLAYBACK_VERSION,
       highlightError: null,
     });
+    if (!published) {
+      await cleanupReelHlsDerivative(objectPath).catch(() => {});
+      await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+      uploadedCombinedPath = null;
+      await Promise.all(uploadedClipPaths.map((clip) =>
+        objectStorageService.deleteObjectEntity(clip).catch(() => {}),
+      ));
+      uploadedClipPaths.length = 0;
+      logger.warn({ gameId }, "Highlight lease changed before publish — discarding stale result");
+      return;
+    }
+    uploadedCombinedPath = null;
+    uploadedClipPaths.length = 0;
     logger.info({ gameId, segments: segPaths.length }, "Highlight reel generated");
 
     // Send a push notification to the game owner (best-effort, never throws).
     await maybeSendGameHighlightNotification(game);
   } catch (err) {
+    await Promise.all(uploadedClipPaths.map((clip) =>
+      objectStorageService.deleteObjectEntity(clip).catch(() => {}),
+    ));
+    if (uploadedCombinedPath) {
+      await cleanupReelHlsDerivative(uploadedCombinedPath).catch(() => {});
+      await objectStorageService.deleteObjectEntity(uploadedCombinedPath).catch(() => {});
+    }
     const message =
       err instanceof HighlightError
         ? err.message
         : "Highlight generation failed. Please try again.";
     logger.error({ err, gameId }, "Highlight generation failed");
-    await setGameStatus(gameId, "failed", { highlightError: message }).catch(() => {});
+    await setGameStatus(gameId, runToken, "failed", { highlightError: message }).catch(() => {});
     throw err;
   } finally {
-    highlightAbortControllers.delete(gameId);
+    if (reelMarkedActive) activeReelGames.delete(gameId);
+    highlightAbortControllers.delete(abortKey);
+    stopHeartbeat();
     releaseReelSlot?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -2783,11 +3519,20 @@ export async function generateHighlight(gameId: number, musicTrackPath?: string)
  * Runs fully async (fire-and-forget); progress is tracked via the game's
  * lowlightStatus column.
  */
-export async function generateLowlight(gameId: number, musicTrackPath?: string): Promise<void> {
+export async function generateLowlight(gameId: number, musicTrackPath: string | undefined, runToken: string): Promise<void> {
   const ac = new AbortController();
-  lowlightAbortControllers.set(gameId, ac);
+  const abortKey = `${gameId}:${runToken}`;
+  const stopHeartbeat = startReelLeaseHeartbeat(
+    gameId,
+    "lowlight",
+    runToken,
+    () => ac.abort(),
+  );
+  lowlightAbortControllers.set(abortKey, ac);
   let tmpDir: string | null = null;
+  let uploadedCombinedPath: string | null = null;
   let releaseReelSlot: (() => void) | null = null;
+  let reelMarkedActive = false;
   try {
     const game = await db.query.gamesTable.findFirst({
       where: eq(gamesTable.id, gameId),
@@ -2826,7 +3571,13 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       logger.info({ gameId }, "Lowlight: waiting for reel slot");
       await slotReady;
     }
+    activeReelGames.add(gameId);
+    reelMarkedActive = true;
+    cancelHlsBuild(gameId);
     if (ac.signal.aborted) throw new HighlightError("Cancelled");
+    if (!await markReelEncodingStarted(gameId, "lowlight", runToken)) {
+      throw new HighlightError("Cancelled");
+    }
 
     // Cut clips directly from individual proxy chunks in GCS — same bounded
     // tmpfs reasoning as generateHighlight. Concurrent highlight + lowlight
@@ -2859,6 +3610,11 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     try {
       const chunkObjectPaths = await ensureProxyChunksInGcs(
         gameId, game.ownerId, game, ac.signal, lowlightMaxChunkNeeded,
+        (completed, total) =>
+          updateReelProgressIfOwner(gameId, "lowlight", runToken, "proxy", completed, total)
+            .then((owned) => {
+              if (!owned) ac.abort();
+            }),
       );
       lowlightChunksConfirmed = true;
       rendered = await renderGameSegments(
@@ -2868,14 +3624,19 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
         game.videoHalftimeGapMs ?? undefined,
         game.videoDurationMs ?? undefined,
         { chunkObjectPaths, signal: ac.signal },
+        (completed, total) =>
+          updateReelProgressIfOwner(gameId, "lowlight", runToken, "clips", completed, total)
+            .then((owned) => {
+              if (!owned) ac.abort();
+            }),
       );
     } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
-      if (lowlightChunksConfirmed) {
-        // Same OOM-prevention guard as generateHighlight: chunks exist in GCS,
-        // refuse raw-source fallback, fail cleanly for user to retry.
+      if (lowlightChunksConfirmed || rawSourceFallbackIsUnsafe(game)) {
+        // Same bounded-memory rule as generateHighlight: long games and
+        // confirmed chunks must never fall back to a full local master.
         logger.error({ err: chunkErr, gameId },
-          "Lowlight: chunk extraction failed with chunks confirmed — refusing raw-source fallback to prevent OOM");
+          "Lowlight: chunk pipeline failed — refusing unsafe raw-source fallback");
         throw new HighlightError(
           "Lowlight generation timed out. Please try again.",
         );
@@ -2890,6 +3651,12 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
           game.videoHalf2StartMs ?? undefined,
           game.videoHalftimeGapMs ?? undefined,
           game.videoDurationMs ?? undefined,
+          undefined,
+          (completed, total) =>
+            updateReelProgressIfOwner(gameId, "lowlight", runToken, "clips", completed, total)
+              .then((owned) => {
+                if (!owned) ac.abort();
+              }),
         );
       } finally {
         release();
@@ -2904,7 +3671,9 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
     // concatSegments) so the track plays continuously across all clips without
     // resetting at each boundary, and no intermediate file is written to disk.
     const outPath = path.join(tmpDir, "lowlight.mp4");
-    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath);
+    await updateReelProgressIfOwner(gameId, "lowlight", runToken, "finalizing", 0, 1);
+    await concatSegments(segPaths, tmpDir, outPath, hasAudio, musicTrackPath, ac.signal);
+    if (ac.signal.aborted) throw new HighlightError("Cancelled");
 
     // Guard: check the game still exists before writing any new GCS object.
     // If the game was deleted while we were generating, discard the output
@@ -2920,26 +3689,42 @@ export async function generateLowlight(gameId: number, musicTrackPath?: string):
       }
     }
 
-    const objectPath = await uploadHighlight(outPath, game.ownerId);
+    const objectPath = await uploadHighlight(outPath, game.ownerId, ac.signal);
+    uploadedCombinedPath = objectPath;
+    await buildAndUploadReelHls(outPath, objectPath, game.ownerId, tmpDir, ac.signal);
 
-    await setGameLowlightStatus(gameId, "ready", {
+    const published = await setGameLowlightStatus(gameId, runToken, "ready", {
       lowlightObjectPath: objectPath,
       lowlightError: null,
     });
+    if (!published) {
+      await cleanupReelHlsDerivative(objectPath).catch(() => {});
+      await objectStorageService.deleteObjectEntity(objectPath).catch(() => {});
+      uploadedCombinedPath = null;
+      logger.warn({ gameId }, "Lowlight lease changed before publish — discarding stale result");
+      return;
+    }
+    uploadedCombinedPath = null;
     logger.info({ gameId, segments: segPaths.length }, "Lowlight reel generated");
 
     // Send a push notification to the game owner (best-effort, never throws).
     await maybeSendGameLowlightNotification(game);
   } catch (err) {
+    if (uploadedCombinedPath) {
+      await cleanupReelHlsDerivative(uploadedCombinedPath).catch(() => {});
+      await objectStorageService.deleteObjectEntity(uploadedCombinedPath).catch(() => {});
+    }
     const message =
       err instanceof HighlightError
         ? err.message
         : "Lowlight generation failed. Please try again.";
     logger.error({ err, gameId }, "Lowlight generation failed");
-    await setGameLowlightStatus(gameId, "failed", { lowlightError: message }).catch(() => {});
+    await setGameLowlightStatus(gameId, runToken, "failed", { lowlightError: message }).catch(() => {});
     throw err;
   } finally {
-    lowlightAbortControllers.delete(gameId);
+    if (reelMarkedActive) activeReelGames.delete(gameId);
+    lowlightAbortControllers.delete(abortKey);
+    stopHeartbeat();
     releaseReelSlot?.();
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -3262,7 +4047,11 @@ export function ensureAllProxyChunksInBackground(
   videoObjectPath: string,
   durationMs: number,
 ): void {
-  if (backgroundProxyBuilds.has(gameId) || backgroundHlsBuilds.has(gameId)) return;
+  if (
+    activeReelGames.has(gameId)
+    || backgroundProxyBuilds.has(gameId)
+    || backgroundHlsBuilds.has(gameId)
+  ) return;
   backgroundHlsBuilds.add(gameId);
   const abortController = new AbortController();
   hlsBuildAbortControllers.set(gameId, abortController);
@@ -3276,10 +4065,10 @@ export function ensureAllProxyChunksInBackground(
     }
 
     const durationSec = durationMs / 1000;
-    const numChunksGuess = Math.max(1, Math.ceil(durationSec / PROXY_CHUNK_DURATION_SEC));
+    const numChunksGuess = Math.max(1, Math.ceil(durationSec / HLS_SEGMENT_DURATION_SEC));
     const existFlags = await Promise.all(
       Array.from({ length: numChunksGuess }, (_, i) =>
-        proxyChunkExistsInGcs(makeProxyChunkGcsPath(ownerId, gameId, i)),
+        hlsSegmentReadyInGcs(ownerId, gameId, i),
       ),
     );
 
@@ -3290,19 +4079,18 @@ export function ensureAllProxyChunksInBackground(
       let trueCount = numChunksGuess;
       while (
         trueCount < numChunksGuess + 50 &&
-        await proxyChunkExistsInGcs(makeProxyChunkGcsPath(ownerId, gameId, trueCount))
+        await hlsSegmentReadyInGcs(ownerId, gameId, trueCount)
       ) {
         trueCount++;
       }
       logger.info({ gameId, trueCount }, "HLS chunk build: all estimated chunks in GCS — writing sentinel");
-      // We don't have local files to ffprobe for these pre-existing GCS chunks,
-      // so use PROXY_CHUNK_DURATION_SEC as an approximation.  The sentinel is
-      // still authoritative for chunk COUNT; per-chunk EXTINF accuracy is
-      // bounded by one GOP (≤2 s) which AVPlayer tolerates well.
-      await writeHlsSentinel(
-        ownerId, gameId, trueCount,
-        Array<number>(trueCount).fill(PROXY_CHUNK_DURATION_SEC),
+      const recoveredDurations = await readPlayableHlsSegmentDurations(
+        gameId, ownerId, durationMs,
       );
+      if (recoveredDurations.length < trueCount) {
+        throw new Error("Recovered HLS chunks are missing exact duration metadata");
+      }
+      await writeHlsSentinel(ownerId, gameId, trueCount, recoveredDurations.slice(0, trueCount));
       return;
     }
 
@@ -3313,34 +4101,43 @@ export function ensureAllProxyChunksInBackground(
     );
     await fs.mkdir(workDir, { recursive: true });
     logger.info({ gameId, firstMissing, numChunksGuess }, "HLS chunk build: starting background encode");
-    // Stream the source directly from GCS for the HLS-only build. Waiting for
-    // acquireSourceVideo to download a multi-GB game before starting ffmpeg
-    // added many minutes before chunk zero could become playable. The encoder
-    // reads from the beginning sequentially, so it does not depend on the
-    // unreliable mid-file signed-URL Range behavior.
-    const srcUrl = await objectStorageService.getObjectEntitySignedURL(
-      videoObjectPath,
-      6 * 60 * 60,
-    );
     try {
-      // encodeChunksToGcs returns the ACTUAL number of chunks and ffprobe-
-      // measured per-segment durations — both stored in the sentinel.
-      const { actualNumChunks, segmentDurationsSec: newDurations } = await encodeChunksToGcs(
-        gameId, ownerId, srcUrl, workDir,
-        existFlags, firstMissing,
-        /* deleteAfterUpload */ true,
-        /* signal */ abortController.signal,
-        /* maxDurationSec */ undefined, // encode ALL chunks, no early stop
+      // Encode in small batches. Each invocation releases the global ffmpeg
+      // queue so another requested game can produce its first playable segment
+      // instead of waiting behind this game's entire transcode.
+      const actualNumChunks = await withObjectRangeServer(
+        videoObjectPath,
+        abortController.signal,
+        async (srcUrl) => {
+          let nextMissing = firstMissing;
+          while (true) {
+            if (abortController.signal.aborted) throw new HighlightError("Cancelled");
+            logger.info(
+              { gameId, firstMissing: nextMissing },
+              "HLS chunk build: waiting for bounded ffmpeg batch",
+            );
+            const batch = await encodeChunksToGcs(
+              gameId, ownerId, srcUrl, workDir,
+              existFlags, nextMissing,
+              /* deleteAfterUpload */ true,
+              /* signal */ abortController.signal,
+              /* maxDurationSec */ undefined,
+              HLS_SEGMENT_DURATION_SEC,
+              (chunkIndex) => makeHlsChunkGcsPath(ownerId, gameId, chunkIndex),
+              HLS_FFMPEG_BATCH_DURATION_SEC,
+            );
+            if (batch.actualNumChunks === nextMissing) return nextMissing;
+            nextMissing = batch.actualNumChunks;
+          }
+        },
       );
-      // Prepend approximate durations for any chunks that were already in GCS
-      // (indices 0..firstMissing-1 — we didn't encode them locally so we can't
-      // ffprobe them).  Use PROXY_CHUNK_DURATION_SEC as the approximation.
-      const allDurations = [
-        ...Array<number>(firstMissing).fill(PROXY_CHUNK_DURATION_SEC),
-        ...newDurations,
-      ];
+      if (abortController.signal.aborted) throw new HighlightError("Cancelled");
+      const allDurations = await readPlayableHlsSegmentDurations(gameId, ownerId, durationMs);
+      if (allDurations.length < actualNumChunks) {
+        throw new Error("Completed HLS chunks are missing exact duration metadata");
+      }
       await assertOwnerMediaWritesAllowed(ownerId);
-      await writeHlsSentinel(ownerId, gameId, actualNumChunks, allDurations);
+      await writeHlsSentinel(ownerId, gameId, actualNumChunks, allDurations.slice(0, actualNumChunks));
       logger.info({ gameId, actualNumChunks }, "HLS chunk build: complete — sentinel written");
     } finally {
       await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
@@ -3374,8 +4171,8 @@ export function ensureAllProxyChunksInBackground(
 // ---------------------------------------------------------------------------
 
 /** GCS path for the HLS build-completion sentinel for a game. */
-function makeHlsSentinelGcsPath(ownerId: number, gameId: number): string {
-  return `/objects/uploads/${ownerId}/proxy_hls_done_v${PROXY_VERSION}_${gameId}.json`;
+export function makeHlsSentinelGcsPath(ownerId: number, gameId: number): string {
+  return `/objects/uploads/${ownerId}/proxy_hls_done_v${PROXY_VERSION}_s${HLS_SEGMENT_DURATION_SEC}_${gameId}.json`;
 }
 
 /**
@@ -3479,19 +4276,37 @@ export async function getPlayableProxyChunkCount(
 ): Promise<number> {
   const sentinel = await readHlsSentinel(ownerId, gameId);
   if (sentinel) return sentinel.chunkCount;
+  return (await readPlayableHlsSegmentDurations(gameId, ownerId, durationMs)).length;
+}
 
+/**
+ * Exact durations for every consecutive playback segment whose media and
+ * metadata sidecar have both completed uploading.
+ */
+export async function readPlayableHlsSegmentDurations(
+  gameId: number,
+  ownerId: number,
+  durationMs: number,
+): Promise<number[]> {
   const estimatedCount = Math.max(
     1,
-    Math.ceil(durationMs / 1000 / PROXY_CHUNK_DURATION_SEC),
+    Math.ceil(durationMs / 1000 / HLS_SEGMENT_DURATION_SEC),
   );
-  let readyCount = 0;
-  while (
-    readyCount < estimatedCount + 2 &&
-    await proxyChunkExistsInGcs(makeProxyChunkGcsPath(ownerId, gameId, readyCount))
-  ) {
-    readyCount++;
+  const durations: number[] = [];
+  for (let i = 0; i < estimatedCount + 50; i++) {
+    try {
+      const file = await objectStorageService.getObjectEntityFile(
+        makeHlsSegmentMetadataGcsPath(ownerId, gameId, i),
+      );
+      const [buf] = await file.download();
+      const parsed = JSON.parse(buf.toString()) as { durationSec?: unknown };
+      if (typeof parsed.durationSec !== "number" || parsed.durationSec <= 0) break;
+      durations.push(parsed.durationSec);
+    } catch {
+      break;
+    }
   }
-  return readyCount;
+  return durations;
 }
 
 const backgroundHlsBuilds = new Set<number>();

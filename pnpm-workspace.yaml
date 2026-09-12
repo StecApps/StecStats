@@ -13,8 +13,6 @@ catalog:
   '@tailwindcss/vite': ^4.1.14
   '@tanstack/react-query': ^5.90.21
   '@types/node': ^25.3.3
-  '@types/react': ^19.2.0
-  '@types/react-dom': ^19.2.0
   '@vitejs/plugin-react': ^5.0.4
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
@@ -47,6 +45,8 @@ onlyBuiltDependencies:
 
 overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
+  '@xmldom/xmldom@0.8': 0.8.15
+  '@xmldom/xmldom@0.9': 0.9.12
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-freebsd-ia32': '-'
@@ -67,9 +67,12 @@ overrides:
   '@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc': '-'
-  '@types/react': 19.2.17
-  '@types/react-dom': 19.2.4
-  esbuild: 0.27.3
+  brace-expansion@1: 1.1.18
+  brace-expansion@2: 2.1.4
+  brace-expansion@5: 5.0.9
+  browserslist: 4.28.8
+  decode-uri-component: 0.5.0
+  esbuild: 0.28.2
   esbuild>@esbuild/aix-ppc64: '-'
   esbuild>@esbuild/android-arm: '-'
   esbuild>@esbuild/android-arm64: '-'
@@ -105,6 +108,14 @@ overrides:
   lightningcss>lightningcss-linux-x64-musl: '-'
   lightningcss>lightningcss-win32-arm64-msvc: '-'
   lightningcss>lightningcss-win32-x64-msvc: '-'
+  fast-uri: 3.1.6
+  fast-xml-parser: 5.11.1
+  image-size: link:./lib/safe-image-size
+  js-yaml: 4.3.1
+  linkify-it: 5.0.2
+  nanoid@3: 3.3.18
+  postcss: 8.5.28
+  qs: 6.16.0
   rollup>@rollup/rollup-android-arm-eabi: '-'
   rollup>@rollup/rollup-android-arm64: '-'
   rollup>@rollup/rollup-darwin-arm64: '-'
@@ -132,4 +143,5 @@ overrides:
   uuid: '>=11.1.1'
 
 patchedDependencies:
+  react-native-webrtc@124.0.8: patches/react-native-webrtc@124.0.8.patch
   react-native-worklets@0.5.1: patches/react-native-worklets@0.5.1.patch

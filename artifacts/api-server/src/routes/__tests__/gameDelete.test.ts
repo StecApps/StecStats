@@ -1,12 +1,11 @@
 /**
  * DELETE /games/:gameId — GCS blob cleanup regression test
  *
- * Verifies that deleting a game also triggers deleteObjectEntity() for
- * video, highlight, lowlight, and proxy paths, cancels in-flight reel/proxy
- * jobs, and sweeps any proxy chunks stored in GCS.
+ * Verifies that deleting a game retains its original video master while
+ * cleaning replaceable highlight, lowlight, proxy and HLS derivatives.
  *
  * Covers:
- *   - Blob cleanup is attempted for video + highlight + lowlight + proxy paths
+ *   - Master video is never passed to blob cleanup and is entered in retention
  *   - Normalized /objects/... paths and legacy absolute GCS URLs both work
  *   - Deleting a non-existent (or foreign) game returns 204 without blob cleanup
  *   - A game with no video paths returns 204 without attempting blob deletion
@@ -34,6 +33,7 @@ const {
   getObjectEntityFileMock,
   cancelHighlightGenerationMock,
   cancelProxyBuildMock,
+  lockedGameOverride,
 } = vi.hoisted(() => {
   const COACH_A = { id: 1, clerkUserId: "clerk_coach_a", email: "coach-a@example.com" };
   const COACH_B = { id: 2, clerkUserId: "clerk_coach_b", email: "coach-b@example.com" };
@@ -49,11 +49,13 @@ const {
   );
   const cancelHighlightGenerationMock = vi.fn();
   const cancelProxyBuildMock = vi.fn();
+  const lockedGameOverride = { value: null as any };
   return {
     COACH_A, COACH_B, currentUser,
     deleteObjectEntityMock, normalizePathMock, dbDeleteMock, findFirstMock,
     getObjectEntityFileMock,
     cancelHighlightGenerationMock, cancelProxyBuildMock,
+    lockedGameOverride,
   };
 });
 
@@ -88,16 +90,47 @@ vi.mock("@workspace/db", () => ({
       gameEventsTable: { findMany: vi.fn().mockResolvedValue([]) },
     },
     delete: dbDeleteMock,
+    insert: vi.fn().mockReturnValue({
+      values: vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn().mockResolvedValue(undefined) }),
+    }),
     update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+    transaction: vi.fn().mockImplementation(async (work) => {
+      const initialResult = findFirstMock.mock.results[findFirstMock.mock.results.length - 1];
+      const initial = await initialResult?.value;
+      const locked = lockedGameOverride.value ?? initial;
+      const tx = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              for: vi.fn().mockImplementation(async () => locked ? [{ ...locked }] : []),
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+        }),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockReturnValue({
+            onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+          }),
+        }),
+        delete: dbDeleteMock,
+      };
+      return work(tx);
+    }),
   },
   gamesTable: {
     id: "id",
     ownerId: "owner_id",
     videoObjectPath: "video_object_path",
     highlightObjectPath: "highlight_object_path",
+    highlightClipManifest: "highlight_clip_manifest",
+    highlightStatus: "highlight_status",
+    highlightGeneratorVersion: "highlight_generator_version",
     lowlightObjectPath: "lowlight_object_path",
     videoProxyObjectPath: "video_proxy_object_path",
   },
+  retainedGameFilmsTable: { objectPath: "object_path", ownerId: "owner_id" },
   playerGameStatsTable: { gameId: "game_id" },
   gameEventsTable: { gameId: "game_id" },
   teamsTable: {},
@@ -132,6 +165,18 @@ vi.mock("../../lib/videoDuration", () => ({
 
 vi.mock("../../lib/highlightGenerator", () => ({
   PROXY_VERSION: "v5",
+  PROXY_CHUNK_DURATION_SEC: 360,
+  HLS_SEGMENT_DURATION_SEC: 60,
+  makeProxyChunkGcsPath: vi.fn(),
+  makeHlsChunkGcsPath: vi.fn((_ownerId, gameId, i) => `/hls/${gameId}/${i}`),
+  makeHlsSegmentMetadataGcsPath: vi.fn((_ownerId, gameId, i) => `/hls-meta/${gameId}/${i}`),
+  makeHlsSentinelGcsPath: vi.fn((_ownerId, gameId) => `/hls-sentinel/${gameId}`),
+  getReadyProxyChunkCount: vi.fn().mockResolvedValue(-1),
+  getPlayableProxyChunkCount: vi.fn().mockResolvedValue(0),
+  readPlayableHlsSegmentDurations: vi.fn().mockResolvedValue([]),
+  readHlsSentinel: vi.fn().mockResolvedValue(null),
+  acquireProxyChunkLocally: vi.fn(),
+  ensureAllProxyChunksInBackground: vi.fn(),
   ensureGameProxyInBackground: vi.fn(),
   cancelHighlightGeneration: cancelHighlightGenerationMock,
   cancelProxyBuild: cancelProxyBuildMock,
@@ -180,6 +225,7 @@ beforeEach(() => {
   );
   cancelHighlightGenerationMock.mockClear();
   cancelProxyBuildMock.mockClear();
+  lockedGameOverride.value = null;
 });
 
 // ---------------------------------------------------------------------------
@@ -194,7 +240,7 @@ function deleteGame(gameId: number) {
 // ---------------------------------------------------------------------------
 
 describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
-  it("calls deleteObjectEntity for both video and highlight paths when both are set", async () => {
+  it("retains the video master and deletes the highlight derivative", async () => {
     findFirstMock.mockResolvedValueOnce({
       id: 42,
       ownerId: COACH_A.id,
@@ -207,7 +253,7 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     const res = await deleteGame(42);
     expect(res.status).toBe(204);
 
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/highlight.mp4");
   });
 
@@ -224,10 +270,71 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     const res = await deleteGame(50);
     expect(res.status).toBe(204);
 
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/highlight.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/lowlight.mp4");
     expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/proxy.mp4");
+  });
+
+  it("deletes every published standalone highlight clip for the game", async () => {
+    const clip0 =
+      "/objects/uploads/1/highlight_clips/54/00000000-0000-4000-8000-000000000001/clip_0.mp4";
+    const clip1 =
+      "/objects/uploads/1/highlight_clips/54/00000000-0000-4000-8000-000000000001/clip_1.mp4";
+    findFirstMock.mockResolvedValueOnce({
+      id: 54,
+      ownerId: COACH_A.id,
+      videoObjectPath: null,
+      highlightObjectPath: null,
+      highlightClipManifest: [
+        { index: 0, durationMs: 1000, objectPath: clip0 },
+        { index: 1, durationMs: 2000, objectPath: clip1 },
+      ],
+      lowlightObjectPath: null,
+      videoProxyObjectPath: null,
+    });
+
+    const res = await deleteGame(54);
+    expect(res.status).toBe(204);
+    expect(deleteObjectEntityMock).toHaveBeenCalledWith(clip0);
+    expect(deleteObjectEntityMock).toHaveBeenCalledWith(clip1);
+  });
+
+  it("captures a Highlight publication that races the initial read and DELETE lock", async () => {
+    const staleCombined = "/objects/uploads/1/stale-highlight.mp4";
+    const publishedCombined = "/objects/uploads/1/published-after-read.mp4";
+    const publishedClip =
+      "/objects/uploads/1/highlight_clips/55/new-run/clip_0.mp4";
+    findFirstMock.mockResolvedValueOnce({
+      id: 55,
+      ownerId: COACH_A.id,
+      videoObjectPath: null,
+      highlightObjectPath: staleCombined,
+      highlightClipManifest: null,
+      lowlightObjectPath: null,
+      videoProxyObjectPath: null,
+    });
+    // Deterministically represent a cross-instance worker committing after the
+    // route's first owner check but before SELECT ... FOR UPDATE.
+    lockedGameOverride.value = {
+      id: 55,
+      ownerId: COACH_A.id,
+      videoObjectPath: null,
+      highlightObjectPath: publishedCombined,
+      highlightClipManifest: [
+        { index: 0, durationMs: 1200, objectPath: publishedClip },
+      ],
+      highlightStatus: "ready",
+      highlightGeneratorVersion: 12,
+      lowlightObjectPath: null,
+      videoProxyObjectPath: null,
+    };
+
+    const res = await deleteGame(55);
+    expect(res.status).toBe(204);
+    expect(deleteObjectEntityMock).toHaveBeenCalledWith(publishedCombined);
+    expect(deleteObjectEntityMock).toHaveBeenCalledWith(publishedClip);
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith(staleCombined);
   });
 
   it("calls cancelHighlightGeneration and cancelProxyBuild before deleting", async () => {
@@ -271,10 +378,10 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     const chunk1Path = `/objects/uploads/${COACH_A.id}/proxy_chunk_vv5_52_1`;
     const mockFileWithSize = { getMetadata: vi.fn().mockResolvedValue([{ size: 50_000 }]) };
 
-    getObjectEntityFileMock
-      .mockResolvedValueOnce(mockFileWithSize)  // chunk 0 exists
-      .mockResolvedValueOnce(mockFileWithSize)  // chunk 1 exists
-      .mockRejectedValueOnce(new Error("Not found")); // chunk 2 missing → stop
+    getObjectEntityFileMock.mockImplementation(async (objectPath: string) => {
+      if (objectPath === chunk0Path || objectPath === chunk1Path) return mockFileWithSize;
+      throw new Error("Not found");
+    });
 
     const res = await deleteGame(52);
     expect(res.status).toBe(204);
@@ -300,12 +407,13 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
 
     const res = await deleteGame(53);
     expect(res.status).toBe(204);
-    // Only the video path should be deleted; no chunk paths.
+    // Best-effort HLS sentinel cleanup; no chunk paths or master deletion.
     expect(deleteObjectEntityMock).toHaveBeenCalledTimes(1);
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith("/objects/uploads/1/video.mp4");
+    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/hls-sentinel/53");
   });
 
-  it("calls deleteObjectEntity only for video when highlight path is null", async () => {
+  it("does not delete a video-only master when no derivative path is present", async () => {
     findFirstMock.mockResolvedValueOnce({
       id: 43,
       ownerId: COACH_A.id,
@@ -319,7 +427,8 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     expect(res.status).toBe(204);
 
     expect(deleteObjectEntityMock).toHaveBeenCalledTimes(1);
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/objects/uploads/1/video-only.mp4");
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith("/objects/uploads/1/video-only.mp4");
+    expect(deleteObjectEntityMock).toHaveBeenCalledWith("/hls-sentinel/43");
   });
 
   it("does not call deleteObjectEntity when all paths are null", async () => {
@@ -345,7 +454,7 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     expect(deleteObjectEntityMock).not.toHaveBeenCalled();
   });
 
-  it("normalizes a legacy absolute GCS URL before calling deleteObjectEntity", async () => {
+  it("normalizes a legacy absolute GCS URL before retaining it", async () => {
     const legacyUrl =
       "https://storage.googleapis.com/my-bucket/private/uploads/1/legacy-video.mp4";
     const normalizedPath = "/objects/uploads/1/legacy-video.mp4";
@@ -367,15 +476,15 @@ describe("DELETE /api/games/:gameId — GCS blob cleanup", () => {
     expect(res.status).toBe(204);
 
     expect(normalizePathMock).toHaveBeenCalledWith(legacyUrl);
-    expect(deleteObjectEntityMock).toHaveBeenCalledWith(normalizedPath);
+    expect(deleteObjectEntityMock).not.toHaveBeenCalledWith(normalizedPath);
   });
 
-  it("still returns 204 when deleteObjectEntity throws (best-effort cleanup)", async () => {
+  it("still returns 204 when derivative cleanup throws (best-effort cleanup)", async () => {
     findFirstMock.mockResolvedValueOnce({
       id: 46,
       ownerId: COACH_A.id,
-      videoObjectPath: "/objects/uploads/1/fail-video.mp4",
-      highlightObjectPath: null,
+      videoObjectPath: "/objects/uploads/1/master.mp4",
+      highlightObjectPath: "/objects/uploads/1/fail-highlight.mp4",
       lowlightObjectPath: null,
       videoProxyObjectPath: null,
     });

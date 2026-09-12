@@ -7,29 +7,61 @@ import {
   getHighlightCoverage,
   generateHighlight,
   cancelHighlightJob,
+  cancelHighlightRun,
   GENERATOR_VERSION,
 } from "../lib/highlightGenerator";
 import { scheduleVideoDurationProbe } from "../lib/videoDuration";
 import { requireAuth } from "../middlewares/requireAuth";
+import { ObjectStorageService } from "../lib/objectStorage";
+import {
+  captureAndInvalidateHighlight,
+  cleanupCapturedHighlightDerivatives,
+} from "../lib/highlightDerivatives";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
 import { getMusicTrackPath } from "../lib/musicTracks";
+import {
+  launchReelJob,
+  resumeReelJob,
+} from "../lib/reelLease";
 
 const router: IRouter = Router();
+const objectStorageService = new ObjectStorageService();
 
-// Guards against launching a second generation while one is already running
-// for the same game (survives concurrent requests within this process).
-const inFlight = new Set<number>();
+type StoredHighlightClip = { index: number; durationMs: number; objectPath: string };
 
-// Jobs not in-flight (e.g. server restarted) are stale after 5 minutes.
-const STALE_PROCESSING_MS = 5 * 60 * 1000;
-// Hard wall: even an in-flight job is considered abandoned after this long
-// with no completion — must be ≥ PROCESS_TIMEOUT_MS in highlightGenerator.ts
-// (currently 90 min) so a legitimately slow GCS download isn't declared stale
-// while the job is still running.
-const HARD_STALE_MS = 95 * 60 * 1000;
+function publishedClips(
+  value: unknown,
+  ownerId?: number,
+  gameId?: number,
+): StoredHighlightClip[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((clip): clip is StoredHighlightClip =>
+      typeof clip === "object"
+      && clip !== null
+      && Number.isInteger((clip as StoredHighlightClip).index)
+      && (clip as StoredHighlightClip).index >= 0
+      && Number.isInteger((clip as StoredHighlightClip).durationMs)
+      && (clip as StoredHighlightClip).durationMs > 0
+      && typeof (clip as StoredHighlightClip).objectPath === "string"
+      && (
+        ownerId == null
+        || gameId == null
+        || (clip as StoredHighlightClip).objectPath.startsWith(
+          `/objects/uploads/${ownerId}/highlight_clips/${gameId}/`,
+        )
+      ),
+    )
+    .sort((a, b) => a.index - b.index);
+}
 
-function normalizeStatus(raw: string | null): "idle" | "processing" | "ready" | "failed" {
-  if (raw === "processing" || raw === "ready" || raw === "failed") return raw;
+const highlightRunner = {
+  generate: generateHighlight,
+  cancelRun: cancelHighlightRun,
+};
+
+function normalizeStatus(raw: string | null): "idle" | "queued" | "processing" | "ready" | "failed" {
+  if (raw === "queued" || raw === "processing" || raw === "ready" || raw === "failed") return raw;
   return "idle";
 }
 
@@ -43,45 +75,42 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
     return;
   }
 
-  // Detect stale "processing" — job was abandoned (e.g. server restarted mid-run).
-  // Reset to "failed" so the client shows a retry button instead of a permanent spinner.
   let highlightStatus = game.highlightStatus;
   let highlightError = game.highlightError;
-  const startedAtMs = game.highlightStartedAt ? new Date(game.highlightStartedAt).getTime() : 0;
-  const elapsed = Date.now() - startedAtMs;
-  const isStale =
-    highlightStatus === "processing" &&
-    (elapsed > HARD_STALE_MS || (!inFlight.has(gameId) && elapsed > STALE_PROCESSING_MS));
-  if (isStale) {
-    highlightStatus = "failed";
-    highlightError = "Generation timed out — tap Try Again to rebuild.";
-    await db
-      .update(gamesTable)
-      .set({ highlightStatus, highlightError })
-      .where(eq(gamesTable.id, gameId));
-  }
 
   // Invalidate reels built by older clip-timing code. Reset to idle so the
   // UI shows a fresh Generate button — the user triggers the rebuild manually.
   let highlightObjectPath = game.highlightObjectPath;
   let highlightStartedAt = game.highlightStartedAt;
+  let highlightPlaybackVersion = game.highlightPlaybackVersion;
+  let progressStage = game.highlightProgressStage;
+  let progressCompleted = game.highlightProgressCompleted;
+  let progressTotal = game.highlightProgressTotal;
   if (
     highlightStatus === "ready" &&
     (game.highlightGeneratorVersion ?? 0) < GENERATOR_VERSION
   ) {
-    highlightStatus = null;
-    highlightError = null;
-    highlightObjectPath = null;
-    highlightStartedAt = null;
-    await db
-      .update(gamesTable)
-      .set({
-        highlightStatus: null,
-        highlightError: null,
-        highlightObjectPath: null,
-        highlightStartedAt: null,
-      })
-      .where(eq(gamesTable.id, gameId));
+    const captured = await db.transaction((tx) =>
+      captureAndInvalidateHighlight(
+        tx,
+        gameId,
+        req.appUser!.id,
+        (current) =>
+          current.highlightStatus === "ready"
+          && (current.highlightGeneratorVersion ?? 0) < GENERATOR_VERSION,
+      ),
+    );
+    if (captured) {
+      await cleanupCapturedHighlightDerivatives(captured);
+      highlightStatus = null;
+      highlightError = null;
+      highlightObjectPath = null;
+      highlightStartedAt = null;
+      highlightPlaybackVersion = null;
+      progressStage = null;
+      progressCompleted = null;
+      progressTotal = null;
+    }
   }
 
   // Legacy games may predate duration probing — self-heal lazily.
@@ -90,6 +119,17 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
   }
 
   const { eligibleMoments, onFilmMoments } = await getHighlightCoverage(game);
+  const clips = highlightStatus === "ready"
+    ? await Promise.all(publishedClips(
+        game.highlightClipManifest,
+        req.appUser!.id,
+        gameId,
+      ).map(async (clip) => ({
+        index: clip.index,
+        durationMs: clip.durationMs,
+        streamUrl: await objectStorageService.getObjectEntitySignedURL(clip.objectPath, 3600),
+      })))
+    : [];
   // Prevent the deployment edge from caching this response. Without this the
   // processing→ready transition is invisible: the client keeps getting 304
   // with the stale "processing" body until the CDN cache expires.
@@ -99,11 +139,16 @@ router.get("/games/:gameId/highlight", requireAuth, async (req, res) => {
       status: normalizeStatus(highlightStatus),
       highlightObjectPath: highlightObjectPath ?? null,
       error: highlightError ?? null,
-      startedAt: isStale ? null : (highlightStartedAt?.toISOString() ?? null),
+      startedAt: highlightStartedAt?.toISOString() ?? null,
+      progressStage: progressStage ?? null,
+      progressCompleted: progressCompleted ?? null,
+      progressTotal: progressTotal ?? null,
       eligibleMoments,
       onFilmMoments,
       musicTrack: game.highlightMusicTrack ?? null,
       youtubeUrl: game.highlightYoutubeUrl ?? null,
+      playbackVersion: highlightPlaybackVersion ?? null,
+      clips,
     }),
   );
 });
@@ -137,100 +182,105 @@ router.post("/games/:gameId/highlight", requireAuth, async (req, res) => {
     return;
   }
 
-  const startedAtMs = game.highlightStartedAt
-    ? new Date(game.highlightStartedAt).getTime()
-    : 0;
-  const elapsedMs = Date.now() - startedAtMs;
-  const staleProcessing =
-    game.highlightStatus === "processing" &&
-    (elapsedMs > HARD_STALE_MS || (!inFlight.has(gameId) && elapsedMs > STALE_PROCESSING_MS));
-  const alreadyRunning =
-    inFlight.has(gameId) || (game.highlightStatus === "processing" && !staleProcessing);
   // Optional background music — validate the track ID server-side.
   const musicTrackId = typeof req.body?.musicTrack === "string" ? req.body.musicTrack : undefined;
   const musicTrackPath = musicTrackId ? getMusicTrackPath(musicTrackId) : undefined;
 
   let startedAt = game.highlightStartedAt;
-  if (!alreadyRunning) {
-    inFlight.add(gameId);
-    startedAt = new Date();
-    await db
-      .update(gamesTable)
-      .set({
-        highlightStatus: "processing",
-        highlightError: null,
-        highlightStartedAt: startedAt,
-        highlightMusicTrack: musicTrackId ?? null,
-        // Reset so the notification fires again when the new reel completes.
-        highlightNotificationSent: false,
-      })
-      .where(eq(gamesTable.id, gameId));
-
-    // Fire-and-forget: generation continues after the response is sent.
-    // Hard timeout — download (~2 min) + proxy (22 chunks × ~3 min at nice -n 19)
-    // + segment encoding + upload. 2-hr game = ~70 min; give 130 min buffer.
-    const MAX_JOB_MS = 130 * 60 * 1000;
-    void Promise.race([
-      generateHighlight(gameId, musicTrackPath ?? undefined),
-      new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
-    ])
-      .catch(async (err) => {
-        // Only stamp the timeout message when the watchdog actually fired —
-        // any other failure already wrote a specific error in generateHighlight.
-        if ((err as Error)?.message !== "timeout") return;
-        try {
-          await db.update(gamesTable)
-            .set({ highlightStatus: "failed", highlightError: "Generation timed out — tap Try Again to rebuild." })
-            .where(eq(gamesTable.id, gameId));
-        } catch { /* best-effort */ }
-      })
-      .finally(() => inFlight.delete(gameId));
+  let currentProgressStage = game.highlightProgressStage;
+  let currentProgressCompleted = game.highlightProgressCompleted;
+  let currentProgressTotal = game.highlightProgressTotal;
+  const captured = await db.transaction((tx) =>
+    captureAndInvalidateHighlight(
+      tx,
+      gameId,
+      req.appUser!.id,
+      (current) =>
+        current.highlightStatus !== "queued"
+        && current.highlightStatus !== "processing",
+    ),
+  );
+  await cleanupCapturedHighlightDerivatives(captured);
+  const lease = await launchReelJob(
+    gameId,
+    "highlight",
+    {
+      highlightError: null,
+      highlightMusicTrack: musicTrackId ?? null,
+      highlightNotificationSent: false,
+      highlightProgressStage: null,
+      highlightProgressCompleted: null,
+      highlightProgressTotal: null,
+    },
+    musicTrackPath ?? undefined,
+    highlightRunner,
+  );
+  let responseStatus: "idle" | "queued" | "processing" | "ready" | "failed";
+  if (lease) {
+    startedAt = lease.startedAt;
+    responseStatus = "queued";
+  } else {
+    // A concurrent request or another autoscaled instance may have won the
+    // lease after this request read `game`. Return the winner's current phase,
+    // not the stale pre-claim status, so the client keeps polling accurately.
+    const current = await db.query.gamesTable.findFirst({
+      where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)),
+    });
+    responseStatus = normalizeStatus(current?.highlightStatus ?? game.highlightStatus);
+    startedAt = current?.highlightStartedAt ?? game.highlightStartedAt;
+    currentProgressStage = current?.highlightProgressStage ?? null;
+    currentProgressCompleted = current?.highlightProgressCompleted ?? null;
+    currentProgressTotal = current?.highlightProgressTotal ?? null;
   }
 
   res.status(202).json(
     GetGameHighlightResponse.parse({
-      status: "processing",
-      highlightObjectPath: game.highlightObjectPath ?? null,
+      status: responseStatus,
+      highlightObjectPath: captured ? null : (game.highlightObjectPath ?? null),
       error: null,
       startedAt: startedAt?.toISOString() ?? null,
+      progressStage: lease ? null : (currentProgressStage ?? null),
+      progressCompleted: lease ? null : (currentProgressCompleted ?? null),
+      progressTotal: lease ? null : (currentProgressTotal ?? null),
       eligibleMoments,
       musicTrack: musicTrackId ?? game.highlightMusicTrack ?? null,
+      playbackVersion: null,
+      clips: [],
     }),
   );
 });
 
+router.get("/games/:gameId/highlight/clips/:clipIndex", requireAuth, async (req, res) => {
+  const { gameId } = GetGameParams.parse(req.params);
+  const clipIndex = Number(req.params["clipIndex"]);
+  if (!Number.isSafeInteger(clipIndex) || clipIndex < 0) {
+    res.status(404).json({ error: "Highlight clip not found" });
+    return;
+  }
+  const game = await db.query.gamesTable.findFirst({
+    where: and(eq(gamesTable.id, gameId), eq(gamesTable.ownerId, req.appUser!.id)),
+  });
+  const clip = game?.highlightStatus === "ready"
+    ? publishedClips(
+        game.highlightClipManifest,
+        req.appUser!.id,
+        gameId,
+      ).find((entry) => entry.index === clipIndex)
+    : undefined;
+  if (!clip) {
+    res.status(404).json({ error: "Highlight clip not found" });
+    return;
+  }
+  const signedUrl = await objectStorageService.getObjectEntitySignedURL(clip.objectPath, 3600);
+  res.redirect(302, signedUrl);
+});
+
 /**
- * Re-trigger a highlight job that was orphaned by a server restart.
- * Called at startup for any game still stuck in "processing".
- * Safe to call multiple times — is a no-op if already in-flight.
- * Resets highlightStartedAt so the stale window is measured from this resume.
+ * Atomically claim and re-trigger a highlight job whose database lease expired.
+ * Called at startup for queued or processing games with no current owner.
  */
-export function resumeHighlightJob(gameId: number): void {
-  if (inFlight.has(gameId)) return;
-  inFlight.add(gameId);
-  const startedAt = new Date();
-  // Best-effort: reset startedAt so the stale window is accurate after restart.
-  void db.update(gamesTable)
-    .set({ highlightStartedAt: startedAt })
-    .where(eq(gamesTable.id, gameId))
-    .catch(() => {});
-  const MAX_JOB_MS = 130 * 60 * 1000;
-  void Promise.race([
-    generateHighlight(gameId),
-    new Promise<void>((_, reject) => setTimeout(() => reject(new Error("timeout")), MAX_JOB_MS)),
-  ])
-    .catch(async (err) => {
-      // Only stamp the timeout message when the watchdog actually fired —
-      // any other failure already wrote a specific error in generateHighlight.
-      if ((err as Error)?.message !== "timeout") return;
-      try {
-        await db
-          .update(gamesTable)
-          .set({ highlightStatus: "failed", highlightError: "Generation timed out — tap Try Again to rebuild." })
-          .where(eq(gamesTable.id, gameId));
-      } catch { /* best-effort */ }
-    })
-    .finally(() => inFlight.delete(gameId));
+export async function resumeHighlightJob(gameId: number): Promise<void> {
+  await resumeReelJob(gameId, "highlight", highlightRunner);
 }
 
 router.delete("/games/:gameId/highlight", requireAuth, async (req, res) => {
@@ -240,19 +290,27 @@ router.delete("/games/:gameId/highlight", requireAuth, async (req, res) => {
   });
   if (!game) { res.status(404).json({ error: "Game not found" }); return; }
 
-  cancelHighlightJob(gameId);
-  inFlight.delete(gameId);
   // Use "failed" (not null) so the status is never "processing" at the
   // moment of an OOM kill — the auto-resume query only picks up
   // "processing" games, so "failed" breaks the infinite restart loop.
-  await db.update(gamesTable)
-    .set({
-      highlightStatus: "failed",
-      highlightStartedAt: null,
-      highlightObjectPath: null,
-      highlightError: "Generation was cancelled",
-    })
-    .where(eq(gamesTable.id, gameId));
+  cancelHighlightJob(gameId);
+  const captured = await db.transaction((tx) =>
+    captureAndInvalidateHighlight(
+      tx,
+      gameId,
+      req.appUser!.id,
+      () => true,
+      {
+        highlightStatus: "failed",
+        highlightError: "Generation was cancelled",
+        highlightStartedAt: null,
+        highlightProgressStage: null,
+        highlightProgressCompleted: null,
+        highlightProgressTotal: null,
+      },
+    ),
+  );
+  await cleanupCapturedHighlightDerivatives(captured);
 
   res.json({ ok: true });
 });

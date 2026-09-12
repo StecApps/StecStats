@@ -1,0 +1,15 @@
+{
+  "name": "image-size",
+  "version": "3.0.0",
+  "description": "Bounded image dimension parser used by Metro",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test index.test.js"
+  }
+}

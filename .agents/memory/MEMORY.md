@@ -1,5 +1,5 @@
 - [Clerk mobile JWT 401 — publishableKeyFromHost](clerk-mobile-jwt-401.md) — dynamic key resolution returns undefined for plain hostnames; use clerkMiddleware() with no args instead.
-- [TS segment absolute timestamps](ts-segment-timestamps.md) — fast-seek keeps source PTS; add `-reset_timestamps 1` to every mpegts encode or iOS Safari won't play the concat MP4.
+- [iOS-safe reel timestamps](ts-segment-timestamps.md) — reset TS inputs and re-encode one continuous final timeline; stream-copy can seek yet stall at clip boundaries.
 - [Orval params naming collision](orval-params-collision.md) — mixing a path param + query param in one operation can cause a TS2308 name collision between generators.
 - [Frontend API routing convention](api-routing-convention.md) — hoops-stats/monorepo apps call `/api/...` as root-relative paths directly, not prefixed by artifact BASE_URL.
 - [Testing camera/media features](testing-camera-media.md) — test sandbox has no camera; design a graceful getUserMedia error path and verify via DB/API, not camera E2E.
@@ -136,3 +136,22 @@
 - [Expo browser auth sessions are not cancellable by Promise timeout](expo-browser-auth-timeout.md) — never timeout-race openAuthSessionAsync; keep the flow single-flight until Expo settles it.
 - [Clerk proxy Brotli responses break React Native JSON parsing](clerk-proxy-brotli.md) — force Accept-Encoding: identity upstream; larger OAuth responses otherwise arrive as compressed text.
 - [Mobile replay caching and progressive HLS readiness](mobile-video-replay.md) — stable URLs enable Expo cache; long games must expose growing HLS before full transcode completes.
+- [Expo prebuild dependency rewrite](expo-prebuild-dependency-rewrite.md) — keep Expo core in runtime dependencies; prebuild rewrites the manifest even with --no-install otherwise.
+- [EAS pnpm patch compatibility](eas-pnpm-patch-compatibility.md) — pin pnpm and keep patchedDependencies only in pnpm-workspace.yaml to avoid remote frozen-lockfile mismatches.
+- [Expo React type isolation](expo-react-type-isolation.md) — never globally override React type versions across web and Expo; Expo Launch requires its SDK-compatible types in the mobile importer.
+- [Metro image-size advisory](metro-image-size-advisory.md) — no safe upstream release exists; keep Metro on the bounded local parser until upstream publishes a patched version.
+- [Autoscaled media stream tokens](autoscaled-media-stream-tokens.md) — process-local tokens fail when mint and playback hit different instances; sign portable tokens and use memory only as a cache.
+- [iOS DownloadResumable signed URLs](ios-download-resumable-signed-urls.md) — resume blobs own temp bytes and embed the old request; use an app-owned Range file when URLs must refresh.
+- [Master game-film retention](master-game-film-retention.md) — original film is durable; reels/proxies are replaceable, and account erasure is the only normal retention bypass.
+- [Autoscaled background-job leases](autoscaled-background-job-leases.md) — long media jobs need DB-time leases and run-token fencing; process-local in-flight state is only an optimization.
+- [Queued reel progress semantics](queued-reel-progress.md) — waiting for a media slot is queued, not processing; start progress time only after token-fenced slot acquisition.
+- [GitHub workflow scope for TestFlight](github-workflow-scope.md) — repo-only tokens cannot push Actions files; verify workflow scope or trigger the same EAS build directly.
+- [iOS continuous Highlight playback](expo-video-segmented-reel-endings.md) — prefer the rebuilt combined MP4; Expo source swaps can halt at 20-second clip boundaries.
+- [Silent AVPlayer reel stalls](ios-avplayer-silent-reel-stalls.md) — a valid combined MP4 can black out without an error; no-B-frame output and playhead reattachment made it worse.
+- [TestFlight build-number continuity](testflight-build-number-continuity.md) — keep local 8-digit iOS numbering; EAS remote counters like 82 sort below existing 202608xx builds.
+- [Native iPad full-screen support](native-ipad-fullscreen.md) — keep tablet support and full-screen requirement enabled; iPhone compatibility mode can return half-sized after video rotation.
+- [iPad dashboard branding](ipad-dashboard-branding.md) — use the approved dense desktop hierarchy; no detached logo card, and keep controls below the safe area.
+- [Merged game source timelines](merged-game-source-timelines.md) — never stream-copy independent recordings; normalize the master before generating reels.
+- [EAS Update production environment](eas-update-production-env.md) — production OTAs need EAS server variables plus build.production.env; use the guarded release command.
+- [Shared iOS recording and live camera](mobile-recording-camera-ownership.md) — preview, recording, and WebRTC share one capture session; recording wins and legacy builds fall back to score-only.
+- [iPad recording cannot background for sharing](ipad-recording-background-sharing.md) — opening Messages suspends the active camera; share live links before starting the recording.

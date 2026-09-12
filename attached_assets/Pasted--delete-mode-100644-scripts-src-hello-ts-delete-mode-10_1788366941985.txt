@@ -1,0 +1,272 @@
+ delete mode 100644 scripts/src/hello.ts
+ delete mode 100644 scripts/src/inspectRevenueCat.ts
+ delete mode 100644 scripts/src/revenueCatClient.ts
+ delete mode 100644 scripts/src/seed-products.ts
+ delete mode 100644 scripts/src/seedRevenueCat.ts
+ delete mode 100644 scripts/src/stripeClient.ts
+ delete mode 100644 scripts/tsconfig.json
+ delete mode 100644 tsconfig.base.json
+ delete mode 100644 tsconfig.json
+97f274c (HEAD -> task-735-release-sync) Align pnpm patch lockfile format with EAS
+stevenstec@Mac stecstats-eas-archive % cd artifacts/hoops-mobile
+
+rm -rf /tmp/stecstats-eas-archive
+
+corepack pnpm exec eas build:inspect \
+  --platform ios \
+  --stage archive \
+  --profile production \
+  --output /tmp/stecstats-eas-archive \
+  --force
+
+cd /tmp/stecstats-eas-archive
+
+node -p "require('./package.json').packageManager"
+node -p "require('./package.json').pnpm"
+grep -A5 '^patchedDependencies:' pnpm-lock.yaml
+CI=true corepack pnpm install --frozen-lockfile
+node:internal/bootstrap/switches/does_own_process_state:142
+    cachedCwd = rawMethods.cwd();
+                           ^
+
+Error: ENOENT: no such file or directory, uv_cwd
+    at process.wrappedCwd (node:internal/bootstrap/switches/does_own_process_state:142:28)
+    at process.cwd (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/lib/corepack.cjs:17408:23)
+    at Object.runMain (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/lib/corepack.cjs:23711:22)
+    at Object.<anonymous> (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/corepack.js:4:31)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Module._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'uv_cwd'
+}
+
+Node.js v22.23.2
+cd: no such file or directory: /tmp/stecstats-eas-archive
+node:internal/modules/cjs/loader:1433
+  throw err;
+  ^
+
+Error: Cannot find module './package.json'
+Require stack:
+- /opt/homebrew/Cellar/node@22/22.23.2/bin/[eval]
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    at Module._load (node:internal/modules/cjs/loader:1216:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Module.require (node:internal/modules/cjs/loader:1527:12)
+    at require (node:internal/modules/helpers:147:16)
+    at [eval]:1:1
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:446:12 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/opt/homebrew/Cellar/node@22/22.23.2/bin/[eval]' ]
+}
+
+Node.js v22.23.2
+node:internal/modules/cjs/loader:1433
+  throw err;
+  ^
+
+Error: Cannot find module './package.json'
+Require stack:
+- /opt/homebrew/Cellar/node@22/22.23.2/bin/[eval]
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    at Module._load (node:internal/modules/cjs/loader:1216:25)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Module.require (node:internal/modules/cjs/loader:1527:12)
+    at require (node:internal/modules/helpers:147:16)
+    at [eval]:1:1
+    at runScriptInThisContext (node:internal/vm:209:10)
+    at node:internal/process/execution:446:12 {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/opt/homebrew/Cellar/node@22/22.23.2/bin/[eval]' ]
+}
+
+Node.js v22.23.2
+grep: pnpm-lock.yaml: No such file or directory
+node:internal/bootstrap/switches/does_own_process_state:142
+    cachedCwd = rawMethods.cwd();
+                           ^
+
+Error: ENOENT: no such file or directory, uv_cwd
+    at process.wrappedCwd (node:internal/bootstrap/switches/does_own_process_state:142:28)
+    at process.cwd (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/lib/corepack.cjs:17408:23)
+    at Object.runMain (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/lib/corepack.cjs:23711:22)
+    at Object.<anonymous> (/opt/homebrew/Cellar/node@22/22.23.2/lib/node_modules/corepack/dist/corepack.js:4:31)
+    at Module._compile (node:internal/modules/cjs/loader:1781:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1913:10)
+    at Module.load (node:internal/modules/cjs/loader:1505:32)
+    at Module._load (node:internal/modules/cjs/loader:1309:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'uv_cwd'
+}
+
+Node.js v22.23.2
+stevenstec@Mac hoops-mobile % cd "$HOME"
+cd /path/to/your/stecstats-repository
+cd: no such file or directory: /path/to/your/stecstats-repository
+stevenstec@Mac ~ % find "$HOME" -type d -path '*/artifacts/hoops-mobile' -print
+find: /Users/stevenstec/Library/Application Support/MobileSync: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/CallHistoryTransactions: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/CloudDocs: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/com.apple.sharedfilelist: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/Knowledge: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/com.apple.TCC: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/FileProvider: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/AddressBook: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/FaceTime: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/DifferentialPrivacy: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/com.apple.avfoundation/Frecents: Operation not permitted
+find: /Users/stevenstec/Library/Application Support/CallHistoryDB: Operation not permitted
+find: /Users/stevenstec/Library/Assistant/SiriVocabulary: Operation not permitted
+find: /Users/stevenstec/Library/Daemon Containers: Operation not permitted
+find: /Users/stevenstec/Library/Autosave Information: Operation not permitted
+find: /Users/stevenstec/Library/IdentityServices: Operation not permitted
+find: /Users/stevenstec/Library/Calendars: Operation not permitted
+find: /Users/stevenstec/Library/Messages: Operation not permitted
+find: /Users/stevenstec/Library/HomeKit: Operation not permitted
+find: /Users/stevenstec/Library/Sharing: Operation not permitted
+find: /Users/stevenstec/Library/com.apple.aiml.instrumentation: Operation not permitted
+find: /Users/stevenstec/Library/Mail: Operation not permitted
+find: /Users/stevenstec/Library/Trial: Operation not permitted
+find: /Users/stevenstec/Library/AppleMediaServices: Operation not permitted
+find: /Users/stevenstec/Library/DuetExpertCenter: Operation not permitted
+find: /Users/stevenstec/Library/Accounts: Operation not permitted
+find: /Users/stevenstec/Library/Safari: Operation not permitted
+find: /Users/stevenstec/Library/Biome: Operation not permitted
+find: /Users/stevenstec/Library/IntelligencePlatform: Operation not permitted
+find: /Users/stevenstec/Library/Shortcuts: Operation not permitted
+find: /Users/stevenstec/Library/Suggestions: Operation not permitted
+find: /Users/stevenstec/Library/Weather: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.stocks-news: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.photolibraryd.private: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.feedback: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.siri.inference: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.telephonyutilities.callservicesd: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.swtransparency: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.coreservices.useractivityd: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.ArchiveUtility.PKSignedContainer: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.accessibility.voicebanking: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.icloud.searchpartyuseragent: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.siri.referenceResolution: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.stocks: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.usernoted: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.VoiceMemos.shared: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.contacts: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.secure-control-center-preferences: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.chronod: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.MailPersonaStorage: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.private.translation: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.appstoreagent: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.portrait.BackgroundReplacement: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.icloud.fmfcore: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.liveactivitiesd: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.amsondevicestoraged: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.SiriTTS: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.iBooks: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.notes.import: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.calendar: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.testflight: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.newsd: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.ip.redirects: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.siri.userfeedbacklearning: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.gamecenter: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.tips: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.tv.sharedcontainer: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.loginwindow.persistent-apps: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.spotlight: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.studentd: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.ManagedSettings: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.sharingd: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.printtool: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.corerepair: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.news: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.mobileslideshow.PhotosFileProvider: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.scopedbookmarkagent: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.dt.Xcode.SecureSettingsContainer: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.weather: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.systempreferences.cache: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.feedbacklogger: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.icloud.findmydevice.shared-configuration: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.controlcenter: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.siri.remembers: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.notes: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.stickersd.group: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.screencapture: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.UserNotifications: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.tipsnext: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.messages: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.moments: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.Safari.SandboxBroker: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.transparency: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.reminders: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.VoiceOver: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.findmy.findmylocateagent: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.mail: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.bird: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.DeviceActivity: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.replayd: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.contentdelivery: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.Journal: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.Home.group: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.iCloudDrive: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.FaceTime: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.energykit: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.PreviewLegacySignaturesConversion: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.siri.ASR.shared: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.replicatord: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.Photos.PhotosFileProvider: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.icloud.fmipcore: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.AppleSpell: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.mlhost: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.FamilyControls: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.Maps: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.PegasusConfiguration: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/group.com.apple.shortcuts: Operation not permitted
+find: /Users/stevenstec/Library/Group Containers/com.apple.MessagesLegacyTransferArchive: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.VoiceMemos: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.archiveutility: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Maps/Data/Maps: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Home: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Safari: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.CloudDocs.MobileDocumentsFileProvider: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.mail: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.MobileSMS: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.Notes: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.news: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.corerecents.recentsd/Data/Library/Recents: Operation not permitted
+find: /Users/stevenstec/Library/Containers/com.apple.stocks: Operation not permitted
+find: /Users/stevenstec/Library/ContainerManager: Operation not permitted
+find: /Users/stevenstec/Library/PersonalizationPortrait: Operation not permitted
+find: /Users/stevenstec/Library/Metadata/CoreSpotlight: Operation not permitted
+find: /Users/stevenstec/Library/Metadata/com.apple.IntelligentSuggestions: Operation not permitted
+find: /Users/stevenstec/Library/Reminders: Operation not permitted
+find: /Users/stevenstec/Library/Cookies: Operation not permitted
+find: /Users/stevenstec/Library/com.apple.bluetooth.services.cloud/CachedRecords/SoundProfileAsset: Operation not permitted
+find: /Users/stevenstec/Library/CoreFollowUp: Operation not permitted
+find: /Users/stevenstec/Library/StatusKit: Operation not permitted
+find: /Users/stevenstec/Library/DoNotDisturb: Operation not permitted
+find: /Users/stevenstec/Library/Caches/familycircled: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.HomeKit: Operation not permitted
+find: /Users/stevenstec/Library/Caches/CloudKit: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.Safari: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.imagecache: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.fmfcore: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.containermanagerd: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.Safari.SafeBrowsing: Operation not permitted
+find: /Users/stevenstec/Library/Caches/FamilyCircle: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.homed: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.findmy.fmipcore: Operation not permitted
+find: /Users/stevenstec/Library/Caches/com.apple.ap.adprivacyd: Operation not permitted
+

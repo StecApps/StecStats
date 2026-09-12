@@ -42,12 +42,30 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(() => ({ invalidateQueries: jest.fn() })),
 }));
 
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: jest.fn(() => jest.fn()),
+  },
+}));
+
 jest.mock('@/hooks/useColors', () => ({
   useColors: jest.fn(() => ({
     background: '#000', foreground: '#fff', primary: '#f97316',
     card: '#111', border: '#333', muted: '#222',
     mutedForeground: '#888', destructive: '#ef4444', input: '#111',
   })),
+}));
+
+jest.mock('@/modules/hoops-camera/src', () => ({
+  HoopsCameraView: null,
+  isHoopsCameraAvailable: false,
+  isHoopsCameraWebRTCAvailable: false,
+  requestHoopsCameraPermissionsAsync: jest.fn(),
+  startHoopsCameraRecordingAsync: jest.fn(),
+  stopHoopsCameraRecordingAsync: jest.fn(),
+  createHoopsCameraLiveVideoAsync: jest.fn(),
+  releaseHoopsCameraLiveVideoAsync: jest.fn(),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({

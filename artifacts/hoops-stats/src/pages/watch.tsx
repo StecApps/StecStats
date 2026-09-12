@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2, RefreshCw, AlertTriangle } from "lucide-react";
 import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
+import { trackEvent } from "@/lib/analytics";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
 
@@ -52,6 +53,7 @@ export default function WatchStream() {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const myViewerIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const viewerTrackedRef = useRef(false);
   const iceWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Tracks whether an offer arrives after we send request-offer. If it
   // doesn't fire within 30 s the broadcaster is likely offline, so we
@@ -295,6 +297,13 @@ export default function WatchStream() {
     const stream = remoteStreamRef.current;
     if (!v || !stream || v.srcObject === stream) return;
     v.srcObject = stream;
+    if (!viewerTrackedRef.current) {
+      viewerTrackedRef.current = true;
+      trackEvent("live_stream_viewed", {
+        device_class: isTouchDevice ? "mobile" : "desktop",
+        reconnected: reconnectAttemptCount > 0,
+      });
+    }
     // If the viewer already explicitly tapped to unmute, restore that state
     // on reconnect — browsers allow unmuted play after a prior user gesture.
     if (userUnmutedRef.current) {
@@ -1167,6 +1176,12 @@ export default function WatchStream() {
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 pointer-events-none select-none">
           <div className="flex items-center gap-1.5 rounded-full bg-red-600/90 px-3 py-1 text-xs font-bold text-white">
             <Radio className="w-3 h-3" /> SCORE FEED
+          </div>
+          <div className="max-w-md px-5 text-center">
+            <p className="text-base font-semibold text-white">The coach is recording locally</p>
+            <p className="mt-1 text-sm text-white/60">
+              Live video is unavailable while the iPad saves the full game video. Scores and plays will update here.
+            </p>
           </div>
           <div className="flex items-center gap-8">
             <div className="flex flex-col items-center gap-1">

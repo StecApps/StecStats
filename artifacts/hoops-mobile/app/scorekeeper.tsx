@@ -1,29 +1,24 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import {
   saveDraft,
   clearDraft,
   resolveDraft,
   queueGame,
-  checkConnectivity,
   generateClientId,
   type ScorekeeperDraft,
 } from '@/lib/offlineQueue';
 import { useAutosaveDraft } from '@/lib/useAutosaveDraft';
 
-export const PENDING_UPLOAD_KEY = 'stec:pending-mobile-upload';
-export type PendingUpload = {
-  uris: string[];
-  teamId: number;
-  teamName: string;
-  opponent: string;
-  date: string;
-  teamScore: number;
-  opponentScore: number;
-  stats: Record<number, StatLine>;
-  events: GameEvent[];
-  savedAt: string;
-};
+export { PENDING_UPLOAD_KEY } from '@/lib/pendingMasterUpload';
+export type { PendingUpload } from '@/lib/pendingMasterUpload';
+import { PENDING_UPLOAD_KEY, type PendingUpload } from '@/lib/pendingMasterUpload';
+import {
+  tryAcquirePendingMasterLease,
+  releasePendingMasterLease,
+  updatePendingMasterUpload,
+} from '@/lib/pendingMasterUpload';
 import {
   View,
   Text,
@@ -53,6 +48,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue, runOnJS } from 'react-native-reanimated';
 // react-native-webrtc is a native module — not available in Expo Go.
@@ -77,6 +73,18 @@ import { makeUploadStallHandler } from '@/lib/uploadStallAlert';
 import { concatSegmentsWithTimeout } from '@/lib/concatSegmentsWithTimeout';
 import { fetchIceServers } from '@/lib/fetchIceServers';
 import { drainPendingViewers } from '@/lib/drainPendingViewers';
+import { startLiveSession } from '@/lib/startLiveSession';
+import {
+  HoopsCameraView,
+  isHoopsCameraAvailable,
+  isHoopsCameraWebRTCAvailable,
+  requestHoopsCameraPermissionsAsync,
+  startHoopsCameraRecordingAsync,
+  stopHoopsCameraRecordingAsync,
+  setHoopsCameraMicrophoneMutedAsync,
+  createHoopsCameraLiveVideoAsync,
+  releaseHoopsCameraLiveVideoAsync,
+} from '@/modules/hoops-camera/src';
 import {
   BITRATE_LADDER,
   initialBitrateState,
@@ -90,6 +98,81 @@ const defaultLine = (): StatLine => ({
   assists: 0, rebounds: 0,
   steals: 0, turnovers: 0, blocks: 0,
 });
+
+type RecordingCameraPreviewProps = {
+  cameraRef: React.RefObject<any>;
+  sharedCameraMode: boolean;
+  cameraActive: boolean;
+  cameraReady: boolean;
+  cameraFacing: 'front' | 'back';
+  cameraZoom: number;
+  containerWidth: number;
+  containerHeight: number;
+  isLandscape: boolean;
+  onCameraReady: () => void;
+};
+
+// Recording runs in a native AVFoundation session. Keep CameraView isolated
+// from scoring state updates so a make/miss tap does not resend new style props
+// to the active native recorder while it is writing a movie file.
+const RecordingCameraPreview = React.memo(
+  function RecordingCameraPreview({
+    cameraRef,
+    sharedCameraMode,
+    cameraActive,
+    cameraReady,
+    cameraFacing,
+    cameraZoom,
+    containerWidth,
+    containerHeight,
+    isLandscape,
+    onCameraReady,
+  }: RecordingCameraPreviewProps) {
+    if (!cameraReady) {
+      return <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0d0d0d' }]} />;
+    }
+
+    if (sharedCameraMode && HoopsCameraView) {
+      return (
+        <HoopsCameraView
+          style={StyleSheet.absoluteFill}
+          facing={cameraFacing}
+          active={cameraActive}
+          zoom={cameraZoom}
+          onPreviewReady={onCameraReady}
+        />
+      );
+    }
+
+    return (
+      <CameraView
+        ref={cameraRef}
+        // Do not scale the iPad preview to "cover" this box. That artificial
+        // transform cropped most of the court and became distorted on rotation.
+        style={StyleSheet.absoluteFill}
+        facing={cameraFacing}
+        active={cameraActive}
+        mode="video"
+        // 720p is substantially less demanding than the iPad's default
+        // recording profile and leaves headroom for responsive stat controls.
+        videoQuality="720p"
+        zoom={cameraZoom}
+        responsiveOrientationWhenOrientationLocked
+        onCameraReady={onCameraReady}
+      />
+    );
+  },
+  (previous, next) =>
+    previous.cameraRef === next.cameraRef &&
+    previous.sharedCameraMode === next.sharedCameraMode &&
+    previous.cameraActive === next.cameraActive &&
+    previous.cameraReady === next.cameraReady &&
+    previous.cameraFacing === next.cameraFacing &&
+    previous.cameraZoom === next.cameraZoom &&
+    previous.containerWidth === next.containerWidth &&
+    previous.containerHeight === next.containerHeight &&
+    previous.isLandscape === next.isLandscape,
+);
 
 function calcPoints(line: StatLine): number {
   return line.twoMade * 2 + line.threeMade * 3 + line.ftMade;
@@ -123,10 +206,12 @@ export default function ScorekeeperScreen() {
   const requestUploadUrlMutation = useRequestUploadUrl();
 
   const { data: players, isLoading: playersLoading, refetch: refetchPlayers } = useListPlayers({
-    // Poll every 30 s so a player rename done in another tab or device is picked
-    // up without requiring the coach to reload or leave the screen.
+    // Camera recording is deliberately free of background roster requests.
+    // On some physical Android devices a React Query refresh at 30 seconds
+    // coincided with the camera/network native modules becoming unresponsive.
+    // Focus refresh still keeps the roster current before recording begins.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    query: { refetchInterval: 30_000 } as any,
+    query: { refetchInterval: recordVideo ? false : 30_000 } as any,
   });
 
   // Refetch the player list whenever this screen comes into focus so that
@@ -183,7 +268,6 @@ export default function ScorekeeperScreen() {
   const [isOnline, setIsOnline] = useState(true);
   // Mirror in a ref so async callbacks read the latest value without stale closures.
   const isOnlineRef = useRef(true);
-  const connectivityIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [opponentScore, setOpponentScore] = useState(0);
   // Manual quick-score adjustment for our team (on top of auto-calculated player stats).
   // Coaches can tap +1/+2/+3 in the camera overlay to credit untracked points quickly.
@@ -230,11 +314,23 @@ export default function ScorekeeperScreen() {
   // Viewer IDs for which createPeerForViewer is currently in-flight.
   // Prevents duplicate concurrent peer-creation attempts for the same viewer
   // (e.g. two rapid new-viewer messages after a WS reconnect storm).
-  const peerCreationInFlightRef = useRef<Set<string>>(new Set());
-  // Live camera MediaStream used for WebRTC — opened via mediaDevices.getUserMedia
+  const peerCreationInFlightRef = useRef<Map<string, number>>(new Map());
+  // Live camera MediaStream used for WebRTC. In the shared iOS build this is
+  // backed by HoopsCamera's existing capture session instead of getUserMedia.
   const webrtcStreamRef = useRef<any>(null);
-  // Viewer IDs that sent new-viewer while getUserMedia was still in-flight
-  // (e.g. immediately after a camera flip). Drained once the stream is ready.
+  const sharedStreamSessionRef = useRef<string | null>(null);
+  // Invalidates async native video/audio acquisition when Live stops, the
+  // invite changes, or a reconnect starts a new WebSocket session.
+  const liveMediaGenerationRef = useRef(0);
+  // Every broadcaster WebSocket lifecycle gets a unique generation. Peer
+  // creation and ICE callbacks must never publish into a newer session.
+  const liveSessionGenerationRef = useRef(0);
+  // Optional audio-only stream. Keeping audio acquisition separate means an
+  // audio permission/device failure never prevents shared-camera video live.
+  const webrtcAudioStreamRef = useRef<any>(null);
+  // Viewer IDs that sent new-viewer while a live video stream was in-flight
+  // (including the shared native stream after a camera flip). Drained as soon
+  // as video is ready; optional audio must not hold this queue.
   const pendingViewerIdsRef = useRef<string[]>([]);
   const liveWsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Set to true before an intentional close (stopLiveBroadcast) so ws.onclose
@@ -254,9 +350,13 @@ export default function ScorekeeperScreen() {
   // Camera / recording state
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
-  const cameraRef = useRef<CameraView>(null);
+  const cameraRef = useRef<any>(null);
   const [isRecording, setIsRecording] = useState(false);
   const recordingPromiseRef = useRef<Promise<{ uri: string } | undefined> | null>(null);
+  const recordingCompletionRef = useRef<{
+    resolve: (recording: { uri: string } | undefined) => void;
+    reject: (error: unknown) => void;
+  } | null>(null);
   // All clip URIs collected so far (one per camera-flip segment + final clip).
   const recordedUrisRef = useRef<string[]>([]);
   // Generation counter: incremented on each new startRecording call so the
@@ -265,6 +365,12 @@ export default function ScorekeeperScreen() {
   const recordingStartedRef = useRef(false);
   const cameraReadyRef = useRef(false);
   const pendingRecordRef = useRef(false);
+  const sharedCameraMode =
+    Platform.OS === 'ios' && isHoopsCameraAvailable && isHoopsCameraWebRTCAvailable;
+  const [hoopsCameraPermission, setHoopsCameraPermission] = useState<{
+    camera: string;
+    microphone: string;
+  } | null>(null);
 
   // Camera UI state
   const [cameraFacing, setCameraFacing] = useState<'back' | 'front'>('back');
@@ -308,6 +414,13 @@ export default function ScorekeeperScreen() {
   const [isLive, setIsLive] = useState(false);
   const [liveLoading, setLiveLoading] = useState(false);
   const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
+  const [isSharingLiveLink, setIsSharingLiveLink] = useState(false);
+  const [cameraNotice, setCameraNotice] = useState<string | null>(null);
+  const cameraNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A timed-out POST may still have committed server-side. Reuse this ID on
+  // retries so the server returns that same session instead of creating a
+  // second invite link.
+  const liveStartRequestIdRef = useRef<string | null>(null);
   // Pulsing animation for the LIVE badge
   const livePulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -321,15 +434,83 @@ export default function ScorekeeperScreen() {
     anim.start();
     return () => anim.stop();
   }, [isLive]);
+  useEffect(() => () => {
+    if (cameraNoticeTimerRef.current) clearTimeout(cameraNoticeTimerRef.current);
+  }, []);
 
   // ─── Live broadcast helpers ────────────────────────────────────────────────
   function watchUrl(code: string): string {
-    const domain = process.env.EXPO_PUBLIC_DOMAIN;
-    return domain ? `https://${domain}/watch/${code}` : `/watch/${code}`;
+    const publicOrigin = API_BASE || (
+      process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}` : ''
+    );
+    return publicOrigin ? `${publicOrigin}/watch/${encodeURIComponent(code)}` : '';
+  }
+
+  function showCameraNotice(message: string) {
+    setCameraNotice(message);
+    if (cameraNoticeTimerRef.current) clearTimeout(cameraNoticeTimerRef.current);
+    cameraNoticeTimerRef.current = setTimeout(() => {
+      setCameraNotice(null);
+      cameraNoticeTimerRef.current = null;
+    }, 3200);
+  }
+
+  function activateLiveBroadcast(code: string) {
+    if (isLive) return;
+    if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {
+      setShowGoLiveSheet(false);
+      showCameraNotice('Recording protected — Live must be started before recording.');
+      return;
+    }
+    setIsLive(true);
+    // The compiled iOS pipeline deliberately shares one capture session
+    // between local recording and the viewer video. Older binaries retain the
+    // score-only safety behavior while recording.
+    webrtcCameraFailedRef.current = recordVideo && !sharedCameraMode;
+    connectBroadcasterWs(code, teamScore, opponentScore);
+  }
+
+  async function shareLiveLink(code: string) {
+    const url = watchUrl(code);
+    if (!url) {
+      Alert.alert('Share Link Unavailable', 'The public app address is missing. Close and reopen StecStats, then try Go Live again.');
+      return;
+    }
+    if (recordingStartedRef.current) {
+      Alert.alert(
+        'Keep recording open',
+        'Opening Messages backgrounds StecStats, and iPadOS pauses the active camera. Share the live link before you start the game clock. The watch address is shown below so another device can also enter it manually.',
+      );
+      return;
+    }
+    // The invite exists, but the live socket and WebRTC stack are not started
+    // yet. Pause the idle camera before iOS presents Messages so the app can
+    // background and return without terminating the scorekeeper.
+    setIsSharingLiveLink(true);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    try {
+      const result = await Share.share({
+        title: `${teamName} live game`,
+        message: `Watch ${teamName} live: ${url}`,
+      });
+      if (result.action === Share.sharedAction) {
+        activateLiveBroadcast(code);
+      }
+    } finally {
+      setIsSharingLiveLink(false);
+    }
   }
 
   async function startLiveBroadcast() {
     if (liveLoading || isLive) return;
+    if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {
+      // Never present a native Alert/Modal or begin networking over an active
+      // legacy iPad CameraView recording. Native presentation can interrupt
+      // that independent AVFoundation session.
+      showCameraNotice('Recording protected — finish this game before using Live.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      return;
+    }
 
     // Android 12+ (API 31+) requires BLUETOOTH_CONNECT at runtime for WebRTC
     // to route audio through a connected Bluetooth headset. Request it before
@@ -360,14 +541,14 @@ export default function ScorekeeperScreen() {
 
     setLiveLoading(true);
     try {
-      const token = await getToken();
-      const res = await fetch(`${API_BASE}/api/live/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ opponent: opponent as string, teamName: teamName as string }),
+      const requestId = liveStartRequestIdRef.current ?? generateClientId();
+      liveStartRequestIdRef.current = requestId;
+      const res = await startLiveSession({
+        apiBase: API_BASE,
+        opponent: opponent as string,
+        teamName: teamName as string,
+        requestId,
+        getToken,
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -380,9 +561,20 @@ export default function ScorekeeperScreen() {
       }
       const { code } = await res.json();
       setLiveCode(code);
-      setIsLive(true);
-      setShowGoLiveSheet(true);
-      connectBroadcasterWs(code, teamScore, opponentScore);
+      liveStartRequestIdRef.current = null;
+      if ((recordingStartedRef.current || isRecording) && sharedCameraMode) {
+        // Do not present the share sheet over an active recording. The shared
+        // capture session can safely start WebRTC in place, and the watch
+        // address remains available after recording for sharing.
+        activateLiveBroadcast(code);
+        showCameraNotice('Live video started — recording is still protected.');
+      } else {
+        setShowGoLiveSheet(true);
+        // Do not connect the broadcaster yet. The coach can open Messages and
+        // send the invite while the camera and live socket are both inactive.
+        // Broadcasting begins after Share reports success or the coach taps
+        // "Start Live Now" after returning to StecStats.
+      }
     } catch (err: any) {
       Alert.alert('Go Live failed', err?.message ?? 'Could not start broadcast');
     } finally {
@@ -423,42 +615,70 @@ export default function ScorekeeperScreen() {
   }
 
   function stopWebRtcStream() {
-    if (webrtcStreamRef.current) {
-      webrtcStreamRef.current.getTracks?.().forEach((t: any) => t.stop());
-      webrtcStreamRef.current = null;
+    const videoStream = webrtcStreamRef.current;
+    const audioStream = webrtcAudioStreamRef.current;
+    webrtcStreamRef.current = null;
+    webrtcAudioStreamRef.current = null;
+    sharedStreamSessionRef.current = null;
+
+    if (sharedCameraMode && videoStream) {
+      // The shared video track is owned by HoopsCamera's AVFoundation
+      // session. Stopping that WebRTC track would also stop local preview and
+      // recording, so release it through the native facade instead.
+      void releaseHoopsCameraLiveVideoAsync().catch(() => undefined);
+    } else {
+      videoStream?.getTracks?.().forEach((t: any) => t.stop());
     }
+    audioStream?.getTracks?.().forEach((t: any) => t.stop());
   }
 
-  async function createPeerForViewer(viewerId: string, code: string) {
+  async function createPeerForViewer(
+    viewerId: string,
+    code: string,
+    sessionGeneration = liveSessionGenerationRef.current,
+  ) {
     if (!RTCPeerConnection) return; // native module not available (Expo Go)
+    const isCurrentSession = () =>
+      liveSessionGenerationRef.current === sessionGeneration;
     // Guard against concurrent duplicate calls for the same viewer (e.g. two
     // rapid new-viewer messages arriving during a WS reconnect storm).  If a
     // creation is already in-flight for this viewer, the second call would
     // tear down the peer the first is building, leaving both in a broken state.
-    if (peerCreationInFlightRef.current.has(viewerId)) {
+    if (peerCreationInFlightRef.current.has(viewerId) &&
+        peerCreationInFlightRef.current.get(viewerId) === sessionGeneration) {
       console.log(`[WebRTC] createPeerForViewer: already in-flight for ${viewerId} — skipping`);
       return;
     }
-    peerCreationInFlightRef.current.add(viewerId);
+    peerCreationInFlightRef.current.set(viewerId, sessionGeneration);
     try {
     // Close and fully clean up any prior peer for this viewer before replacing it.
     // Without this, the old peer's callbacks keep firing and can send conflicting
     // ICE-restart offers or peer-connection-failed after the viewer has reconnected.
     teardownPeerForViewer(viewerId);
     const iceServers = await fetchIceServers(API_BASE);
+    if (!isCurrentSession() || !webrtcStreamRef.current) return;
     const pc = new RTCPeerConnection({ iceServers });
+    if (!isCurrentSession()) {
+      try { pc.close(); } catch {}
+      return;
+    }
     webrtcPeersRef.current.set(viewerId, pc);
 
-    // Add all camera tracks to this viewer's peer connection
-    if (webrtcStreamRef.current) {
-      for (const track of webrtcStreamRef.current.getTracks()) {
-        pc.addTrack(track, webrtcStreamRef.current);
+    // Add the shared/native video tracks and optional audio tracks to each
+    // viewer. Audio is intentionally a separate getUserMedia call so it
+    // cannot open a second camera capturer or take down shared video.
+    for (const source of [webrtcStreamRef.current, webrtcAudioStreamRef.current]) {
+      if (source) {
+        for (const track of source.getTracks()) {
+          pc.addTrack(track, source);
+        }
       }
     }
 
     // Relay locally gathered ICE candidates to this viewer
     pc.onicecandidate = (event: any) => {
       if (event.candidate) {
+        if (!isCurrentSession() || webrtcPeersRef.current.get(viewerId) !== pc) return;
         broadcastWsSend({
           type: 'ice-candidate',
           code,
@@ -472,6 +692,7 @@ export default function ScorekeeperScreen() {
     // Prevents duplicate in-flight restarts via an async flag.
     let iceRestartPending = false;
     async function attemptIceRestart() {
+      if (!isCurrentSession() || webrtcPeersRef.current.get(viewerId) !== pc) return;
       if (iceRestartPending) return;
       const attempts = (iceRestartCountRef.current.get(viewerId) ?? 0) + 1;
       if (attempts > 3) {
@@ -492,7 +713,9 @@ export default function ScorekeeperScreen() {
       iceRestartPending = true;
       try {
         const offer = await pc.createOffer({ iceRestart: true } as any);
+        if (!isCurrentSession() || webrtcPeersRef.current.get(viewerId) !== pc) return;
         await pc.setLocalDescription(offer as any);
+        if (!isCurrentSession() || webrtcPeersRef.current.get(viewerId) !== pc) return;
         broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp, renegotiate: true });
         console.log(`[WebRTC] ICE restart offer sent (attempt ${attempts}) for viewer ${viewerId}`);
       } catch (err) {
@@ -506,6 +729,7 @@ export default function ScorekeeperScreen() {
       // Guard: ignore callbacks from a stale peer that has already been replaced
       // or torn down (e.g. after a viewer reconnect issued a fresh offer).
       if (webrtcPeersRef.current.get(viewerId) !== pc) return;
+      if (!isCurrentSession()) return;
       const state = (pc as any).connectionState;
       if (state === 'failed') {
         // Cancel any pending disconnect watchdog — connection already hard-failed.
@@ -541,6 +765,7 @@ export default function ScorekeeperScreen() {
     let abrState = initialBitrateState();
 
     const bitrateInterval = setInterval(async () => {
+      if (!isCurrentSession() || webrtcPeersRef.current.get(viewerId) !== pc) return;
       if ((pc as any).connectionState !== 'connected') return;
       try {
         const stats: RTCStatsReport = await pc.getStats();
@@ -575,16 +800,35 @@ export default function ScorekeeperScreen() {
 
     // Create the initial offer and send it to the viewer
     const offer = await pc.createOffer({} as any);
+    if (!isCurrentSession() || !webrtcStreamRef.current ||
+        webrtcPeersRef.current.get(viewerId) !== pc) {
+      if (webrtcPeersRef.current.get(viewerId) === pc) teardownPeerForViewer(viewerId);
+      else { try { pc.close(); } catch {} }
+      return;
+    }
     await pc.setLocalDescription(offer as any);
+    if (!isCurrentSession() || !webrtcStreamRef.current ||
+        webrtcPeersRef.current.get(viewerId) !== pc) {
+      if (webrtcPeersRef.current.get(viewerId) === pc) teardownPeerForViewer(viewerId);
+      else { try { pc.close(); } catch {} }
+      return;
+    }
     broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp });
     } finally {
       // Always remove the in-flight guard so a future new-viewer for this
       // viewer can create a fresh peer (e.g. after the viewer rejoins).
-      peerCreationInFlightRef.current.delete(viewerId);
+      if (peerCreationInFlightRef.current.get(viewerId) === sessionGeneration) {
+        peerCreationInFlightRef.current.delete(viewerId);
+      }
     }
   }
 
   async function stopLiveBroadcast(code: string) {
+    // An intentional stop begins a new idempotency lifecycle. A future
+    // broadcast must not resume this invite code.
+    liveStartRequestIdRef.current = null;
+    liveSessionGenerationRef.current += 1;
+    liveMediaGenerationRef.current += 1;
     // Dismiss the go-live sheet first so it doesn't linger open while the
     // stop sequence runs (handles the case where handleSave calls us directly
     // without the sheet's own dismiss-then-stop button handler).
@@ -646,6 +890,10 @@ export default function ScorekeeperScreen() {
   }
 
   function connectBroadcasterWs(code: string, initTeamScore: number, initOppScore: number) {
+    const sessionGeneration = ++liveSessionGenerationRef.current;
+    // A reconnect is a new signaling session. Stale peer attempts/callbacks
+    // must not remain attached to the replacement WebSocket.
+    closeAllWebRtcPeers();
     if (liveWsRef.current) {
       liveWsRef.current.close();
       liveWsRef.current = null;
@@ -661,6 +909,7 @@ export default function ScorekeeperScreen() {
     liveWsRef.current = ws;
 
     ws.onopen = () => {
+      if (liveSessionGenerationRef.current !== sessionGeneration) return;
       // Use the authoritative camera mode: if getUserMedia already rejected
       // before this socket opened (webrtcCameraFailedRef is true), announce
       // score-only immediately so viewers never wait on the offer watchdog.
@@ -668,7 +917,10 @@ export default function ScorekeeperScreen() {
       const cameraFailed = webrtcCameraFailedRef.current;
       // RTCPeerConnection is null when running in Expo Go (native module unavailable)
       const webrtcSupported = RTCPeerConnection !== null;
-      const hasVideo = webrtcSupported && !cameraFailed && !!(cameraPermission?.granted);
+      const hasCameraPermission = sharedCameraMode
+        ? hoopsCameraPermission?.camera === 'granted'
+        : !!cameraPermission?.granted;
+      const hasVideo = webrtcSupported && !cameraFailed && hasCameraPermission;
       const videoMode = hasVideo ? 'webrtc' : 'none';
       ws.send(JSON.stringify({
         type: 'join-broadcaster',
@@ -682,11 +934,15 @@ export default function ScorekeeperScreen() {
 
     ws.onmessage = async (event: MessageEvent) => {
       try {
+        if (liveSessionGenerationRef.current !== sessionGeneration) return;
         const msg = JSON.parse(event.data as string);
         if (msg.type === 'new-viewer') {
+          // A record-enabled game intentionally advertises score-only mode.
+          // Do not queue viewer IDs for an offer that can never be created.
+          if (webrtcCameraFailedRef.current) return;
           if (webrtcStreamRef.current) {
             // Stream is ready — offer immediately.
-            await createPeerForViewer(msg.viewerId, code);
+            await createPeerForViewer(msg.viewerId, code, sessionGeneration);
           } else {
             // getUserMedia is still in-flight (e.g. after a camera flip).
             // Queue this viewer; drainPendingViewers will offer them once
@@ -716,6 +972,7 @@ export default function ScorekeeperScreen() {
 
     ws.onclose = () => {
       if (liveWsRef.current !== ws) return; // already replaced by a newer connection
+      if (liveSessionGenerationRef.current !== sessionGeneration) return;
       if (liveWsIntentionalCloseRef.current) return; // stopLiveBroadcast — do not reconnect
       liveWsRef.current = null;
       // Auto-reconnect while we're still live (api-server may have restarted)
@@ -738,6 +995,16 @@ export default function ScorekeeperScreen() {
   }
 
   function toggleCameraFacing() {
+    // Changing AVFoundation inputs while an iPad is actively writing a video
+    // has caused native app termination. Preserve the recording rather than
+    // trying to split and reconfigure the session mid-game.
+    if (isRecording && isTablet) {
+      Alert.alert(
+        'Camera is recording',
+        'Finish this game before switching cameras. This keeps the iPad recording stable.',
+      );
+      return;
+    }
     if (!isRecording) {
       // Not recording — switch immediately
       setCameraFacing((f) => (f === 'back' ? 'front' : 'back'));
@@ -755,16 +1022,27 @@ export default function ScorekeeperScreen() {
           style: 'default',
           onPress: async () => {
             // Stop the active recording and capture the URI
-            cameraRef.current?.stopRecording();
-            if (recordingPromiseRef.current) {
+            void stopCameraRecording();
+            const activeRecording = recordingPromiseRef.current;
+            if (activeRecording) {
+              const watchdog = setTimeout(() => {
+                showCameraNotice('Finalizing recording… camera switch will continue when the clip is safe.');
+              }, 3_000);
               try {
-                const result = await recordingPromiseRef.current;
+                // Never reconfigure the native camera until AVFoundation has
+                // returned the authoritative URI. The watchdog is feedback
+                // only and cannot turn a still-recording clip into undefined.
+                const result = await activeRecording;
                 if (result?.uri) recordedUrisRef.current.push(result.uri);
               } catch { /* recording stopped cleanly */ }
+              finally { clearTimeout(watchdog); }
             }
-            // Reset so startRecording can be called again
+            // Invalidate the old session and reset even if iPad's native
+            // recording promise did not settle after stopRecording().
+            recordingGenerationRef.current += 1;
             recordingStartedRef.current = false;
             recordingPromiseRef.current = null;
+            setIsRecording(false);
             // Switch camera; onCameraReady will restart recording via pendingRecordRef
             cameraReadyRef.current = false;
             pendingRecordRef.current = true;
@@ -782,10 +1060,29 @@ export default function ScorekeeperScreen() {
   useEffect(() => {
     if (!recordVideo) return;
     (async () => {
+      if (sharedCameraMode) {
+        try {
+          const permission = await requestHoopsCameraPermissionsAsync();
+          setHoopsCameraPermission(permission);
+        } catch (error) {
+          console.warn('[HoopsCamera] permission request failed:', error);
+          setHoopsCameraPermission(null);
+        }
+        return;
+      }
       if (!cameraPermission?.granted) await requestCameraPermission();
       if (!micPermission?.granted) await requestMicPermission();
     })();
-  }, [recordVideo]);
+  }, [recordVideo, sharedCameraMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // HoopsCamera controls the movie output's audio connection directly, so
+  // mute/unmute never opens a second capture session or interrupts video.
+  useEffect(() => {
+    if (!sharedCameraMode) return;
+    void setHoopsCameraMicrophoneMutedAsync(micMuted).catch((error) => {
+      console.warn('[HoopsCamera] microphone mute update failed:', error);
+    });
+  }, [sharedCameraMode, micMuted]);
 
   useEffect(() => {
     if (!players) return;
@@ -810,14 +1107,87 @@ export default function ScorekeeperScreen() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [running]);
 
+  async function stopCameraRecording(): Promise<void> {
+    if (!sharedCameraMode) {
+      cameraRef.current?.stopRecording();
+      return;
+    }
+
+    // HoopsCamera resolves startRecordingAsync when AVFoundation finalizes
+    // the movie, while stopRecordingAsync is the explicit stop request. The
+    // watchdog is feedback only: it must never settle
+    // recordingPromiseRef with an invented/undefined URI.
+    const completion = recordingCompletionRef.current;
+    const stopRequest = stopHoopsCameraRecordingAsync();
+    stopRequest
+      .then((recording) => {
+        if (recording?.uri) completion?.resolve(recording);
+      })
+      .catch((error) => completion?.reject(error));
+    try {
+      await Promise.race([
+        stopRequest,
+        new Promise<undefined>((resolve) => setTimeout(resolve, 3_000)),
+      ]);
+    } catch (error) {
+      // The recording promise is rejected above as well. Keep this request
+      // helper non-throwing so the save/flip path can await the authoritative
+      // recordingPromiseRef and retain its existing recovery behavior.
+      console.warn('[HoopsCamera] stop request failed:', error);
+    }
+  }
+
   async function startRecording() {
-    if (!cameraRef.current || recordingStartedRef.current) return;
-    if (!cameraPermission?.granted || !micPermission?.granted) return;
+    if ((!sharedCameraMode && !cameraRef.current) || recordingStartedRef.current) return;
+    const hasRecordingPermission = sharedCameraMode
+      ? hoopsCameraPermission?.camera === 'granted' &&
+        hoopsCameraPermission?.microphone === 'granted'
+      : !!cameraPermission?.granted && !!micPermission?.granted;
+    if (!hasRecordingPermission) return;
+    // Older camera stacks cannot reliably service expo-camera recording and
+    // react-native-webrtc capture at the same time. Trying to keep both
+    // sessions open can wedge the camera service; the compiled HoopsCamera
+    // pipeline is explicitly designed to share them and must stay open.
+    if (webrtcStreamRef.current && !sharedCameraMode) {
+      webrtcCameraFailedRef.current = true;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+      if (liveCode) {
+        broadcastWsSend({
+          type: 'join-broadcaster',
+          code: liveCode,
+          hasVideo: false,
+          videoMode: 'none',
+        });
+      }
+    }
     recordingStartedRef.current = true;
     const myGen = ++recordingGenerationRef.current;
+    // Native modal presentation over CameraView can interrupt AVFoundation on
+    // iPad. Recording always wins: close any prepared invite sheet first.
+    setShowGoLiveSheet(false);
     setIsRecording(true);
     try {
-      recordingPromiseRef.current = cameraRef.current.recordAsync({ mute: micMuted } as any) as Promise<{ uri: string } | undefined>;
+      if (sharedCameraMode) {
+        let resolveCompletion!: (recording: { uri: string } | undefined) => void;
+        let rejectCompletion!: (error: unknown) => void;
+        const completion = new Promise<{ uri: string } | undefined>((resolve, reject) => {
+          resolveCompletion = resolve;
+          rejectCompletion = reject;
+        });
+        recordingCompletionRef.current = {
+          resolve: resolveCompletion,
+          reject: rejectCompletion,
+        };
+        recordingPromiseRef.current = completion;
+        // The native start promise intentionally remains pending until
+        // stopRecordingAsync has finalized the movie.
+        void startHoopsCameraRecordingAsync(micMuted)
+          .then(resolveCompletion)
+          .catch(rejectCompletion);
+      } else {
+        recordingPromiseRef.current = cameraRef.current.recordAsync({ mute: micMuted } as any) as Promise<{ uri: string } | undefined>;
+      }
       await recordingPromiseRef.current;
       // URI is captured by whoever calls stopRecording (handleSave or toggleCameraFacing)
     } catch (err: any) {
@@ -825,12 +1195,14 @@ export default function ScorekeeperScreen() {
         // Error on this specific session (not superseded by a camera flip)
         recordingStartedRef.current = false;
         recordingPromiseRef.current = null;
+        recordingCompletionRef.current = null;
       }
       console.warn('Camera recording ended:', err?.message);
     } finally {
       // Only update isRecording if a newer recording session hasn't already taken over
       if (myGen === recordingGenerationRef.current) {
         setIsRecording(false);
+        recordingCompletionRef.current = null;
       }
     }
   }
@@ -927,27 +1299,91 @@ export default function ScorekeeperScreen() {
 
   // ─── WebRTC camera stream — opened when live, closed when done ──────────────
   useEffect(() => {
+    const mediaGeneration = ++liveMediaGenerationRef.current;
+    let cancelled = false;
+    const isCurrentMedia = () =>
+      !cancelled && liveMediaGenerationRef.current === mediaGeneration;
+
     // Reset the camera-failed flag whenever broadcast state changes so that a
     // fresh go-live starts optimistically ('pending'), not stuck on a prior failure.
     webrtcCameraFailedRef.current = false;
 
-    if (!isLive || !liveCode || !cameraPermission?.granted) {
+    const hasCameraPermission = sharedCameraMode
+      ? hoopsCameraPermission?.camera === 'granted'
+      : !!cameraPermission?.granted;
+    if (!isLive || !liveCode || !hasCameraPermission) {
       closeAllWebRtcPeers();
       stopWebRtcStream();
       return;
     }
-    // Open the camera stream for WebRTC broadcast.
-    // expo-camera (CameraView) and react-native-webrtc both access the camera —
-    // iOS 16+ supports simultaneous sessions cleanly.
-    if (!mediaDevices) return; // native module not available (Expo Go)
-    let cancelled = false;
+    // Older binaries retain the conservative score-only behavior while local
+    // recording is active. HoopsCamera's compiled iOS pipeline is the
+    // exception: it exposes the existing capture session as a WebRTC video
+    // track, so viewers can receive video while recording continues.
+    if (recordVideo && !sharedCameraMode) {
+      webrtcCameraFailedRef.current = true;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+      broadcastWsSend({
+        type: 'join-broadcaster',
+        code: liveCode,
+        hasVideo: false,
+        videoMode: 'none',
+      });
+      return;
+    }
+    // HoopsCameraView applies facing changes to the existing native session.
+    // Do not tear down a shared viewer stream just because that prop changed
+    // (notably while a recording is being split for a phone camera flip).
+    if (sharedCameraMode && webrtcStreamRef.current && sharedStreamSessionRef.current === liveCode) {
+      return;
+    }
+    if (sharedCameraMode && webrtcStreamRef.current) {
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+    }
     (async () => {
       try {
-        const stream = await mediaDevices.getUserMedia({
-          video: { facingMode: cameraFacing === 'back' ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: true,
-        });
-        if (!cancelled) {
+        let stream: any;
+        if (sharedCameraMode) {
+          // Do not call getUserMedia with video here: that would create a
+          // second camera capturer and defeat the shared native pipeline.
+          const liveVideo = await createHoopsCameraLiveVideoAsync();
+          stream = liveVideo.stream;
+          if (!isCurrentMedia()) {
+            await releaseHoopsCameraLiveVideoAsync().catch(() => undefined);
+            return;
+          }
+          webrtcStreamRef.current = stream;
+          sharedStreamSessionRef.current = liveCode;
+
+          // Audio is deliberately isolated from camera acquisition and is
+          // launched without delaying video readiness or queued-viewer
+          // draining. A denied microphone/device degrades to video-only.
+          if (mediaDevices?.getUserMedia) {
+            void (async () => {
+              try {
+                const audioStream = await mediaDevices.getUserMedia({ audio: true, video: false });
+                if (!isCurrentMedia()) {
+                  audioStream?.getTracks?.().forEach((track: any) => track.stop());
+                  return;
+                }
+                webrtcAudioStreamRef.current = audioStream;
+              } catch (audioError) {
+                if (isCurrentMedia()) {
+                  console.warn('[WebRTC] shared live audio unavailable — using video-only:', audioError);
+                }
+              }
+            })();
+          }
+        } else {
+          if (!mediaDevices) return; // native module not available (Expo Go)
+          stream = await mediaDevices.getUserMedia({
+            video: { facingMode: cameraFacing === 'back' ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: true,
+          });
+        }
+        if (isCurrentMedia()) {
           webrtcStreamRef.current = stream;
 
           // Watch for the camera track ending unexpectedly (iOS thermal throttle,
@@ -957,9 +1393,12 @@ export default function ScorekeeperScreen() {
           const videoTrack = stream.getVideoTracks?.()[0];
           if (videoTrack) {
             (videoTrack as any).addEventListener?.('ended', () => {
-              if (cancelled) return;
+              // Ignore callbacks from a superseded stream while retaining the
+              // listener across shared-camera facing updates.
+              if (webrtcStreamRef.current !== stream) return;
               console.warn('[WebRTC] Camera track ended unexpectedly — switching to score-only');
               webrtcCameraFailedRef.current = true;
+              liveMediaGenerationRef.current += 1;
               // Close all peer connections — they can no longer send video.
               closeAllWebRtcPeers();
               stopWebRtcStream();
@@ -977,12 +1416,12 @@ export default function ScorekeeperScreen() {
           drainPendingViewers(
             pendingViewerIdsRef.current,
             stream,
-            (id) => createPeerForViewer(id, liveCode!),
+            (id) => createPeerForViewer(id, liveCode!, liveSessionGenerationRef.current),
           );
         }
       } catch (e) {
-        console.warn('[WebRTC] getUserMedia failed — viewers will see score-only:', e);
-        if (!cancelled) {
+        console.warn(`[WebRTC] ${sharedCameraMode ? 'HoopsCamera video stream' : 'getUserMedia'} failed — viewers will see score-only:`, e);
+        if (isCurrentMedia()) {
           // Mark the failure so ws.onopen sends the authoritative score-only
           // mode when the socket hasn't opened yet (race: getUserMedia rejected
           // before onopen fired). If the socket is already open, broadcastWsSend
@@ -1000,10 +1439,14 @@ export default function ScorekeeperScreen() {
     return () => {
       cancelled = true;
       pendingViewerIdsRef.current = [];
-      closeAllWebRtcPeers();
-      stopWebRtcStream();
+      // Keep the shared stream and peers alive across a native facing update;
+      // all other lifecycle changes still release them below.
+      if (!(sharedCameraMode && isLive && liveCode && sharedStreamSessionRef.current === liveCode)) {
+        closeAllWebRtcPeers();
+        stopWebRtcStream();
+      }
     };
-  }, [isLive, liveCode, cameraPermission?.granted, cameraFacing]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLive, liveCode, cameraPermission?.granted, hoopsCameraPermission?.camera, cameraFacing, recordVideo, sharedCameraMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Live scoreboard push — fires whenever score changes while broadcasting ──
   useEffect(() => {
@@ -1015,8 +1458,13 @@ export default function ScorekeeperScreen() {
   // ─── Cleanup broadcaster WS on unmount ───────────────────────────────────
   useEffect(() => {
     return () => {
+      liveWsIntentionalCloseRef.current = true;
+      liveSessionGenerationRef.current += 1;
+      liveMediaGenerationRef.current += 1;
       if (liveWsReconnectRef.current) clearTimeout(liveWsReconnectRef.current);
       liveWsRef.current?.close();
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
     };
   }, []);
 
@@ -1038,31 +1486,21 @@ export default function ScorekeeperScreen() {
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
     : '';
 
-  // ── Connectivity polling ───────────────────────────────────────────────────
-  // Probe the API's health endpoint every 5 s. On transition online→offline or
-  // offline→online, update state and (on recovery) kick off queued-game sync.
+  // ── Connectivity state ─────────────────────────────────────────────────────
+  // NetInfo uses native network-change notifications (and its web equivalent),
+  // avoiding periodic HTTP work while the camera is recording. Queue recovery
+  // remains owned app-wide by useOfflineQueueSync in _layout.tsx.
   useEffect(() => {
-    let mounted = true;
-
-    async function probe() {
-      const online = await checkConnectivity(API_BASE);
-      if (!mounted) return;
-      const wasOnline = isOnlineRef.current;
+    return NetInfo.addEventListener((state) => {
+      // Preserve the last known value while NetInfo is still determining the
+      // connection. A connected transport counts as online unless NetInfo has
+      // positively determined that the internet is unreachable.
+      if (state.isConnected === null) return;
+      const online = state.isConnected && state.isInternetReachable !== false;
       isOnlineRef.current = online;
       setIsOnline(online);
-      // Sync is handled app-level via useOfflineQueueSync in _layout.tsx
-    }
-
-    probe(); // immediate first check
-    connectivityIntervalRef.current = setInterval(probe, 5_000);
-    return () => {
-      mounted = false;
-      if (connectivityIntervalRef.current) {
-        clearInterval(connectivityIntervalRef.current);
-        connectivityIntervalRef.current = null;
-      }
-    };
-  }, [API_BASE]); // eslint-disable-line react-hooks/exhaustive-deps
+    });
+  }, []);
 
   // ── Draft autosave ─────────────────────────────────────────────────────────
   // Debounced: waits 2 s after the last change before writing to AsyncStorage,
@@ -1182,19 +1620,35 @@ export default function ScorekeeperScreen() {
     // locally.  Video requires a working upload connection so we offer
     // stats-only or cancellation.
     if (!isOnlineRef.current) {
+      if (recordVideo) {
+        // Finalize an active camera segment before persisting the offline marker.
+        // Otherwise End Game while offline would queue only prior flip segments.
+        if (recordingStartedRef.current) {
+          await stopCameraRecording();
+          try {
+            const result = await recordingPromiseRef.current;
+            if (result?.uri) recordedUrisRef.current.push(result.uri);
+          } catch { /* the already-recorded segments remain recoverable */ }
+          setIsRecording(false);
+        }
+      }
       if (recordVideo && recordedUrisRef.current.length > 0) {
-        Alert.alert(
-          'No connection',
-          'Video upload requires a connection. Save stats now without video, or wait until you\'re back online.',
-          [
-            { text: 'Wait', style: 'cancel' },
-            {
-              text: 'Save stats only',
-              style: 'default',
-              onPress: () => { setSaving(true); doSaveGame(null); },
-            },
-          ],
-        );
+        const clientId = generateClientId();
+        try {
+          await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify({
+            uris: recordedUrisRef.current,
+            teamId: Number(teamId), teamName: teamName as string,
+            opponent: opponent as string, date: date as string,
+            teamScore, opponentScore, stats, events, clientId,
+            savedAt: new Date().toISOString(),
+          } satisfies PendingUpload));
+          await clearDraft();
+          Alert.alert('Game saved for upload', 'Your full-game recording is safely queued and will upload automatically on cellular or Wi-Fi.', [
+            { text: 'OK', onPress: () => router.replace('/(tabs)/games' as any) },
+          ]);
+        } catch {
+          Alert.alert('Could not save recording', 'Storage could not save this recording for retry. Keep this screen open and try End Game again.');
+        }
       } else {
         setSaving(true);
         doSaveGame(null);
@@ -1206,20 +1660,25 @@ export default function ScorekeeperScreen() {
     // object, so a subsequent attempt's fresh token can never un-cancel us.
     const attemptToken = { cancelled: false };
     uploadAttemptRef.current = attemptToken;
+    // Acquire before writing the marker. The global foreground/relaunch worker
+    // sees this same lease and cannot duplicate this foreground master upload.
+    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease();
+    if (recordVideo && !ownsPendingMasterLease) return;
     setSaving(true);
     try {
       let videoObjectPath: string | null = null;
+      let pendingClientId: string | undefined;
       if (recordVideo) {
         // Stop the active recording and capture its URI into the array
         if (recordingStartedRef.current) {
-          cameraRef.current?.stopRecording();
-          setIsRecording(false);
+          await stopCameraRecording();
           if (recordingPromiseRef.current) {
             try {
               const result = await recordingPromiseRef.current;
               if (result?.uri) recordedUrisRef.current.push(result.uri);
             } catch { /* already stopped cleanly */ }
           }
+          setIsRecording(false);
         }
 
         if (recordedUrisRef.current.length === 0) {
@@ -1234,6 +1693,8 @@ export default function ScorekeeperScreen() {
           // Persist video URIs + game data now — before any bytes are sent.
           // If the upload is cancelled or the app is killed, the games tab can
           // offer recovery so nothing is permanently lost.
+          const clientId = generateClientId();
+          pendingClientId = clientId;
           await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify({
             uris,
             teamId: Number(teamId),
@@ -1244,6 +1705,7 @@ export default function ScorekeeperScreen() {
             opponentScore,
             stats,
             events,
+            clientId,
             savedAt: new Date().toISOString(),
           } satisfies PendingUpload)).catch(() => {/* non-fatal */});
 
@@ -1284,6 +1746,7 @@ export default function ScorekeeperScreen() {
             );
             if (attemptToken.cancelled) return;
             uploadedPaths.push(p);
+            await updatePendingMasterUpload({ uploadedPaths });
           }
 
           if (attemptToken.cancelled) return;
@@ -1322,6 +1785,7 @@ export default function ScorekeeperScreen() {
             videoObjectPath = concatResult.videoObjectPath;
             setUploadProgress(100);
           }
+          await updatePendingMasterUpload({ uploadedPaths, videoObjectPath: videoObjectPath! });
 
           setUploadProgress(null);
           // Guard: if cancel was pressed just as the last upload finished, honour
@@ -1343,11 +1807,13 @@ export default function ScorekeeperScreen() {
           return;
         }
       }
-      await doSaveGame(videoObjectPath);
+      await doSaveGame(videoObjectPath, pendingClientId);
     } catch (err: any) {
       setUploadProgress(null);
       Alert.alert('Save failed', err?.message ?? 'Could not save game');
       setSaving(false);
+    } finally {
+      if (ownsPendingMasterLease) releasePendingMasterLease();
     }
   }
 
@@ -1378,17 +1844,28 @@ export default function ScorekeeperScreen() {
       queuedAt: new Date().toISOString(),
     });
     await clearDraft();
-    await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
+    // A recorded master has its own durable upload marker. Never delete it
+    // while queuing stats after a network failure.
+    if (!recordVideo) await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
   }
 
-  function doSaveGame(videoObjectPath: string | null) {
+  async function doSaveGame(videoObjectPath: string | null, existingClientId?: string) {
     // Generate ONE stable ID for this entire save attempt.  The same ID is:
     //   • sent in the online POST body so the server stores it as client_game_id
     //   • used by onNetworkFailure when queuing locally after a dropped response
     //   • used by the offline-only path below
     // This ensures a retry of a queued game finds the already-created server row
     // via ON CONFLICT DO NOTHING instead of inserting a duplicate.
-    const saveClientId = generateClientId();
+    // If a coach elects to save stats while a recorded master is pending, use
+    // the marker's same idempotency key. The recovery worker's POST then finds
+    // this exact game and PATCH attaches the master rather than making a twin.
+    let markerClientId: string | undefined;
+    if (recordVideo && !videoObjectPath && !existingClientId) {
+      try {
+        markerClientId = (JSON.parse(await AsyncStorage.getItem(PENDING_UPLOAD_KEY) ?? '{}') as PendingUpload).clientId;
+      } catch { /* preserve the normal new-game fallback */ }
+    }
+    const saveClientId = existingClientId ?? markerClientId ?? generateClientId();
 
     // ── Offline path: queue locally and navigate back ─────────────────────
     // Only available for stats-only saves (no video) — video upload requires
@@ -1432,6 +1909,28 @@ export default function ScorekeeperScreen() {
         await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
         await clearDraft();
         router.replace(path as any);
+      },
+      // Both server endpoints are idempotent: a retry sees an existing
+      // processing job instead of creating a duplicate.  This runs only after
+      // create-game confirms the master is attached.
+      onVideoAttached: async (gameId) => {
+        if (!videoObjectPath) return;
+        // Durable foreground transition: a crash after server linkage but
+        // before navigation leaves the worker with the exact game/path.
+        await updatePendingMasterUpload({ gameId, videoObjectPath });
+        const token = await getToken();
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        };
+        const responses = await Promise.all([
+          fetch(`${API_BASE}/api/games/${gameId}/highlight`, { method: 'POST', headers, body: '{}' }),
+          fetch(`${API_BASE}/api/games/${gameId}/lowlight`, { method: 'POST', headers, body: '{}' }),
+        ]);
+        // A video attachment is the durability boundary. Generation can be
+        // requested independently by Film Room if a non-network server error
+        // prevents a particular reel from starting.
+        void responses;
       },
       setSaving,
       // If the network drops between tapping "End Game" and the POST completing,
@@ -1490,9 +1989,14 @@ export default function ScorekeeperScreen() {
 
   const { width: sw, height: sh } = useWindowDimensions();
   const isLandscape = layoutLandscape !== null ? layoutLandscape : sw > sh;
+  const isTablet = Math.min(sw, sh) >= 600;
 
   const styles = makeStyles(colors, insets, sw, sh, isLandscape);
-  const cameraReady = recordVideo && cameraPermission?.granted && micPermission?.granted;
+  const cameraReady = recordVideo && (
+    sharedCameraMode
+      ? hoopsCameraPermission?.camera === 'granted' && hoopsCameraPermission?.microphone === 'granted'
+      : cameraPermission?.granted && micPermission?.granted
+  );
   const selectedLine = selectedPlayerId ? (stats[selectedPlayerId] ?? defaultLine()) : null;
 
   if (playersLoading) {
@@ -1738,7 +2242,7 @@ export default function ScorekeeperScreen() {
                           activeOpacity={0.7}
                           style={[styles.compactUndoBtn, { borderColor: colors.border, opacity: made === 0 ? 0.3 : 1 }]}
                         >
-                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>−Mk</Text>
+                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>UNDO{'\n'}MAKE</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleShoot('undoMiss', s.madeKey as any, s.attKey as any, s.statField)}
@@ -1746,7 +2250,7 @@ export default function ScorekeeperScreen() {
                           activeOpacity={0.7}
                           style={[styles.compactUndoBtn, { borderColor: colors.border, opacity: hasMiss ? 1 : 0.3 }]}
                         >
-                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>−Ms</Text>
+                          <Text style={[styles.compactUndoBtnText, { color: colors.mutedForeground }]}>UNDO{'\n'}MISS</Text>
                         </TouchableOpacity>
                       </View>
                     );
@@ -1952,7 +2456,9 @@ export default function ScorekeeperScreen() {
           <View style={styles.sheetHeader}>
             <View style={styles.sheetTitleRow}>
               <Animated.View style={[styles.sheetLiveDot, { opacity: livePulse }]} />
-              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>You're Live</Text>
+              <Text style={[styles.sheetTitle, { color: colors.foreground }]}>
+                {isLive ? "You're Live" : 'Share Before Going Live'}
+              </Text>
             </View>
             <TouchableOpacity onPress={() => setShowGoLiveSheet(false)} style={styles.sheetCloseBtn}>
               <Ionicons name="close" size={20} color={colors.mutedForeground} />
@@ -1960,26 +2466,62 @@ export default function ScorekeeperScreen() {
           </View>
 
           <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
-            Share this link with viewers. They can watch the score update in real time.
+            {isLive
+              ? 'The watch link is active. You can now start the game clock and recording.'
+              : 'Send the watch link first. The broadcast starts after you return to StecStats, keeping Messages from interrupting the game.'}
           </Text>
 
           {/* Session code */}
           <View style={[styles.codeBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             <Text style={[styles.codeLabel, { color: colors.mutedForeground }]}>Session code</Text>
             <Text style={[styles.codeValue, { color: colors.foreground }]}>{liveCode}</Text>
+            <Text
+              selectable
+              numberOfLines={1}
+              style={[styles.watchAddress, { color: colors.primary }]}
+            >
+              {watchUrl(liveCode)}
+            </Text>
           </View>
 
           {/* Share link */}
           <TouchableOpacity
-            onPress={() => Share.share({ message: watchUrl(liveCode), url: watchUrl(liveCode) })}
+            onPress={() => shareLiveLink(liveCode)}
             activeOpacity={0.8}
-            style={[styles.shareLinkBtn, { backgroundColor: colors.primary }]}
+            style={styles.shareLinkBtn}
           >
-            <Ionicons name="share-outline" size={18} color="#fff" />
-            <Text style={styles.shareLinkText}>Share Watch Link</Text>
+            <LinearGradient
+              colors={[colors.primary, colors.card, colors.background]}
+              locations={[0, 0.68, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.glossyButtonFill}
+            >
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(255,255,255,0.24)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0)']}
+                locations={[0, 0.38, 0.72]}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <Ionicons name="share-outline" size={18} color="#fff" />
+              <Text style={styles.shareLinkText}>
+                {isSharingLiveLink ? 'Opening Messages…' : 'Text Watch Link'}
+              </Text>
+            </LinearGradient>
           </TouchableOpacity>
 
-          {/* Stop broadcast */}
+          {!isLive && (
+            <TouchableOpacity
+              onPress={() => activateLiveBroadcast(liveCode)}
+              activeOpacity={0.8}
+              style={[styles.stopLiveBtn, { borderColor: colors.primary + '60' }]}
+            >
+              <Ionicons name="radio-outline" size={16} color={colors.primary} />
+              <Text style={[styles.stopLiveText, { color: colors.primary }]}>Start Live Now</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Stop broadcast / cancel prepared invite */}
           <TouchableOpacity
             onPress={async () => {
               setShowGoLiveSheet(false);
@@ -1989,7 +2531,9 @@ export default function ScorekeeperScreen() {
             style={[styles.stopLiveBtn, { borderColor: colors.destructive + '60' }]}
           >
             <Ionicons name="stop-circle-outline" size={18} color={colors.destructive} />
-            <Text style={[styles.stopLiveText, { color: colors.destructive }]}>End Broadcast</Text>
+            <Text style={[styles.stopLiveText, { color: colors.destructive }]}>
+              {isLive ? 'End Broadcast' : 'Cancel Invite'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -2069,35 +2613,18 @@ export default function ScorekeeperScreen() {
         }}
       >
         {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
-        {cameraReady ? (
-          <CameraView
-            ref={cameraRef}
-            style={[StyleSheet.absoluteFill, (() => {
-              // Scale the CameraView so the native preview always fills (covers) the
-              // container, removing black bars caused by aspect-ratio mismatches
-              // (especially visible on iPad where the section is wider than the
-              // camera's native 3:4 portrait preview).
-              const { w: cw, h: ch } = cameraContainerSize;
-              if (!cw || !ch) return {};
-              // Typical iOS camera preview: 4:3 landscape, 3:4 portrait.
-              const cameraAspect = isLandscape ? (4 / 3) : (3 / 4);
-              const containerAspect = cw / ch;
-              const scale = Math.max(
-                1,
-                containerAspect > cameraAspect
-                  ? containerAspect / cameraAspect   // container is wider → scale to fill width
-                  : cameraAspect / containerAspect,  // container is taller → scale to fill height
-              );
-              return scale > 1.01 ? { transform: [{ scale }] } : {};
-            })()]}
-            facing={cameraFacing}
-            mode="video"
-            zoom={cameraZoom}
-            onCameraReady={onCameraReady}
-          />
-        ) : (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0d0d0d' }]} />
-        )}
+        <RecordingCameraPreview
+          cameraRef={cameraRef}
+          sharedCameraMode={sharedCameraMode}
+          cameraActive={!isSharingLiveLink}
+          cameraReady={!!cameraReady}
+          cameraFacing={cameraFacing}
+          cameraZoom={cameraZoom}
+          containerWidth={cameraContainerSize.w}
+          containerHeight={cameraContainerSize.h}
+          isLandscape={isLandscape}
+          onCameraReady={onCameraReady}
+        />
 
         {previewVisible ? (
           <>
@@ -2111,12 +2638,17 @@ export default function ScorekeeperScreen() {
                   {isRecording ? <View style={styles.recDot} /> : <Ionicons name="videocam" size={10} color="#fff" />}
                   <Text style={styles.recText}>{isRecording ? 'REC' : 'CAM'}</Text>
                 </View>
-                {isLive && (
+                {isLive && (isRecording ? (
+                  <View style={styles.liveBadge}>
+                    <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
+                    <Text style={styles.liveText}>LIVE · REC SAFE</Text>
+                  </View>
+                ) : (
                   <TouchableOpacity onPress={() => setShowGoLiveSheet(true)} style={styles.liveBadge} activeOpacity={0.8}>
                     <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
                     <Text style={styles.liveText}>LIVE</Text>
                   </TouchableOpacity>
-                )}
+                ))}
               </View>
             )}
 
@@ -2127,22 +2659,37 @@ export default function ScorekeeperScreen() {
                 <TouchableOpacity
                   onPress={toggleCameraFacing}
                   activeOpacity={0.75}
-                  style={styles.camControlBtn}
+                  style={[
+                    styles.camControlBtn,
+                    isRecording && isTablet && { opacity: 0.4 },
+                  ]}
                 >
                   <Ionicons name="camera-reverse" size={18} color="#fff" />
                 </TouchableOpacity>
 
                 {/* Mute / unmute mic */}
                 <TouchableOpacity
-                  onPress={() => { setMicMuted((m) => !m); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  onPress={() => {
+                    if (isRecording && isTablet) {
+                      Alert.alert('Recording in progress', 'Microphone settings apply when the next recording starts.');
+                      return;
+                    }
+                    setMicMuted((m) => !m);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
                   activeOpacity={0.75}
-                  style={[styles.camControlBtn, micMuted && { backgroundColor: 'rgba(239,68,68,0.75)' }]}
+                  style={[
+                    styles.camControlBtn,
+                    micMuted && { backgroundColor: 'rgba(239,68,68,0.75)' },
+                    isRecording && isTablet && { opacity: 0.4 },
+                  ]}
                 >
                   <Ionicons name={micMuted ? 'mic-off' : 'mic'} size={18} color="#fff" />
                 </TouchableOpacity>
 
-                {/* Orientation lock */}
-                <TouchableOpacity
+                {/* Phone-only layout override. iPads follow the device so the
+                    native camera and recording metadata stay in sync. */}
+                {!isTablet && <TouchableOpacity
                   onPress={() => {
                     const next = !(layoutLandscape !== null ? layoutLandscape : sw > sh);
                     setLayoutLandscape(next);
@@ -2154,7 +2701,7 @@ export default function ScorekeeperScreen() {
                   <View style={{ transform: [{ rotate: isLandscape ? '90deg' : '0deg' }] }}>
                     <Ionicons name="phone-portrait-outline" size={18} color="#fff" />
                   </View>
-                </TouchableOpacity>
+                </TouchableOpacity>}
 
                 {/* Dismiss preview */}
                 <TouchableOpacity
@@ -2167,16 +2714,34 @@ export default function ScorekeeperScreen() {
 
                 {/* Go Live / Live indicator */}
                 <TouchableOpacity
-                  onPress={isLive ? () => setShowGoLiveSheet(true) : startLiveBroadcast}
+                  onPress={() => {
+                    if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {
+                      showCameraNotice('Recording protected — Live controls are locked.');
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                      return;
+                    }
+                    if (isLive) {
+                      if (recordingStartedRef.current || isRecording) {
+                        showCameraNotice('Live video is active. Share the link after recording.');
+                      } else {
+                        setShowGoLiveSheet(true);
+                      }
+                    } else {
+                      startLiveBroadcast();
+                    }
+                  }}
                   activeOpacity={0.75}
                   disabled={liveLoading}
                   style={[
                     styles.camControlBtn,
                     isLive && { backgroundColor: 'rgba(239,68,68,0.85)' },
+                    isRecording && !sharedCameraMode && { opacity: 0.48 },
                   ]}
                 >
                   {liveLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
+                  ) : isRecording && !sharedCameraMode ? (
+                    <Ionicons name="lock-closed" size={17} color="#fff" />
                   ) : isLive ? (
                     <Ionicons name="radio" size={18} color="#fff" />
                   ) : (
@@ -2187,12 +2752,23 @@ export default function ScorekeeperScreen() {
             )}
 
             {/* Permission denied — shown inside camera box */}
-            {recordVideo && (!cameraPermission?.granted || !micPermission?.granted) && (
+            {recordVideo && !cameraReady && (
               <View style={styles.permBanner}>
                 <Ionicons name="videocam-off" size={15} color="rgba(255,255,255,0.6)" />
                 <Text style={styles.permText}>Camera permission needed</Text>
                 <TouchableOpacity
-                  onPress={async () => { await requestCameraPermission(); await requestMicPermission(); }}
+                  onPress={async () => {
+                    if (sharedCameraMode) {
+                      try {
+                        setHoopsCameraPermission(await requestHoopsCameraPermissionsAsync());
+                      } catch {
+                        setHoopsCameraPermission(null);
+                      }
+                    } else {
+                      await requestCameraPermission();
+                      await requestMicPermission();
+                    }
+                  }}
                   style={[styles.permBtn, { backgroundColor: colors.primary }]}
                 >
                   <Text style={styles.permBtnText}>Allow</Text>
@@ -2217,14 +2793,10 @@ export default function ScorekeeperScreen() {
 
             {/* LIVE badge — always reachable even when the camera preview is collapsed */}
             {isLive && (
-              <TouchableOpacity
-                onPress={() => setShowGoLiveSheet(true)}
-                activeOpacity={0.8}
-                style={styles.collapsedLiveBadge}
-              >
+              <View style={styles.collapsedLiveBadge}>
                 <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
-                <Text style={styles.liveText}>LIVE</Text>
-              </TouchableOpacity>
+                <Text style={styles.liveText}>{isRecording ? 'LIVE · REC SAFE' : 'LIVE'}</Text>
+              </View>
             )}
 
             {recordVideo && isRecording && !isLive && (
@@ -2256,6 +2828,12 @@ export default function ScorekeeperScreen() {
             </Text>
           </Animated.View>
         )}
+        {cameraNotice && (
+          <View pointerEvents="none" style={styles.cameraNotice}>
+            <Ionicons name="shield-checkmark" size={16} color="#fff" />
+            <Text style={styles.cameraNoticeText}>{cameraNotice}</Text>
+          </View>
+        )}
       </View>
       </GestureDetector>
 
@@ -2270,8 +2848,8 @@ export default function ScorekeeperScreen() {
 
 function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscape: boolean) {
   // Camera section height — bigger on tablet.
-  // Portrait: 54 % of screen height (was 46 %).
-  // Landscape: tablet gets 62 % width, phone gets 55 %.
+  // Portrait: recording gets most of the screen on tablets.
+  // Landscape: tablet gets 70 % width, phone gets 55 %.
   // Tablet detection: iPads (and large Android tablets) report at least 768px on
   // their short edge. Platform.isPad only exists on the iOS static type, so we
   // use a dimension heuristic that works cross-platform.
@@ -2283,9 +2861,9 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
   // so the controls section keeps the same space it had before the height bump.
   // Larger phones (≥ 750 pt) and tablets keep the 54 % / 62 % values.
   const isSmallPhone = !isTablet && sh <= 667;
-  const portraitRatio = isTablet ? 0.62 : isSmallPhone ? 0.46 : 0.54;
+  const portraitRatio = isTablet ? 0.70 : isSmallPhone ? 0.46 : 0.54;
   const cameraH = isLandscape ? sh : Math.round(sh * portraitRatio);
-  const cameraLandW = isTablet ? '62%' : '55%';
+  const cameraLandW = isTablet ? '70%' : '55%';
 
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
@@ -2437,6 +3015,29 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       left: 10,
       flexDirection: 'column',
       gap: 6,
+    },
+    cameraNotice: {
+      position: 'absolute',
+      top: 58,
+      left: 14,
+      right: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: 'rgba(15,23,42,0.92)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.2)',
+    },
+    cameraNoticeText: {
+      color: '#fff',
+      fontSize: 12,
+      lineHeight: 16,
+      fontFamily: 'Inter_600SemiBold',
+      textAlign: 'center',
     },
     camControlBtn: {
       width: 34,
@@ -2692,12 +3293,13 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     // ── Compact stat area (camera recording mode) ─────────────────────────────
     compactStatArea: {
       flex: 1,
-      paddingHorizontal: 8,
-      paddingTop: 5,
-      paddingBottom: 4,
-      gap: 5,
+      paddingHorizontal: isTablet ? 5 : 8,
+      paddingTop: isTablet ? 8 : 3,
+      paddingBottom: isTablet ? 8 : 3,
+      gap: isTablet ? 12 : 5,
+      justifyContent: 'flex-start',
     },
-    compactShootGrid: { gap: 4 },
+    compactShootGrid: { gap: isTablet ? 8 : 4 },
     compactBtnRow: { flexDirection: 'row', gap: 5 },
     compactShootHeaderCell: {
       flex: 1,
@@ -2719,7 +3321,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactMakeBtn: {
       flex: 1,
-      height: 36,
+      height: isTablet ? 48 : 36,
       borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
@@ -2728,7 +3330,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactMissBtn: {
       flex: 1,
-      height: 36,
+      height: isTablet ? 48 : 36,
       borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
@@ -2748,22 +3350,29 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactUndoBtn: {
       flex: 1,
-      height: 20,
+      height: isTablet ? 36 : 24,
       borderRadius: 5,
       borderWidth: 1,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
     },
     compactUndoBtnText: {
-      fontSize: 9,
-      fontFamily: 'Inter_500Medium',
+      fontSize: isTablet ? 9 : 7,
+      lineHeight: isTablet ? 11 : 9,
+      textAlign: 'center',
+      fontFamily: 'Inter_700Bold',
     },
-    compactCountStrip: { flexDirection: 'row', gap: 4 },
+    compactCountStrip: {
+      flexDirection: 'row',
+      gap: 4,
+      minHeight: isTablet ? 90 : undefined,
+      marginTop: isTablet ? 4 : 0,
+    },
     compactCountCard: {
       flex: 1,
       borderRadius: 8,
       borderWidth: 1,
-      padding: 4,
+      padding: isTablet ? 7 : 4,
       alignItems: 'center',
       gap: 2,
     },
@@ -2773,11 +3382,11 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       letterSpacing: 0.5,
       textTransform: 'uppercase' as const,
     },
-    compactCountVal: { ...tekoStyle(16) },
+    compactCountVal: { ...tekoStyle(isTablet ? 22 : 16) },
     compactCountBtns: { flexDirection: 'row', gap: 3, width: '100%' },
     compactCountBtn: {
       flex: 1,
-      height: 24,
+      height: isTablet ? 30 : 24,
       borderRadius: 6,
       alignItems: 'center',
       justifyContent: 'center',
@@ -2877,13 +3486,24 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       ...tekoStyle(36),
       letterSpacing: 6,
     },
+    watchAddress: {
+      fontSize: 11,
+      fontFamily: 'Inter_500Medium',
+      marginTop: 6,
+    },
     shareLinkBtn: {
+      height: 48,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary + '80',
+      overflow: 'hidden',
+    },
+    glossyButtonFill: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
-      height: 48,
-      borderRadius: 12,
     },
     shareLinkText: {
       fontSize: 15,

@@ -17,3 +17,9 @@ Full-file downloads via signed URL (`Range: bytes=0-`) work fine (GCS returns 20
 
 ## Also applies to ffmpeg reading a signed URL as input (2026-07)
 Giving ffmpeg a signed URL as `-i` with a pre-input `-ss` (or resuming mid-file) dies in prod with "Error opening input: End of file" — same underlying quirk, since ffmpeg's HTTP seeks are range requests. Any encode that needs to seek into a GCS object must download it locally first (ref-counted shared download), never stream the signed URL.
+
+For multi-GB full-game HLS builds, a full local download is unsafe on RAM-backed `/tmp`. Expose the private object through a loopback-only HTTP server whose Range responses use `file.createReadStream({start,end})`, then give that localhost URL to ffmpeg.
+
+**Why:** A 34-minute game produced no first HLS chunk after more than 12 minutes when ffmpeg read the signed URL directly.
+
+**How to apply:** Keep the loopback server scoped to one worker, bind only to `127.0.0.1`, close it when the encode ends, and continue uploading each completed segment immediately.

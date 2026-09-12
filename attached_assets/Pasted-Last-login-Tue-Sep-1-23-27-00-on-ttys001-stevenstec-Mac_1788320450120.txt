@@ -1,0 +1,67 @@
+Last login: Tue Sep  1 23:27:00 on ttys001
+stevenstec@Mac StecStats % /Users/stevenstec/artifacts/hoops-mobile/ios/StecStats.xcworkspace
+zsh: no such file or directory: /Users/stevenstec/artifacts/hoops-mobile/ios/StecStats.xcworkspace
+stevenstec@Mac StecStats % pwd
+ls
+pnpm --filter @workspace/hoops-mobile run ios:release:prepare
+/Users/stevenstec/Downloads/StecStats
+apple-signin-nonce.patch	pnpm-lock.yaml
+artifacts			pnpm-workspace.yaml
+attached_assets			replit.md
+docs				replit.nix
+Fix iOS release login spinner	screenshots
+lib				scripts
+package.json			tsconfig.base.json
+patches				tsconfig.json
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+[WARN] The "pnpm" field in package.json is no longer read by pnpm. The following keys were ignored: "pnpm.patchedDependencies". See https://pnpm.io/settings for the new home of each setting.
+Scope: all 11 workspace projects
+✓ Lockfile passes supply-chain policies (verified 2d ago)
+
+   ╭───────────────────────────────────────────────╮
+   │                                               │
+   │     Update available! 11.24.0 → 11.25.0.      │
+   │     Changelog: https://pnpm.io/v/11.25.0      │
+   │   To update, run: corepack use pnpm@11.25.0   │
+   │                                               │
+   ╰───────────────────────────────────────────────╯
+
+artifacts/hoops-stats                    | [WARN] deprecated recharts@2.15.4
+[WARN] 14 deprecated subdependencies found: @xmldom/xmldom@0.8.13, @xmldom/xmldom@0.9.10, abab@2.0.6, crypto-js@4.2.0, domexception@4.0.0, fstream@1.0.12, glob@10.5.0, glob@7.2.3, inflight@1.0.6, lodash.isequal@4.5.0, node-domexception@1.0.0, rimraf@2.7.1, rimraf@3.0.2, whatwg-encoding@2.0.0
+Packages: +1577
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Packages are cloned from the content-addressable store to the virtual store.
+  Content-addressable store is at: /Users/stevenstec/Library/pnpm/store/v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 1582, reused 1576, downloaded 0, added 1577, done
+. preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_use…
+└─ Done in 34ms
+[WARN] Issues with peer dependencies found. Run "pnpm peers check" to list them.
+
+dependencies:
++ @replit/connectors-sdk 0.4.1 (0.4.3 is available)
++ @replit/revenuecat-sdk 5.0.0
++ stripe 22.3.0
++ stripe-replit-sync 1.0.0
+
+devDependencies:
++ prettier 3.8.4 (3.9.6 is available)
++ typescript 5.9.3 (7.0.2 is available)
+
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: @clerk/shared@3.47.7, browser-tabs-lock@1.3.0, core-js@3.47.0, esbuild@0.27.3
+
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+[ERROR] Command failed with exit code 1: '/opt/homebrew/Cellar/node@22/22.23.2/bin/node' /Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/bin/pnpm.mjs install
+
+pnpm: Command failed with exit code 1: '/opt/homebrew/Cellar/node@22/22.23.2/bin/node' /Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/bin/pnpm.mjs install
+    at getFinalError (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:89319:14)
+    at makeError (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:91626:21)
+    at getSyncResult (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93470:10)
+    at spawnSubprocessSync (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93430:14)
+    at execaCoreSync (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:93360:23)
+    at callBoundExeca (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:95888:23)
+    at boundExeca (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:95865:49)
+    at sync2 (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:96024:10)
+    at runPnpmCli (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:273513:5)
+    at runDepsStatusCheck (file:///Users/stevenstec/.cache/node/corepack/v1/pnpm/11.24.0/dist/pnpm.mjs:274731:7)
+stevenstec@Mac StecStats % 

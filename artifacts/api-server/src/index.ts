@@ -11,7 +11,12 @@ import { getStripeSync, getStripeCredentials, probeStripeKey } from "./lib/strip
 import { db } from "@workspace/db";
 import { resumeHighlightJob } from "./routes/highlights";
 import { resumeLowlightJob } from "./routes/lowlights";
-import { seedDatabase, applyVideoOffsetFixes, applySchemaAdditions } from "./lib/seed";
+import {
+  seedDatabase,
+  applyVideoOffsetFixes,
+  applyReelLeaseSchemaAdditions,
+  applySchemaAdditions,
+} from "./lib/seed";
 import { PROXY_VERSION, buildGameProxyNow } from "./lib/highlightGenerator";
 
 const rawPort = process.env["PORT"];
@@ -399,28 +404,25 @@ async function cleanupOrphanedTempDirs(): Promise<void> {
 
 async function resumeOrphanedJobs(): Promise<void> {
   try {
-    // Use 150 min — matches STALE_PROCESSING_MS (140 min) with headroom so
-    // jobs that have been dormant since before the last few restarts are
-    // also picked back up (e.g. a job started hours ago that was silently
-    // skipped because it predated the old 60-min window).
-    const cutoff = new Date(Date.now() - 150 * 60 * 1000);
+    // Only expired database leases are resumable. Active jobs on another
+    // autoscaled instance keep renewing their lease and are left untouched.
     const rows = await db.execute(sql`
-      SELECT id, highlight_status, highlight_started_at, lowlight_status, lowlight_started_at
+      SELECT id, highlight_status, highlight_lease_expires_at, lowlight_status, lowlight_lease_expires_at
       FROM games
       WHERE
-        (highlight_status = 'processing' AND highlight_started_at > ${cutoff})
+        (highlight_status IN ('queued', 'processing') AND (highlight_lease_expires_at IS NULL OR highlight_lease_expires_at < NOW()))
         OR
-        (lowlight_status  = 'processing' AND lowlight_started_at  > ${cutoff})
+        (lowlight_status IN ('queued', 'processing') AND (lowlight_lease_expires_at IS NULL OR lowlight_lease_expires_at < NOW()))
     `);
     for (const row of rows.rows) {
       const gameId = Number(row.id);
-      if (row.highlight_status === "processing") {
+      if (row.highlight_status === "queued" || row.highlight_status === "processing") {
         logger.info({ gameId }, "Resuming orphaned highlight job after restart");
-        resumeHighlightJob(gameId);
+        void resumeHighlightJob(gameId);
       }
-      if (row.lowlight_status === "processing") {
+      if (row.lowlight_status === "queued" || row.lowlight_status === "processing") {
         logger.info({ gameId }, "Resuming orphaned lowlight job after restart");
-        resumeLowlightJob(gameId);
+        void resumeLowlightJob(gameId);
       }
     }
   } catch (err) {
@@ -572,6 +574,11 @@ async function boot() {
     logger.info(`RevenueCat webhook credentials: ${rcSource}`);
   }
 
+  // Reel routes cannot operate safely without their database fencing columns.
+  // Unlike legacy additive fixes, failure here is fatal: accepting traffic
+  // would turn every claim/status request into a runtime SQL error.
+  await applyReelLeaseSchemaAdditions();
+
   await applySchemaAdditions().catch((err) => {
     logger.error({ err }, "Error applying schema additions — column may be missing");
   });
@@ -626,6 +633,14 @@ async function boot() {
         setTimeout(() => void sweepMissingProxies(), 30_000);
       });
   }, 5_000);
+
+  // A replacement instance can boot before the dead worker's lease expires.
+  // Keep sweeping so that orphaned work is resumed once it becomes claimable.
+  // Every instance may run this; the atomic database claim elects one owner.
+  const reelLeaseSweep = setInterval(() => {
+    void resumeOrphanedJobs();
+  }, 60_000);
+  reelLeaseSweep.unref();
 }
 
 boot().catch((err) => {

@@ -4,7 +4,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import * as Updates from 'expo-updates';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -33,65 +32,12 @@ import { SubscriptionProvider, initializeRevenueCat } from '@/lib/revenuecat';
 import { useRevenueCatAuthSync } from '@/lib/useRevenueCatAuthSync';
 import { PendingPhotoRetry } from '@/components/PendingPhotoRetry';
 import { useOfflineQueueSync } from '@/lib/useOfflineQueueSync';
+import { ReelDownloadProvider } from '@/lib/reelDownloadManager';
 
 SplashScreen.preventAutoHideAsync();
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-
-/**
- * OTA update strategy — ON_LOAD with a mandatory reload prompt.
- *
- * Why ON_LOAD (not background / next-launch):
- *   The default expo-updates behaviour downloads an update silently and only
- *   applies it on the *next* launch. If the coach force-quits the app while
- *   the download is in progress the partial state can leave them on an old
- *   version indefinitely. Checking and applying synchronously at startup
- *   (before the main UI appears) eliminates that window.
- *
- * Tradeoff vs. background strategy:
- *   Background: zero friction — coaches never see a prompt; update applies
- *     on the next natural relaunch. Appropriate for non-critical style/copy
- *     changes that ship frequently.
- *   ON_LOAD mandatory (this implementation): adds a one-time ~1-3 s pause
- *     at startup when a new update is waiting. Appropriate for critical bug
- *     fixes (scoring logic, video saves, payment flows) where being one
- *     version behind causes data loss or broken features.
- *
- * To switch to background-only for a lower-urgency release cadence, replace
- * the body of useOTAUpdate with a no-op and re-enable expo-updates' built-in
- * checkAutomatically: "ON_LOAD" in app.json (default behaviour).
- *
- * Updates.isEnabled is false in Expo Go and bare dev builds, so this hook
- * silently no-ops during local development.
- */
-async function checkAndApplyUpdate(): Promise<void> {
-  if (!Updates.isEnabled) return;
-  try {
-    const result = await Updates.checkForUpdateAsync();
-    if (!result.isAvailable) return;
-    await Updates.fetchUpdateAsync();
-    await new Promise<void>((resolve) => {
-      Alert.alert(
-        'Update Ready',
-        'A critical update has been downloaded. The app will reload now to apply it.',
-        [{ text: 'Reload', onPress: () => resolve() }],
-        { cancelable: false },
-      );
-    });
-    await Updates.reloadAsync();
-  } catch (err) {
-    // Non-fatal: network errors, invalid manifest, etc. Coach continues on
-    // the current version and will catch the update on the next launch.
-    console.warn('[OTA] Update check failed:', err);
-  }
-}
-
-function useOTAUpdate() {
-  useEffect(() => {
-    checkAndApplyUpdate();
-  }, []);
-}
 
 // Set the API base URL at module level — Expo bundles run outside the proxy
 // and need an absolute URL to reach the API server.
@@ -229,8 +175,9 @@ function AuthGate() {
 }
 
 function RootLayoutNav() {
+  const { userId, isSignedIn, getToken } = useAuth();
   return (
-    <>
+    <ReelDownloadProvider accountId={isSignedIn ? userId : null} getToken={getToken}>
       <ApiAuthSetup />
       <AuthGate />
       <PushNotificationSetup />
@@ -251,7 +198,7 @@ function RootLayoutNav() {
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
       </Stack>
-    </>
+    </ReelDownloadProvider>
   );
 }
 

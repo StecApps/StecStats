@@ -2,7 +2,7 @@ modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 
 [deployment]
 router = "application"
-deploymentTarget = "autoscale"
+deploymentTarget = "gce"
 
 [deployment.build]
 # Run the secrets check before building. If any required secret is missing the
@@ -48,3 +48,19 @@ STRIPE_WEBHOOK_BASE_URL = "https://stecstats.com"
 
 [objectStorage]
 defaultBucketID = "replit-objstore-f1eb7a0b-6a3e-447a-8144-8ac17c074ecd"
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 80
+
+[[ports]]
+localPort = 20095
+externalPort = 3000
+
+[[ports]]
+localPort = 25655
+externalPort = 3001

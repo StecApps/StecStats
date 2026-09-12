@@ -81,6 +81,13 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(() => ({ invalidateQueries: jest.fn() })),
 }));
 
+jest.mock('@react-native-community/netinfo', () => ({
+  __esModule: true,
+  default: {
+    addEventListener: jest.fn(() => jest.fn()),
+  },
+}));
+
 jest.mock('@/hooks/useColors', () => ({
   useColors: jest.fn(() => ({
     background: '#000', foreground: '#fff', primary: '#f97316',
@@ -98,6 +105,10 @@ jest.mock('expo-haptics', () => ({
   notificationAsync:   jest.fn(),
   ImpactFeedbackStyle: { Light: 'light', Medium: 'medium' },
   NotificationFeedbackType: { Success: 'success' },
+}));
+
+jest.mock('expo-linear-gradient', () => ({
+  LinearGradient: ({ children }: any) => children ?? null,
 }));
 
 jest.mock('@expo/vector-icons', () => ({
@@ -118,6 +129,16 @@ jest.mock('@/lib/saveGame',         () => ({ saveGame: jest.fn(), defaultLine: (
 jest.mock('@/lib/uploadStallAlert', () => ({ makeUploadStallHandler: jest.fn(() => jest.fn()) }));
 jest.mock('@/lib/fetchIceServers',  () => ({ fetchIceServers: jest.fn(async () => []) }));
 jest.mock('@/lib/drainPendingViewers', () => ({ drainPendingViewers: jest.fn() }));
+jest.mock('@/modules/hoops-camera/src', () => ({
+  HoopsCameraView: null,
+  isHoopsCameraAvailable: false,
+  isHoopsCameraWebRTCAvailable: false,
+  requestHoopsCameraPermissionsAsync: jest.fn(),
+  startHoopsCameraRecordingAsync: jest.fn(),
+  stopHoopsCameraRecordingAsync: jest.fn(),
+  createHoopsCameraLiveVideoAsync: jest.fn(),
+  releaseHoopsCameraLiveVideoAsync: jest.fn(),
+}));
 
 // ── expo-camera — permissions controlled per-test via the imported mock refs ──
 // NOTE: jest.mock factories are hoisted before variable declarations, so we
@@ -128,6 +149,27 @@ jest.mock('expo-camera', () => ({
   CameraView:               () => null,
   useCameraPermissions:     jest.fn(() => [{ granted: false }, jest.fn()]),
   useMicrophonePermissions: jest.fn(() => [{ granted: false }, jest.fn()]),
+}));
+
+// Scorekeeper only needs a pinch builder and pass-through wrappers here. Mock
+// the public API rather than React Native's NativeModules registry so this test
+// remains independent of RNGestureHandler's native bridge.
+jest.mock('react-native-gesture-handler', () => {
+  const passThrough = ({ children }: any) => children ?? null;
+  const pinch: any = {};
+  pinch.onStart = jest.fn(() => pinch);
+  pinch.onUpdate = jest.fn(() => pinch);
+  return {
+    GestureHandlerRootView: passThrough,
+    GestureDetector: passThrough,
+    Gesture: { Pinch: jest.fn(() => pinch) },
+  };
+});
+
+// These are the only reanimated APIs used by ScorekeeperScreen's pinch state.
+jest.mock('react-native-reanimated', () => ({
+  useSharedValue: jest.fn((initial: unknown) => ({ value: initial })),
+  runOnJS: jest.fn((fn: (...args: any[]) => unknown) => fn),
 }));
 
 // ── react-native — hand-rolled host-component mock ───────────────────────────
@@ -320,8 +362,15 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
 
       await act(async () => { goLiveBtn.props.onPress(); });
 
-      // fetch('/api/live/start') has now resolved, isLive=true, liveCode='TESTLIVE'.
-      // The Go Live button's style gains the red background — confirming state change.
+      // fetch('/api/live/start') prepares liveCode='TESTLIVE' without opening
+      // the live socket. This lets Messages finish before broadcasting begins.
+      const [startLiveBtn] = findNodes(
+        tree.toJSON(),
+        (n) => n.type === 'TouchableOpacity' && treeHasText(n, 'Start Live Now'),
+      );
+      expect(startLiveBtn).toBeDefined();
+      await act(async () => { startLiveBtn.props.onPress(); });
+
       // ── Step 2: press the dismiss/eye-off button to collapse the preview ──
       // camControlBtn buttons all have activeOpacity={0.75}.
       // Order: [flip, mute, orientation, eye-off(dismiss), Go Live]  → index 3.
