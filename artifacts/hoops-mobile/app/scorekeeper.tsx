@@ -492,7 +492,7 @@ export default function ScorekeeperScreen() {
       Alert.alert('Share Link Unavailable', 'The public app address is missing. Close and reopen StecStats, then try Go Live again.');
       return;
     }
-    if (recordingStartedRef.current) {
+    if (recordingStartedRef.current || isRecording) {
       Alert.alert(
         'Keep recording open',
         'Opening Messages backgrounds StecStats, and iPadOS pauses the active camera. Share the live link before you start the game clock. The watch address is shown below so another device can also enter it manually.',
@@ -2632,7 +2632,7 @@ export default function ScorekeeperScreen() {
         <RecordingCameraPreview
           cameraRef={cameraRef}
           sharedCameraMode={sharedCameraMode}
-          cameraActive={!isSharingLiveLink}
+          cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}
           cameraReady={!!cameraReady}
           cameraFacing={cameraFacing}
           cameraZoom={cameraZoom}

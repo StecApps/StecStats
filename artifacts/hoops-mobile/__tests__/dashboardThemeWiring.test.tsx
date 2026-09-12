@@ -240,6 +240,7 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('minHeight: 58');
     expect(rawSrc).toContain('borderRadius: 999');
     expect(rawSrc).toContain('SHARE PLAYER');
+    expect(rawSrc).toContain('numberOfLines={1}');
     expect(rawSrc).toContain('adjustsFontSizeToFit');
     expect(rawSrc).toContain('minimumFontScale={0.72}');
     expect(rawSrc).toContain('PLAYMAKING & DEFENSE');

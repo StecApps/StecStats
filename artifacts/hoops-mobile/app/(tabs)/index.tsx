@@ -511,7 +511,7 @@ function PlayerDashboard({ player }: { player: any }) {
               </View>
               <Text
                 style={[consoleS.playerName, { color: c.foreground }]}
-                numberOfLines={2}
+                numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.72}
               >

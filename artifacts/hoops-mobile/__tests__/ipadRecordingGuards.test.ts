@@ -68,9 +68,9 @@ describe('iPad recording safeguards', () => {
   test('does not crop the iPad preview or background an active recording for Messages', () => {
     expect(source).toContain('style={StyleSheet.absoluteFill}');
     expect(source).not.toContain('scale > 1.01 ? { transform: [{ scale }] }');
-    expect(source).toContain("if (recordingStartedRef.current) {");
+    expect(source).toContain("if (recordingStartedRef.current || isRecording) {");
     expect(source).toContain('Share the live link before you start the game clock.');
-    expect(source).toContain('cameraActive={!isSharingLiveLink}');
+    expect(source).toContain('cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}');
     expect(source).toContain('if (result.action === Share.sharedAction)');
     expect(source).toContain('activateLiveBroadcast(code)');
     expect(source).toContain('Do not connect the broadcaster yet.');
