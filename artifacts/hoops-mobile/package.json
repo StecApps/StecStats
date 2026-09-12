@@ -90,5 +90,10 @@
     "react-native": "0.81.5",
     "react-native-purchases": "^10.6.0",
     "react-native-webrtc": "^124.0.8"
+  },
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": "./modules"
+    }
   }
 }
