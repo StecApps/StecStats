@@ -52,7 +52,9 @@ describe('segmented iOS Highlight playback', () => {
   test('retains combined-reel loading as the legacy fallback and save source', () => {
     expect(highlightSection).toContain("await getReusableStreamUrl(gameId, 'highlight', token)");
     expect(highlightSection).toContain('const objectPath = highlight?.highlightObjectPath');
-    expect(highlightSection).toContain('saveUrl = await waitForReelDownload');
+    expect(highlightSection).toContain("saveUrl = await ensureLocalReelForSave(");
+    expect(highlightSection).toContain("'highlight',");
+    expect(highlightSection).not.toContain('saveReviewVideo(currentClip.streamUrl');
   });
 
   test('uses mutually exclusive inline/modal surfaces and disables native fullscreen', () => {

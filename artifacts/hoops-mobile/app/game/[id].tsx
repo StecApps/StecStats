@@ -117,6 +117,9 @@ async function fetchStreamUrl(
     Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight');
   const reelRangeProxyUrl =
     `${API_BASE}/api/games/${gameId}/stream/${type}?t=${streamToken}&proxy=1`;
+  const serverDownloadUrl = downloadUrl?.startsWith('/')
+    ? `${API_BASE}${downloadUrl}`
+    : downloadUrl;
   const url = proxyType === 'hls'
     ? `${API_BASE}/api/games/${gameId}/hls/playlist.m3u8?t=${streamToken}`
     : useReelRangeProxy
@@ -125,15 +128,12 @@ async function fetchStreamUrl(
 
   return {
     url,
-    // For reel HLS, streamUrl remains the authenticated resumable MP4 proxy.
-    // It is intentionally separate from the native playback playlist.
-    // Native iOS downloads use the signed GCS URL as a single NSURLSession
-    // background transfer. The expo/fetch Range path never left physical
-    // devices even though it worked in unit tests. If the direct URL is
-    // unavailable, retain the authenticated HTTPS proxy as a fallback.
+    // Generated reels always download through the authenticated range proxy on
+    // native devices. Direct signed GCS URLs have returned incorrect bytes for
+    // non-zero Range resumes on physical iOS devices.
     downloadUrl: useReelRangeProxy
-      ? (streamUrl ?? reelRangeProxyUrl)
-      : (downloadUrl?.startsWith('/') ? `${API_BASE}${downloadUrl}` : downloadUrl)
+      ? (serverDownloadUrl ?? reelRangeProxyUrl)
+      : serverDownloadUrl
         ?? streamUrl
         ?? reelRangeProxyUrl,
     isHls: proxyType === 'hls',
@@ -195,21 +195,65 @@ function highlightClipIdentity(index: number, streamUrl: string) {
   return `playback-v1/clip-${index}/${unsignedStreamIdentity(streamUrl)}`;
 }
 
+const REEL_DOWNLOAD_WAIT_MS = 10 * 60_000;
+
 function waitForReelDownload(gameId: number, type: 'highlight' | 'lowlight', objectPath: string) {
   return new Promise<string>((resolve, reject) => {
+    let unsubscribe: () => void = () => undefined;
+    let settled = false;
+    const finish = (result: { uri: string } | { error: Error }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      unsubscribe();
+      if ('uri' in result) resolve(result.uri);
+      else reject(result.error);
+    };
     const inspect = () => {
       const entry = reelDownloadManager.get(gameId, type, objectPath);
       if (entry?.status === 'downloaded' && entry.uri) {
-        unsubscribe();
-        resolve(entry.uri);
+        finish({ uri: entry.uri });
       } else if (entry?.status === 'failed') {
-        unsubscribe();
-        reject(new Error(entry.error ?? 'Download failed'));
+        finish({ error: new Error(entry.error ?? 'Download failed') });
       }
     };
-    const unsubscribe = reelDownloadManager.subscribe(inspect);
+    const timeout = setTimeout(() => {
+      finish({ error: new Error('The complete video is still downloading. Please try Save Video again shortly.') });
+    }, REEL_DOWNLOAD_WAIT_MS);
+    unsubscribe = reelDownloadManager.subscribe(inspect);
+    if (!reelDownloadManager.get(gameId, type, objectPath)) {
+      finish({ error: new Error('The complete video download could not start. Please check your connection and try again.') });
+      return;
+    }
     inspect();
   });
+}
+
+async function ensureLocalReelForSave(
+  gameId: number,
+  type: 'highlight' | 'lowlight',
+  objectPath: string,
+  getToken: () => Promise<string | null>,
+) {
+  const existing = reelDownloadManager.get(gameId, type, objectPath);
+  if (existing?.status === 'downloaded' && existing.uri) return existing.uri;
+
+  const token = await getToken();
+  if (!token) throw new Error('Your session expired. Please sign in again.');
+  // Saving is user-initiated. Mint a fresh range-proxy token rather than reusing
+  // a cached URL which may expire during a resumed transfer.
+  streamUrlCache.delete(streamCacheKey(gameId, type));
+  const result = await fetchStreamUrl(gameId, type, token);
+  const entry = await reelDownloadManager.enqueue({
+    gameId,
+    type,
+    objectPath,
+    url: result.downloadUrl,
+  }, true);
+  if (!entry) {
+    throw new Error('The complete video download could not start. Please check your connection and try again.');
+  }
+  return waitForReelDownload(gameId, type, objectPath);
 }
 
 async function getReusableStreamUrl(
@@ -992,6 +1036,7 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [sharingLowlight, setSharingLowlight] = useState(false);
+  const [savingLowlight, setSavingLowlight] = useState(false);
   const [fullscreenVisible, setFullscreenVisible] = useState(false);
   const [openingWebPlayer, setOpeningWebPlayer] = useState(false);
   const [useNativeDiagnostic, setUseNativeDiagnostic] = useState(false);
@@ -1032,7 +1077,10 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         await reelDownloadManager.invalidate(gameId, 'lowlight', objectPath);
         if (!isCurrentLoad()) return;
       }
-      const result = forceFresh
+      const pendingDownload = reelDownloadManager.get(gameId, 'lowlight', objectPath);
+      const refreshDownloadUrl = pendingDownload?.needsUrlRefresh === true;
+      if (refreshDownloadUrl) streamUrlCache.delete(streamCacheKey(gameId, 'lowlight'));
+      const result = forceFresh || refreshDownloadUrl
         ? await fetchStreamUrl(gameId, 'lowlight', token)
         : await getReusableStreamUrl(gameId, 'lowlight', token);
       if (!isCurrentLoad()) return;
@@ -1040,6 +1088,13 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       // Play the complete signed MP4 progressively instead, while keeping the
       // persistent MP4 transfer running independently for Save/offline use.
       if (result.isHls && Platform.OS !== 'web') {
+        const existing = reelDownloadManager.get(gameId, 'lowlight', objectPath);
+        if (existing?.status === 'downloaded' && existing.uri) {
+          setStreamIsHls(false);
+          setSignedUrl(existing.uri);
+          setSourceAttachRequest({ url: existing.uri, id: loadGeneration });
+          return;
+        }
         if (downloadManagerReady) {
           await reelDownloadManager.enqueue({ gameId, type: 'lowlight', objectPath, url: result.downloadUrl }, true);
         }
@@ -1139,14 +1194,24 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   }, [player, signedUrl, lowlightDownload?.status, loadLowlightVideo]);
 
   async function handleSaveLowlight() {
+    if (savingLowlight) return;
     const objectPath = lowlight?.lowlightObjectPath;
-    if (!objectPath || !signedUrl) return;
-    // Never hand the HLS manifest to the photo-library saver. The parallel
-    // token-bound MP4 download is the durable save/offline fallback.
-    const saveUrl = streamIsHls
-      ? lowlightDownload?.uri ?? await waitForReelDownload(gameId, 'lowlight', objectPath)
-      : signedUrl;
-    await saveReviewVideo(saveUrl, 'Game Lowlights');
+    if (!objectPath) {
+      Alert.alert('Save Failed', 'The complete lowlight video is still processing. Please try again shortly.');
+      return;
+    }
+    setSavingLowlight(true);
+    try {
+      const saveUrl = Platform.OS === 'web'
+        ? signedUrl
+        : await ensureLocalReelForSave(gameId, 'lowlight', objectPath, getTokenRef.current);
+      if (!saveUrl) throw new Error('The lowlight video is not ready yet. Please try again shortly.');
+      await saveReviewVideo(saveUrl, 'Game Lowlights');
+    } catch (error: any) {
+      Alert.alert('Save Failed', error?.message ?? 'The complete lowlight video could not be saved.');
+    } finally {
+      setSavingLowlight(false);
+    }
   }
 
   async function handleShareLowlight() {
@@ -1376,11 +1441,12 @@ function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
           <TouchableOpacity
             testID="save-lowlight-video"
             onPress={handleSaveLowlight}
-            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1 }]}
+            disabled={savingLowlight}
+            style={[ytStyle.btn, { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, flex: 1, opacity: savingLowlight ? 0.65 : 1 }]}
             activeOpacity={0.8}
           >
-            <Feather name="download" size={16} color={colors.foreground} />
-            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>Save Video</Text>
+            {savingLowlight ? <ActivityIndicator size="small" color={colors.foreground} /> : <Feather name="download" size={16} color={colors.foreground} />}
+            <Text style={[ytStyle.btnText, { color: colors.foreground }]}>{savingLowlight ? 'Saving…' : 'Save Video'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             testID="regenerate-lowlights"
@@ -1606,12 +1672,22 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
         await reelDownloadManager.invalidate(gameId, 'highlight', objectPath);
         if (!isCurrentLoad()) return;
       }
-      const result = forceFresh
+      const pendingDownload = reelDownloadManager.get(gameId, 'highlight', objectPath);
+      const refreshDownloadUrl = pendingDownload?.needsUrlRefresh === true;
+      if (refreshDownloadUrl) streamUrlCache.delete(streamCacheKey(gameId, 'highlight'));
+      const result = forceFresh || refreshDownloadUrl
         ? await fetchStreamUrl(gameId, 'highlight', token)
         : await getReusableStreamUrl(gameId, 'highlight', token);
       if (!isCurrentLoad()) return;
 
       if (result.isHls && Platform.OS !== 'web') {
+        const existing = reelDownloadManager.get(gameId, 'highlight', objectPath);
+        if (existing?.status === 'downloaded' && existing.uri) {
+          setStreamIsHls(false);
+          setSignedUrl(existing.uri);
+          setSourceAttachRequest({ url: existing.uri, id: loadGeneration });
+          return;
+        }
         if (downloadManagerReady) {
           await reelDownloadManager.enqueue({ gameId, type: 'highlight', objectPath, url: result.downloadUrl }, true);
         }
@@ -1990,28 +2066,15 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
     setSavingClip(true);
     try {
       let saveUrl = signedUrl;
-      if (usesSegmentedPlayback) {
+      if (Platform.OS !== 'web') {
         const objectPath = highlight?.highlightObjectPath;
-        if (!objectPath) throw new Error('The combined highlight is not available.');
-        const downloaded = reelDownloadManager.get(gameId, 'highlight', objectPath);
-        if (downloaded?.status === 'downloaded' && downloaded.uri) {
-          saveUrl = downloaded.uri;
-        } else {
-          const token = await getTokenRef.current();
-          if (!token) throw new Error('Your session expired. Please sign in again.');
-          const result = await getReusableStreamUrl(gameId, 'highlight', token);
-          if (Platform.OS === 'web') {
-            saveUrl = result.url;
-          } else {
-            await reelDownloadManager.enqueue({
-              gameId,
-              type: 'highlight',
-              objectPath,
-              url: result.downloadUrl,
-            }, true);
-            saveUrl = await waitForReelDownload(gameId, 'highlight', objectPath);
-          }
-        }
+        if (!objectPath) throw new Error('The complete Highlight is still processing. Please try again shortly.');
+        saveUrl = await ensureLocalReelForSave(
+          gameId,
+          'highlight',
+          objectPath,
+          getTokenRef.current,
+        );
       }
       if (!saveUrl) throw new Error('The highlight video is not ready.');
       await saveReviewVideo(saveUrl, 'Game Highlights');

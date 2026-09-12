@@ -27,7 +27,12 @@ export async function saveReviewVideo(url: string, title: string): Promise<void>
     });
   } catch (error: any) {
     if (error?.message !== 'User did not share') {
-      Alert.alert('Save Failed', 'Could not open the save sheet. Please try again.');
+      Alert.alert(
+        'Save Failed',
+        url.startsWith('file:')
+          ? 'Photos could not save this video. Check Photos access and available device storage, then try again.'
+          : 'Could not open the save sheet. Please try again.',
+      );
     }
   }
 }

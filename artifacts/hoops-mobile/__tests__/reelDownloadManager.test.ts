@@ -310,6 +310,76 @@ describe('ReelDownloadManager behavior', () => {
     expect(mockFiles.get(interrupted.uri!)).toBe(4096);
   });
 
+  test('waits for an aborted iOS range writer before switching accounts', async () => {
+    Platform.OS = 'ios';
+    let rejectRead!: (error: Error) => void;
+    (expoFetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 206,
+      headers: { get: (name: string) => {
+        if (name.toLowerCase() === 'content-range') return 'bytes 0-2047/4096';
+        if (name.toLowerCase() === 'content-length') return '2048';
+        return null;
+      } },
+      body: { getReader: () => ({
+        read: jest.fn(() => new Promise((_resolve, reject) => { rejectRead = reject; })),
+        cancel: jest.fn(),
+      }) },
+    });
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a');
+    manager.setNetworkForTesting('wifi', true);
+    await manager.enqueue(rangeReel());
+    await flush();
+
+    let switched = false;
+    const switching = manager.activate('coach-b').then(() => { switched = true; });
+    await flush();
+    expect(switched).toBe(false);
+
+    rejectRead(new Error('Aborted'));
+    await switching;
+    expect(switched).toBe(true);
+    expect(manager.snapshot()).toEqual([]);
+  });
+
+  test('waits for an invalidated range writer to close before deleting its partial file', async () => {
+    Platform.OS = 'ios';
+    let releaseRead!: (value: { done: false; value: Uint8Array }) => void;
+    (expoFetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      status: 206,
+      headers: { get: (name: string) => {
+        if (name.toLowerCase() === 'content-range') return 'bytes 0-2047/4096';
+        if (name.toLowerCase() === 'content-length') return '2048';
+        return null;
+      } },
+      body: { getReader: () => ({
+        read: jest.fn(() => new Promise((resolve) => { releaseRead = resolve; })),
+        cancel: jest.fn(() => Promise.resolve()),
+      }) },
+    });
+    const manager = new ReelDownloadManager();
+    await manager.activate('coach-a');
+    manager.setNetworkForTesting('wifi', true);
+    await manager.enqueue(rangeReel());
+    await flush();
+    const partialUri = `${manager.get(7, 'highlight', 'reels/one.mp4')!.uri}.part`;
+
+    let invalidated = false;
+    const invalidating = manager.invalidate(7, 'highlight', 'reels/one.mp4')
+      .then(() => { invalidated = true; });
+    await flush();
+    expect(invalidated).toBe(false);
+
+    releaseRead({ done: false, value: new Uint8Array(2048) });
+    await invalidating;
+
+    expect(invalidated).toBe(true);
+    expect(manager.get(7, 'highlight', 'reels/one.mp4')).toBeUndefined();
+    expect(mockFiles.has(partialUri)).toBe(false);
+  });
+
   test('uses the native background downloader for a signed GCS URL on iOS', async () => {
     Platform.OS = 'ios';
     const manager = new ReelDownloadManager();
@@ -325,6 +395,54 @@ describe('ReelDownloadManager behavior', () => {
       .toBe('https://signed/reels/one.mp4');
     expect(expoFetch).not.toHaveBeenCalled();
     expect(manager.get(7, 'highlight', 'reels/one.mp4')?.status).toBe('downloaded');
+  });
+
+  test('background discovery prefers the authenticated range-proxy download URL', async () => {
+    Platform.OS = 'ios';
+    const nativeFetch = global.fetch;
+    global.fetch = jest.fn((request: string | URL | Request) => {
+      const url = String(request);
+      if (url.endsWith('/api/games')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 7 }],
+        });
+      }
+      if (url.includes('/stream-token/highlight')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            token: 'stream-token',
+            streamUrl: 'https://signed/reels/one.mp4',
+            downloadUrl: '/api/games/7/stream/highlight?t=stream-token&proxy=1',
+            proxyType: 'hls',
+          }),
+        });
+      }
+      if (url.endsWith('/api/games/7/highlight')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            status: 'ready',
+            highlightObjectPath: 'reels/one.mp4',
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: false,
+        json: async () => ({}),
+      });
+    }) as jest.Mock;
+    try {
+      const manager = new ReelDownloadManager();
+      await manager.activate('coach-a');
+      await manager.discover('clerk-token');
+
+      expect(manager.get(7, 'highlight', 'reels/one.mp4')?.url)
+        .toBe('/api/games/7/stream/highlight?t=stream-token&proxy=1');
+    } finally {
+      global.fetch = nativeFetch;
+    }
   });
 
   test('never restores another account resumable transfer', async () => {

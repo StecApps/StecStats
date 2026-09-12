@@ -23,7 +23,7 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight')");
     expect(gameScreen).toContain('const reelRangeProxyUrl =');
     expect(gameScreen).toContain('downloadUrl: useReelRangeProxy');
-    expect(gameScreen).toContain('? (streamUrl ?? reelRangeProxyUrl)');
+    expect(gameScreen).toContain('? (serverDownloadUrl ?? reelRangeProxyUrl)');
   });
 
   test('bypasses native reel HLS with the complete progressive MP4 while retaining offline downloads', () => {
@@ -31,7 +31,17 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("url: result.downloadUrl");
     expect(gameScreen).toContain("setStreamIsHls(false);");
     expect(gameScreen).toContain("setSourceAttachRequest({ url: result.downloadUrl");
+    expect(gameScreen).toContain("existing?.status === 'downloaded' && existing.uri");
+    expect(gameScreen).toContain("setSourceAttachRequest({ url: existing.uri");
     expect(gameScreen).toContain("playbackSource(sourceAttachRequest.url, streamIsHls)");
+  });
+
+  test('saves generated reels from a verified local file instead of a remote stream URL', () => {
+    expect(gameScreen).toContain('async function ensureLocalReelForSave(');
+    expect(gameScreen).toContain('streamUrlCache.delete(streamCacheKey(gameId, type))');
+    expect(gameScreen).toContain('url: result.downloadUrl');
+    expect(gameScreen).toContain('return waitForReelDownload(gameId, type, objectPath)');
+    expect(gameScreen).toContain("Platform.OS !== 'web'");
   });
 
   test('uses a larger LRU cache and a forward buffer for full games', () => {
@@ -72,6 +82,12 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("loadHighlightVideo(true, Platform.OS === 'ios')");
     expect(gameScreen).toContain('streamUrlCache.delete');
     expect(gameScreen).toContain('testID="retry-highlight-playback"');
+  });
+
+  test('mints a fresh range-proxy token while preserving interrupted partial bytes', () => {
+    expect(gameScreen).toContain('pendingDownload?.needsUrlRefresh === true');
+    expect(gameScreen).toContain('if (refreshDownloadUrl) streamUrlCache.delete');
+    expect(gameScreen).toContain('forceFresh || refreshDownloadUrl');
   });
 
   test('automatically resumes a successfully-started local Highlight after one transient AVPlayer error', () => {

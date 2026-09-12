@@ -81,11 +81,11 @@ An unfinished HLS build must be re-triggerable from playlist refreshes, and an u
 
 **How to apply:** Put the source object path in portable HLS token state, idempotently resume on unfinished playlist reads, and return `proxyReady=false` until short-game proxy media exists.
 
-iOS Highlight/Lowlight playback should bypass reel HLS and use the complete remote progressive MP4 while the offline download continues separately.
+iOS Highlight/Lowlight playback may start from the complete remote progressive MP4, but native Save Video must use a verified local combined reel.
 
-**Why:** On a physical iPhone, both Highlight and Lowlight HLS played segment 1 and stopped during segment 2. A local-only build downloaded the reels but showed black video, while public complete-MP4 links played end-to-end.
+**Why:** On a physical iPhone, reel HLS stopped during segment 2. Passing the replacement HTTPS MP4 to Save Video opened sharing instead of Photos, and direct signed-URL resumes could produce incorrect bytes.
 
-**How to apply:** When the server advertises reel HLS, attach its separate signed complete-MP4 URL as progressive media instead of the playlist. Keep the manager download only for offline Save/share; do not wait for or attach the local file.
+**How to apply:** Bypass reel HLS for native playback. Download the combined MP4 through the authenticated range proxy, preserve partial bytes only with a fresh token, verify size/checksum before atomic promotion, and pass only the local file to Photos. Never treat segmented clips as the downloadable reel.
 
 Native iPhone reel HLS should use one app-owned full-screen modal instead of AVPlayerViewController, and download-state refreshes must stay on the combined-reel loader.
 

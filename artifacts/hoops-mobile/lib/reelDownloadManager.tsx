@@ -28,6 +28,11 @@ export type ReelDownload = {
 };
 
 type Listener = () => void;
+type RangeTransfer = {
+  id: string;
+  controller: AbortController;
+  promise: Promise<unknown>;
+};
 const MIN_COMPLETE_BYTES = 1024;
 // Some production range proxies close a response which remains open for an
 // entire reel. Keep every iOS request comfortably below those limits.
@@ -58,7 +63,7 @@ export class ReelDownloadManager {
   private accountId: string | null = null;
   private entries = new Map<string, ReelDownload>();
   private tasks = new Map<string, ReturnType<typeof FileSystem.createDownloadResumable>>();
-  private controllers = new Map<string, AbortController>();
+  private rangeTransfers = new Set<RangeTransfer>();
   private generations = new Map<string, number>();
   private listeners = new Set<Listener>();
   private active = 0;
@@ -99,8 +104,11 @@ export class ReelDownloadManager {
     if (accountId === this.accountId) return;
     // Never allow a completed callback from the old account to update the new one.
     await this.pauseActiveDownloads();
-    for (const controller of this.controllers.values()) controller.abort();
-    this.controllers.clear();
+    for (const transfer of this.rangeTransfers) transfer.controller.abort();
+    // expo/fetch range readers own an open file handle. Wait for every aborted
+    // reader to close before another account can reopen the same durable path.
+    await Promise.allSettled([...this.rangeTransfers].map((transfer) => transfer.promise));
+    this.rangeTransfers.clear();
     this.tasks.clear(); this.generations.clear(); this.active = 0; this.entries.clear(); this.accountId = accountId;
     if (!accountId) {
       this.unsubscribeNetwork?.(); this.unsubscribeNetwork = null;
@@ -306,8 +314,11 @@ export class ReelDownloadManager {
       this.tasks.delete(id);
       await task.pauseAsync().catch(() => undefined);
     }
-    this.controllers.get(id)?.abort();
-    this.controllers.delete(id);
+    const activeRanges = [...this.rangeTransfers].filter((transfer) => transfer.id === id);
+    for (const transfer of activeRanges) transfer.controller.abort();
+    // Do not allow regeneration/re-enqueue to reopen this .part path until every
+    // prior writer has observed cancellation and closed its file handle.
+    await Promise.allSettled(activeRanges.map((transfer) => transfer.promise));
     if (entry?.uri) await FileSystem.deleteAsync(entry.uri, { idempotent: true }).catch(() => undefined);
     await FileSystem.deleteAsync(this.partialUriFor({ gameId, type, objectPath }), { idempotent: true }).catch(() => undefined);
     await this.persist(); this.emit();
@@ -330,10 +341,19 @@ export class ReelDownloadManager {
         if (reel.status !== 'ready' || typeof objectPath !== 'string') return;
         const stream = await fetch(`${base}/api/games/${game.id}/stream-token/${type}`, { headers: { Authorization: `Bearer ${token}` } });
         if (!stream.ok || this.accountId !== accountAtStart) return;
-        const data = await stream.json() as { streamUrl?: string; token?: string; proxyType?: string };
-        // Reel HLS responses retain streamUrl as the token-bound MP4 range
-        // endpoint so offline downloads never try to save an M3U8 manifest.
-        const url = data.streamUrl ?? `${base}/api/games/${game.id}/stream/${type}?t=${data.token}`;
+        const data = await stream.json() as {
+          streamUrl?: string;
+          downloadUrl?: string;
+          token?: string;
+          proxyType?: string;
+        };
+        // Prefer the server's authenticated GCS-SDK range proxy. It supports
+        // truthful Content-Range/MD5 validation and safe resume on physical iOS.
+        const serverDownloadUrl = data.downloadUrl?.startsWith('/')
+          ? `${base}${data.downloadUrl}`
+          : data.downloadUrl;
+        const url = serverDownloadUrl
+          ?? `${base}/api/games/${game.id}/stream/${type}?t=${data.token}&proxy=1`;
         await this.enqueue({ gameId: game.id, type, objectPath, url });
       })));
     } catch {
@@ -373,8 +393,14 @@ export class ReelDownloadManager {
       let result: { uri: string; status: number; headers: Record<string, string> } | undefined;
       if (useIosRangeProxy) {
         controller = new AbortController();
-        this.controllers.set(id, controller);
-        result = await this.downloadRange(entry, partialUri, id, generation, controller.signal);
+        const rangeTransfer = this.downloadRange(entry, partialUri, id, generation, controller.signal);
+        const trackedTransfer: RangeTransfer = { id, controller, promise: rangeTransfer };
+        this.rangeTransfers.add(trackedTransfer);
+        try {
+          result = await rangeTransfer;
+        } finally {
+          this.rangeTransfers.delete(trackedTransfer);
+        }
       } else {
         task = FileSystem.createDownloadResumable(
           entry.url,
@@ -467,7 +493,6 @@ export class ReelDownloadManager {
       // the old account must not delete its task or decrement its active count.
       if (this.accountId === accountAtStart) {
         if (task && this.tasks.get(id) === task) this.tasks.delete(id);
-        if (controller && this.controllers.get(id) === controller) this.controllers.delete(id);
         this.active = Math.max(0, this.active - 1);
         await this.persist(); this.emit(); this.pump();
       }
@@ -551,16 +576,16 @@ export class ReelDownloadManager {
             const { done, value } = await reader.read();
             if (done) break;
             if (!value) continue;
+            if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) {
+              await reader.cancel();
+              return undefined;
+            }
             if (chunkWritten + value.byteLength > chunkBytes) {
               throw new Error('Download response exceeded its requested byte range');
             }
             handle.writeBytes(value);
             chunkWritten += value.byteLength;
             bytesWritten += value.byteLength;
-            if (this.entries.get(id) !== entry || this.generations.get(id) !== generation) {
-              await reader.cancel();
-              return undefined;
-            }
             entry.bytesWritten = bytesWritten;
             entry.expectedBytes = totalBytes;
             entry.expectedMd5 = expectedMd5;

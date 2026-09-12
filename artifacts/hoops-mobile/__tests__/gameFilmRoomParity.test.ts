@@ -44,8 +44,11 @@ describe('mobile game-video parity', () => {
     expect(gameScreen).toContain('testID="save-highlight-video"');
     expect(gameScreen).toContain('testID="save-lowlight-video"');
     expect(gameScreen).toContain('saveReviewVideo(streamUrl, `Full Game — vs ${game.opponent}`)');
-    expect(gameScreen).toContain("saveReviewVideo(signedUrl, 'Game Highlights')");
-    expect(gameScreen).toContain("saveReviewVideo(signedUrl, 'Game Lowlights')");
+    expect(gameScreen).toMatch(/ensureLocalReelForSave\(\s*gameId,\s*'highlight'/);
+    expect(gameScreen).toContain("await ensureLocalReelForSave(gameId, 'lowlight'");
+    expect(gameScreen).not.toContain('if (!objectPath || !signedUrl) return;');
+    expect(gameScreen).toContain("saveReviewVideo(saveUrl, 'Game Highlights')");
+    expect(gameScreen).toContain("saveReviewVideo(saveUrl, 'Game Lowlights')");
     expect(gameScreen).toContain('testID="regenerate-highlights"');
     expect(gameScreen).toContain('testID="regenerate-lowlights"');
   });
@@ -69,6 +72,18 @@ describe('mobile game-video parity', () => {
       await saveReviewVideo('file:///documents/reels/highlight.mp4', 'Game Highlights');
       expect(saveToLibrary).toHaveBeenCalledWith('file:///documents/reels/highlight.mp4');
       expect(alert).toHaveBeenCalledWith('Video Saved', 'Game Highlights was saved to Photos.');
+      expect(share).not.toHaveBeenCalled();
+    });
+
+    test('reports actionable Photos errors for a completed local reel', async () => {
+      saveToLibrary.mockRejectedValueOnce(new Error('Not enough storage'));
+
+      await saveReviewVideo('file:///documents/reels/highlight.mp4', 'Game Highlights');
+
+      expect(alert).toHaveBeenCalledWith(
+        'Save Failed',
+        'Photos could not save this video. Check Photos access and available device storage, then try again.',
+      );
       expect(share).not.toHaveBeenCalled();
     });
 
