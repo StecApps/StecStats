@@ -33,7 +33,7 @@
       }
     },
     "production": {
-      "autoIncrement": true,
+      "autoIncrement": false,
       "channel": "production",
       "environment": "production",
       "env": {

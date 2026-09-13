@@ -108,7 +108,7 @@ describe('iPad recording safeguards', () => {
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
     expect(appConfig.expo.runtimeVersion).toBe('1.0.0-shared-camera-20260929');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260929');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260931');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
