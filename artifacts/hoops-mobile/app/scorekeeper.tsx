@@ -272,6 +272,12 @@ export default function ScorekeeperScreen() {
               setTeamScoreAdj(draft.teamScoreAdj);
               setHalf(draft.half);
               setSeconds(draft.seconds);
+              setGameStarted(
+                draft.seconds > 0 ||
+                draft.events.length > 0 ||
+                draft.opponentScore !== 0 ||
+                draft.teamScoreAdj !== 0,
+              );
             },
           },
         ],
@@ -281,6 +287,7 @@ export default function ScorekeeperScreen() {
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null);
   const [stats, setStats] = useState<Record<number, StatLine>>({});
   const [events, setEvents] = useState<GameEvent[]>([]);
+  const [gameStarted, setGameStarted] = useState(false);
 
   // ── Offline / connectivity state ───────────────────────────────────────────
   const [isOnline, setIsOnline] = useState(true);
@@ -1255,6 +1262,7 @@ export default function ScorekeeperScreen() {
 
   function handleStartStop() {
     if (!running) {
+      setGameStarted(true);
       if (seconds === 0) startRef.current = Date.now();
       setRunning(true);
       if (recordVideo && !recordingStartedRef.current) {
@@ -1340,12 +1348,11 @@ export default function ScorekeeperScreen() {
 
   const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0) + teamScoreAdj;
   const hasGameActivity =
-    running ||
+    gameStarted ||
     seconds > 0 ||
     events.length > 0 ||
     teamScore !== 0 ||
-    opponentScore !== 0 ||
-    isRecording;
+    opponentScore !== 0;
 
   // ─── WebRTC camera stream — opened when live, closed when done ──────────────
   useEffect(() => {

@@ -78,6 +78,8 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   private var facing: AVCaptureDevice.Position = .back
   private var normalizedZoom: CGFloat = 0
   private var microphoneMuted = false
+  private var lifecycleGeneration = 0
+  private var appDidBecomeActiveObserver: NSObjectProtocol?
 
   var eventHandler: ((String, [String: Any]) -> Void)?
   var previewReadyHandler: (() -> Void)?
@@ -312,6 +314,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
 
   func stopForLifecycle() {
     sessionQueue.async {
+      self.lifecycleGeneration += 1
       guard self.isRecording || self.session.isRunning else {
         return
       }
@@ -325,12 +328,54 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   }
 
   func resumeFromLifecycle() {
-    sessionQueue.async {
-      guard self.isPreviewAttached, self.isPreviewActive else {
+    // Expo's foreground hook can run while UIApplication is still inactive.
+    // Starting AVCaptureSession at that point can leave a frozen preview,
+    // especially when the iPad rotated while Messages was open. Wait for the
+    // authoritative didBecomeActive notification, then allow orientation to
+    // settle before restarting capture.
+    DispatchQueue.main.async {
+      self.removeAppDidBecomeActiveObserver()
+      if UIApplication.shared.applicationState == .active {
+        self.scheduleLifecycleResume()
         return
       }
-      self.configureIfNeeded()
-      self.startSessionIfPossible()
+      self.appDidBecomeActiveObserver = NotificationCenter.default.addObserver(
+        forName: UIApplication.didBecomeActiveNotification,
+        object: nil,
+        queue: .main
+      ) { [weak self] _ in
+        guard let self else { return }
+        self.removeAppDidBecomeActiveObserver()
+        self.scheduleLifecycleResume()
+      }
+    }
+  }
+
+  private func scheduleLifecycleResume() {
+    sessionQueue.async {
+      self.lifecycleGeneration += 1
+      let generation = self.lifecycleGeneration
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+        guard UIApplication.shared.applicationState == .active else {
+          return
+        }
+        self.sessionQueue.async {
+          guard generation == self.lifecycleGeneration,
+                self.isPreviewAttached,
+                self.isPreviewActive else {
+            return
+          }
+          self.configureIfNeeded()
+          self.startSessionIfPossible()
+        }
+      }
+    }
+  }
+
+  private func removeAppDidBecomeActiveObserver() {
+    if let observer = appDidBecomeActiveObserver {
+      NotificationCenter.default.removeObserver(observer)
+      appDidBecomeActiveObserver = nil
     }
   }
 
@@ -338,7 +383,11 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     // Stop publishing immediately, before the asynchronous session teardown.
     // Any already-queued retained frame observes nil and is safely released.
     frameRouter.setFrameSink(nil)
+    DispatchQueue.main.async {
+      self.removeAppDidBecomeActiveObserver()
+    }
     sessionQueue.async {
+      self.lifecycleGeneration += 1
       if self.isRecording {
         self.movieOutput.stopRecording()
       }

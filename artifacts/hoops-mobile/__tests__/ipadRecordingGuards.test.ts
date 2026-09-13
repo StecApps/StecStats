@@ -18,6 +18,11 @@ describe('iPad recording safeguards', () => {
   test('keeps iOS capture orientation responsive to physical device rotation', () => {
     expect(source).toContain('responsiveOrientationWhenOrientationLocked');
     expect(source).toContain('!isTablet && <TouchableOpacity');
+    expect(nativeCameraSource).toContain('UIApplication.didBecomeActiveNotification');
+    expect(nativeCameraSource).toContain('self.scheduleLifecycleResume()');
+    expect(nativeCameraSource).toContain('DispatchQueue.main.asyncAfter(deadline: .now() + 0.35)');
+    expect(nativeCameraSource).toContain('UIApplication.shared.applicationState == .active');
+    expect(nativeCameraSource).toContain('generation == self.lifecycleGeneration');
   });
 
   test('does not wait forever when native stopRecording hangs during camera switch', () => {
@@ -108,7 +113,7 @@ describe('iPad recording safeguards', () => {
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
     expect(appConfig.expo.runtimeVersion).toBe('1.0.0-shared-camera-20260929');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260932');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260933');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
@@ -128,7 +133,11 @@ describe('iPad recording safeguards', () => {
   });
 
   test('shows a prominent Start Game action after sharing before gameplay begins', () => {
+    expect(source).toContain('const [gameStarted, setGameStarted] = useState(false)');
+    expect(source).toContain('setGameStarted(true)');
     expect(source).toContain('const hasGameActivity =');
+    expect(source).toContain('gameStarted ||');
+    expect(source).not.toContain('opponentScore !== 0 ||\\n    isRecording');
     expect(source).toContain('testID="start-game-footer"');
     expect(source).toContain('<Text style={styles.saveBtnText}>Start Game</Text>');
     expect(source).toContain(') : !hasGameActivity ? (');
