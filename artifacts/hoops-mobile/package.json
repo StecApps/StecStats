@@ -93,10 +93,7 @@
   },
   "expo": {
     "autolinking": {
-      "nativeModulesDir": "./modules",
-      "exclude": [
-        "@workspace/hoops-camera"
-      ]
+      "nativeModulesDir": "./modules"
     }
   }
 }

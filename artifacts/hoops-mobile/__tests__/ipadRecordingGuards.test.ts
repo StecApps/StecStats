@@ -79,11 +79,9 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}');
     expect(source).toContain('if (result.action === Share.sharedAction)');
     expect(source).toContain('activateLiveBroadcast(code)');
-    expect(source).toContain('scheduleIdleCameraRecovery();');
-    expect(source).toContain("AppState.addEventListener('change'");
-    expect(source).toContain("nextState === 'active'");
-    expect(source).toContain('key={cameraRecoveryKey}');
-    expect(source).toContain('cameraReadyRef.current = false');
+    expect(source).not.toContain('scheduleIdleCameraRecovery');
+    expect(source).not.toContain("AppState.addEventListener('change'");
+    expect(source).not.toContain('key={cameraRecoveryKey}');
     expect(source).not.toContain('expo-screen-orientation');
     expect(source).not.toContain('ScreenOrientation.lockAsync');
     expect(source).toContain('Do not connect the broadcaster yet.');
@@ -107,9 +105,9 @@ describe('iPad recording safeguards', () => {
   test('keeps the unstable shared native camera disabled for build 20260924', () => {
     expect(source).toContain('const ENABLE_SHARED_CAMERA_MODE = false');
     expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
-    expect(packageConfig.expo.autolinking.exclude).toContain('@workspace/hoops-camera');
+    expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-record-entry-safe-20260926');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-record-entry-rollback-20260927');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {

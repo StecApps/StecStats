@@ -251,7 +251,7 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('statsColLandscape: { flex: 8 }');
     expect(rawSrc).toContain('gridLandscape: { flexDirection: \'row\', alignItems: \'stretch\', minHeight: 580 }');
     expect(rawSrc).toContain('cell: { flex: 1, minHeight: 130');
-    expect(rawSrc).toContain("alignItems: 'center', gap: 6");
+    expect(rawSrc).toContain("alignItems: 'center', gap: 4");
     expect(rawSrc).toContain("label: { width: '100%', textAlign: 'center'");
     expect(rawSrc).toContain("sub: { width: '100%', textAlign: 'center'");
     expect(rawSrc).toContain('shootingCardLandscape: { minHeight: 154');

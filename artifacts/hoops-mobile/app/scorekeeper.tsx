@@ -33,8 +33,6 @@ import {
   Modal,
   Animated,
   Share,
-  AppState,
-  Dimensions,
   PermissionsAndroid,
   ToastAndroid,
 } from 'react-native';
@@ -395,22 +393,6 @@ export default function ScorekeeperScreen() {
   const [micMuted, setMicMuted] = useState(false);
   // null = follow device rotation; true/false = locked to landscape/portrait
   const [layoutLandscape, setLayoutLandscape] = useState<boolean | null>(null);
-  const [cameraRecoveryKey, setCameraRecoveryKey] = useState(0);
-  const cameraRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const scheduleIdleCameraRecovery = useCallback(() => {
-    if (recordingStartedRef.current) return;
-    if (cameraRecoveryTimerRef.current) clearTimeout(cameraRecoveryTimerRef.current);
-    cameraRecoveryTimerRef.current = setTimeout(() => {
-      cameraRecoveryTimerRef.current = null;
-      if (recordingStartedRef.current) return;
-      cameraReadyRef.current = false;
-      setLayoutLandscape(null);
-      setCameraContainerSize({ w: 0, h: 0 });
-      setCameraRecoveryKey((key) => key + 1);
-    }, 300);
-  }, []);
-
   // ── Camera zoom (pinch-to-zoom) ───────────────────────────────────────────
   // cameraZoom is 0-1 passed to CameraView's zoom prop.
   // pinchBaseZoom is the committed zoom at the START of each pinch gesture.
@@ -539,7 +521,6 @@ export default function ScorekeeperScreen() {
       }
     } finally {
       setIsSharingLiveLink(false);
-      scheduleIdleCameraRecovery();
     }
   }
 
@@ -1116,19 +1097,6 @@ export default function ScorekeeperScreen() {
       if (!micPermission?.granted) await requestMicPermission();
     })();
   }, [recordVideo, sharedCameraMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'active') scheduleIdleCameraRecovery();
-    });
-    return () => {
-      subscription.remove();
-      if (cameraRecoveryTimerRef.current) {
-        clearTimeout(cameraRecoveryTimerRef.current);
-        cameraRecoveryTimerRef.current = null;
-      }
-    };
-  }, [scheduleIdleCameraRecovery]);
 
   // HoopsCamera controls the movie output's audio connection directly, so
   // mute/unmute never opens a second capture session or interrupts video.
@@ -2669,7 +2637,6 @@ export default function ScorekeeperScreen() {
       >
         {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
         <RecordingCameraPreview
-          key={cameraRecoveryKey}
           cameraRef={cameraRef}
           sharedCameraMode={sharedCameraMode}
           cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}
