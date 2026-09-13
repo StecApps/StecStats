@@ -518,8 +518,9 @@ export default function ScorekeeperScreen() {
       return;
     }
     // The invite exists, but the live socket and WebRTC stack are not started
-    // yet. Pause the idle camera before iOS presents Messages so the app can
-    // background and return without terminating the scorekeeper.
+    // yet. Legacy CameraView pauses while Messages is open. The shared native
+    // session stays active and lets iOS handle its interruption in place; an
+    // explicit stop/start here can freeze its preview if the iPad rotates.
     setIsSharingLiveLink(true);
     await new Promise((resolve) => setTimeout(resolve, 150));
     try {
@@ -2307,7 +2308,7 @@ export default function ScorekeeperScreen() {
                 </View>
               </View>
 
-              {/* Counting stats: single horizontal strip (no wrapping) */}
+              {/* Counting stats: larger 3-over-2 grid on landscape tablets */}
               <View style={styles.compactCountStrip}>
                 {([
                   { label: 'REB', field: 'rebounds',  color: 'primary' },
@@ -2675,7 +2676,7 @@ export default function ScorekeeperScreen() {
         <RecordingCameraPreview
           cameraRef={cameraRef}
           sharedCameraMode={sharedCameraMode}
-          cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}
+          cameraActive={sharedCameraMode || !isSharingLiveLink || recordingStartedRef.current || isRecording}
           cameraReady={!!cameraReady}
           cameraFacing={cameraFacing}
           cameraZoom={cameraZoom}
@@ -3487,12 +3488,14 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactCountStrip: {
       flexDirection: 'row',
+      flexWrap: isTabletLandscape ? 'wrap' : 'nowrap',
       gap: isTabletLandscape ? 8 : 4,
-      minHeight: isTabletLandscape ? 130 : (isTablet ? 90 : undefined),
+      minHeight: isTabletLandscape ? 220 : (isTablet ? 90 : undefined),
       marginTop: isTablet ? 4 : 0,
     },
     compactCountCard: {
-      flex: 1,
+      flexGrow: 1,
+      flexBasis: isTabletLandscape ? '31%' : 0,
       borderRadius: 8,
       borderWidth: 1,
       padding: isTabletLandscape ? 10 : (isTablet ? 7 : 4),

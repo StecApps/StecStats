@@ -76,7 +76,7 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain('scale > 1.01 ? { transform: [{ scale }] }');
     expect(source).toContain("if (recordingStartedRef.current || isRecording) {");
     expect(source).toContain('Share the live link before you start the game clock.');
-    expect(source).toContain('cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}');
+    expect(source).toContain('cameraActive={sharedCameraMode || !isSharingLiveLink || recordingStartedRef.current || isRecording}');
     expect(source).toContain('if (result.action === Share.sharedAction)');
     expect(source).toContain('activateLiveBroadcast(code)');
     expect(source).not.toContain('scheduleIdleCameraRecovery');
@@ -108,13 +108,16 @@ describe('iPad recording safeguards', () => {
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
     expect(appConfig.expo.runtimeVersion).toBe('1.0.0-shared-camera-20260929');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260931');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260932');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
     expect(source).toContain("UNDO{'\\n'}MAKE");
     expect(source).toContain("UNDO{'\\n'}MISS");
     expect(source).toContain("justifyContent: isTabletLandscape ? 'space-evenly' : 'flex-start'");
+    expect(source).toContain("flexWrap: isTabletLandscape ? 'wrap' : 'nowrap'");
+    expect(source).toContain("flexBasis: isTabletLandscape ? '31%' : 0");
+    expect(source).toContain("minHeight: isTabletLandscape ? 220");
     expect(source).not.toContain("justifyContent: isTablet ? 'space-evenly' : 'flex-start'");
   });
 

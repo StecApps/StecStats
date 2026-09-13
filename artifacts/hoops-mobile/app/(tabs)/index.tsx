@@ -292,7 +292,7 @@ const cStatS = StyleSheet.create({
   cell: { flex: 1, minHeight: 130, paddingHorizontal: 28, paddingVertical: 12, justifyContent: 'center', alignItems: 'center', gap: 0, position: 'relative' },
   accentBar: { position: 'absolute', left: 0, top: 24, bottom: 24, width: 4, borderRadius: 2 },
   label: { width: '100%', textAlign: 'center', fontSize: 15, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, lineHeight: 20, textTransform: 'uppercase' },
-  value: { ...tekoStyle(64), lineHeight: 68, width: '100%', textAlign: 'center', transform: [{ translateY: 11 }] },
+  value: { ...tekoStyle(64), lineHeight: 68, width: '100%', textAlign: 'center', transform: [{ translateY: 14 }] },
   sub: { width: '100%', textAlign: 'center', fontSize: 14, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, lineHeight: 19, textTransform: 'uppercase' },
 });
 
