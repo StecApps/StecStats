@@ -287,15 +287,15 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
       await act(async () => { tree = renderer.create(<ScorekeeperScreen />); });
 
       // The Go Live button is identified by disabled={liveLoading} (false on
-      // initial render) combined with activeOpacity={0.75} (camControl style).
-      // The Save Game button also has disabled={false} but uses activeOpacity={0.8},
-      // so the compound filter isolates only the Go Live button.
+      // initial render), activeOpacity={0.75}, and no testID. Zoom controls use
+      // the same opacity but carry explicit test IDs.
       // When cameraReady=false the entire camControls block is absent.
       const goLiveCandidates = findNodes(
         tree.toJSON(),
         (n) => n.type === 'TouchableOpacity'
           && n.props?.disabled === false
-          && n.props?.activeOpacity === 0.75,
+          && n.props?.activeOpacity === 0.75
+          && !n.props?.testID,
       );
       expect(goLiveCandidates).toHaveLength(0);
     });
@@ -312,7 +312,8 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
         tree.toJSON(),
         (n) => n.type === 'TouchableOpacity'
           && n.props?.disabled === false
-          && n.props?.activeOpacity === 0.75,
+          && n.props?.activeOpacity === 0.75
+          && !n.props?.testID,
       );
       expect(goLiveCandidates).toHaveLength(0);
     });
@@ -329,7 +330,8 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
         tree.toJSON(),
         (n) => n.type === 'TouchableOpacity'
           && n.props?.disabled === false
-          && n.props?.activeOpacity === 0.75,
+          && n.props?.activeOpacity === 0.75
+          && !n.props?.testID,
       );
       // Exactly one button matches: the Go Live button in camControls.
       expect(goLiveCandidates).toHaveLength(1);
@@ -351,12 +353,13 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
 
       // ── Step 1: press the Go Live button ──────────────────────────────────
       // Compound filter: disabled={false} (liveLoading=false) + activeOpacity=0.75
-      // (camControl style). Save Game also has disabled={false} but uses 0.8.
+      // (camControl style) + no testID (zoom controls have test IDs).
       const [goLiveBtn] = findNodes(
         tree.toJSON(),
         (n) => n.type === 'TouchableOpacity'
           && n.props?.disabled === false
-          && n.props?.activeOpacity === 0.75,
+          && n.props?.activeOpacity === 0.75
+          && !n.props?.testID,
       );
       expect(goLiveBtn).toBeDefined();
 

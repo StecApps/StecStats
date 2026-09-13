@@ -1338,6 +1338,13 @@ export default function ScorekeeperScreen() {
   }
 
   const teamScore = Object.values(stats).reduce((sum, line) => sum + calcPoints(line), 0) + teamScoreAdj;
+  const hasGameActivity =
+    running ||
+    seconds > 0 ||
+    events.length > 0 ||
+    teamScore !== 0 ||
+    opponentScore !== 0 ||
+    isRecording;
 
   // ─── WebRTC camera stream — opened when live, closed when done ──────────────
   useEffect(() => {
@@ -2460,6 +2467,16 @@ export default function ScorekeeperScreen() {
               <Text style={[styles.cancelUploadText, { color: colors.mutedForeground }]}>Cancel upload</Text>
             </TouchableOpacity>
           </View>
+        ) : !hasGameActivity ? (
+          <TouchableOpacity
+            onPress={handleStartStop}
+            activeOpacity={0.8}
+            style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+            testID="start-game-footer"
+          >
+            <Ionicons name="play-circle" size={20} color="#fff" />
+            <Text style={styles.saveBtnText}>Start Game</Text>
+          </TouchableOpacity>
         ) : (
           <TouchableOpacity
             onPress={confirmSave}

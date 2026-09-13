@@ -123,4 +123,11 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('/watch/${encodeURIComponent(code)}');
     expect(source).toContain('Watch ${teamName} live: ${url}');
   });
+
+  test('shows a prominent Start Game action after sharing before gameplay begins', () => {
+    expect(source).toContain('const hasGameActivity =');
+    expect(source).toContain('testID="start-game-footer"');
+    expect(source).toContain('<Text style={styles.saveBtnText}>Start Game</Text>');
+    expect(source).toContain(') : !hasGameActivity ? (');
+  });
 });
