@@ -155,3 +155,4 @@
 - [EAS Update production environment](eas-update-production-env.md) — production OTAs need EAS server variables plus build.production.env; use the guarded release command.
 - [Shared iOS recording and live camera](mobile-recording-camera-ownership.md) — preview, recording, and WebRTC share one capture session; recording wins and legacy builds fall back to score-only.
 - [iPad recording cannot background for sharing](ipad-recording-background-sharing.md) — opening Messages suspends the active camera; share live links before starting the recording.
+- [Recorded-event timeline](recorded-event-timeline.md) — reel event timestamps must count only time represented by saved video segments, not the game clock or camera-switch gaps.

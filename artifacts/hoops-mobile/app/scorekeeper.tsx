@@ -69,6 +69,12 @@ try {
   // Expo Go — WebRTC unavailable; live video will fall back to score-only
 }
 import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
+import {
+  createVideoTimelineClock,
+  readVideoTimelineMs,
+  startVideoTimelineSegment,
+  stopVideoTimelineSegment,
+} from '@/lib/videoTimelineClock';
 import { makeUploadStallHandler } from '@/lib/uploadStallAlert';
 import { concatSegmentsWithTimeout } from '@/lib/concatSegmentsWithTimeout';
 import { fetchIceServers } from '@/lib/fetchIceServers';
@@ -313,6 +319,11 @@ export default function ScorekeeperScreen() {
   const stallFiredOnceRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
+  // Reel timestamps must follow bytes that actually exist in the final movie,
+  // not the game clock. Each camera segment advances this clock only while it
+  // is recording; camera-switch/finalization gaps are excluded because the
+  // uploaded segments are concatenated without those gaps.
+  const videoTimelineClockRef = useRef(createVideoTimelineClock());
   // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
   const liveWsRef = useRef<WebSocket | null>(null);
   // WebRTC broadcaster: one RTCPeerConnection per connected viewer (keyed by viewerId)
@@ -1131,6 +1142,7 @@ export default function ScorekeeperScreen() {
   }, [running]);
 
   async function stopCameraRecording(): Promise<void> {
+    stopVideoTimelineSegment(videoTimelineClockRef.current);
     if (!sharedCameraMode) {
       cameraRef.current?.stopRecording();
       return;
@@ -1185,6 +1197,7 @@ export default function ScorekeeperScreen() {
       }
     }
     recordingStartedRef.current = true;
+    startVideoTimelineSegment(videoTimelineClockRef.current);
     const myGen = ++recordingGenerationRef.current;
     // Native modal presentation over CameraView can interrupt AVFoundation on
     // iPad. Recording always wins: close any prepared invite sheet first.
@@ -1215,6 +1228,7 @@ export default function ScorekeeperScreen() {
       // URI is captured by whoever calls stopRecording (handleSave or toggleCameraFacing)
     } catch (err: any) {
       if (myGen === recordingGenerationRef.current) {
+        stopVideoTimelineSegment(videoTimelineClockRef.current);
         // Error on this specific session (not superseded by a camera flip)
         recordingStartedRef.current = false;
         recordingPromiseRef.current = null;
@@ -1255,8 +1269,13 @@ export default function ScorekeeperScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }
 
-  function nowMs() {
-    return running ? Date.now() - startRef.current : seconds * 1000;
+  function eventVideoTimestampMs() {
+    // Stats-only games retain the game-clock timestamp for compatibility even
+    // though no reel will consume it. Recorded games use only finalized/in-
+    // progress movie time so every tagged play maps onto the uploaded video.
+    return recordVideo
+      ? readVideoTimelineMs(videoTimelineClockRef.current)
+      : running ? Date.now() - startRef.current : seconds * 1000;
   }
 
   // ─── Shooting stat handlers ────────────────────────────────────────────────
@@ -1268,7 +1287,7 @@ export default function ScorekeeperScreen() {
   ) {
     if (!selectedPlayerId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const ts = nowMs();
+    const ts = eventVideoTimestampMs();
     setStats((prev) => {
       const line = prev[selectedPlayerId] ?? defaultLine();
       const made = line[madeKey] as number;
@@ -1303,7 +1322,7 @@ export default function ScorekeeperScreen() {
   function handleCount(field: keyof StatLine, delta: 1 | -1) {
     if (!selectedPlayerId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const ts = nowMs();
+    const ts = eventVideoTimestampMs();
     setStats((prev) => {
       const line = prev[selectedPlayerId] ?? defaultLine();
       const current = line[field] as number;

@@ -265,8 +265,11 @@ export class LiveStreamRegistry {
       scoreboard: { teamScore: 0, opponentScore: 0 },
       recentEvents: [],
       broadcasterLeftTimer: null,
-      broadcasterHasVideo: true, // updated when a mobile broadcaster joins
-      broadcasterVideoMode: 'webrtc' as const,
+      // Until a broadcaster socket explicitly announces its mode, there is no
+      // video source on this process. Defaulting to WebRTC makes viewers wait
+      // for an offer that cannot arrive (especially after resume/autoscaling).
+      broadcasterHasVideo: false,
+      broadcasterVideoMode: 'none' as const,
     });
 
     // The preferred code is a server-derived idempotency key. DB uniqueness,
@@ -366,8 +369,10 @@ export class LiveStreamRegistry {
       scoreboard: { teamScore: row.teamScore, opponentScore: row.opponentScore },
       recentEvents: [],
       broadcasterLeftTimer: null,
-      broadcasterHasVideo: true, // updated when a mobile broadcaster rejoins
-      broadcasterVideoMode: 'webrtc' as const,
+      // A resumed DB shell has no local broadcaster socket or media source.
+      // Stay score-only until join-broadcaster announces an actual video mode.
+      broadcasterHasVideo: false,
+      broadcasterVideoMode: 'none' as const,
     };
     this.sessions.set(upper, resumed);
     try {

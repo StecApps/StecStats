@@ -24,6 +24,16 @@ function seedSession() {
   return session;
 }
 
+function seedScoreOnlySession() {
+  const session = seedSession() as ReturnType<typeof seedSession> & {
+    broadcasterHasVideo: boolean;
+    broadcasterVideoMode: "none";
+  };
+  session.broadcasterHasVideo = false;
+  session.broadcasterVideoMode = "none";
+  return session;
+}
+
 // Messages can arrive before a test gets around to awaiting them (e.g. a
 // "new-viewer" notice fired the instant a second client joins), and a plain
 // ws "message" listener attached later would miss anything already emitted.
@@ -115,6 +125,18 @@ describe("liveSocket signaling relay", () => {
     const joined = await waitForMessage(ws, (m) => m.type === "joined");
     return { ws, viewerId: joined.viewerId };
   }
+
+  it("joins a session without a local media source in score-only mode", async () => {
+    seedScoreOnlySession();
+    const ws = new WebSocket(wsUrl);
+    await waitForOpen(ws);
+    ws.send(JSON.stringify({ type: "join-viewer", code: TEST_CODE }));
+
+    const joined = await waitForMessage(ws, (m) => m.type === "joined");
+    expect(joined.hasVideo).toBe(false);
+    expect(joined.videoMode).toBe("none");
+    ws.close();
+  });
 
   it("relays an offer from the broadcaster to the targeted viewer only", async () => {
     const broadcaster = await connectBroadcaster();

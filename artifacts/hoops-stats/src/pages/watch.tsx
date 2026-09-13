@@ -740,6 +740,10 @@ export default function WatchStream() {
         }
 
         if (message.type === "offer") {
+          // A broadcaster can join or upgrade after this viewer entered the
+          // conservative score-only fallback used by resumed sessions.
+          setScoreOnly(false);
+          setIsMjpeg(false);
           // An offer arrived — the broadcaster reconnected (or is already
           // present). Clear the reconnecting banner.
           setBroadcasterReconnecting(false);
