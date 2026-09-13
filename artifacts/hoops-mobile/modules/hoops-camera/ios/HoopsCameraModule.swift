@@ -18,6 +18,7 @@ public final class HoopsCameraModule: Module {
     }
 
     OnCreate {
+      controller.activateFrameRouting()
       controller.eventHandler = { [weak self] eventName, payload in
         self?.sendEvent(eventName, payload)
       }

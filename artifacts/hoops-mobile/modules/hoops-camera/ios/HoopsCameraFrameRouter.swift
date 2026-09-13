@@ -12,8 +12,14 @@ final class HoopsCameraFrameRouter: NSObject, AVCaptureVideoDataOutputSampleBuff
   private(set) var isRecording = false
 
   /// The WebRTC adapter installs this callback through the module boundary.
-  /// It must not retain the sample after returning.
-  var frameSink: ((CMSampleBuffer) -> Void)?
+  /// Access is synchronized because native teardown can race a queued frame.
+  private var frameSink: ((CMSampleBuffer) -> Void)?
+
+  func setFrameSink(_ sink: ((CMSampleBuffer) -> Void)?) {
+    lock.lock()
+    frameSink = sink
+    lock.unlock()
+  }
 
   func setRecording(_ recording: Bool) {
     lock.lock()
@@ -33,6 +39,18 @@ final class HoopsCameraFrameRouter: NSObject, AVCaptureVideoDataOutputSampleBuff
       return
     }
 
+    // AVCapture only guarantees the sample buffer for the duration of this
+    // delegate callback. The WebRTC conversion runs asynchronously, so create
+    // one bounded owned copy before returning to AVCapture.
+    var ownedSampleBuffer: CMSampleBuffer?
+    guard CMSampleBufferCreateCopy(
+      allocator: kCFAllocatorDefault,
+      sampleBuffer: sampleBuffer,
+      sampleBufferOut: &ownedSampleBuffer
+    ) == noErr, let ownedSampleBuffer else {
+      inFlight.signal()
+      return
+    }
     // Recording has priority because this branch never waits. If WebRTC is
     // still processing the previous frame, the next live frame is discarded
     // while AVCaptureMovieFileOutput continues writing the master.
@@ -53,7 +71,7 @@ final class HoopsCameraFrameRouter: NSObject, AVCaptureVideoDataOutputSampleBuff
       // This callback runs off AVCapture's sample callback queue. A slow
       // consumer holds only the single bounded slot above; subsequent frames
       // are discarded by captureOutput.
-      frameSink(sampleBuffer)
+      frameSink(ownedSampleBuffer)
     }
   }
 }

@@ -125,10 +125,10 @@ type RecordingCameraPreviewProps = {
   onCameraReady: () => void;
 };
 
-// Emergency production safety switch. Build 20260924 can terminate while the
-// shared AVFoundation session initializes on physical iPads. Keep recording on
-// the stable Expo CameraView path until the native lifecycle fix ships.
-const ENABLE_SHARED_CAMERA_MODE = false;
+// One native AVFoundation session now owns preview, recording, and the bounded
+// WebRTC frame sink. This avoids opening a competing camera capturer while the
+// master recording is being written.
+const ENABLE_SHARED_CAMERA_MODE = true;
 
 // Recording runs in a native AVFoundation session. Keep CameraView isolated
 // from scoring state updates so a make/miss tap does not resend new style props
@@ -2927,6 +2927,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
   // use a dimension heuristic that works cross-platform.
   const shortEdge = Math.min(sw, sh);
   const isTablet = shortEdge >= 768;
+  const isTabletLandscape = isTablet && isLandscape;
   // Small phones (iPhone SE, etc.) have a screen height ≤ 667 pt.  At 54 % the
   // camera alone takes ~360 pt, leaving only ~307 pt for the chip bar, stat
   // buttons, and Save button — too cramped.  Drop back to 46 % on those devices
@@ -3401,10 +3402,10 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       paddingHorizontal: isTablet ? 5 : 8,
       paddingTop: isTablet ? 8 : 3,
       paddingBottom: isTablet ? 8 : 3,
-      gap: isTablet ? 12 : 5,
-      justifyContent: 'flex-start',
+      gap: isTabletLandscape ? 16 : (isTablet ? 12 : 5),
+      justifyContent: isTabletLandscape ? 'space-evenly' : 'flex-start',
     },
-    compactShootGrid: { gap: isTablet ? 8 : 4 },
+    compactShootGrid: { gap: isTabletLandscape ? 16 : (isTablet ? 8 : 4) },
     compactBtnRow: { flexDirection: 'row', gap: 5 },
     compactShootHeaderCell: {
       flex: 1,
@@ -3415,18 +3416,18 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       paddingVertical: 1,
     },
     compactShootLabel: {
-      fontSize: 10,
+      fontSize: isTabletLandscape ? 12 : 10,
       fontFamily: 'Inter_700Bold',
       letterSpacing: 0.5,
       textTransform: 'uppercase' as const,
     },
     compactShootCount: {
-      fontSize: 12,
+      fontSize: isTabletLandscape ? 14 : 12,
       fontFamily: 'Inter_600SemiBold',
     },
     compactMakeBtn: {
       flex: 1,
-      height: isTablet ? 48 : 36,
+      height: isTabletLandscape ? 70 : (isTablet ? 48 : 36),
       borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
@@ -3435,7 +3436,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactMissBtn: {
       flex: 1,
-      height: isTablet ? 48 : 36,
+      height: isTabletLandscape ? 70 : (isTablet ? 48 : 36),
       borderRadius: 9,
       flexDirection: 'row',
       alignItems: 'center',
@@ -3443,7 +3444,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       gap: 4,
     },
     compactActionBtnText: {
-      fontSize: 10,
+      fontSize: isTabletLandscape ? 13 : 10,
       fontFamily: 'Inter_700Bold',
       color: '#fff',
       letterSpacing: 0.3,
@@ -3455,49 +3456,50 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     compactUndoBtn: {
       flex: 1,
-      height: isTablet ? 36 : 24,
+      height: isTabletLandscape ? 44 : (isTablet ? 36 : 24),
       borderRadius: 5,
       borderWidth: 1,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
     },
     compactUndoBtnText: {
-      fontSize: isTablet ? 9 : 7,
-      lineHeight: isTablet ? 11 : 9,
+      fontSize: isTabletLandscape ? 10 : (isTablet ? 9 : 7),
+      lineHeight: isTabletLandscape ? 12 : (isTablet ? 11 : 9),
       textAlign: 'center',
       fontFamily: 'Inter_700Bold',
     },
     compactCountStrip: {
       flexDirection: 'row',
-      gap: 4,
-      minHeight: isTablet ? 90 : undefined,
+      gap: isTabletLandscape ? 8 : 4,
+      minHeight: isTabletLandscape ? 130 : (isTablet ? 90 : undefined),
       marginTop: isTablet ? 4 : 0,
     },
     compactCountCard: {
       flex: 1,
       borderRadius: 8,
       borderWidth: 1,
-      padding: isTablet ? 7 : 4,
+      padding: isTabletLandscape ? 10 : (isTablet ? 7 : 4),
       alignItems: 'center',
+      justifyContent: 'center',
       gap: 2,
     },
     compactCountLabel: {
-      fontSize: 9,
+      fontSize: isTabletLandscape ? 11 : 9,
       fontFamily: 'Inter_700Bold',
       letterSpacing: 0.5,
       textTransform: 'uppercase' as const,
     },
-    compactCountVal: { ...tekoStyle(isTablet ? 22 : 16) },
+    compactCountVal: { ...tekoStyle(isTabletLandscape ? 36 : (isTablet ? 22 : 16)) },
     compactCountBtns: { flexDirection: 'row', gap: 3, width: '100%' },
     compactCountBtn: {
       flex: 1,
-      height: isTablet ? 30 : 24,
+      height: isTabletLandscape ? 42 : (isTablet ? 30 : 24),
       borderRadius: 6,
       alignItems: 'center',
       justifyContent: 'center',
     },
     compactCountBtnTxt: {
-      fontSize: 12,
+      fontSize: isTabletLandscape ? 16 : 12,
       fontFamily: 'Inter_700Bold',
     },
 

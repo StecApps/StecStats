@@ -33,6 +33,11 @@ describe('HoopsCamera WebRTC integration contract', () => {
     expect(podspec).not.toContain("s.dependency 'JitsiWebRTC'");
     expect(podspec).not.toContain("s.dependency 'react-native-webrtc'");
     expect(router).toContain('DispatchSemaphore(value: 1)');
+    expect(router).toContain('CMSampleBufferCreateCopy');
+    expect(router).toContain('ownedSampleBuffer');
+    expect(router).toContain('func setFrameSink');
+    expect(session).toContain('frameRouter.setFrameSink(nil)');
+    expect(session).toContain('videoDataOutput != nil');
     expect(session).toContain('alwaysDiscardsLateVideoFrames');
     expect(session).toContain('setMicrophoneMuted');
     expect(session).toContain('audioConnection.isEnabled = !microphoneMuted');

@@ -102,18 +102,19 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('LIVE · REC SAFE');
   });
 
-  test('keeps the unstable shared native camera disabled for build 20260924', () => {
-    expect(source).toContain('const ENABLE_SHARED_CAMERA_MODE = false');
+  test('enables the single-session shared native camera only in the isolated runtime', () => {
+    expect(source).toContain('const ENABLE_SHARED_CAMERA_MODE = true');
     expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-record-entry-rollback-20260927');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-shared-camera-20260929');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260929');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
     expect(source).toContain("UNDO{'\\n'}MAKE");
     expect(source).toContain("UNDO{'\\n'}MISS");
-    expect(source).toContain("justifyContent: 'flex-start'");
+    expect(source).toContain("justifyContent: isTabletLandscape ? 'space-evenly' : 'flex-start'");
     expect(source).not.toContain("justifyContent: isTablet ? 'space-evenly' : 'flex-start'");
   });
 

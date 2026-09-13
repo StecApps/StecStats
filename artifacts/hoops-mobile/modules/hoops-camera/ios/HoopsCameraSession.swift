@@ -84,12 +84,20 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
 
   private override init() {
     super.init()
-    frameRouter.frameSink = { sampleBuffer in
+    installFrameSink()
+  }
+
+  private func installFrameSink() {
+    frameRouter.setFrameSink { sampleBuffer in
       NotificationCenter.default.post(
         name: hoopsCameraVideoSampleBufferNotification,
         object: sampleBuffer
       )
     }
+  }
+
+  func activateFrameRouting() {
+    installFrameSink()
   }
 
   func permissionStatus() -> [String: String] {
@@ -327,6 +335,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   }
 
   func invalidate() {
+    // Stop publishing immediately, before the asynchronous session teardown.
+    // Any already-queued retained frame observes nil and is safely released.
+    frameRouter.setFrameSink(nil)
     sessionQueue.async {
       if self.isRecording {
         self.movieOutput.stopRecording()
@@ -382,6 +393,11 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       videoDataOutput = dataOutput
     }
     session.commitConfiguration()
+    guard session.outputs.contains(where: { $0 === movieOutput }),
+          videoDataOutput != nil else {
+      emitError(HoopsCameraSessionError.sessionUnavailable, recoverable: false)
+      return
+    }
     isConfigured = true
     applyZoom()
   }
