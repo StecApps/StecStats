@@ -33,6 +33,8 @@ import {
   Modal,
   Animated,
   Share,
+  AppState,
+  Dimensions,
   PermissionsAndroid,
   ToastAndroid,
 } from 'react-native';
@@ -45,6 +47,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useListPlayers, useCreateGame, useRequestUploadUrl } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons } from '@expo/vector-icons';
 import { tekoStyle } from '@/lib/tekoStyle';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
@@ -393,6 +396,29 @@ export default function ScorekeeperScreen() {
   const [micMuted, setMicMuted] = useState(false);
   // null = follow device rotation; true/false = locked to landscape/portrait
   const [layoutLandscape, setLayoutLandscape] = useState<boolean | null>(null);
+  const [cameraRecoveryKey, setCameraRecoveryKey] = useState(0);
+  const cameraRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleIdleCameraRecovery = useCallback(() => {
+    if (recordingStartedRef.current) return;
+    if (cameraRecoveryTimerRef.current) clearTimeout(cameraRecoveryTimerRef.current);
+    cameraRecoveryTimerRef.current = setTimeout(() => {
+      cameraRecoveryTimerRef.current = null;
+      if (recordingStartedRef.current) return;
+      cameraReadyRef.current = false;
+      setLayoutLandscape(null);
+      setCameraContainerSize({ w: 0, h: 0 });
+      setCameraRecoveryKey((key) => key + 1);
+      const screen = Dimensions.get('screen');
+      if (Platform.OS === 'ios' && Math.min(screen.width, screen.height) >= 600) {
+        void ScreenOrientation.lockAsync(
+          ScreenOrientation.OrientationLock.LANDSCAPE,
+        ).catch((error) => {
+          console.warn('[Scorekeeper] could not restore landscape orientation:', error);
+        });
+      }
+    }, 300);
+  }, []);
 
   // ── Camera zoom (pinch-to-zoom) ───────────────────────────────────────────
   // cameraZoom is 0-1 passed to CameraView's zoom prop.
@@ -522,6 +548,7 @@ export default function ScorekeeperScreen() {
       }
     } finally {
       setIsSharingLiveLink(false);
+      scheduleIdleCameraRecovery();
     }
   }
 
@@ -1098,6 +1125,33 @@ export default function ScorekeeperScreen() {
       if (!micPermission?.granted) await requestMicPermission();
     })();
   }, [recordVideo, sharedCameraMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!recordVideo) return;
+    const screen = Dimensions.get('screen');
+    if (Platform.OS !== 'ios' || Math.min(screen.width, screen.height) < 600) return;
+    void ScreenOrientation.lockAsync(
+      ScreenOrientation.OrientationLock.LANDSCAPE,
+    ).catch((error) => {
+      console.warn('[Scorekeeper] could not lock landscape orientation:', error);
+    });
+    return () => {
+      void ScreenOrientation.unlockAsync().catch(() => {});
+    };
+  }, [recordVideo]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') scheduleIdleCameraRecovery();
+    });
+    return () => {
+      subscription.remove();
+      if (cameraRecoveryTimerRef.current) {
+        clearTimeout(cameraRecoveryTimerRef.current);
+        cameraRecoveryTimerRef.current = null;
+      }
+    };
+  }, [scheduleIdleCameraRecovery]);
 
   // HoopsCamera controls the movie output's audio connection directly, so
   // mute/unmute never opens a second capture session or interrupts video.
@@ -2638,6 +2692,7 @@ export default function ScorekeeperScreen() {
       >
         {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
         <RecordingCameraPreview
+          key={cameraRecoveryKey}
           cameraRef={cameraRef}
           sharedCameraMode={sharedCameraMode}
           cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}

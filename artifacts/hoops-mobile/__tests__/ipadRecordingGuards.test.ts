@@ -79,6 +79,12 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}');
     expect(source).toContain('if (result.action === Share.sharedAction)');
     expect(source).toContain('activateLiveBroadcast(code)');
+    expect(source).toContain('scheduleIdleCameraRecovery();');
+    expect(source).toContain("AppState.addEventListener('change'");
+    expect(source).toContain("nextState === 'active'");
+    expect(source).toContain('key={cameraRecoveryKey}');
+    expect(source).toContain('cameraReadyRef.current = false');
+    expect(source).toContain('ScreenOrientation.OrientationLock.LANDSCAPE');
     expect(source).toContain('Do not connect the broadcaster yet.');
     expect(source).not.toContain('url,\\n    });');
     expect(source).toContain('selectable');
@@ -101,7 +107,7 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('const ENABLE_SHARED_CAMERA_MODE = false');
     expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
     expect(packageConfig.expo.autolinking.exclude).toContain('@workspace/hoops-camera');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-camera-safe-20260924');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-share-recovery-20260925');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
