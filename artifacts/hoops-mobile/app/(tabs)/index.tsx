@@ -289,11 +289,11 @@ function ConsoleStat({ label, value, sub, accent = false }: { label: string; val
   );
 }
 const cStatS = StyleSheet.create({
-  cell: { flex: 1, minHeight: 130, paddingHorizontal: 28, paddingVertical: 20, justifyContent: 'center', position: 'relative' },
+  cell: { flex: 1, minHeight: 130, paddingHorizontal: 28, paddingVertical: 20, justifyContent: 'center', alignItems: 'center', gap: 6, position: 'relative' },
   accentBar: { position: 'absolute', left: 0, top: 24, bottom: 24, width: 4, borderRadius: 2 },
-  label: { fontSize: 13, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, lineHeight: 18, textTransform: 'uppercase', marginBottom: 2, paddingLeft: 4 },
-  value: { ...tekoStyle(64), lineHeight: 72, width: '100%', textAlign: 'center', marginBottom: 2 },
-  sub: { fontSize: 12, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, lineHeight: 17, textTransform: 'uppercase', paddingLeft: 4 },
+  label: { width: '100%', textAlign: 'center', fontSize: 13, fontFamily: 'Inter_700Bold', letterSpacing: 1.2, lineHeight: 18, textTransform: 'uppercase' },
+  value: { ...tekoStyle(64), lineHeight: 72, width: '100%', textAlign: 'center' },
+  sub: { width: '100%', textAlign: 'center', fontSize: 12, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, lineHeight: 17, textTransform: 'uppercase' },
 });
 
 const consoleS = StyleSheet.create({

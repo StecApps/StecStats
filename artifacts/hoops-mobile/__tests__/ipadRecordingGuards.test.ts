@@ -108,7 +108,8 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('const ENABLE_SHARED_CAMERA_MODE = false');
     expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
     expect(packageConfig.expo.autolinking.exclude).toContain('@workspace/hoops-camera');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-share-recovery-20260925');
+    expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-record-entry-safe-20260926');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
