@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - task-735-release-sync
+      - testflight-20260929-shared-camera
 
 permissions:
   contents: read
