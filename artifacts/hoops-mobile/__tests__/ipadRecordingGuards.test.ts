@@ -8,6 +8,12 @@ describe('iPad recording safeguards', () => {
     path.resolve(__dirname, '../modules/hoops-camera/ios/HoopsCameraSession.swift'),
     'utf8',
   );
+  const packageConfig = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'),
+  );
+  const appConfig = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '../app.json'), 'utf8'),
+  );
 
   test('keeps iOS capture orientation responsive to physical device rotation', () => {
     expect(source).toContain('responsiveOrientationWhenOrientationLocked');
@@ -94,6 +100,8 @@ describe('iPad recording safeguards', () => {
   test('keeps the unstable shared native camera disabled for build 20260924', () => {
     expect(source).toContain('const ENABLE_SHARED_CAMERA_MODE = false');
     expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
+    expect(packageConfig.expo.autolinking.exclude).toContain('@workspace/hoops-camera');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-camera-safe-20260924');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
