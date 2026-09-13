@@ -251,6 +251,7 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('statsColLandscape: { flex: 8 }');
     expect(rawSrc).toContain('gridLandscape: { flexDirection: \'row\', alignItems: \'stretch\', minHeight: 580 }');
     expect(rawSrc).toContain('cell: { flex: 1, minHeight: 130');
+    expect(rawSrc).toContain("width: '100%', textAlign: 'center'");
     expect(rawSrc).toContain('shootingCardLandscape: { minHeight: 154');
     expect(glossyButtonSrc).toContain("? ['#FF8A24', c.primary, '#160803']");
   });

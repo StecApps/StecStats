@@ -84,7 +84,8 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain("nextState === 'active'");
     expect(source).toContain('key={cameraRecoveryKey}');
     expect(source).toContain('cameraReadyRef.current = false');
-    expect(source).toContain('ScreenOrientation.OrientationLock.LANDSCAPE');
+    expect(source).not.toContain('expo-screen-orientation');
+    expect(source).not.toContain('ScreenOrientation.lockAsync');
     expect(source).toContain('Do not connect the broadcaster yet.');
     expect(source).not.toContain('url,\\n    });');
     expect(source).toContain('selectable');
