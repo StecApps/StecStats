@@ -141,6 +141,12 @@ vi.mock("../../lib/objectStorage", () => {
     getObjectEntitySignedURL = vi
       .fn()
       .mockResolvedValue("https://storage.googleapis.com/signed-url-stub");
+
+    uploadLocalFileAsObjectEntity = vi
+      .fn()
+      .mockResolvedValue("/objects/uploads/7/merged-video");
+
+    trySetObjectEntityAclPolicy = vi.fn().mockResolvedValue(undefined);
   }
 
   class ObjectNotFoundError extends Error {
@@ -156,6 +162,17 @@ vi.mock("../../lib/objectStorage", () => {
 
 vi.mock("../../lib/objectAcl", () => ({
   ObjectPermission: { READ: "READ", WRITE: "WRITE" },
+}));
+
+vi.mock("child_process", () => ({
+  spawn: vi.fn().mockImplementation(() => {
+    const { EventEmitter } = require("events");
+    const proc = new EventEmitter();
+    proc.stderr = new EventEmitter();
+    proc.kill = vi.fn();
+    process.nextTick(() => proc.emit("close", 0));
+    return proc;
+  }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -269,6 +286,23 @@ describe("Storage fresh-segment ACL — path-based ownership during upload windo
     const readRes = await fetch(objectEndpoint(objectPath), { redirect: "manual" });
     // video/mp4 content type → the route issues a 302 redirect to a signed URL.
     expect(readRes.status).toBe(302);
+  });
+
+  it("Coach A can concatenate fresh upload paths before a game row or ACL exists", async () => {
+    currentUser.value = COACH_A;
+    const first = (await (await requestUploadUrl()).json()) as { objectPath: string };
+    const second = (await (await requestUploadUrl()).json()) as { objectPath: string };
+
+    const concatRes = await fetch(`${baseUrl}/api/storage/concat-segments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ segmentPaths: [first.objectPath, second.objectPath] }),
+    });
+
+    expect(concatRes.status).toBe(200);
+    await expect(concatRes.json()).resolves.toEqual({
+      videoObjectPath: "/objects/uploads/7/merged-video",
+    });
   });
 
   it("Coach B cannot access a path prefixed with Coach A's id even with a guessed uuid", async () => {

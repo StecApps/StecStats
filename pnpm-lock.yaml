@@ -165,7 +165,7 @@ overrides:
 
 patchedDependencies:
   react-native-webrtc@124.0.8:
-    hash: 80cef50a4c7d5660476d96afb615e1f231a57be05e75c85482861e3d9c167b02
+    hash: ac8e5848b5e288caacb2d9cd5d25eacc9e26d2160a3a275136364833c31fdb2a
     path: patches/react-native-webrtc@124.0.8.patch
   react-native-worklets@0.5.1:
     hash: 4ac744e2e7e9e1b5a18bfb54c2ba9195d744af86534bf75325e2c3d9b3e09d30
@@ -335,7 +335,7 @@ importers:
         version: 10.6.0(react-native-web@0.21.2(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-webrtc:
         specifier: ^124.0.8
-        version: 124.0.8(patch_hash=80cef50a4c7d5660476d96afb615e1f231a57be05e75c85482861e3d9c167b02)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))
+        version: 124.0.8(patch_hash=ac8e5848b5e288caacb2d9cd5d25eacc9e26d2160a3a275136364833c31fdb2a)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))
     devDependencies:
       '@babel/core':
         specifier: ^7.25.2
@@ -16352,7 +16352,7 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  react-native-webrtc@124.0.8(patch_hash=80cef50a4c7d5660476d96afb615e1f231a57be05e75c85482861e3d9c167b02)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0)):
+  react-native-webrtc@124.0.8(patch_hash=ac8e5848b5e288caacb2d9cd5d25eacc9e26d2160a3a275136364833c31fdb2a)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0)):
     dependencies:
       base64-js: 1.5.1
       debug: 4.3.4

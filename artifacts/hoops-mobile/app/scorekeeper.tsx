@@ -401,6 +401,7 @@ export default function ScorekeeperScreen() {
   const lifecycleFinalizedRef = useRef(true);
   const lifecycleResumePendingRef = useRef(false);
   const recordingDesiredRef = useRef(false);
+  const unexpectedRecordingResumePendingRef = useRef(false);
   const startRecordingRef = useRef<(() => Promise<void>) | null>(null);
   // Saving is terminal for this recording session: a delayed native resume
   // event must never start another segment after End Game was tapped.
@@ -1343,15 +1344,34 @@ export default function ScorekeeperScreen() {
         }
       }
     } catch (err: any) {
+      const shouldRetryRecoveredRecording =
+        sharedCameraMode &&
+        unexpectedRecordingResumePendingRef.current &&
+        recordingDesiredRef.current &&
+        !recordingTerminalIntentRef.current;
       if (myGen === recordingGenerationRef.current) {
         stopVideoTimelineSegment(videoTimelineClockRef.current);
         // Error on this specific session (not superseded by a camera flip)
         recordingStartedRef.current = false;
-        if (!lifecycleInterruptedRef.current) recordingDesiredRef.current = false;
+        if (!lifecycleInterruptedRef.current && !shouldRetryRecoveredRecording) {
+          recordingDesiredRef.current = false;
+        }
         recordingPromiseRef.current = null;
         recordingCompletionRef.current = null;
       }
       console.warn('Camera recording ended:', err?.message);
+      if (shouldRetryRecoveredRecording) {
+        setTimeout(() => {
+          if (
+            unexpectedRecordingResumePendingRef.current &&
+            recordingDesiredRef.current &&
+            !recordingTerminalIntentRef.current &&
+            !recordingStartedRef.current
+          ) {
+            void startRecordingRef.current?.();
+          }
+        }, 1_000);
+      }
     } finally {
       // Only update isRecording if a newer recording session hasn't already taken over
       if (myGen === recordingGenerationRef.current) {
@@ -1388,7 +1408,16 @@ export default function ScorekeeperScreen() {
       void startRecordingRef.current?.();
     };
     const stateSubscription = addHoopsCameraListener('onStateChange', (event) => {
+      if (
+        event.state === 'previewing' &&
+        unexpectedRecordingResumePendingRef.current &&
+        recordingDesiredRef.current &&
+        !recordingTerminalIntentRef.current
+      ) {
+        setTimeout(() => void startRecordingRef.current?.(), 100);
+      }
       if (event.state === 'recording' && recordingDesiredRef.current) {
+        unexpectedRecordingResumePendingRef.current = false;
         startVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
       }
       if (event.reason !== 'lifecycle-interruption') return;
@@ -1407,6 +1436,25 @@ export default function ScorekeeperScreen() {
       if (event.reason === 'lifecycle') {
         lifecycleInterruptedRef.current = true;
         lifecycleFinalizedRef.current = true;
+      } else if (
+        (event.reason === 'unexpected' ||
+          event.reason === 'session-interruption' ||
+          event.reason === 'runtime-error') &&
+        recordingDesiredRef.current &&
+        !recordingTerminalIntentRef.current
+      ) {
+        unexpectedRecordingResumePendingRef.current = true;
+        // A plain movie-output stop can leave the capture session running, so
+        // there may be no later "previewing" event to trigger recovery.
+        setTimeout(() => {
+          if (
+            unexpectedRecordingResumePendingRef.current &&
+            recordingDesiredRef.current &&
+            !recordingTerminalIntentRef.current
+          ) {
+            void startRecordingRef.current?.();
+          }
+        }, 350);
       } else if (!recordingTerminalIntentRef.current) {
         recordingDesiredRef.current = false;
       }
@@ -1878,6 +1926,7 @@ export default function ScorekeeperScreen() {
     // create another segment after End Game begins.
     recordingTerminalIntentRef.current = true;
     recordingDesiredRef.current = false;
+    unexpectedRecordingResumePendingRef.current = false;
     pendingRecordRef.current = false;
 
     // End any active broadcast before saving so viewers get the final score
@@ -2005,8 +2054,9 @@ export default function ScorekeeperScreen() {
             videoObjectPath = uploadedPaths[0];
             setUploadProgress(100);
           } else {
-            // Multiple clips from camera flips — concat server-side.
-            // concatSegmentsWithTimeout applies a 60-second AbortController and
+            // Multiple clips from camera flips or native session recovery are
+            // concatenated server-side. The longer timeout covers full games
+            // made from many interruption checkpoints.
             // surfaces "Retry merge" / "Save without video" if the server hangs.
             setUploadProgress(92);
             const token = await getToken();

@@ -16,6 +16,12 @@ import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+const activeConcatOwners = new Set<number>();
+let activeConcatJobs = 0;
+const MAX_CONCAT_SEGMENTS = 120;
+const MAX_CONCAT_BYTES = 4 * 1024 * 1024 * 1024;
+const MAX_CONCURRENT_CONCAT_JOBS = 1;
+const CONCAT_FFMPEG_TIMEOUT_MS = 5 * 60_000;
 
 /**
  * Returns true when the objectPath follows the server-assigned upload
@@ -324,12 +330,29 @@ router.post("/storage/concat-segments", requireAuth, async (req: Request, res: R
     res.status(400).json({ error: "segmentPaths must be an array with at least 2 paths" });
     return;
   }
-  if (segmentPaths.length > 6) {
-    res.status(400).json({ error: "Too many segments (max 6)" });
+  if (segmentPaths.length > MAX_CONCAT_SEGMENTS) {
+    res.status(400).json({ error: `Too many segments (max ${MAX_CONCAT_SEGMENTS})` });
+    return;
+  }
+  if (
+    segmentPaths.some((value: unknown) => typeof value !== "string") ||
+    new Set(segmentPaths).size !== segmentPaths.length
+  ) {
+    res.status(400).json({ error: "segmentPaths must contain unique path strings" });
     return;
   }
 
   const ownerId = req.appUser!.id;
+  if (activeConcatOwners.has(ownerId)) {
+    res.status(409).json({ error: "A video merge is already running for this account" });
+    return;
+  }
+  if (activeConcatJobs >= MAX_CONCURRENT_CONCAT_JOBS) {
+    res.status(503).json({ error: "Video merging is busy; try again shortly" });
+    return;
+  }
+  activeConcatOwners.add(ownerId);
+  activeConcatJobs += 1;
   let tmpDir: string | null = null;
 
   try {
@@ -337,26 +360,31 @@ router.post("/storage/concat-segments", requireAuth, async (req: Request, res: R
     // Verify every segment path is owned by the requesting user before
     // issuing any signed URLs.  Uses the same DB-first / ACL-fallback pattern
     // as GET /storage/objects/* and GET /storage/objects-signed-url/*.
+    let aggregateBytes = 0;
     for (const segPath of segmentPaths as string[]) {
-      const ownedGame = await db.query.gamesTable.findFirst({
-        where: and(
-          eq(gamesTable.ownerId, ownerId),
-          or(
-            eq(gamesTable.videoObjectPath, segPath),
-            eq(gamesTable.highlightObjectPath, segPath),
-          ),
-        ),
-      });
+      const ownedByPathConvention = isOwnedByPath(segPath, ownerId);
+      const ownedGame = ownedByPathConvention
+        ? undefined
+        : await db.query.gamesTable.findFirst({
+            where: and(
+              eq(gamesTable.ownerId, ownerId),
+              or(
+                eq(gamesTable.videoObjectPath, segPath),
+                eq(gamesTable.highlightObjectPath, segPath),
+              ),
+            ),
+          });
 
-      if (!ownedGame) {
+      let objectFile;
+      try {
+        objectFile = await objectStorageService.getObjectEntityFile(segPath);
+      } catch {
+        res.status(403).json({ error: "Forbidden: segment not owned by requesting user" });
+        return;
+      }
+
+      if (!ownedByPathConvention && !ownedGame) {
         // Fall back to ACL metadata (covers segments not yet linked to a game row).
-        let objectFile;
-        try {
-          objectFile = await objectStorageService.getObjectEntityFile(segPath);
-        } catch {
-          res.status(403).json({ error: "Forbidden: segment not owned by requesting user" });
-          return;
-        }
         const canAccess = await objectStorageService.canAccessObjectEntity({
           userId: String(ownerId),
           objectFile,
@@ -366,6 +394,18 @@ router.post("/storage/concat-segments", requireAuth, async (req: Request, res: R
           res.status(403).json({ error: "Forbidden: segment not owned by requesting user" });
           return;
         }
+      }
+
+      const [metadata] = await objectFile.getMetadata();
+      const objectBytes = Number(metadata.size ?? 0);
+      if (!Number.isFinite(objectBytes) || objectBytes <= 0) {
+        res.status(400).json({ error: "A video segment is empty or has invalid metadata" });
+        return;
+      }
+      aggregateBytes += objectBytes;
+      if (aggregateBytes > MAX_CONCAT_BYTES) {
+        res.status(413).json({ error: "Combined video segments are too large to merge" });
+        return;
       }
     }
     // ----------------------------------------------------------------------
@@ -399,12 +439,27 @@ router.post("/storage/concat-segments", requireAuth, async (req: Request, res: R
         outPath,
       ]);
       let stderr = "";
-      proc.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        proc.kill("SIGKILL");
+      }, CONCAT_FFMPEG_TIMEOUT_MS);
+      proc.stderr.on("data", (d: Buffer) => {
+        stderr = (stderr + d.toString()).slice(-16_384);
+      });
       proc.on("close", (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
         if (code === 0) resolve();
         else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-800)}`));
       });
-      proc.on("error", reject);
+      proc.on("error", (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      });
     });
 
     const objectPath = await objectStorageService.uploadLocalFileAsObjectEntity(
@@ -425,6 +480,8 @@ router.post("/storage/concat-segments", requireAuth, async (req: Request, res: R
     req.log.error({ err }, "Failed to concatenate video segments");
     res.status(500).json({ error: "Failed to concatenate video segments" });
   } finally {
+    activeConcatOwners.delete(ownerId);
+    activeConcatJobs = Math.max(0, activeConcatJobs - 1);
     if (tmpDir) {
       fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }

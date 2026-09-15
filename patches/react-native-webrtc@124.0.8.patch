@@ -154,3 +154,43 @@ index d2078d2dfca5a7cc59f93ea7c5ba46083ca3d6a4..6154af34dc04a0fc722c65bcb2386ea7
  #pragma mark - getUserMedia
  
  /**
+diff --git a/ios/RCTWebRTC/WebRTCModule.m b/ios/RCTWebRTC/WebRTCModule.m
+index 7250e7d..b2fba7c 100644
+--- a/ios/RCTWebRTC/WebRTCModule.m
++++ b/ios/RCTWebRTC/WebRTCModule.m
+@@ -11,6 +11,10 @@
+ #import "WebRTCModuleOptions.h"
+ 
+ @interface WebRTCModule ()
++- (void)createHoopsCameraVideoStream:(RCTPromiseResolveBlock)resolve
++                           rejecter:(RCTPromiseRejectBlock)reject;
++- (void)releaseHoopsCameraVideoStream:(RCTPromiseResolveBlock)resolve
++                            rejecter:(RCTPromiseRejectBlock)reject;
+ @end
+ 
+ @implementation WebRTCModule
+@@ -124,4 +128,24 @@ RCT_EXPORT_MODULE();
+     ];
+ }
+ 
++// React Native's legacy-module interop can omit export metadata contributed
++// only by an Objective-C category. Register stable entry points on the primary
++// module implementation and forward to the shared-camera implementation in
++// WebRTCModule+RTCMediaStream.m.
++RCT_REMAP_METHOD(createHoopsCameraVideoStreamNative,
++                 createHoopsCameraVideoStreamNativeWithResolver
++                 : (RCTPromiseResolveBlock)resolve
++                 rejecter
++                 : (RCTPromiseRejectBlock)reject) {
++    [self createHoopsCameraVideoStream:resolve rejecter:reject];
++}
++
++RCT_REMAP_METHOD(releaseHoopsCameraVideoStreamNative,
++                 releaseHoopsCameraVideoStreamNativeWithResolver
++                 : (RCTPromiseResolveBlock)resolve
++                 rejecter
++                 : (RCTPromiseRejectBlock)reject) {
++    [self releaseHoopsCameraVideoStream:resolve rejecter:reject];
++}
++
+ @end

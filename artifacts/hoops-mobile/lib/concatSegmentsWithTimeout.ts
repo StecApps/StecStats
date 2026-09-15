@@ -11,7 +11,7 @@
 
 import { Alert } from 'react-native';
 
-export const CONCAT_TIMEOUT_MS = 60_000;
+export const CONCAT_TIMEOUT_MS = 10 * 60_000;
 
 export type ConcatResult =
   | { timedOut: true }
