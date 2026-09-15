@@ -22,7 +22,7 @@ describe('iPad recording safeguards', () => {
     expect(nativeCameraSource).toContain('self.scheduleLifecycleResume()');
     expect(nativeCameraSource).toContain('DispatchQueue.main.asyncAfter(deadline: .now() + 0.35)');
     expect(nativeCameraSource).toContain('UIApplication.shared.applicationState == .active');
-    expect(nativeCameraSource).toContain('generation == self.lifecycleGeneration');
+    expect(nativeCameraSource).toContain('generation == lifecycleGeneration');
   });
 
   test('recovers lifecycle recording through native interruption and resume events', () => {
@@ -33,7 +33,13 @@ describe('iPad recording safeguards', () => {
     expect(nativeCameraSource).toContain('"onLifecycleResume"');
     expect(nativeCameraSource).toContain('"interruptionId"');
     expect(nativeCameraSource).toContain('"timestampMs"');
+    expect(nativeCameraSource).toContain('"finalizedUri"');
+    expect(nativeCameraSource).toContain('"interruptedAtMs"');
+    expect(nativeCameraSource).toContain('self.completeLifecycleResume(generation: generation)');
+    expect(nativeCameraSource).toContain('!lifecycleFinalizationComplete');
     expect(source).toContain('event.timestampMs');
+    expect(source).toContain('addRecordedUri(event.finalizedUri)');
+    expect(source).toContain('event.interruptedAtMs');
     expect(source).toContain("addHoopsCameraListener('onStateChange'");
     expect(source).toContain("addHoopsCameraListener('onRecordingFinished'");
     expect(source).toContain("addHoopsCameraListener('onLifecycleResume'");
@@ -73,8 +79,10 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('liveMediaGenerationRef');
     expect(source).toContain('liveSessionGenerationRef');
     expect(source).toContain('if (!isCurrentSession()) return;');
-    expect(source).toContain("const cameraLandW = isTablet ? '70%' : '55%'");
+    expect(source).toContain("const cameraLandW = isTablet ? '62%' : '55%'");
     expect(source).toContain('const portraitRatio = isTablet ? 0.70');
+    expect(source).toContain('setLiveMediaRecoveryGeneration((generation) => generation + 1)');
+    expect(source).toContain("videoMode: 'webrtc'");
   });
 
   test('keeps the native recorder stable while scoring and blocks iPad camera reconfiguration', () => {
@@ -142,8 +150,8 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-lifecycle-segments-20260913');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260934');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-checkpoint-20260935');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260935');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
@@ -153,6 +161,8 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain("flexWrap: isTabletLandscape ? 'wrap' : 'nowrap'");
     expect(source).toContain("flexBasis: isTabletLandscape ? '31%' : 0");
     expect(source).toContain("minHeight: isTabletLandscape ? 220");
+    expect(source).toContain('minWidth: isTabletLandscape ? 88 : undefined');
+    expect(source).toContain('scoreNum: { ...tekoStyle(isTabletLandscape ? 62 : 44)');
     expect(source).not.toContain("justifyContent: isTablet ? 'space-evenly' : 'flex-start'");
   });
 

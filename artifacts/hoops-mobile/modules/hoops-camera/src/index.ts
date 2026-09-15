@@ -44,6 +44,9 @@ export type HoopsCameraRecordingEvent = HoopsCameraRecording & {
 export type HoopsCameraLifecycleResumeEvent = {
   interruptionId?: string;
   timestampMs?: number;
+  interruptedAtMs?: number;
+  finalizationComplete?: boolean;
+  finalizedUri?: string;
 };
 
 export type HoopsCameraEventMap = {

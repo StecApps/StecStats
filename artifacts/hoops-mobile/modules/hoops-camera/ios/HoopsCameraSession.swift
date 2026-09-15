@@ -81,6 +81,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   private var lifecycleGeneration = 0
   private var appDidBecomeActiveObserver: NSObjectProtocol?
   private var lifecycleInterruptionID: String?
+  private var lifecycleInterruptedAtMs: Double?
+  private var lifecycleFinalizationComplete = false
+  private var lifecycleFinalizedURI: String?
   private var recordingStopReason: String?
 
   var eventHandler: ((String, [String: Any]) -> Void)?
@@ -282,6 +285,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.applyMicrophoneMute()
       self.recordingStopReason = nil
       self.lifecycleInterruptionID = nil
+      self.lifecycleInterruptedAtMs = nil
+      self.lifecycleFinalizationComplete = false
+      self.lifecycleFinalizedURI = nil
       let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
       let url = cacheDirectory
         .appendingPathComponent("hoops-recording-\(UUID().uuidString)")
@@ -328,12 +334,15 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       if self.isRecording {
         if self.lifecycleInterruptionID == nil {
           self.lifecycleInterruptionID = UUID().uuidString
+          self.lifecycleInterruptedAtMs = self.epochMilliseconds()
+          self.lifecycleFinalizationComplete = false
+          self.lifecycleFinalizedURI = nil
           self.recordingStopReason = "lifecycle"
           self.emitState(
             "paused",
             reason: "lifecycle-interruption",
             interruptionID: self.lifecycleInterruptionID,
-            timestampMs: self.epochMilliseconds()
+            timestampMs: self.lifecycleInterruptedAtMs
           )
         }
         self.movieOutput.stopRecording()
@@ -377,23 +386,43 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
           return
         }
         self.sessionQueue.async {
-          guard generation == self.lifecycleGeneration,
-                self.isPreviewAttached,
-                self.isPreviewActive else {
-            return
-          }
-          self.configureIfNeeded()
-          self.startSessionIfPossible()
-          if self.session.isRunning {
-            var resumePayload: [String: Any] = [:]
-            if let interruptionID = self.lifecycleInterruptionID {
-              resumePayload["interruptionId"] = interruptionID
-            }
-            resumePayload["timestampMs"] = self.epochMilliseconds()
-            self.emitEvent("onLifecycleResume", resumePayload)
-          }
+          self.completeLifecycleResume(generation: generation)
         }
       }
+    }
+  }
+
+  private func completeLifecycleResume(generation: Int) {
+    guard generation == lifecycleGeneration,
+          isPreviewAttached,
+          isPreviewActive else {
+      return
+    }
+    // Foreground can beat AVCaptureFileOutput's finalization callback. Keep
+    // waiting natively so JS receives one complete checkpoint even if all
+    // events emitted while it was suspended were dropped.
+    if lifecycleInterruptionID != nil && !lifecycleFinalizationComplete {
+      sessionQueue.asyncAfter(deadline: .now() + 0.1) {
+        self.completeLifecycleResume(generation: generation)
+      }
+      return
+    }
+    configureIfNeeded()
+    startSessionIfPossible()
+    if session.isRunning {
+      var resumePayload: [String: Any] = [:]
+      if let interruptionID = lifecycleInterruptionID {
+        resumePayload["interruptionId"] = interruptionID
+      }
+      if let interruptedAtMs = lifecycleInterruptedAtMs {
+        resumePayload["interruptedAtMs"] = interruptedAtMs
+      }
+      if let finalizedURI = lifecycleFinalizedURI {
+        resumePayload["finalizedUri"] = finalizedURI
+      }
+      resumePayload["finalizationComplete"] = lifecycleFinalizationComplete
+      resumePayload["timestampMs"] = epochMilliseconds()
+      emitEvent("onLifecycleResume", resumePayload)
     }
   }
 
@@ -547,6 +576,12 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
 
       let successfullyFinished =
         (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
+      if stopReason == "lifecycle" {
+        self.lifecycleFinalizationComplete = true
+        if error == nil || successfullyFinished {
+          self.lifecycleFinalizedURI = outputFileURL.absoluteString
+        }
+      }
       if let error, !successfullyFinished {
         let cameraError = HoopsCameraSessionError.recordingFailed(error.localizedDescription)
         startPromise?.reject(cameraError)

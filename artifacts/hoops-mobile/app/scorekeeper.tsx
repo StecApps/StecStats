@@ -474,6 +474,7 @@ export default function ScorekeeperScreen() {
   // Live broadcast state
   const [liveCode, setLiveCode] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
+  const [liveMediaRecoveryGeneration, setLiveMediaRecoveryGeneration] = useState(0);
   const [liveLoading, setLiveLoading] = useState(false);
   const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
   const [isSharingLiveLink, setIsSharingLiveLink] = useState(false);
@@ -1382,11 +1383,25 @@ export default function ScorekeeperScreen() {
       maybeResumeRecording();
     });
     const resumeSubscription = addHoopsCameraListener('onLifecycleResume', (event) => {
+      // JS may have been suspended before pause/finalization events crossed
+      // the bridge. Restore from the native checkpoint carried on foreground.
+      if (event.interruptionId) {
+        lifecycleInterruptedRef.current = true;
+        lifecycleFinalizedRef.current = event.finalizationComplete === true;
+        recordingStartedRef.current = false;
+        pendingRecordRef.current = false;
+        addRecordedUri(event.finalizedUri);
+        stopVideoTimelineSegment(videoTimelineClockRef.current, event.interruptedAtMs);
+        setIsRecording(false);
+      }
       if (!lifecycleInterruptedRef.current) return;
       const interruptionId = event.interruptionId ?? 'unknown';
       if (lifecycleResumeHandledRef.current === interruptionId) return;
       lifecycleResumeHandledRef.current = interruptionId;
       lifecycleResumePendingRef.current = true;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+      setLiveMediaRecoveryGeneration((generation) => generation + 1);
       maybeResumeRecording();
     });
     return () => {
@@ -1578,6 +1593,12 @@ export default function ScorekeeperScreen() {
         }
         if (isCurrentMedia()) {
           webrtcStreamRef.current = stream;
+          broadcastWsSend({
+            type: 'join-broadcaster',
+            code: liveCode,
+            hasVideo: true,
+            videoMode: 'webrtc',
+          });
 
           // Watch for the camera track ending unexpectedly (iOS thermal throttle,
           // AVFoundation session conflict with expo-camera, or system preemption).
@@ -1639,7 +1660,7 @@ export default function ScorekeeperScreen() {
         stopWebRtcStream();
       }
     };
-  }, [isLive, liveCode, cameraPermission?.granted, hoopsCameraPermission?.camera, cameraFacing, recordVideo, sharedCameraMode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLive, liveCode, cameraPermission?.granted, hoopsCameraPermission?.camera, cameraFacing, recordVideo, sharedCameraMode, liveMediaRecoveryGeneration]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Live scoreboard push — fires whenever score changes while broadcasting ──
   useEffect(() => {
@@ -3127,7 +3148,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
   const isSmallPhone = !isTablet && sh <= 667;
   const portraitRatio = isTablet ? 0.70 : isSmallPhone ? 0.46 : 0.54;
   const cameraH = isLandscape ? sh : Math.round(sh * portraitRatio);
-  const cameraLandW = isTablet ? '70%' : '55%';
+  const cameraLandW = isTablet ? '62%' : '55%';
 
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.background },
@@ -3170,33 +3191,35 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       bottom: 0,
       left: 0,
       right: 0,
-      paddingTop: 8,
-      paddingBottom: 10,
-      paddingHorizontal: 10,
+      paddingTop: isTabletLandscape ? 12 : 8,
+      paddingBottom: isTabletLandscape ? 16 : 10,
+      paddingHorizontal: isTabletLandscape ? 18 : 10,
       backgroundColor: 'rgba(0,0,0,0.52)',
     },
     closeBtn: { alignSelf: 'center', padding: 4, marginBottom: 2 },
     scoreboard: { flexDirection: 'row', alignItems: 'center' },
     scoreCol: { flex: 1, alignItems: 'center' },
     teamLabel: {
-      fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5,
+      fontSize: isTabletLandscape ? 16 : 11, textTransform: 'uppercase', letterSpacing: 0.5,
       marginBottom: 1, fontFamily: 'Inter_500Medium',
-      color: 'rgba(255,255,255,0.7)', maxWidth: 110,
+      color: 'rgba(255,255,255,0.7)', maxWidth: isTabletLandscape ? 180 : 110,
     },
-    scoreNum: { ...tekoStyle(44), color: '#fff' },
-    scoreCenter: { alignItems: 'center', gap: 5, paddingHorizontal: 8 },
-    timer: { ...tekoStyle(20, 'regular'), color: 'rgba(255,255,255,0.75)' },
-    timerBtn: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+    scoreNum: { ...tekoStyle(isTabletLandscape ? 62 : 44), color: '#fff' },
+    scoreCenter: { alignItems: 'center', gap: isTabletLandscape ? 8 : 5, paddingHorizontal: isTabletLandscape ? 14 : 8 },
+    timer: { ...tekoStyle(isTabletLandscape ? 30 : 20, 'regular'), color: 'rgba(255,255,255,0.75)' },
+    timerBtn: { width: isTabletLandscape ? 44 : 30, height: isTabletLandscape ? 44 : 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
     halfBtn: {
       borderWidth: 1, borderRadius: 6,
-      paddingHorizontal: 8, paddingVertical: 2,
+      paddingHorizontal: isTabletLandscape ? 12 : 8, paddingVertical: isTabletLandscape ? 6 : 2,
       borderColor: 'rgba(255,255,255,0.3)',
     },
-    halfText: { fontSize: 11, fontFamily: 'Inter_600SemiBold', color: 'rgba(255,255,255,0.75)' },
-    oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    halfText: { fontSize: isTabletLandscape ? 14 : 11, fontFamily: 'Inter_600SemiBold', color: 'rgba(255,255,255,0.75)' },
+    oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: isTabletLandscape ? 8 : 5 },
     // Compact quick-buttons used inside the dark camera overlay (white-tinted)
     oppOverlayQuickBtn: {
-      paddingHorizontal: 7,
+      minWidth: isTabletLandscape ? 44 : undefined,
+      height: isTabletLandscape ? 42 : undefined,
+      paddingHorizontal: isTabletLandscape ? 10 : 7,
       paddingVertical: 3,
       borderRadius: 6,
       backgroundColor: 'rgba(255,255,255,0.18)',
@@ -3204,7 +3227,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       borderColor: 'rgba(255,255,255,0.35)',
     },
     oppOverlayQuickBtnText: {
-      fontSize: 11,
+      fontSize: isTabletLandscape ? 15 : 11,
       fontFamily: 'Inter_700Bold',
       color: '#fff',
       lineHeight: 14,
@@ -3219,7 +3242,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     oppQuickBtnText: { fontSize: 12, fontFamily: 'Inter_700Bold', lineHeight: 14 },
     oppBtn: {
-      width: 40, height: 40, borderRadius: 10,
+      width: isTabletLandscape ? 48 : 40, height: isTabletLandscape ? 48 : 40, borderRadius: 10,
       alignItems: 'center', justifyContent: 'center',
       backgroundColor: 'rgba(255,255,255,0.15)',
     },
@@ -3487,19 +3510,21 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     playerBar: {
       borderTopWidth: 1,
       borderBottomWidth: 1,
-      paddingVertical: 6,
+      paddingVertical: isTabletLandscape ? 10 : 6,
     },
     playerChip: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
+      minWidth: isTabletLandscape ? 88 : undefined,
+      justifyContent: 'center',
+      paddingHorizontal: isTabletLandscape ? 16 : 12,
+      paddingVertical: isTabletLandscape ? 11 : 7,
       borderRadius: 20,
       borderWidth: 1,
     },
-    playerChipName: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-    playerChipPts: { fontSize: 12, fontFamily: 'Inter_500Medium' },
+    playerChipName: { fontSize: isTabletLandscape ? 17 : 14, fontFamily: 'Inter_600SemiBold' },
+    playerChipPts: { fontSize: isTabletLandscape ? 15 : 12, fontFamily: 'Inter_500Medium' },
 
     // Stat scroll
     statScroll: { flex: 1 },
@@ -3550,8 +3575,8 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 12,
-      paddingVertical: 7,
+      paddingHorizontal: isTabletLandscape ? 16 : 12,
+      paddingVertical: isTabletLandscape ? 11 : 7,
       borderBottomWidth: 1,
     },
     oppBarLeft: {
@@ -3567,23 +3592,23 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       borderRadius: 4,
     },
     oppBarTagText: {
-      fontSize: 9,
+      fontSize: isTabletLandscape ? 12 : 9,
       fontFamily: 'Inter_700Bold',
       letterSpacing: 1,
     },
     oppBarName: {
-      fontSize: 14,
+      fontSize: isTabletLandscape ? 17 : 14,
       fontFamily: 'Inter_600SemiBold',
       flexShrink: 1,
     },
     oppBarRight: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
+      gap: isTabletLandscape ? 8 : 4,
     },
     oppBarScore: {
-      ...tekoStyle(24),
-      minWidth: 28,
+      ...tekoStyle(isTabletLandscape ? 34 : 24),
+      minWidth: isTabletLandscape ? 40 : 28,
       textAlign: 'center' as const,
     },
 
