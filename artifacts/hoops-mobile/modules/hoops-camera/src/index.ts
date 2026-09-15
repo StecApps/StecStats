@@ -25,6 +25,8 @@ export type HoopsCameraStateEvent = {
   state: HoopsCameraState;
   isRecording: boolean;
   reason?: string;
+  interruptionId?: string;
+  timestampMs?: number;
 };
 
 export type HoopsCameraErrorEvent = {
@@ -35,12 +37,20 @@ export type HoopsCameraErrorEvent = {
 
 export type HoopsCameraRecordingEvent = HoopsCameraRecording & {
   reason?: string;
+  interruptionId?: string;
+  timestampMs?: number;
+};
+
+export type HoopsCameraLifecycleResumeEvent = {
+  interruptionId?: string;
+  timestampMs?: number;
 };
 
 export type HoopsCameraEventMap = {
   onStateChange: (event: HoopsCameraStateEvent) => void;
   onError: (event: HoopsCameraErrorEvent) => void;
   onRecordingFinished: (event: HoopsCameraRecordingEvent) => void;
+  onLifecycleResume: (event: HoopsCameraLifecycleResumeEvent) => void;
 };
 
 export type HoopsCameraViewProps = ViewProps & {

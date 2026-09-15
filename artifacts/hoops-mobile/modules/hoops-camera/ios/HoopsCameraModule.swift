@@ -7,7 +7,7 @@ public final class HoopsCameraModule: Module {
   public func definition() -> ModuleDefinition {
     Name("HoopsCamera")
 
-    Events("onStateChange", "onError", "onRecordingFinished")
+    Events("onStateChange", "onError", "onRecordingFinished", "onLifecycleResume")
 
     Constants {
       [

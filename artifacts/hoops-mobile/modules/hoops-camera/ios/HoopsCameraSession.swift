@@ -80,6 +80,8 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   private var microphoneMuted = false
   private var lifecycleGeneration = 0
   private var appDidBecomeActiveObserver: NSObjectProtocol?
+  private var lifecycleInterruptionID: String?
+  private var recordingStopReason: String?
 
   var eventHandler: ((String, [String: Any]) -> Void)?
   var previewReadyHandler: (() -> Void)?
@@ -278,6 +280,8 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       }
       self.microphoneMuted = muted
       self.applyMicrophoneMute()
+      self.recordingStopReason = nil
+      self.lifecycleInterruptionID = nil
       let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
       let url = cacheDirectory
         .appendingPathComponent("hoops-recording-\(UUID().uuidString)")
@@ -286,7 +290,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.isRecording = true
       self.frameRouter.setRecording(true)
       self.movieOutput.startRecording(to: url, recordingDelegate: self)
-      self.emitState("recording", reason: nil)
+      self.emitState("recording", reason: nil, timestampMs: self.epochMilliseconds())
     }
   }
 
@@ -300,6 +304,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       // stop promise together after AVFoundation has finalized the file.
       self.recordingPromise = self.recordingPromise ?? promise
       self.stopPromise = promise
+      if self.recordingStopReason == nil {
+        self.recordingStopReason = "stopped"
+      }
       self.movieOutput.stopRecording()
     }
   }
@@ -319,10 +326,20 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
         return
       }
       if self.isRecording {
+        if self.lifecycleInterruptionID == nil {
+          self.lifecycleInterruptionID = UUID().uuidString
+          self.recordingStopReason = "lifecycle"
+          self.emitState(
+            "paused",
+            reason: "lifecycle-interruption",
+            interruptionID: self.lifecycleInterruptionID,
+            timestampMs: self.epochMilliseconds()
+          )
+        }
         self.movieOutput.stopRecording()
       } else {
         self.stopSession()
-        self.emitState("paused", reason: "app-backgrounded")
+        self.emitState("paused", reason: "lifecycle-interruption", interruptionID: nil)
       }
     }
   }
@@ -367,6 +384,14 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
           }
           self.configureIfNeeded()
           self.startSessionIfPossible()
+          if self.session.isRunning {
+            var resumePayload: [String: Any] = [:]
+            if let interruptionID = self.lifecycleInterruptionID {
+              resumePayload["interruptionId"] = interruptionID
+            }
+            resumePayload["timestampMs"] = self.epochMilliseconds()
+            self.emitEvent("onLifecycleResume", resumePayload)
+          }
         }
       }
     }
@@ -394,6 +419,8 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.stopSession()
       self.recordingPromise = nil
       self.stopPromise = nil
+      self.recordingStopReason = nil
+      self.lifecycleInterruptionID = nil
     }
   }
 
@@ -509,6 +536,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     error: Error?
   ) {
     sessionQueue.async {
+      let stopReason = self.recordingStopReason
       self.isRecording = false
       self.frameRouter.setRecording(false)
       let result = ["uri": outputFileURL.absoluteString]
@@ -517,7 +545,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.recordingPromise = nil
       self.stopPromise = nil
 
-      if let error {
+      let successfullyFinished =
+        (error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true
+      if let error, !successfullyFinished {
         let cameraError = HoopsCameraSessionError.recordingFailed(error.localizedDescription)
         startPromise?.reject(cameraError)
         stopPromise?.reject(cameraError)
@@ -525,19 +555,45 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       } else {
         startPromise?.resolve(result)
         stopPromise?.resolve(result)
-        self.emitEvent("onRecordingFinished", [
+        var finishedPayload: [String: Any] = [
           "uri": outputFileURL.absoluteString,
-          "reason": "stopped"
-        ])
+          "reason": self.recordingStopReason ?? "stopped",
+          "timestampMs": self.epochMilliseconds()
+        ]
+        if let interruptionID = self.lifecycleInterruptionID {
+          finishedPayload["interruptionId"] = interruptionID
+        }
+        self.emitEvent("onRecordingFinished", finishedPayload)
       }
-      self.emitState(self.isPreviewActive ? "previewing" : "stopped", reason: "recording-finished")
+      self.recordingStopReason = nil
+      if stopReason == "lifecycle" {
+        // Backgrounding must leave AVFoundation paused after the interrupted
+        // file finishes. A later didBecomeActive recovery owns the restart.
+        self.stopSession()
+        self.emitState(
+          "paused",
+          reason: "recording-finished",
+          interruptionID: self.lifecycleInterruptionID
+        )
+      } else {
+        self.emitState(
+          self.isPreviewActive ? "previewing" : "stopped",
+          reason: "recording-finished",
+          interruptionID: self.lifecycleInterruptionID
+        )
+      }
       if !self.isPreviewAttached && !self.isRecording {
         self.stopSession()
       }
     }
   }
 
-  private func emitState(_ state: String, reason: String?) {
+  private func emitState(
+    _ state: String,
+    reason: String?,
+    interruptionID: String? = nil,
+    timestampMs: Double? = nil
+  ) {
     var payload: [String: Any] = [
       "state": state,
       "isRecording": isRecording
@@ -545,7 +601,17 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     if let reason {
       payload["reason"] = reason
     }
+    if let interruptionID {
+      payload["interruptionId"] = interruptionID
+    }
+    if let timestampMs {
+      payload["timestampMs"] = timestampMs
+    }
     emitEvent("onStateChange", payload)
+  }
+
+  private func epochMilliseconds() -> Double {
+    Date().timeIntervalSince1970 * 1000
   }
 
   private func emitError(_ error: HoopsCameraSessionError, recoverable: Bool) {

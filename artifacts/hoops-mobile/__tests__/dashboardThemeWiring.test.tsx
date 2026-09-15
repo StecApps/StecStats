@@ -253,6 +253,7 @@ describe('Dashboard index.tsx — no hardcoded theme hex literals', () => {
     expect(rawSrc).toContain('cell: { flex: 1, minHeight: 130');
     expect(rawSrc).toContain("alignItems: 'center', gap: 0");
     expect(rawSrc).toContain("transform: [{ translateY: 18 }]");
+    expect(rawSrc).not.toContain('...tekoStyle(64), lineHeight: 68');
     expect(rawSrc).toContain("label: { width: '100%', textAlign: 'center'");
     expect(rawSrc).toContain("sub: { width: '100%', textAlign: 'center'");
     expect(rawSrc).toContain('shootingCardLandscape: { minHeight: 154');

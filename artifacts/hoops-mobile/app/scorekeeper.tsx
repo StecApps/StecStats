@@ -33,6 +33,7 @@ import {
   Modal,
   Animated,
   Share,
+  findNodeHandle,
   PermissionsAndroid,
   ToastAndroid,
 } from 'react-native';
@@ -90,6 +91,7 @@ import {
   setHoopsCameraMicrophoneMutedAsync,
   createHoopsCameraLiveVideoAsync,
   releaseHoopsCameraLiveVideoAsync,
+  addHoopsCameraListener,
 } from '@/modules/hoops-camera/src';
 import {
   BITRATE_LADDER,
@@ -317,6 +319,8 @@ export default function ScorekeeperScreen() {
   // setSaving(false); a useEffect below detects the transition and re-runs
   // just the concat + doSaveGame step — skipping the upload entirely.
   const pendingMergeRetryRef = useRef<string[] | null>(null);
+  const [uploadRetryGeneration, setUploadRetryGeneration] = useState(0);
+  const handledUploadRetryGenerationRef = useRef(0);
   // Guards against stacking multiple stall alerts if progress stays frozen.
   const stallAlertActiveRef = useRef(false);
   // Latches to true after the coach taps 'Keep waiting' once.  Prevents a
@@ -389,6 +393,17 @@ export default function ScorekeeperScreen() {
   } | null>(null);
   // All clip URIs collected so far (one per camera-flip segment + final clip).
   const recordedUrisRef = useRef<string[]>([]);
+  // A lifecycle stop is native-owned. This remains true while the finalized
+  // clip is settling, and is cleared only by the matching native resume event.
+  const lifecycleInterruptedRef = useRef(false);
+  const lifecycleResumeHandledRef = useRef<string | null>(null);
+  const lifecycleFinalizedRef = useRef(true);
+  const lifecycleResumePendingRef = useRef(false);
+  const recordingDesiredRef = useRef(false);
+  const startRecordingRef = useRef<(() => Promise<void>) | null>(null);
+  // Saving is terminal for this recording session: a delayed native resume
+  // event must never start another segment after End Game was tapped.
+  const recordingTerminalIntentRef = useRef(false);
   // Generation counter: incremented on each new startRecording call so the
   // finally block of an older recording doesn't clobber a newer one's state.
   const recordingGenerationRef = useRef(0);
@@ -404,6 +419,12 @@ export default function ScorekeeperScreen() {
     camera: string;
     microphone: string;
   } | null>(null);
+
+  function addRecordedUri(uri: string | undefined) {
+    if (!uri) return;
+    if (recordedUrisRef.current.includes(uri)) return;
+    recordedUrisRef.current.push(uri);
+  }
 
   // Camera UI state
   const [cameraFacing, setCameraFacing] = useState<'back' | 'front'>('back');
@@ -458,6 +479,8 @@ export default function ScorekeeperScreen() {
   const [isSharingLiveLink, setIsSharingLiveLink] = useState(false);
   const [cameraNotice, setCameraNotice] = useState<string | null>(null);
   const cameraNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sharePresentationAnchorRef = useRef<View>(null);
+  const pendingShareRef = useRef<{ code: string; anchor?: number } | null>(null);
   // A timed-out POST may still have committed server-side. Reuse this ID on
   // retries so the server returns that same session instead of creating a
   // second invite link.
@@ -511,7 +534,7 @@ export default function ScorekeeperScreen() {
     connectBroadcasterWs(code, teamScore, opponentScore);
   }
 
-  async function shareLiveLink(code: string) {
+  function shareLiveLink(code: string) {
     const url = watchUrl(code);
     if (!url) {
       Alert.alert('Share Link Unavailable', 'The public app address is missing. Close and reopen StecStats, then try Go Live again.');
@@ -526,20 +549,46 @@ export default function ScorekeeperScreen() {
     }
     // The invite exists, but the live socket and WebRTC stack are not started
     // yet. Legacy CameraView pauses while Messages is open. The shared native
-    // session stays active and lets iOS handle its interruption in place; an
-    // explicit stop/start here can freeze its preview if the iPad rotates.
+    // session stays active and lets iOS handle its interruption in place.
+    // Dismiss the React Native Modal first; iPadOS presents Share.share from
+    // Modal.onDismiss rather than racing another native presentation against
+    // the modal animation.
+    const anchor = findNodeHandle(sharePresentationAnchorRef.current) ?? undefined;
+    pendingShareRef.current = { code, anchor };
     setIsSharingLiveLink(true);
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    setShowGoLiveSheet(false);
+    if (Platform.OS !== 'ios') {
+      // Modal.onDismiss is iOS-only. Android's share dialog is not a popover,
+      // so schedule it after the modal state update instead.
+      setTimeout(() => { void sharePendingLiveLink(); }, 0);
+    }
+  }
+
+  async function sharePendingLiveLink() {
+    const pending = pendingShareRef.current;
+    if (!pending) return;
+    pendingShareRef.current = null;
+    const url = watchUrl(pending.code);
+    const anchor = pending.anchor;
+    let didShare = false;
     try {
       const result = await Share.share({
         title: `${teamName} live game`,
         message: `Watch ${teamName} live: ${url}`,
-      });
+      }, Platform.OS === 'ios' && anchor ? {
+        anchor,
+      } : undefined);
       if (result.action === Share.sharedAction) {
-        activateLiveBroadcast(code);
+        didShare = true;
+        activateLiveBroadcast(pending.code);
       }
+    } catch (err: any) {
+      Alert.alert('Could not open sharing', err?.message ?? 'The iPad share sheet could not be opened. Please try again.');
     } finally {
       setIsSharingLiveLink(false);
+      // Cancel and presentation errors leave the invite available so the
+      // coach can retry without creating a second live session.
+      if (!didShare) setShowGoLiveSheet(true);
     }
   }
 
@@ -1075,7 +1124,7 @@ export default function ScorekeeperScreen() {
                 // returned the authoritative URI. The watchdog is feedback
                 // only and cannot turn a still-recording clip into undefined.
                 const result = await activeRecording;
-                if (result?.uri) recordedUrisRef.current.push(result.uri);
+                addRecordedUri(result?.uri);
               } catch { /* recording stopped cleanly */ }
               finally { clearTimeout(watchdog); }
             }
@@ -1180,8 +1229,32 @@ export default function ScorekeeperScreen() {
     }
   }
 
+  async function settleRecordingForSave(): Promise<void> {
+    if (recordingStartedRef.current) {
+      await stopCameraRecording();
+    }
+    const pendingRecording = recordingPromiseRef.current;
+    if (pendingRecording) {
+      try {
+        const result = await pendingRecording;
+        addRecordedUri(result?.uri);
+      } catch {
+        // A failed interrupted segment cannot contribute a URI, but all
+        // previously finalized segments remain in recordedUrisRef.
+      }
+    }
+    recordingStartedRef.current = false;
+    recordingPromiseRef.current = null;
+    recordingCompletionRef.current = null;
+    setIsRecording(false);
+  }
+
   async function startRecording() {
-    if ((!sharedCameraMode && !cameraRef.current) || recordingStartedRef.current) return;
+    if (
+      recordingTerminalIntentRef.current ||
+      (!sharedCameraMode && !cameraRef.current) ||
+      recordingStartedRef.current
+    ) return;
     const hasRecordingPermission = sharedCameraMode
       ? hoopsCameraPermission?.camera === 'granted' &&
         hoopsCameraPermission?.microphone === 'granted'
@@ -1205,7 +1278,10 @@ export default function ScorekeeperScreen() {
       }
     }
     recordingStartedRef.current = true;
-    startVideoTimelineSegment(videoTimelineClockRef.current);
+    recordingDesiredRef.current = true;
+    if (!sharedCameraMode) {
+      startVideoTimelineSegment(videoTimelineClockRef.current);
+    }
     const myGen = ++recordingGenerationRef.current;
     // Native modal presentation over CameraView can interrupt AVFoundation on
     // iPad. Recording always wins: close any prepared invite sheet first.
@@ -1239,6 +1315,7 @@ export default function ScorekeeperScreen() {
         stopVideoTimelineSegment(videoTimelineClockRef.current);
         // Error on this specific session (not superseded by a camera flip)
         recordingStartedRef.current = false;
+        if (!lifecycleInterruptedRef.current) recordingDesiredRef.current = false;
         recordingPromiseRef.current = null;
         recordingCompletionRef.current = null;
       }
@@ -1251,6 +1328,7 @@ export default function ScorekeeperScreen() {
       }
     }
   }
+  startRecordingRef.current = startRecording;
 
   function onCameraReady() {
     cameraReadyRef.current = true;
@@ -1259,6 +1337,64 @@ export default function ScorekeeperScreen() {
       startRecording();
     }
   }
+
+  // The native session is authoritative for lifecycle interruption. Do not
+  // infer recording pauses from AppState: iPadOS can background the JS surface
+  // while AVFoundation is still finalizing the interrupted movie.
+  useEffect(() => {
+    if (!sharedCameraMode) return;
+    const maybeResumeRecording = () => {
+      if (
+        !lifecycleResumePendingRef.current ||
+        !lifecycleFinalizedRef.current ||
+        !recordingDesiredRef.current ||
+        recordingTerminalIntentRef.current ||
+        recordingStartedRef.current
+      ) return;
+      lifecycleResumePendingRef.current = false;
+      lifecycleInterruptedRef.current = false;
+      void startRecordingRef.current?.();
+    };
+    const stateSubscription = addHoopsCameraListener('onStateChange', (event) => {
+      if (event.state === 'recording' && recordingDesiredRef.current) {
+        startVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
+      }
+      if (event.reason !== 'lifecycle-interruption') return;
+      lifecycleInterruptedRef.current = true;
+      lifecycleFinalizedRef.current = false;
+      lifecycleResumePendingRef.current = false;
+      recordingStartedRef.current = false;
+      pendingRecordRef.current = false;
+      stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
+      setIsRecording(false);
+    });
+    const finishedSubscription = addHoopsCameraListener('onRecordingFinished', (event) => {
+      addRecordedUri(event.uri);
+      if (event.reason === 'lifecycle') {
+        lifecycleInterruptedRef.current = true;
+        lifecycleFinalizedRef.current = true;
+        recordingStartedRef.current = false;
+        stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
+      }
+      // Do not settle the mutable completion ref from this event. Native
+      // resolves the exact segment's start promise before emitting the event;
+      // a delayed old event must never resolve a newer recording segment.
+      maybeResumeRecording();
+    });
+    const resumeSubscription = addHoopsCameraListener('onLifecycleResume', (event) => {
+      if (!lifecycleInterruptedRef.current) return;
+      const interruptionId = event.interruptionId ?? 'unknown';
+      if (lifecycleResumeHandledRef.current === interruptionId) return;
+      lifecycleResumeHandledRef.current = interruptionId;
+      lifecycleResumePendingRef.current = true;
+      maybeResumeRecording();
+    });
+    return () => {
+      stateSubscription.remove();
+      finishedSubscription.remove();
+      resumeSubscription.remove();
+    };
+  }, [sharedCameraMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleStartStop() {
     if (!running) {
@@ -1539,6 +1675,15 @@ export default function ScorekeeperScreen() {
     doMergeAndSave(paths);
   }, [saving]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (
+      saving ||
+      uploadRetryGeneration === handledUploadRetryGenerationRef.current
+    ) return;
+    handledUploadRetryGenerationRef.current = uploadRetryGeneration;
+    void retryFinalizedSave();
+  }, [saving, uploadRetryGeneration]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
     : '';
@@ -1662,11 +1807,45 @@ export default function ScorekeeperScreen() {
   }
 
   async function handleSave() {
-    if (saving) return;
+    if (saving || recordingTerminalIntentRef.current) return;
     if (!players || (players as any[]).length === 0) {
       Alert.alert('No players', 'Add players to your team before saving a game.');
       return;
     }
+    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease();
+    if (recordVideo && !ownsPendingMasterLease) {
+      Alert.alert('Recording is still finishing', 'Please wait a moment, then tap End Game again.');
+      return;
+    }
+    try {
+      await saveWithPendingMasterLease();
+    } finally {
+      if (ownsPendingMasterLease) releasePendingMasterLease();
+    }
+  }
+
+  async function retryFinalizedSave() {
+    if (saving) return;
+    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease();
+    if (recordVideo && !ownsPendingMasterLease) {
+      Alert.alert('Upload is still finishing', 'Please wait a moment, then retry the upload.');
+      return;
+    }
+    try {
+      await saveWithPendingMasterLease();
+    } finally {
+      if (ownsPendingMasterLease) releasePendingMasterLease();
+    }
+  }
+
+  async function saveWithPendingMasterLease() {
+    // Latch terminal intent before any asynchronous stop/finalization work.
+    // A didBecomeActive callback already queued by native recovery must never
+    // create another segment after End Game begins.
+    recordingTerminalIntentRef.current = true;
+    recordingDesiredRef.current = false;
+    pendingRecordRef.current = false;
+
     // End any active broadcast before saving so viewers get the final score
     if (liveCode) {
       await stopLiveBroadcast(liveCode);
@@ -1680,14 +1859,7 @@ export default function ScorekeeperScreen() {
       if (recordVideo) {
         // Finalize an active camera segment before persisting the offline marker.
         // Otherwise End Game while offline would queue only prior flip segments.
-        if (recordingStartedRef.current) {
-          await stopCameraRecording();
-          try {
-            const result = await recordingPromiseRef.current;
-            if (result?.uri) recordedUrisRef.current.push(result.uri);
-          } catch { /* the already-recorded segments remain recoverable */ }
-          setIsRecording(false);
-        }
+        await settleRecordingForSave();
       }
       if (recordVideo && recordedUrisRef.current.length > 0) {
         const clientId = generateClientId();
@@ -1717,26 +1889,13 @@ export default function ScorekeeperScreen() {
     // object, so a subsequent attempt's fresh token can never un-cancel us.
     const attemptToken = { cancelled: false };
     uploadAttemptRef.current = attemptToken;
-    // Acquire before writing the marker. The global foreground/relaunch worker
-    // sees this same lease and cannot duplicate this foreground master upload.
-    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease();
-    if (recordVideo && !ownsPendingMasterLease) return;
     setSaving(true);
     try {
       let videoObjectPath: string | null = null;
       let pendingClientId: string | undefined;
       if (recordVideo) {
         // Stop the active recording and capture its URI into the array
-        if (recordingStartedRef.current) {
-          await stopCameraRecording();
-          if (recordingPromiseRef.current) {
-            try {
-              const result = await recordingPromiseRef.current;
-              if (result?.uri) recordedUrisRef.current.push(result.uri);
-            } catch { /* already stopped cleanly */ }
-          }
-          setIsRecording(false);
-        }
+        await settleRecordingForSave();
 
         if (recordedUrisRef.current.length === 0) {
           showNoVideoAlert(recordingStartedRef.current, setSaving, doSaveGame);
@@ -1869,8 +2028,6 @@ export default function ScorekeeperScreen() {
       setUploadProgress(null);
       Alert.alert('Save failed', err?.message ?? 'Could not save game');
       setSaving(false);
-    } finally {
-      if (ownsPendingMasterLease) releasePendingMasterLease();
     }
   }
 
@@ -2026,7 +2183,15 @@ export default function ScorekeeperScreen() {
       'Upload cancelled',
       'Your recording is still on this device. Retry the upload, or save your stats now without video.',
       [
-        { text: 'Retry upload', style: 'default', onPress: handleSave },
+        {
+          text: 'Retry upload',
+          style: 'default',
+          onPress: () => {
+            // The state-backed generation guarantees a new render even though
+            // saving was already cleared before this alert action runs.
+            setUploadRetryGeneration((generation) => generation + 1);
+          },
+        },
         { text: 'Save without video', onPress: () => doSaveGame(null) },
         { text: 'Dismiss', style: 'cancel' },
       ],
@@ -2515,6 +2680,7 @@ export default function ScorekeeperScreen() {
       visible={showGoLiveSheet}
       transparent
       animationType="slide"
+      onDismiss={sharePendingLiveLink}
       onRequestClose={() => setShowGoLiveSheet(false)}
     >
       <View style={styles.sheetBackdrop}>
@@ -2609,7 +2775,7 @@ export default function ScorekeeperScreen() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <View style={[styles.root, isLandscape && styles.rootLandscape]}>
+    <View ref={sharePresentationAnchorRef} style={[styles.root, isLandscape && styles.rootLandscape]}>
       {goLiveSheet}
 
       {/* ── Compact scoreboard header — shown when not recording (camera hidden) ── */}

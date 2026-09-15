@@ -25,6 +25,29 @@ describe('iPad recording safeguards', () => {
     expect(nativeCameraSource).toContain('generation == self.lifecycleGeneration');
   });
 
+  test('recovers lifecycle recording through native interruption and resume events', () => {
+    expect(nativeCameraSource).toContain('lifecycleInterruptionID');
+    expect(nativeCameraSource).toContain('recordingStopReason = "lifecycle"');
+    expect(nativeCameraSource).toContain('AVErrorRecordingSuccessfullyFinishedKey');
+    expect(nativeCameraSource).toContain('if stopReason == "lifecycle"');
+    expect(nativeCameraSource).toContain('"onLifecycleResume"');
+    expect(nativeCameraSource).toContain('"interruptionId"');
+    expect(nativeCameraSource).toContain('"timestampMs"');
+    expect(source).toContain('event.timestampMs');
+    expect(source).toContain("addHoopsCameraListener('onStateChange'");
+    expect(source).toContain("addHoopsCameraListener('onRecordingFinished'");
+    expect(source).toContain("addHoopsCameraListener('onLifecycleResume'");
+    expect(source).toContain('recordingTerminalIntentRef.current');
+    expect(source).toContain('settleRecordingForSave');
+    expect(source).toContain('recordedUrisRef.current.includes(uri)');
+    expect(source).toContain('setUploadRetryGeneration((generation) => generation + 1)');
+    expect(source).toContain('handledUploadRetryGenerationRef.current = uploadRetryGeneration');
+    expect(source).toContain('void retryFinalizedSave()');
+    expect(source).toContain('await saveWithPendingMasterLease()');
+    expect(source).toContain('Recording is still finishing');
+    expect(source).not.toContain('recordingCompletionRef.current?.resolve({ uri: event.uri })');
+  });
+
   test('does not wait forever when native stopRecording hangs during camera switch', () => {
     expect(source).toContain('Promise.race([');
     expect(source).toContain('new Promise<undefined>((resolve) => setTimeout(resolve, 3_000))');
@@ -84,6 +107,13 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('cameraActive={sharedCameraMode || !isSharingLiveLink || recordingStartedRef.current || isRecording}');
     expect(source).toContain('if (result.action === Share.sharedAction)');
     expect(source).toContain('activateLiveBroadcast(code)');
+    expect(source).toContain('const anchor = findNodeHandle(sharePresentationAnchorRef.current)');
+    expect(source).toContain('setShowGoLiveSheet(false)');
+    expect(source).toContain("Platform.OS === 'ios' && anchor");
+    expect(source).toContain('if (!didShare) setShowGoLiveSheet(true)');
+    expect(source).toContain('onDismiss={sharePendingLiveLink}');
+    expect(source).toContain("if (Platform.OS !== 'ios')");
+    expect(source).not.toContain('await new Promise((resolve) => setTimeout(resolve, 350))');
     expect(source).not.toContain('scheduleIdleCameraRecovery');
     expect(source).not.toContain("AppState.addEventListener('change'");
     expect(source).not.toContain('key={cameraRecoveryKey}');
@@ -112,8 +142,8 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-shared-camera-20260929');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260933');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-lifecycle-segments-20260913');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260934');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
