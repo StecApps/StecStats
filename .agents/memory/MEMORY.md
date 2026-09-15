@@ -156,3 +156,4 @@
 - [Shared iOS recording and live camera](mobile-recording-camera-ownership.md) — preview, recording, and WebRTC share one capture session; recording wins and legacy builds fall back to score-only.
 - [iPad recording cannot background for sharing](ipad-recording-background-sharing.md) — opening Messages suspends the active camera; share live links before starting the recording.
 - [Recorded-event timeline](recorded-event-timeline.md) — reel event timestamps must count only time represented by saved video segments, not the game clock or camera-switch gaps.
+- [React Native category export gap](react-native-webrtc-category-exports.md) — a patched Objective-C category can compile into iOS yet its added bridge methods remain absent in JS.
