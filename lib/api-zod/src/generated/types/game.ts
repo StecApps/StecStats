@@ -7,6 +7,7 @@
  */
 import type { GameEvent } from './gameEvent';
 import type { GameHighlightStatus } from './gameHighlightStatus';
+import type { GameLowlightStatus } from './gameLowlightStatus';
 import type { GameResult } from './gameResult';
 import type { PlayerGameStatLine } from './playerGameStatLine';
 
@@ -30,6 +31,9 @@ export interface Game {
   highlightObjectPath?: string | null;
   highlightStatus?: GameHighlightStatus;
   highlightError?: string | null;
+  lowlightObjectPath?: string | null;
+  lowlightStatus?: GameLowlightStatus;
+  lowlightError?: string | null;
   /** True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes. */
   videoProcessing?: boolean;
   createdAt: Date;

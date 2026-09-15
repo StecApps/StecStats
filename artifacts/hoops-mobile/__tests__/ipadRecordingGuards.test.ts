@@ -82,7 +82,10 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain("const cameraLandW = isTablet ? '62%' : '55%'");
     expect(source).toContain('const portraitRatio = isTablet ? 0.70');
     expect(source).toContain('setLiveMediaRecoveryGeneration((generation) => generation + 1)');
-    expect(source).toContain("videoMode: 'webrtc'");
+    expect(source).toContain("videoMode: hasVideo ? 'webrtc' : 'none'");
+    expect(source).toContain("if (msg.type === 'broadcaster-joined')");
+    expect(source).toContain('broadcastVideoModeWhenJoined(liveCode, true)');
+    expect(source).toContain('pendingVideoModeRef.current = { code, hasVideo }');
   });
 
   test('keeps the native recorder stable while scoring and blocks iPad camera reconfiguration', () => {
@@ -105,6 +108,13 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('adjustCameraZoom(CAMERA_ZOOM_STEP)');
     expect(source).toContain('pinchBaseZoom.value + (e.scale - 1) * CAMERA_PINCH_SENSITIVITY');
     expect(nativeCameraSource).toContain('min(device.activeFormat.videoMaxZoomFactor, 5)');
+  });
+
+  test('retains an unexpectedly finalized recording and closes its timeline', () => {
+    expect(source).toContain('const result = await recordingPromiseRef.current');
+    expect(source).toContain('addRecordedUri(result?.uri)');
+    expect(source).toContain('if (!sharedCameraMode) {');
+    expect(source).toContain('stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs)');
   });
 
   test('does not crop the iPad preview or background an active recording for Messages', () => {
@@ -148,10 +158,12 @@ describe('iPad recording safeguards', () => {
   test('enables the single-session shared native camera only in the isolated runtime', () => {
     expect(source).toContain('const ENABLE_SHARED_CAMERA_MODE = true');
     expect(source).toContain('ENABLE_SHARED_CAMERA_MODE &&');
+    expect(source).toContain("Platform.OS === 'ios' &&\n    isHoopsCameraAvailable");
+    expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-checkpoint-20260935');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260935');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260936');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260936');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
@@ -161,8 +173,9 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain("flexWrap: isTabletLandscape ? 'wrap' : 'nowrap'");
     expect(source).toContain("flexBasis: isTabletLandscape ? '31%' : 0");
     expect(source).toContain("minHeight: isTabletLandscape ? 220");
-    expect(source).toContain('minWidth: isTabletLandscape ? 88 : undefined');
+    expect(source).toContain('minWidth: isTabletLandscape ? 100 : undefined');
     expect(source).toContain('scoreNum: { ...tekoStyle(isTabletLandscape ? 62 : 44)');
+    expect(source).toContain('width: isTabletLandscape ? 52 : 34');
     expect(source).not.toContain("justifyContent: isTablet ? 'space-evenly' : 'flex-start'");
   });
 

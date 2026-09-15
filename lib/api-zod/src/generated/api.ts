@@ -308,6 +308,9 @@ export const ListTeamGamesResponseItem = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "lowlightObjectPath": zod.string().nullish(),
+  "lowlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
+  "lowlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
@@ -372,6 +375,9 @@ export const ListAllGamesResponseItem = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "lowlightObjectPath": zod.string().nullish(),
+  "lowlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
+  "lowlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
@@ -521,6 +527,9 @@ export const CreateGameResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "lowlightObjectPath": zod.string().nullish(),
+  "lowlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
+  "lowlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
@@ -588,6 +597,9 @@ export const GetGameResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "lowlightObjectPath": zod.string().nullish(),
+  "lowlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
+  "lowlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
@@ -741,6 +753,9 @@ export const UpdateGameResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "lowlightObjectPath": zod.string().nullish(),
+  "lowlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
+  "lowlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({
@@ -1074,6 +1089,9 @@ export const MergeGamesResponse = zod.object({
   "highlightObjectPath": zod.string().nullish(),
   "highlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
   "highlightError": zod.string().nullish(),
+  "lowlightObjectPath": zod.string().nullish(),
+  "lowlightStatus": zod.enum(['idle', 'queued', 'processing', 'ready', 'failed']).nullish(),
+  "lowlightError": zod.string().nullish(),
   "videoProcessing": zod.boolean().optional().describe('True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes.'),
   "createdAt": zod.coerce.date(),
   "stats": zod.array(zod.object({

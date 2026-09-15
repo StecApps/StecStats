@@ -11,7 +11,7 @@ describe('HoopsCamera WebRTC integration contract', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const facade = require('../src') as typeof import('../src');
 
-    expect(facade.isHoopsCameraWebRTCAvailable).toBe(false);
+    expect(facade.isHoopsCameraWebRTCAvailable()).toBe(false);
     return expect(facade.createHoopsCameraLiveVideoAsync()).rejects.toThrow(
       'HoopsCamera WebRTC integration is unavailable',
     );

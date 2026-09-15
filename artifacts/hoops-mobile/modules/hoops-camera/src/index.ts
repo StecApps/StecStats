@@ -142,8 +142,9 @@ function getHoopsCameraWebRTCNativeModule(): HoopsCameraWebRTCNativeModule | nul
   return null;
 }
 
-export const isHoopsCameraWebRTCAvailable =
-  getHoopsCameraWebRTCNativeModule() !== null;
+export function isHoopsCameraWebRTCAvailable(): boolean {
+  return getHoopsCameraWebRTCNativeModule() !== null;
+}
 
 export const HoopsCameraView: ComponentType<HoopsCameraViewProps> | null =
   nativeModule === null

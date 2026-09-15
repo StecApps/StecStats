@@ -20,6 +20,7 @@ export * from './gameEvent';
 export * from './gameHighlightStatus';
 export * from './gameInput';
 export * from './gameInputResult';
+export * from './gameLowlightStatus';
 export * from './gameResult';
 export * from './gameUpdate';
 export * from './gameUpdateResult';

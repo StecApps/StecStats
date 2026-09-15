@@ -222,6 +222,17 @@ export const GameHighlightStatus = {
   failed: 'failed',
 } as const;
 
+export type GameLowlightStatus = typeof GameLowlightStatus[keyof typeof GameLowlightStatus] | null;
+
+
+export const GameLowlightStatus = {
+  idle: 'idle',
+  queued: 'queued',
+  processing: 'processing',
+  ready: 'ready',
+  failed: 'failed',
+} as const;
+
 export interface GameEvent {
   playerId: number;
   statField: string;
@@ -250,6 +261,9 @@ export interface Game {
   highlightObjectPath?: string | null;
   highlightStatus?: GameHighlightStatus;
   highlightError?: string | null;
+  lowlightObjectPath?: string | null;
+  lowlightStatus?: GameLowlightStatus;
+  lowlightError?: string | null;
   /** True when the game has a video but its playback proxy is not yet ready (still being optimised). Disappears once the proxy build completes. */
   videoProcessing?: boolean;
   createdAt: string;

@@ -484,6 +484,9 @@ async function serializeGame(gameId: number, ownerId: number) {
     highlightObjectPath: game.highlightObjectPath ?? null,
     highlightStatus: game.highlightStatus ?? null,
     highlightError: game.highlightError ?? null,
+    lowlightObjectPath: game.lowlightObjectPath ?? null,
+    lowlightStatus: game.lowlightStatus ?? null,
+    lowlightError: game.lowlightError ?? null,
     createdAt: game.createdAt,
     stats: statRows.map(({ stat, playerName }) => ({
       playerId: stat.playerId,

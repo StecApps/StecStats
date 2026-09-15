@@ -60,7 +60,7 @@ jest.mock('@/hooks/useColors', () => ({
 jest.mock('@/modules/hoops-camera/src', () => ({
   HoopsCameraView: null,
   isHoopsCameraAvailable: false,
-  isHoopsCameraWebRTCAvailable: false,
+  isHoopsCameraWebRTCAvailable: () => false,
   requestHoopsCameraPermissionsAsync: jest.fn(),
   startHoopsCameraRecordingAsync: jest.fn(),
   stopHoopsCameraRecordingAsync: jest.fn(),

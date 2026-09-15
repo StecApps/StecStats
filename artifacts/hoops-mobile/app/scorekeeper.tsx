@@ -84,7 +84,6 @@ import { startLiveSession } from '@/lib/startLiveSession';
 import {
   HoopsCameraView,
   isHoopsCameraAvailable,
-  isHoopsCameraWebRTCAvailable,
   requestHoopsCameraPermissionsAsync,
   startHoopsCameraRecordingAsync,
   stopHoopsCameraRecordingAsync,
@@ -337,6 +336,8 @@ export default function ScorekeeperScreen() {
   const videoTimelineClockRef = useRef(createVideoTimelineClock());
   // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
   const liveWsRef = useRef<WebSocket | null>(null);
+  const broadcasterJoinedRef = useRef(false);
+  const pendingVideoModeRef = useRef<{ code: string; hasVideo: boolean } | null>(null);
   // WebRTC broadcaster: one RTCPeerConnection per connected viewer (keyed by viewerId)
   const webrtcPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   // Per-viewer ICE restart attempt counters — reset when a viewer's connection recovers
@@ -413,8 +414,7 @@ export default function ScorekeeperScreen() {
   const sharedCameraMode =
     ENABLE_SHARED_CAMERA_MODE &&
     Platform.OS === 'ios' &&
-    isHoopsCameraAvailable &&
-    isHoopsCameraWebRTCAvailable;
+    isHoopsCameraAvailable;
   const [hoopsCameraPermission, setHoopsCameraPermission] = useState<{
     camera: string;
     microphone: string;
@@ -981,8 +981,24 @@ export default function ScorekeeperScreen() {
     }
   }
 
+  function broadcastVideoModeWhenJoined(code: string, hasVideo: boolean) {
+    if (!broadcasterJoinedRef.current) {
+      pendingVideoModeRef.current = { code, hasVideo };
+      return;
+    }
+    pendingVideoModeRef.current = null;
+    broadcastWsSend({
+      type: 'join-broadcaster',
+      code,
+      hasVideo,
+      videoMode: hasVideo ? 'webrtc' : 'none',
+    });
+  }
+
   function connectBroadcasterWs(code: string, initTeamScore: number, initOppScore: number) {
     const sessionGeneration = ++liveSessionGenerationRef.current;
+    broadcasterJoinedRef.current = false;
+    pendingVideoModeRef.current = null;
     // A reconnect is a new signaling session. Stale peer attempts/callbacks
     // must not remain attached to the replacement WebSocket.
     closeAllWebRtcPeers();
@@ -1002,17 +1018,19 @@ export default function ScorekeeperScreen() {
 
     ws.onopen = () => {
       if (liveSessionGenerationRef.current !== sessionGeneration) return;
-      // Use the authoritative camera mode: if getUserMedia already rejected
-      // before this socket opened (webrtcCameraFailedRef is true), announce
-      // score-only immediately so viewers never wait on the offer watchdog.
-      // Otherwise fall back to the permission-based optimistic value.
+      // Shared camera video is never advertised optimistically. Its optional
+      // patched bridge is discovered lazily, so only an already-created stream
+      // proves video is available. Stream creation sends a second authoritative
+      // join-broadcaster with hasVideo=true and then drains queued viewers.
       const cameraFailed = webrtcCameraFailedRef.current;
       // RTCPeerConnection is null when running in Expo Go (native module unavailable)
       const webrtcSupported = RTCPeerConnection !== null;
       const hasCameraPermission = sharedCameraMode
         ? hoopsCameraPermission?.camera === 'granted'
         : !!cameraPermission?.granted;
-      const hasVideo = webrtcSupported && !cameraFailed && hasCameraPermission;
+      const hasVideo = sharedCameraMode
+        ? !!webrtcStreamRef.current && !cameraFailed
+        : webrtcSupported && !cameraFailed && hasCameraPermission;
       const videoMode = hasVideo ? 'webrtc' : 'none';
       ws.send(JSON.stringify({
         type: 'join-broadcaster',
@@ -1028,7 +1046,13 @@ export default function ScorekeeperScreen() {
       try {
         if (liveSessionGenerationRef.current !== sessionGeneration) return;
         const msg = JSON.parse(event.data as string);
-        if (msg.type === 'new-viewer') {
+        if (msg.type === 'broadcaster-joined') {
+          broadcasterJoinedRef.current = true;
+          const pendingMode = pendingVideoModeRef.current;
+          if (pendingMode?.code === code) {
+            broadcastVideoModeWhenJoined(pendingMode.code, pendingMode.hasVideo);
+          }
+        } else if (msg.type === 'new-viewer') {
           // A record-enabled game intentionally advertises score-only mode.
           // Do not queue viewer IDs for an offer that can never be created.
           if (webrtcCameraFailedRef.current) return;
@@ -1270,12 +1294,7 @@ export default function ScorekeeperScreen() {
       closeAllWebRtcPeers();
       stopWebRtcStream();
       if (liveCode) {
-        broadcastWsSend({
-          type: 'join-broadcaster',
-          code: liveCode,
-          hasVideo: false,
-          videoMode: 'none',
-        });
+        broadcastVideoModeWhenJoined(liveCode, false);
       }
     }
     recordingStartedRef.current = true;
@@ -1309,8 +1328,20 @@ export default function ScorekeeperScreen() {
       } else {
         recordingPromiseRef.current = cameraRef.current.recordAsync({ mute: micMuted } as any) as Promise<{ uri: string } | undefined>;
       }
-      await recordingPromiseRef.current;
-      // URI is captured by whoever calls stopRecording (handleSave or toggleCameraFacing)
+      const result = await recordingPromiseRef.current;
+      addRecordedUri(result?.uri);
+      if (myGen === recordingGenerationRef.current) {
+        recordingStartedRef.current = false;
+        recordingPromiseRef.current = null;
+        recordingCompletionRef.current = null;
+        // HoopsCamera emits a timestamped recording-finished event; that event
+        // owns its exact timeline boundary. Legacy CameraView has no matching
+        // event, so close its timeline as soon as recordAsync resolves.
+        if (!sharedCameraMode) {
+          stopVideoTimelineSegment(videoTimelineClockRef.current);
+          recordingDesiredRef.current = false;
+        }
+      }
     } catch (err: any) {
       if (myGen === recordingGenerationRef.current) {
         stopVideoTimelineSegment(videoTimelineClockRef.current);
@@ -1371,11 +1402,13 @@ export default function ScorekeeperScreen() {
     });
     const finishedSubscription = addHoopsCameraListener('onRecordingFinished', (event) => {
       addRecordedUri(event.uri);
+      recordingStartedRef.current = false;
+      stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
       if (event.reason === 'lifecycle') {
         lifecycleInterruptedRef.current = true;
         lifecycleFinalizedRef.current = true;
-        recordingStartedRef.current = false;
-        stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
+      } else if (!recordingTerminalIntentRef.current) {
+        recordingDesiredRef.current = false;
       }
       // Do not settle the mutable completion ref from this event. Native
       // resolves the exact segment's start promise before emitting the event;
@@ -1532,12 +1565,7 @@ export default function ScorekeeperScreen() {
       webrtcCameraFailedRef.current = true;
       closeAllWebRtcPeers();
       stopWebRtcStream();
-      broadcastWsSend({
-        type: 'join-broadcaster',
-        code: liveCode,
-        hasVideo: false,
-        videoMode: 'none',
-      });
+      broadcastVideoModeWhenJoined(liveCode, false);
       return;
     }
     // HoopsCameraView applies facing changes to the existing native session.
@@ -1593,12 +1621,7 @@ export default function ScorekeeperScreen() {
         }
         if (isCurrentMedia()) {
           webrtcStreamRef.current = stream;
-          broadcastWsSend({
-            type: 'join-broadcaster',
-            code: liveCode,
-            hasVideo: true,
-            videoMode: 'webrtc',
-          });
+          broadcastVideoModeWhenJoined(liveCode, true);
 
           // Watch for the camera track ending unexpectedly (iOS thermal throttle,
           // AVFoundation session conflict with expo-camera, or system preemption).
@@ -1617,12 +1640,7 @@ export default function ScorekeeperScreen() {
               closeAllWebRtcPeers();
               stopWebRtcStream();
               // Notify server/viewers that video is gone so they drop to scoreboard.
-              broadcastWsSend({
-                type: 'join-broadcaster',
-                code: liveCode,
-                hasVideo: false,
-                videoMode: 'none',
-              });
+              broadcastVideoModeWhenJoined(liveCode, false);
             });
           }
 
@@ -1641,12 +1659,7 @@ export default function ScorekeeperScreen() {
           // before onopen fired). If the socket is already open, broadcastWsSend
           // immediately notifies the server to push session-mode to viewers.
           webrtcCameraFailedRef.current = true;
-          broadcastWsSend({
-            type: 'join-broadcaster',
-            code: liveCode,
-            hasVideo: false,
-            videoMode: 'none',
-          });
+          broadcastVideoModeWhenJoined(liveCode, false);
         }
       }
     })();
@@ -2918,7 +2931,7 @@ export default function ScorekeeperScreen() {
                     isRecording && isTablet && { opacity: 0.4 },
                   ]}
                 >
-                  <Ionicons name="camera-reverse" size={18} color="#fff" />
+                  <Ionicons name="camera-reverse" size={isTablet ? 24 : 18} color="#fff" />
                 </TouchableOpacity>
 
                 {/* Mute / unmute mic */}
@@ -2938,7 +2951,7 @@ export default function ScorekeeperScreen() {
                     isRecording && isTablet && { opacity: 0.4 },
                   ]}
                 >
-                  <Ionicons name={micMuted ? 'mic-off' : 'mic'} size={18} color="#fff" />
+                  <Ionicons name={micMuted ? 'mic-off' : 'mic'} size={isTablet ? 24 : 18} color="#fff" />
                 </TouchableOpacity>
 
                 {/* Phone-only layout override. iPads follow the device so the
@@ -2963,7 +2976,7 @@ export default function ScorekeeperScreen() {
                   activeOpacity={0.75}
                   style={styles.camControlBtn}
                 >
-                  <Ionicons name="eye-off" size={18} color="#fff" />
+                  <Ionicons name="eye-off" size={isTablet ? 24 : 18} color="#fff" />
                 </TouchableOpacity>
 
                 {/* Go Live / Live indicator */}
@@ -2995,11 +3008,11 @@ export default function ScorekeeperScreen() {
                   {liveLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : isRecording && !sharedCameraMode ? (
-                    <Ionicons name="lock-closed" size={17} color="#fff" />
+                    <Ionicons name="lock-closed" size={isTablet ? 23 : 17} color="#fff" />
                   ) : isLive ? (
-                    <Ionicons name="radio" size={18} color="#fff" />
+                    <Ionicons name="radio" size={isTablet ? 24 : 18} color="#fff" />
                   ) : (
-                    <Ionicons name="radio-outline" size={18} color="#fff" />
+                    <Ionicons name="radio-outline" size={isTablet ? 24 : 18} color="#fff" />
                   )}
                 </TouchableOpacity>
               </View>
@@ -3217,9 +3230,9 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: isTabletLandscape ? 8 : 5 },
     // Compact quick-buttons used inside the dark camera overlay (white-tinted)
     oppOverlayQuickBtn: {
-      minWidth: isTabletLandscape ? 44 : undefined,
-      height: isTabletLandscape ? 42 : undefined,
-      paddingHorizontal: isTabletLandscape ? 10 : 7,
+      minWidth: isTabletLandscape ? 52 : undefined,
+      height: isTabletLandscape ? 48 : undefined,
+      paddingHorizontal: isTabletLandscape ? 12 : 7,
       paddingVertical: 3,
       borderRadius: 6,
       backgroundColor: 'rgba(255,255,255,0.18)',
@@ -3227,7 +3240,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       borderColor: 'rgba(255,255,255,0.35)',
     },
     oppOverlayQuickBtnText: {
-      fontSize: isTabletLandscape ? 15 : 11,
+      fontSize: isTabletLandscape ? 16 : 11,
       fontFamily: 'Inter_700Bold',
       color: '#fff',
       lineHeight: 14,
@@ -3254,7 +3267,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 16,
-      paddingVertical: 8,
+      paddingVertical: isTabletLandscape ? 12 : 8,
       borderBottomWidth: 1,
     },
     oppScoreStripTeam: {
@@ -3268,7 +3281,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       letterSpacing: 0.5,
       marginBottom: 1,
     },
-    oppScoreStripNum: { ...tekoStyle(28) },
+    oppScoreStripNum: { ...tekoStyle(isTabletLandscape ? 34 : 28) },
     oppScoreStripVs: {
       fontSize: 11,
       fontFamily: 'Inter_500Medium',
@@ -3299,9 +3312,9 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     camControls: {
       position: 'absolute',
       top: insets.top + (Platform.OS === 'web' ? 64 : 8),
-      left: 10,
+      left: isTabletLandscape ? 14 : 10,
       flexDirection: 'column',
-      gap: 6,
+      gap: isTabletLandscape ? 10 : 6,
     },
     cameraNotice: {
       position: 'absolute',
@@ -3327,9 +3340,9 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       textAlign: 'center',
     },
     camControlBtn: {
-      width: 34,
-      height: 34,
-      borderRadius: 10,
+      width: isTabletLandscape ? 52 : 34,
+      height: isTabletLandscape ? 52 : 34,
+      borderRadius: isTabletLandscape ? 14 : 10,
       backgroundColor: 'rgba(0,0,0,0.55)',
       alignItems: 'center',
       justifyContent: 'center',
@@ -3516,15 +3529,15 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
-      minWidth: isTabletLandscape ? 88 : undefined,
+      minWidth: isTabletLandscape ? 100 : undefined,
       justifyContent: 'center',
       paddingHorizontal: isTabletLandscape ? 16 : 12,
       paddingVertical: isTabletLandscape ? 11 : 7,
       borderRadius: 20,
       borderWidth: 1,
     },
-    playerChipName: { fontSize: isTabletLandscape ? 17 : 14, fontFamily: 'Inter_600SemiBold' },
-    playerChipPts: { fontSize: isTabletLandscape ? 15 : 12, fontFamily: 'Inter_500Medium' },
+    playerChipName: { fontSize: isTabletLandscape ? 18 : 14, fontFamily: 'Inter_600SemiBold' },
+    playerChipPts: { fontSize: isTabletLandscape ? 16 : 12, fontFamily: 'Inter_500Medium' },
 
     // Stat scroll
     statScroll: { flex: 1 },

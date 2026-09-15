@@ -857,10 +857,10 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       <View style={videoStyle.empty}>
         <ActivityIndicator color={colors.primary} style={{ marginBottom: 12 }} />
         <Text style={[videoStyle.emptyText, { color: colors.foreground }]}>
-          Optimizing video for playback…
+          Full Game Film is saved
         </Text>
         <Text style={[videoStyle.emptySubText, { color: colors.mutedForeground }]}>
-          Long recordings can take several minutes. You can leave this screen—the page will update automatically when playable footage is ready.
+          Optimizing video for playback. Film Room and Save Video will appear here automatically when processing finishes.
         </Text>
       </View>
     );
