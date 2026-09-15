@@ -23,7 +23,8 @@ type ClientMessage =
   | { type: "resync-events"; code: string; events: Array<{ playerName: string; label: string; timestamp: number }> }
   | { type: "peer-connection-failed"; code: string; targetId: string }
   | { type: "request-offer"; code: string }
-  | { type: "turn-status"; code: string; turnAvailable: boolean };
+  | { type: "turn-status"; code: string; turnAvailable: boolean }
+  | { type: "client-diagnostic"; code: string; category: string; details?: Record<string, unknown> };
 
 function safeSend(ws: WebSocket, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -96,6 +97,35 @@ export function attachLiveSocketServer(upgradeEmitter: {
       liveStreamRegistry.touchSession(session.code);
 
       switch (message.type) {
+        case "client-diagnostic": {
+          if (role !== "broadcaster" || sessionCode !== session.code) {
+            return;
+          }
+          const category =
+            typeof message.category === "string"
+              ? message.category.slice(0, 80)
+              : "invalid";
+          const details =
+            message.details && typeof message.details === "object"
+              ? Object.fromEntries(
+                  Object.entries(message.details)
+                    .slice(0, 16)
+                    .map(([key, value]) => [
+                      key.slice(0, 60),
+                      typeof value === "string"
+                        ? value.slice(0, 300)
+                        : typeof value === "number" || typeof value === "boolean"
+                          ? value
+                          : String(value).slice(0, 300),
+                    ]),
+                )
+              : {};
+          logger.info(
+            { code: session.code, category, details },
+            "Mobile live diagnostic",
+          );
+          break;
+        }
         case "join-broadcaster": {
           // Cancel any pending grace-period timer: the broadcaster reconnected
           // within the window so viewers never need to see the disruption.

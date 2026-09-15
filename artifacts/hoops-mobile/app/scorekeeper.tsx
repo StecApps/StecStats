@@ -338,6 +338,11 @@ export default function ScorekeeperScreen() {
   const liveWsRef = useRef<WebSocket | null>(null);
   const broadcasterJoinedRef = useRef(false);
   const pendingVideoModeRef = useRef<{ code: string; hasVideo: boolean } | null>(null);
+  const pendingClientDiagnosticsRef = useRef<Array<{
+    code: string;
+    category: string;
+    details: Record<string, unknown>;
+  }>>([]);
   // WebRTC broadcaster: one RTCPeerConnection per connected viewer (keyed by viewerId)
   const webrtcPeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   // Per-viewer ICE restart attempt counters — reset when a viewer's connection recovers
@@ -474,6 +479,8 @@ export default function ScorekeeperScreen() {
 
   // Live broadcast state
   const [liveCode, setLiveCode] = useState<string | null>(null);
+  const liveCodeRef = useRef<string | null>(liveCode);
+  liveCodeRef.current = liveCode;
   const [isLive, setIsLive] = useState(false);
   const [liveMediaRecoveryGeneration, setLiveMediaRecoveryGeneration] = useState(0);
   const [liveLoading, setLiveLoading] = useState(false);
@@ -965,6 +972,8 @@ export default function ScorekeeperScreen() {
     }
     setIsLive(false);
     setLiveCode(null);
+    liveCodeRef.current = null;
+    pendingClientDiagnosticsRef.current = [];
   }
 
   // ─── Broadcaster WebSocket helpers ───────────────────────────────────────
@@ -980,6 +989,32 @@ export default function ScorekeeperScreen() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(payload));
     }
+  }
+
+  function broadcastClientDiagnostic(
+    category: string,
+    details: Record<string, unknown>,
+  ) {
+    const code = liveCodeRef.current;
+    if (!code) return;
+    const ws = liveWsRef.current;
+    if (
+      broadcasterJoinedRef.current &&
+      ws &&
+      ws.readyState === WebSocket.OPEN
+    ) {
+      ws.send(JSON.stringify({
+        type: 'client-diagnostic',
+        code,
+        category,
+        details,
+      }));
+      return;
+    }
+    pendingClientDiagnosticsRef.current = [
+      ...pendingClientDiagnosticsRef.current.slice(-7),
+      { code, category, details },
+    ];
   }
 
   function broadcastVideoModeWhenJoined(code: string, hasVideo: boolean) {
@@ -1000,6 +1035,8 @@ export default function ScorekeeperScreen() {
     const sessionGeneration = ++liveSessionGenerationRef.current;
     broadcasterJoinedRef.current = false;
     pendingVideoModeRef.current = null;
+    pendingClientDiagnosticsRef.current =
+      pendingClientDiagnosticsRef.current.filter((entry) => entry.code === code);
     // A reconnect is a new signaling session. Stale peer attempts/callbacks
     // must not remain attached to the replacement WebSocket.
     closeAllWebRtcPeers();
@@ -1052,6 +1089,17 @@ export default function ScorekeeperScreen() {
           const pendingMode = pendingVideoModeRef.current;
           if (pendingMode?.code === code) {
             broadcastVideoModeWhenJoined(pendingMode.code, pendingMode.hasVideo);
+          }
+          const diagnostics = pendingClientDiagnosticsRef.current
+            .filter((diagnostic) => diagnostic.code === code);
+          pendingClientDiagnosticsRef.current = [];
+          for (const diagnostic of diagnostics) {
+            broadcastWsSend({
+              type: 'client-diagnostic',
+              code,
+              category: diagnostic.category,
+              details: diagnostic.details,
+            });
           }
         } else if (msg.type === 'new-viewer') {
           // A record-enabled game intentionally advertises score-only mode.
@@ -1408,6 +1456,11 @@ export default function ScorekeeperScreen() {
       void startRecordingRef.current?.();
     };
     const stateSubscription = addHoopsCameraListener('onStateChange', (event) => {
+      broadcastClientDiagnostic('camera-state', {
+        state: event.state,
+        reason: event.reason ?? '',
+        isRecording: event.isRecording,
+      });
       if (
         event.state === 'previewing' &&
         unexpectedRecordingResumePendingRef.current &&
@@ -1430,6 +1483,13 @@ export default function ScorekeeperScreen() {
       setIsRecording(false);
     });
     const finishedSubscription = addHoopsCameraListener('onRecordingFinished', (event) => {
+      broadcastClientDiagnostic('recording-finished', {
+        usable: event.usable ?? false,
+        reason: event.reason ?? '',
+        durationSeconds: event.durationSeconds ?? 0,
+        fileSizeBytes: event.fileSizeBytes ?? 0,
+        error: event.error ?? '',
+      });
       addRecordedUri(event.uri);
       recordingStartedRef.current = false;
       stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
@@ -1701,6 +1761,10 @@ export default function ScorekeeperScreen() {
         }
       } catch (e) {
         console.warn(`[WebRTC] ${sharedCameraMode ? 'HoopsCamera video stream' : 'getUserMedia'} failed — viewers will see score-only:`, e);
+        broadcastClientDiagnostic('live-video-failed', {
+          sharedCameraMode,
+          message: e instanceof Error ? e.message : String(e),
+        });
         if (isCurrentMedia()) {
           // Mark the failure so ws.onopen sends the authoritative score-only
           // mode when the socket hasn't opened yet (race: getUserMedia rejected

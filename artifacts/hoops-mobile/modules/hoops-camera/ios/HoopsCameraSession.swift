@@ -108,6 +108,13 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
         guard let self else { return }
         if self.isRecording && self.recordingStopReason == nil {
           self.recordingStopReason = "session-interruption"
+          // An interrupted AVCaptureMovieFileOutput can remain logically
+          // recording while no more samples reach the file. Finalize the
+          // playable prefix immediately so recovery can start a fresh segment
+          // when the session becomes available again.
+          if self.movieOutput.isRecording {
+            self.movieOutput.stopRecording()
+          }
         }
         let reasonValue = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber
         self.emitState(
@@ -143,6 +150,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
         guard let self else { return }
         if self.isRecording && self.recordingStopReason == nil {
           self.recordingStopReason = "runtime-error"
+          if self.movieOutput.isRecording {
+            self.movieOutput.stopRecording()
+          }
         }
         let error = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError
         self.emitError(
@@ -370,7 +380,6 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.isRecording = true
       self.frameRouter.setRecording(true)
       self.movieOutput.startRecording(to: url, recordingDelegate: self)
-      self.emitState("recording", reason: nil, timestampMs: self.epochMilliseconds())
     }
   }
 
@@ -644,6 +653,19 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
 
   func fileOutput(
     _ output: AVCaptureFileOutput,
+    didStartRecordingTo fileURL: URL,
+    from connections: [AVCaptureConnection]
+  ) {
+    sessionQueue.async {
+      guard self.isRecording, self.movieOutput.isRecording else {
+        return
+      }
+      self.emitState("recording", reason: nil, timestampMs: self.epochMilliseconds())
+    }
+  }
+
+  func fileOutput(
+    _ output: AVCaptureFileOutput,
     didFinishRecordingTo outputFileURL: URL,
     from connections: [AVCaptureConnection],
     error: Error?
@@ -701,6 +723,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
           "uri": hasUsableCheckpoint ? outputFileURL.absoluteString : "",
           "usable": hasUsableCheckpoint,
           "reason": resolvedStopReason,
+          "durationSeconds": durationSeconds.isFinite ? durationSeconds : 0,
+          "fileSizeBytes": fileSize,
+          "error": error?.localizedDescription ?? "",
           "timestampMs": self.epochMilliseconds()
         ]
         if let interruptionID = self.lifecycleInterruptionID {

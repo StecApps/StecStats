@@ -125,11 +125,16 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs)');
     expect(nativeCameraSource).toContain('AVCaptureSession.wasInterruptedNotification');
     expect(nativeCameraSource).toContain('AVCaptureSession.runtimeErrorNotification');
+    expect(nativeCameraSource).toContain('if self.movieOutput.isRecording');
+    expect(nativeCameraSource).toContain('self.movieOutput.stopRecording()');
+    expect(nativeCameraSource).toContain('didStartRecordingTo fileURL');
     expect(nativeCameraSource).toContain('let resolvedStopReason = stopReason ?? "unexpected"');
     expect(nativeCameraSource).toContain('guard self.session.isRunning else');
     expect(nativeCameraSource).toContain('fileSize > 16_384');
     expect(nativeCameraSource).toContain('hasVideoTrack');
     expect(nativeCameraSource).toContain('"usable": hasUsableCheckpoint');
+    expect(nativeCameraSource).toContain('"durationSeconds": durationSeconds.isFinite');
+    expect(source).toContain("broadcastClientDiagnostic('recording-finished'");
     expect(source).toContain("event.reason === 'unexpected'");
     expect(source).toContain("event.reason === 'session-interruption'");
     expect(source).toContain("event.reason === 'runtime-error'");
@@ -140,9 +145,13 @@ describe('iPad recording safeguards', () => {
   test('registers shared-video bridge methods on the primary WebRTC module', () => {
     expect(webRtcPatchSource).toContain('RCT_REMAP_METHOD(createHoopsCameraVideoStreamNative');
     expect(webRtcPatchSource).toContain('RCT_REMAP_METHOD(releaseHoopsCameraVideoStreamNative');
-    expect(nativeFacadeSource).toContain('createHoopsCameraVideoStreamNative?');
-    expect(nativeFacadeSource).toContain('releaseHoopsCameraVideoStreamNative?');
+    expect(webRtcPatchSource).toContain('kHoopsCameraPrimaryVideoTrackKey');
+    expect(webRtcPatchSource).toContain('addObserverForName:@"HoopsCamera.videoSampleBuffer"');
+    expect(webRtcPatchSource).toContain('@"peerConnectionId" : @(-1)');
+    expect(nativeFacadeSource).not.toContain('createHoopsCameraVideoStreamNative?');
+    expect(nativeFacadeSource).not.toContain('releaseHoopsCameraVideoStreamNative?');
     expect(nativeFacadeSource).toContain('await webRTCModule.createHoopsCameraVideoStreamNative()');
+    expect(source).toContain("broadcastClientDiagnostic('live-video-failed'");
   });
 
   test('does not crop the iPad preview or background an active recording for Messages', () => {
@@ -190,8 +199,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260937');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260937');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260938');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260938');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {

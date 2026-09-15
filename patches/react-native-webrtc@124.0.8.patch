@@ -1,5 +1,5 @@
 diff --git a/ios/RCTWebRTC/WebRTCModule+RTCMediaStream.m b/ios/RCTWebRTC/WebRTCModule+RTCMediaStream.m
-index d2078d2dfca5a7cc59f93ea7c5ba46083ca3d6a4..6154af34dc04a0fc722c65bcb2386ea7ded6f0a8 100644
+index d2078d2dfca5a7cc59f93ea7c5ba46083ca3d6a4..d816714b01de9c2b281361526c894a9d7e058736 100644
 --- a/ios/RCTWebRTC/WebRTCModule+RTCMediaStream.m
 +++ b/ios/RCTWebRTC/WebRTCModule+RTCMediaStream.m
 @@ -1,5 +1,6 @@
@@ -155,34 +155,138 @@ index d2078d2dfca5a7cc59f93ea7c5ba46083ca3d6a4..6154af34dc04a0fc722c65bcb2386ea7
  
  /**
 diff --git a/ios/RCTWebRTC/WebRTCModule.m b/ios/RCTWebRTC/WebRTCModule.m
-index 7250e7d..b2fba7c 100644
+index 93ff75097e95af737e35b5577f95c48a64c32f59..0581e51830a24e3e24e1842fcea8090c0226cf69 100644
 --- a/ios/RCTWebRTC/WebRTCModule.m
 +++ b/ios/RCTWebRTC/WebRTCModule.m
-@@ -11,6 +11,10 @@
+@@ -2,6 +2,8 @@
+ #import <UIKit/UIKit.h>
+ #endif
+ 
++#import <AVFoundation/AVFoundation.h>
++#import <objc/runtime.h>
+ #import <React/RCTBridge.h>
+ #import <React/RCTEventDispatcher.h>
+ #import <React/RCTLog.h>
+@@ -11,8 +13,9 @@
+ #import "WebRTCModule.h"
  #import "WebRTCModuleOptions.h"
  
- @interface WebRTCModule ()
-+- (void)createHoopsCameraVideoStream:(RCTPromiseResolveBlock)resolve
-+                           rejecter:(RCTPromiseRejectBlock)reject;
-+- (void)releaseHoopsCameraVideoStream:(RCTPromiseResolveBlock)resolve
-+                            rejecter:(RCTPromiseRejectBlock)reject;
- @end
+-@interface WebRTCModule ()
+-@end
++static const void *kHoopsCameraPrimaryVideoTrackKey = &kHoopsCameraPrimaryVideoTrackKey;
++static const void *kHoopsCameraPrimaryVideoStreamKey = &kHoopsCameraPrimaryVideoStreamKey;
++static const void *kHoopsCameraPrimaryVideoObserverKey = &kHoopsCameraPrimaryVideoObserverKey;
  
  @implementation WebRTCModule
-@@ -124,4 +128,24 @@ RCT_EXPORT_MODULE();
+ 
+@@ -124,4 +127,140 @@ RCT_EXPORT_MODULE();
      ];
  }
  
-+// React Native's legacy-module interop can omit export metadata contributed
-+// only by an Objective-C category. Register stable entry points on the primary
-+// module implementation and forward to the shared-camera implementation in
-+// WebRTCModule+RTCMediaStream.m.
 +RCT_REMAP_METHOD(createHoopsCameraVideoStreamNative,
 +                 createHoopsCameraVideoStreamNativeWithResolver
 +                 : (RCTPromiseResolveBlock)resolve
 +                 rejecter
 +                 : (RCTPromiseRejectBlock)reject) {
-+    [self createHoopsCameraVideoStream:resolve rejecter:reject];
++#if TARGET_OS_TV
++    reject(@"unsupported_platform", @"tvOS is not supported", nil);
++    return;
++#else
++    RTCVideoTrack *existingTrack = objc_getAssociatedObject(self, kHoopsCameraPrimaryVideoTrackKey);
++    RTCMediaStream *existingStream = objc_getAssociatedObject(self, kHoopsCameraPrimaryVideoStreamKey);
++    if (existingTrack != nil && existingStream != nil) {
++        resolve(@{
++            @"streamId" : existingStream.streamId,
++            @"track" : @{
++                @"enabled" : @(existingTrack.isEnabled),
++                @"id" : existingTrack.trackId,
++                @"kind" : existingTrack.kind,
++                @"readyState" : @"live",
++                @"remote" : @(NO),
++                @"constraints" : @{},
++                @"peerConnectionId" : @(-1),
++                @"settings" : @{}
++            }
++        });
++        return;
++    }
++
++    RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
++    NSString *trackId = [[NSUUID UUID] UUIDString];
++    RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource
++                                                                            trackId:trackId];
++    NSString *streamId = [[NSUUID UUID] UUIDString];
++    RTCMediaStream *mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:streamId];
++    [mediaStream addVideoTrack:videoTrack];
++
++    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoTrackKey, videoTrack, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoStreamKey, mediaStream, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++    self.localTracks[trackId] = videoTrack;
++    self.localStreams[streamId] = mediaStream;
++
++    __weak WebRTCModule *weakSelf = self;
++    id observer = [[NSNotificationCenter defaultCenter]
++        addObserverForName:@"HoopsCamera.videoSampleBuffer"
++                    object:nil
++                     queue:nil
++                usingBlock:^(NSNotification *notification) {
++                    WebRTCModule *strongSelf = weakSelf;
++                    if (strongSelf == nil || notification.object == nil) {
++                        return;
++                    }
++                    RTCVideoTrack *track =
++                        objc_getAssociatedObject(strongSelf, kHoopsCameraPrimaryVideoTrackKey);
++                    if (track == nil || !track.isEnabled) {
++                        return;
++                    }
++
++                    CMSampleBufferRef sampleBuffer = (__bridge CMSampleBufferRef)notification.object;
++                    if (sampleBuffer == NULL || !CMSampleBufferIsValid(sampleBuffer)) {
++                        return;
++                    }
++                    CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
++                    if (pixelBuffer == NULL) {
++                        return;
++                    }
++
++                    RTCCVPixelBuffer *rtcPixelBuffer = [[RTCCVPixelBuffer alloc] initWithPixelBuffer:pixelBuffer];
++                    CMTime presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
++                    int64_t timestampNs;
++                    if (CMTIME_IS_VALID(presentationTime) && !CMTIME_IS_INDEFINITE(presentationTime)) {
++                        timestampNs = CMTimeConvertScale(
++                            presentationTime,
++                            NSEC_PER_SEC,
++                            kCMTimeRoundingMethod_Default
++                        ).value;
++                    } else {
++                        timestampNs = (int64_t)([[NSDate date] timeIntervalSince1970] * NSEC_PER_SEC);
++                    }
++                    RTCVideoFrame *videoFrame = [[RTCVideoFrame alloc] initWithBuffer:rtcPixelBuffer
++                                                                                rotation:RTCVideoRotation_0
++                                                                             timeStampNs:timestampNs];
++                    [track.source capturer:nil didCaptureVideoFrame:videoFrame];
++                }];
++    objc_setAssociatedObject(
++        self,
++        kHoopsCameraPrimaryVideoObserverKey,
++        observer,
++        OBJC_ASSOCIATION_RETAIN_NONATOMIC
++    );
++
++    resolve(@{
++        @"streamId" : streamId,
++        @"track" : @{
++            @"enabled" : @(videoTrack.isEnabled),
++            @"id" : trackId,
++            @"kind" : videoTrack.kind,
++            @"readyState" : @"live",
++            @"remote" : @(NO),
++            @"constraints" : @{},
++            @"peerConnectionId" : @(-1),
++            @"settings" : @{}
++        }
++    });
++#endif
 +}
 +
 +RCT_REMAP_METHOD(releaseHoopsCameraVideoStreamNative,
@@ -190,7 +294,29 @@ index 7250e7d..b2fba7c 100644
 +                 : (RCTPromiseResolveBlock)resolve
 +                 rejecter
 +                 : (RCTPromiseRejectBlock)reject) {
-+    [self releaseHoopsCameraVideoStream:resolve rejecter:reject];
++#if TARGET_OS_TV
++    resolve(nil);
++    return;
++#else
++    id observer = objc_getAssociatedObject(self, kHoopsCameraPrimaryVideoObserverKey);
++    if (observer != nil) {
++        [[NSNotificationCenter defaultCenter] removeObserver:observer];
++    }
++
++    RTCVideoTrack *videoTrack = objc_getAssociatedObject(self, kHoopsCameraPrimaryVideoTrackKey);
++    RTCMediaStream *mediaStream = objc_getAssociatedObject(self, kHoopsCameraPrimaryVideoStreamKey);
++    if (videoTrack != nil) {
++        videoTrack.isEnabled = NO;
++        [self.localTracks removeObjectForKey:videoTrack.trackId];
++    }
++    if (mediaStream != nil) {
++        [self.localStreams removeObjectForKey:mediaStream.streamId];
++    }
++    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoObserverKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoTrackKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoStreamKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++    resolve(nil);
++#endif
 +}
 +
  @end

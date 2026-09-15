@@ -39,6 +39,9 @@ export type HoopsCameraRecordingEvent = HoopsCameraRecording & {
   usable?: boolean;
   reason?: string;
   interruptionId?: string;
+  durationSeconds?: number;
+  fileSizeBytes?: number;
+  error?: string;
   timestampMs?: number;
 };
 
@@ -88,15 +91,15 @@ type HoopsCameraWebRTCNativeStreamInfo = {
     kind: 'video';
     readyState: 'live';
     remote: false;
+    constraints: Record<string, never>;
+    peerConnectionId: -1;
     settings: Record<string, never>;
   };
 };
 
 type HoopsCameraWebRTCNativeModule = {
-  createHoopsCameraVideoStream(): Promise<HoopsCameraWebRTCNativeStreamInfo>;
-  releaseHoopsCameraVideoStream(): Promise<void>;
-  createHoopsCameraVideoStreamNative?(): Promise<HoopsCameraWebRTCNativeStreamInfo>;
-  releaseHoopsCameraVideoStreamNative?(): Promise<void>;
+  createHoopsCameraVideoStreamNative(): Promise<HoopsCameraWebRTCNativeStreamInfo>;
+  releaseHoopsCameraVideoStreamNative(): Promise<void>;
 };
 
 export type HoopsCameraLiveVideo = {
@@ -134,10 +137,7 @@ function getHoopsCameraWebRTCNativeModule(): HoopsCameraWebRTCNativeModule | nul
     const hasPrimaryExports =
       typeof bridge?.createHoopsCameraVideoStreamNative === 'function' &&
       typeof bridge?.releaseHoopsCameraVideoStreamNative === 'function';
-    const hasCategoryExports =
-      typeof bridge?.createHoopsCameraVideoStream === 'function' &&
-      typeof bridge?.releaseHoopsCameraVideoStream === 'function';
-    if (bridge && (hasPrimaryExports || hasCategoryExports)) {
+    if (bridge && hasPrimaryExports) {
       return bridge as HoopsCameraWebRTCNativeModule;
     }
   } catch {
@@ -224,9 +224,7 @@ export async function createHoopsCameraLiveVideoAsync(): Promise<HoopsCameraLive
     );
   }
 
-  const info = webRTCModule.createHoopsCameraVideoStreamNative
-    ? await webRTCModule.createHoopsCameraVideoStreamNative()
-    : await webRTCModule.createHoopsCameraVideoStream();
+  const info = await webRTCModule.createHoopsCameraVideoStreamNative();
   // Load lazily for the same feature-detection reason as above. The returned
   // object is the regular react-native-webrtc MediaStream class, so its track
   // can be passed directly to RTCPeerConnection.addTrack.
@@ -255,11 +253,7 @@ export async function releaseHoopsCameraLiveVideoAsync(): Promise<void> {
   if (webRTCModule === null) {
     return;
   }
-  if (webRTCModule.releaseHoopsCameraVideoStreamNative) {
-    await webRTCModule.releaseHoopsCameraVideoStreamNative();
-  } else {
-    await webRTCModule.releaseHoopsCameraVideoStream();
-  }
+  await webRTCModule.releaseHoopsCameraVideoStreamNative();
 }
 
 // Short aliases keep the facade pleasant to consume without exposing the
