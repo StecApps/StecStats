@@ -74,6 +74,8 @@ type HoopsCameraNativeModule = {
   requestPermissionsAsync(): Promise<HoopsCameraPermissionStatus>;
   startRecordingAsync(muted: boolean): Promise<HoopsCameraRecording>;
   stopRecordingAsync(): Promise<HoopsCameraRecording>;
+  suspendForSharingAsync(): Promise<void>;
+  resumeAfterSharingAsync(): Promise<void>;
   setMicrophoneMutedAsync(muted: boolean): Promise<void>;
   setFacingAsync(facing: CameraFacing): Promise<void>;
   setZoomAsync(zoom: number): Promise<void>;
@@ -193,6 +195,14 @@ export function startHoopsCameraRecordingAsync(muted = false): Promise<HoopsCame
 
 export function stopHoopsCameraRecordingAsync(): Promise<HoopsCameraRecording> {
   return requireHoopsCamera().stopRecordingAsync();
+}
+
+export function suspendHoopsCameraForSharingAsync(): Promise<void> {
+  return requireHoopsCamera().suspendForSharingAsync();
+}
+
+export function resumeHoopsCameraAfterSharingAsync(): Promise<void> {
+  return requireHoopsCamera().resumeAfterSharingAsync();
 }
 
 export function setHoopsCameraMicrophoneMutedAsync(muted: boolean): Promise<void> {

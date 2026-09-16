@@ -52,6 +52,14 @@ public final class HoopsCameraModule: Module {
       controller.stopRecording(promise: promise)
     }
 
+    AsyncFunction("suspendForSharingAsync") { (promise: Promise) in
+      controller.suspendForSharing(promise: promise)
+    }
+
+    AsyncFunction("resumeAfterSharingAsync") { (promise: Promise) in
+      controller.resumeAfterSharing(promise: promise)
+    }
+
     AsyncFunction("setMicrophoneMutedAsync") { (muted: Bool, promise: Promise) in
       controller.setMicrophoneMuted(muted, promise: promise)
     }

@@ -88,6 +88,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   private var lifecycleFinalizationComplete = false
   private var lifecycleFinalizedURI: String?
   private var recordingStopReason: String?
+  private var sharingResumePromise: Promise?
 
   var eventHandler: ((String, [String: Any]) -> Void)?
   var previewReadyHandler: (() -> Void)?
@@ -259,6 +260,29 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       } else if !self.isRecording {
         self.stopSession()
       }
+    }
+  }
+
+  func suspendForSharing(promise: Promise) {
+    sessionQueue.async {
+      guard !self.isRecording else {
+        promise.reject(
+          "ERR_HOOPS_CAMERA_RECORDING_ACTIVE",
+          "The camera cannot be suspended for sharing while recording."
+        )
+        return
+      }
+      self.isPreviewActive = false
+      self.stopSession()
+      promise.resolve(nil)
+    }
+  }
+
+  func resumeAfterSharing(promise: Promise) {
+    sessionQueue.async {
+      self.isPreviewActive = true
+      self.sharingResumePromise = promise
+      self.resumeFromLifecycle()
     }
   }
 
@@ -506,6 +530,8 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       resumePayload["finalizationComplete"] = lifecycleFinalizationComplete
       resumePayload["timestampMs"] = epochMilliseconds()
       emitEvent("onLifecycleResume", resumePayload)
+      sharingResumePromise?.resolve(nil)
+      sharingResumePromise = nil
     }
   }
 
@@ -532,6 +558,11 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.recordingPromise = nil
       self.stopPromise = nil
       self.recordingStopReason = nil
+      self.sharingResumePromise?.reject(
+        "ERR_HOOPS_CAMERA_DESTROYED",
+        "The camera was destroyed while recovering from sharing."
+      )
+      self.sharingResumePromise = nil
       self.lifecycleInterruptionID = nil
     }
     for observer in [

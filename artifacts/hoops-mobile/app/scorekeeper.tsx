@@ -90,6 +90,8 @@ import {
   setHoopsCameraMicrophoneMutedAsync,
   createHoopsCameraLiveVideoAsync,
   releaseHoopsCameraLiveVideoAsync,
+  suspendHoopsCameraForSharingAsync,
+  resumeHoopsCameraAfterSharingAsync,
   addHoopsCameraListener,
 } from '@/modules/hoops-camera/src';
 import {
@@ -486,6 +488,8 @@ export default function ScorekeeperScreen() {
   const [liveLoading, setLiveLoading] = useState(false);
   const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
   const [isSharingLiveLink, setIsSharingLiveLink] = useState(false);
+  const isSharingLiveLinkRef = useRef(false);
+  const [cameraRecoveryBlocked, setCameraRecoveryBlocked] = useState(false);
   const [cameraNotice, setCameraNotice] = useState<string | null>(null);
   const cameraNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sharePresentationAnchorRef = useRef<View>(null);
@@ -564,6 +568,10 @@ export default function ScorekeeperScreen() {
     // the modal animation.
     const anchor = findNodeHandle(sharePresentationAnchorRef.current) ?? undefined;
     pendingShareRef.current = { code, anchor };
+    // The previous preview readiness is no longer valid once CameraView is
+    // deactivated for Messages. Recording must wait for a fresh ready callback.
+    cameraReadyRef.current = false;
+    isSharingLiveLinkRef.current = true;
     setIsSharingLiveLink(true);
     setShowGoLiveSheet(false);
     if (Platform.OS !== 'ios') {
@@ -580,7 +588,24 @@ export default function ScorekeeperScreen() {
     const url = watchUrl(pending.code);
     const anchor = pending.anchor;
     let didShare = false;
+    let recoveryFailed = false;
+    const withTimeout = async <T,>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> =>
+      Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(message)), timeoutMs);
+        }),
+      ]);
     try {
+      if (sharedCameraMode) {
+        // Resolves only after stopRunning() completes on the native camera
+        // queue. Do not present Messages while capture is still active.
+        await withTimeout(
+          suspendHoopsCameraForSharingAsync(),
+          4_000,
+          'The iPad camera did not stop safely before sharing.',
+        );
+      }
       const result = await Share.share({
         title: `${teamName} live game`,
         message: `Watch ${teamName} live: ${url}`,
@@ -589,15 +614,38 @@ export default function ScorekeeperScreen() {
       } : undefined);
       if (result.action === Share.sharedAction) {
         didShare = true;
-        activateLiveBroadcast(pending.code);
       }
     } catch (err: any) {
       Alert.alert('Could not open sharing', err?.message ?? 'The iPad share sheet could not be opened. Please try again.');
     } finally {
+      try {
+        if (sharedCameraMode) {
+          // Resolves only after startRunning() succeeds. Live and recording
+          // remain unavailable until this native acknowledgement.
+          await withTimeout(
+            resumeHoopsCameraAfterSharingAsync(),
+            8_000,
+            'The iPad camera did not restart after Messages.',
+          );
+        }
+        if (didShare) {
+          setCameraRecoveryBlocked(false);
+          activateLiveBroadcast(pending.code);
+        }
+      } catch (error: any) {
+        didShare = false;
+        recoveryFailed = true;
+        setCameraRecoveryBlocked(true);
+        Alert.alert(
+          'Camera did not recover',
+          error?.message ?? 'The iPad camera did not restart after Messages. Close and reopen StecStats before recording this game.',
+        );
+      }
+      isSharingLiveLinkRef.current = false;
       setIsSharingLiveLink(false);
       // Cancel and presentation errors leave the invite available so the
       // coach can retry without creating a second live session.
-      if (!didShare) setShowGoLiveSheet(true);
+      if (!didShare && !recoveryFailed) setShowGoLiveSheet(true);
     }
   }
 
@@ -1326,6 +1374,7 @@ export default function ScorekeeperScreen() {
   async function startRecording() {
     if (
       recordingTerminalIntentRef.current ||
+      isSharingLiveLinkRef.current ||
       (!sharedCameraMode && !cameraRef.current) ||
       recordingStartedRef.current
     ) return;
@@ -1432,7 +1481,11 @@ export default function ScorekeeperScreen() {
 
   function onCameraReady() {
     cameraReadyRef.current = true;
-    if (pendingRecordRef.current && !recordingStartedRef.current) {
+    if (
+      pendingRecordRef.current &&
+      !recordingStartedRef.current &&
+      !isSharingLiveLinkRef.current
+    ) {
       pendingRecordRef.current = false;
       startRecording();
     }
@@ -1554,6 +1607,20 @@ export default function ScorekeeperScreen() {
 
   function handleStartStop() {
     if (!running) {
+      if (isSharingLiveLinkRef.current) {
+        Alert.alert(
+          'Sharing in progress',
+          'Return to StecStats and wait for the camera before starting the game.',
+        );
+        return;
+      }
+      if (cameraRecoveryBlocked) {
+        Alert.alert(
+          'Camera unavailable',
+          'The camera did not recover after Messages. Close and reopen StecStats before recording this game.',
+        );
+        return;
+      }
       setGameStarted(true);
       if (seconds === 0) startRef.current = Date.now();
       setRunning(true);
@@ -2997,7 +3064,7 @@ export default function ScorekeeperScreen() {
         <RecordingCameraPreview
           cameraRef={cameraRef}
           sharedCameraMode={sharedCameraMode}
-          cameraActive={sharedCameraMode || !isSharingLiveLink || recordingStartedRef.current || isRecording}
+          cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}
           cameraReady={!!cameraReady}
           cameraFacing={cameraFacing}
           cameraZoom={cameraZoom}
