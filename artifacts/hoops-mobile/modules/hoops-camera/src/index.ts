@@ -53,11 +53,17 @@ export type HoopsCameraLifecycleResumeEvent = {
   finalizedUri?: string;
 };
 
+export type HoopsCameraMjpegFrameEvent = {
+  /** Base64-encoded JPEG, resized natively to fit within 640x360. */
+  base64: string;
+};
+
 export type HoopsCameraEventMap = {
   onStateChange: (event: HoopsCameraStateEvent) => void;
   onError: (event: HoopsCameraErrorEvent) => void;
   onRecordingFinished: (event: HoopsCameraRecordingEvent) => void;
   onLifecycleResume: (event: HoopsCameraLifecycleResumeEvent) => void;
+  onMjpegFrame: (event: HoopsCameraMjpegFrameEvent) => void;
 };
 
 export type HoopsCameraViewProps = ViewProps & {
@@ -74,6 +80,8 @@ type HoopsCameraNativeModule = {
   requestPermissionsAsync(): Promise<HoopsCameraPermissionStatus>;
   startRecordingAsync(muted: boolean): Promise<HoopsCameraRecording>;
   stopRecordingAsync(): Promise<HoopsCameraRecording>;
+  startMjpegAsync(): Promise<void>;
+  stopMjpegAsync(): Promise<void>;
   suspendForSharingAsync(): Promise<void>;
   resumeAfterSharingAsync(): Promise<void>;
   setMicrophoneMutedAsync(muted: boolean): Promise<void>;
@@ -199,6 +207,14 @@ export function stopHoopsCameraRecordingAsync(): Promise<HoopsCameraRecording> {
   return requireHoopsCamera().stopRecordingAsync();
 }
 
+export function startHoopsCameraMjpegAsync(): Promise<void> {
+  return requireHoopsCamera().startMjpegAsync();
+}
+
+export function stopHoopsCameraMjpegAsync(): Promise<void> {
+  return requireHoopsCamera().stopMjpegAsync();
+}
+
 export function suspendHoopsCameraForSharingAsync(): Promise<void> {
   return requireHoopsCamera().suspendForSharingAsync();
 }
@@ -288,6 +304,8 @@ export async function releaseHoopsCameraLiveVideoAsync(): Promise<void> {
 // native module object itself.
 export const startRecordingAsync = startHoopsCameraRecordingAsync;
 export const stopRecordingAsync = stopHoopsCameraRecordingAsync;
+export const startMjpegAsync = startHoopsCameraMjpegAsync;
+export const stopMjpegAsync = stopHoopsCameraMjpegAsync;
 export const setMicrophoneMutedAsync = setHoopsCameraMicrophoneMutedAsync;
 export const setFacingAsync = setHoopsCameraFacingAsync;
 export const setZoomAsync = setHoopsCameraZoomAsync;

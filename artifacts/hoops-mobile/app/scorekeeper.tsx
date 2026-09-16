@@ -77,6 +77,7 @@ import {
   stopVideoTimelineSegment,
 } from '@/lib/videoTimelineClock';
 import { makeUploadStallHandler } from '@/lib/uploadStallAlert';
+import { rememberLocalGameVideo } from '@/lib/localGameVideo';
 import { concatSegmentsWithTimeout } from '@/lib/concatSegmentsWithTimeout';
 import { fetchIceServers } from '@/lib/fetchIceServers';
 import { drainPendingViewers } from '@/lib/drainPendingViewers';
@@ -91,6 +92,8 @@ import {
   createHoopsCameraLiveVideoAsync,
   waitForHoopsCameraLiveVideoFramesAsync,
   releaseHoopsCameraLiveVideoAsync,
+  startHoopsCameraMjpegAsync,
+  stopHoopsCameraMjpegAsync,
   suspendHoopsCameraForSharingAsync,
   resumeHoopsCameraAfterSharingAsync,
   addHoopsCameraListener,
@@ -340,7 +343,11 @@ export default function ScorekeeperScreen() {
   // Broadcaster-side signaling WebSocket — kept open for the duration of a live session
   const liveWsRef = useRef<WebSocket | null>(null);
   const broadcasterJoinedRef = useRef(false);
-  const pendingVideoModeRef = useRef<{ code: string; hasVideo: boolean } | null>(null);
+  const pendingVideoModeRef = useRef<{
+    code: string;
+    hasVideo: boolean;
+    videoMode: 'webrtc' | 'mjpeg' | 'none';
+  } | null>(null);
   const pendingClientDiagnosticsRef = useRef<Array<{
     code: string;
     category: string;
@@ -354,6 +361,7 @@ export default function ScorekeeperScreen() {
   const disconnectWatchdogRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Per-viewer adaptive-bitrate poll intervals — cleared when a peer is torn down
   const bitrateIntervalRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const outboundStartupWatchdogRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   // Viewer IDs for which createPeerForViewer is currently in-flight.
   // Prevents duplicate concurrent peer-creation attempts for the same viewer
   // (e.g. two rapid new-viewer messages after a WS reconnect storm).
@@ -386,6 +394,10 @@ export default function ScorekeeperScreen() {
   // Reset at the top of the WebRTC stream effect whenever isLive/liveCode
   // change so a fresh broadcast starts in the 'pending' (optimistic) state.
   const webrtcCameraFailedRef = useRef(false);
+  const mjpegFallbackActiveRef = useRef(false);
+  const mjpegFallbackTransitionRef = useRef(false);
+  const mjpegFallbackGenerationRef = useRef(0);
+  const mjpegFrameSubscriptionRef = useRef<{ remove: () => void } | null>(null);
   // Mirrors the latest team/opponent scores so reconnect callbacks don't
   // depend on derived consts that are declared later in the function body.
   const latestScoresRef = useRef({ teamScore: 0, opponentScore: 0 });
@@ -732,6 +744,11 @@ export default function ScorekeeperScreen() {
     if (interval) { clearInterval(interval); bitrateIntervalRef.current.delete(viewerId); }
     const watchdog = disconnectWatchdogRef.current.get(viewerId);
     if (watchdog) { clearTimeout(watchdog); disconnectWatchdogRef.current.delete(viewerId); }
+    const outboundWatchdog = outboundStartupWatchdogRef.current.get(viewerId);
+    if (outboundWatchdog) {
+      clearTimeout(outboundWatchdog);
+      outboundStartupWatchdogRef.current.delete(viewerId);
+    }
     iceRestartCountRef.current.delete(viewerId);
     const pc = webrtcPeersRef.current.get(viewerId);
     if (pc) { try { pc.close(); } catch {} webrtcPeersRef.current.delete(viewerId); }
@@ -742,6 +759,10 @@ export default function ScorekeeperScreen() {
       clearTimeout(timer);
     }
     disconnectWatchdogRef.current.clear();
+    for (const timer of outboundStartupWatchdogRef.current.values()) {
+      clearTimeout(timer);
+    }
+    outboundStartupWatchdogRef.current.clear();
     for (const interval of bitrateIntervalRef.current.values()) {
       clearInterval(interval);
     }
@@ -772,6 +793,70 @@ export default function ScorekeeperScreen() {
       videoStream?.getTracks?.().forEach((t: any) => t.stop());
     }
     audioStream?.getTracks?.().forEach((t: any) => t.stop());
+  }
+
+  function stopMjpegFallback() {
+    mjpegFallbackGenerationRef.current += 1;
+    mjpegFallbackActiveRef.current = false;
+    mjpegFallbackTransitionRef.current = false;
+    mjpegFrameSubscriptionRef.current?.remove();
+    mjpegFrameSubscriptionRef.current = null;
+    void stopHoopsCameraMjpegAsync().catch(() => undefined);
+  }
+
+  async function startMjpegFallback(code: string, reason: string) {
+    if (
+      !sharedCameraMode ||
+      mjpegFallbackActiveRef.current ||
+      mjpegFallbackTransitionRef.current ||
+      liveCodeRef.current !== code
+    ) return;
+    const fallbackGeneration = ++mjpegFallbackGenerationRef.current;
+    mjpegFallbackTransitionRef.current = true;
+    try {
+      mjpegFrameSubscriptionRef.current?.remove();
+      mjpegFrameSubscriptionRef.current = addHoopsCameraListener('onMjpegFrame', (event) => {
+        const ws = liveWsRef.current;
+        if (
+          !mjpegFallbackActiveRef.current ||
+          liveCodeRef.current !== code ||
+          !ws ||
+          ws.readyState !== WebSocket.OPEN ||
+          (ws.bufferedAmount ?? 0) > 512 * 1024
+        ) return;
+        ws.send(JSON.stringify({ type: 'video-frame', code, frame: event.base64 }));
+      });
+      await startHoopsCameraMjpegAsync();
+      // An older native start may settle after a newer fallback already owns
+      // the listener. Never let that stale continuation tear down the owner.
+      if (fallbackGeneration !== mjpegFallbackGenerationRef.current) return;
+      if (liveCodeRef.current !== code) {
+        stopMjpegFallback();
+        return;
+      }
+      mjpegFallbackActiveRef.current = true;
+      webrtcCameraFailedRef.current = false;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+      broadcastClientDiagnostic('live-video-mjpeg-fallback', { reason });
+      // Older signaling deployments notify viewers of MJPEG only on a
+      // none → mjpeg transition. Preserve that transition for compatibility.
+      broadcastVideoModeWhenJoined(code, false, 'none');
+      broadcastVideoModeWhenJoined(code, true, 'mjpeg');
+    } catch (error) {
+      if (fallbackGeneration !== mjpegFallbackGenerationRef.current) return;
+      stopMjpegFallback();
+      webrtcCameraFailedRef.current = true;
+      broadcastClientDiagnostic('live-video-mjpeg-failed', {
+        reason,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      broadcastVideoModeWhenJoined(code, false, 'none');
+    } finally {
+      if (fallbackGeneration === mjpegFallbackGenerationRef.current) {
+        mjpegFallbackTransitionRef.current = false;
+      }
+    }
   }
 
   async function createPeerForViewer(
@@ -905,6 +990,8 @@ export default function ScorekeeperScreen() {
     // Hysteresis: 2 consecutive bad polls → step down; 4 clean polls → step up.
     // State machine logic lives in lib/adaptiveBitrate.ts (unit-tested there).
     let abrState = initialBitrateState();
+    let consecutiveZeroOutboundPolls = 0;
+    let outboundSuccessReported = false;
 
     const bitrateInterval = setInterval(async () => {
       if (!isCurrentSession() || webrtcPeersRef.current.get(viewerId) !== pc) return;
@@ -913,12 +1000,38 @@ export default function ScorekeeperScreen() {
         const stats: RTCStatsReport = await pc.getStats();
         let rtt = 0;
         let fractionLost = 0;
+        let outboundFramesEncoded = 0;
+        let outboundBytesSent = 0;
+        let sawOutboundVideo = false;
         stats.forEach((report: any) => {
           if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
             if (typeof report.roundTripTime === 'number') rtt = report.roundTripTime;
             if (typeof report.fractionLost === 'number') fractionLost = report.fractionLost;
           }
+          if (report.type === 'outbound-rtp' && report.kind === 'video' && !report.isRemote) {
+            sawOutboundVideo = true;
+            if (typeof report.framesEncoded === 'number') outboundFramesEncoded += report.framesEncoded;
+            if (typeof report.bytesSent === 'number') outboundBytesSent += report.bytesSent;
+          }
         });
+
+        if (sawOutboundVideo && outboundFramesEncoded === 0 && outboundBytesSent === 0) {
+          consecutiveZeroOutboundPolls += 1;
+          if (consecutiveZeroOutboundPolls >= 2) {
+            void startMjpegFallback(code, 'outbound-rtp-zero');
+            return;
+          }
+        } else if (sawOutboundVideo) {
+          consecutiveZeroOutboundPolls = 0;
+          if (!outboundSuccessReported) {
+            outboundSuccessReported = true;
+            broadcastClientDiagnostic('live-video-outbound-ready', {
+              viewerId,
+              framesEncoded: outboundFramesEncoded,
+              bytesSent: outboundBytesSent,
+            });
+          }
+        }
 
         const { state: nextState, rungChanged } = nextBitrateState(abrState, { rtt, fractionLost });
         abrState = nextState;
@@ -956,6 +1069,17 @@ export default function ScorekeeperScreen() {
       return;
     }
     broadcastWsSend({ type: 'offer', code, targetId: viewerId, sdp: (offer as any).sdp });
+    const outboundWatchdog = setTimeout(() => {
+      outboundStartupWatchdogRef.current.delete(viewerId);
+      if (
+        isCurrentSession() &&
+        webrtcPeersRef.current.get(viewerId) === pc &&
+        (pc as any).connectionState !== 'connected'
+      ) {
+        void startMjpegFallback(code, 'peer-not-connected');
+      }
+    }, 15_000);
+    outboundStartupWatchdogRef.current.set(viewerId, outboundWatchdog);
     } finally {
       // Always remove the in-flight guard so a future new-viewer for this
       // viewer can create a fresh peer (e.g. after the viewer rejoins).
@@ -981,6 +1105,7 @@ export default function ScorekeeperScreen() {
     // Tear down WebRTC peers and camera stream before closing the WS.
     closeAllWebRtcPeers();
     stopWebRtcStream();
+    stopMjpegFallback();
     // Close broadcaster WS first so viewers get the broadcaster-left signal
     if (liveWsReconnectRef.current) {
       clearTimeout(liveWsReconnectRef.current);
@@ -1059,9 +1184,13 @@ export default function ScorekeeperScreen() {
     ];
   }
 
-  function broadcastVideoModeWhenJoined(code: string, hasVideo: boolean) {
+  function broadcastVideoModeWhenJoined(
+    code: string,
+    hasVideo: boolean,
+    videoMode: 'webrtc' | 'mjpeg' | 'none' = hasVideo ? 'webrtc' : 'none',
+  ) {
     if (!broadcasterJoinedRef.current) {
-      pendingVideoModeRef.current = { code, hasVideo };
+      pendingVideoModeRef.current = { code, hasVideo, videoMode };
       return;
     }
     pendingVideoModeRef.current = null;
@@ -1069,7 +1198,7 @@ export default function ScorekeeperScreen() {
       type: 'join-broadcaster',
       code,
       hasVideo,
-      videoMode: hasVideo ? 'webrtc' : 'none',
+      videoMode,
     });
   }
 
@@ -1109,9 +1238,11 @@ export default function ScorekeeperScreen() {
         ? hoopsCameraPermission?.camera === 'granted'
         : !!cameraPermission?.granted;
       const hasVideo = sharedCameraMode
-        ? !!webrtcStreamRef.current && !cameraFailed
+        ? (mjpegFallbackActiveRef.current || !!webrtcStreamRef.current) && !cameraFailed
         : webrtcSupported && !cameraFailed && hasCameraPermission;
-      const videoMode = hasVideo ? 'webrtc' : 'none';
+      const videoMode = hasVideo
+        ? (mjpegFallbackActiveRef.current ? 'mjpeg' : 'webrtc')
+        : 'none';
       ws.send(JSON.stringify({
         type: 'join-broadcaster',
         code,
@@ -1130,7 +1261,11 @@ export default function ScorekeeperScreen() {
           broadcasterJoinedRef.current = true;
           const pendingMode = pendingVideoModeRef.current;
           if (pendingMode?.code === code) {
-            broadcastVideoModeWhenJoined(pendingMode.code, pendingMode.hasVideo);
+            broadcastVideoModeWhenJoined(
+              pendingMode.code,
+              pendingMode.hasVideo,
+              pendingMode.videoMode,
+            );
           }
           const diagnostics = pendingClientDiagnosticsRef.current
             .filter((diagnostic) => diagnostic.code === code);
@@ -1144,6 +1279,7 @@ export default function ScorekeeperScreen() {
             });
           }
         } else if (msg.type === 'new-viewer') {
+          if (mjpegFallbackActiveRef.current) return;
           // A record-enabled game intentionally advertises score-only mode.
           // Do not queue viewer IDs for an offer that can never be created.
           if (webrtcCameraFailedRef.current) return;
@@ -1722,6 +1858,7 @@ export default function ScorekeeperScreen() {
       ? hoopsCameraPermission?.camera === 'granted'
       : !!cameraPermission?.granted;
     if (!isLive || !liveCode || !hasCameraPermission) {
+      stopMjpegFallback();
       closeAllWebRtcPeers();
       stopWebRtcStream();
       return;
@@ -1740,6 +1877,9 @@ export default function ScorekeeperScreen() {
     // HoopsCameraView applies facing changes to the existing native session.
     // Do not tear down a shared viewer stream just because that prop changed
     // (notably while a recording is being split for a phone camera flip).
+    if (mjpegFallbackActiveRef.current) {
+      return;
+    }
     if (sharedCameraMode && webrtcStreamRef.current && sharedStreamSessionRef.current === liveCode) {
       return;
     }
@@ -1809,14 +1949,13 @@ export default function ScorekeeperScreen() {
               // Ignore callbacks from a superseded stream while retaining the
               // listener across shared-camera facing updates.
               if (webrtcStreamRef.current !== stream) return;
-              console.warn('[WebRTC] Camera track ended unexpectedly — switching to score-only');
+              console.warn('[WebRTC] Camera track ended unexpectedly — switching to MJPEG');
               webrtcCameraFailedRef.current = true;
               liveMediaGenerationRef.current += 1;
               // Close all peer connections — they can no longer send video.
               closeAllWebRtcPeers();
               stopWebRtcStream();
-              // Notify server/viewers that video is gone so they drop to scoreboard.
-              broadcastVideoModeWhenJoined(liveCode, false);
+              void startMjpegFallback(liveCode, 'shared-track-ended');
             });
           }
 
@@ -1842,7 +1981,7 @@ export default function ScorekeeperScreen() {
           // before onopen fired). If the socket is already open, broadcastWsSend
           // immediately notifies the server to push session-mode to viewers.
           webrtcCameraFailedRef.current = true;
-          broadcastVideoModeWhenJoined(liveCode, false);
+          void startMjpegFallback(liveCode, 'shared-stream-failed');
         }
       }
     })();
@@ -1875,6 +2014,7 @@ export default function ScorekeeperScreen() {
       liveWsRef.current?.close();
       closeAllWebRtcPeers();
       stopWebRtcStream();
+      stopMjpegFallback();
     };
   }, []);
 
@@ -2348,6 +2488,13 @@ export default function ScorekeeperScreen() {
       // create-game confirms the master is attached.
       onVideoAttached: async (gameId) => {
         if (!videoObjectPath) return;
+        // Keep the just-finalized native movie available after navigation.
+        // One continuous local file can play immediately while the uploaded
+        // copy is still being optimized; multi-segment games use the merged
+        // server copy so Film Room never presents only part of the game.
+        if (recordedUrisRef.current.length === 1) {
+          await rememberLocalGameVideo(gameId, recordedUrisRef.current[0]).catch(() => {});
+        }
         // Durable foreground transition: a crash after server linkage but
         // before navigation leaves the worker with the exact game/path.
         await updatePendingMasterUpload({ gameId, videoObjectPath });
@@ -3436,12 +3583,14 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       backgroundColor: 'rgba(255,255,255,0.18)',
       borderWidth: 1,
       borderColor: 'rgba(255,255,255,0.35)',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     oppOverlayQuickBtnText: {
       fontSize: isTabletLandscape ? 16 : 11,
       fontFamily: 'Inter_700Bold',
       color: '#fff',
-      lineHeight: 14,
+      lineHeight: isTabletLandscape ? 20 : 14,
     },
     oppQuickBtn: {
       minWidth: isTabletLandscape ? 52 : undefined,

@@ -9,6 +9,7 @@ final class HoopsCameraFrameRouter: NSObject, AVCaptureVideoDataOutputSampleBuff
   private let queue = DispatchQueue(label: "com.hoopsstats.camera.frames", qos: .userInitiated)
   private let lock = NSLock()
   private let inFlight = DispatchSemaphore(value: 1)
+  private let mjpegProducer = HoopsCameraMjpegFrameProducer()
   private(set) var isRecording = false
 
   /// The WebRTC adapter installs this callback through the module boundary.
@@ -19,6 +20,22 @@ final class HoopsCameraFrameRouter: NSObject, AVCaptureVideoDataOutputSampleBuff
     lock.lock()
     frameSink = sink
     lock.unlock()
+  }
+
+  func setMjpegFrameSink(_ sink: ((String) -> Void)?) {
+    mjpegProducer.setFrameSink(sink)
+  }
+
+  func startMjpeg() {
+    mjpegProducer.start()
+  }
+
+  func stopMjpeg() {
+    mjpegProducer.stop()
+  }
+
+  func clearMjpegSink() {
+    mjpegProducer.setFrameSink(nil)
   }
 
   func setRecording(_ recording: Bool) {
@@ -35,9 +52,15 @@ final class HoopsCameraFrameRouter: NSObject, AVCaptureVideoDataOutputSampleBuff
     lock.lock()
     let hasSink = frameSink != nil
     lock.unlock()
-    guard hasSink, inFlight.wait(timeout: .now()) == .success else {
+    let hasMjpeg = mjpegProducer.isEnabled
+    guard hasSink || hasMjpeg else {
       return
     }
+    // Reserve the WebRTC slot independently. A stalled WebRTC consumer must
+    // drop only its own frame; it must never starve the MJPEG fallback.
+    let shouldSendWebRTC =
+      hasSink && inFlight.wait(timeout: .now()) == .success
+    guard shouldSendWebRTC || hasMjpeg else { return }
 
     // AVCapture only guarantees the sample buffer for the duration of this
     // delegate callback. The WebRTC conversion runs asynchronously, so create
@@ -48,7 +71,19 @@ final class HoopsCameraFrameRouter: NSObject, AVCaptureVideoDataOutputSampleBuff
       sampleBuffer: sampleBuffer,
       sampleBufferOut: &ownedSampleBuffer
     ) == noErr, let ownedSampleBuffer else {
-      inFlight.signal()
+      if shouldSendWebRTC {
+        inFlight.signal()
+      }
+      return
+    }
+    if hasMjpeg {
+      mjpegProducer.submit(
+        ownedSampleBuffer,
+        orientation: connection.videoOrientation,
+        mirrored: connection.isVideoMirrored
+      )
+    }
+    guard shouldSendWebRTC else {
       return
     }
     // Recording has priority because this branch never waits. If WebRTC is
@@ -74,4 +109,5 @@ final class HoopsCameraFrameRouter: NSObject, AVCaptureVideoDataOutputSampleBuff
       frameSink(ownedSampleBuffer)
     }
   }
+
 }

@@ -654,6 +654,7 @@ export default function WatchStream() {
             setState("live");
           } else if (message.videoMode === "mjpeg") {
             // Mobile broadcaster sending MJPEG snapshots — skip WebRTC, show img feed.
+            setScoreOnly(false);
             setIsMjpeg(true);
             if (offerWatchdogRef.current) {
               clearTimeout(offerWatchdogRef.current);
@@ -698,6 +699,7 @@ export default function WatchStream() {
             }
             setState("live");
           } else if (message.videoMode === "mjpeg") {
+            setScoreOnly(false);
             setIsMjpeg(true);
             setBroadcasterReconnecting(false);
             if (offerWatchdogRef.current) {

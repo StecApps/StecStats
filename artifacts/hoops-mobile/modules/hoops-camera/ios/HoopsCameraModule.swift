@@ -7,7 +7,7 @@ public final class HoopsCameraModule: Module {
   public func definition() -> ModuleDefinition {
     Name("HoopsCamera")
 
-    Events("onStateChange", "onError", "onRecordingFinished", "onLifecycleResume")
+    Events("onStateChange", "onError", "onRecordingFinished", "onLifecycleResume", "onMjpegFrame")
 
     Constants {
       [
@@ -50,6 +50,14 @@ public final class HoopsCameraModule: Module {
 
     AsyncFunction("stopRecordingAsync") { (promise: Promise) in
       controller.stopRecording(promise: promise)
+    }
+
+    AsyncFunction("startMjpegAsync") { (promise: Promise) in
+      controller.startMjpeg(promise: promise)
+    }
+
+    AsyncFunction("stopMjpegAsync") { (promise: Promise) in
+      controller.stopMjpeg(promise: promise)
     }
 
     AsyncFunction("suspendForSharingAsync") { (promise: Promise) in

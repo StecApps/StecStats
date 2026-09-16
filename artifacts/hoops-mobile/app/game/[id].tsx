@@ -38,6 +38,7 @@ import { useAuth } from '@clerk/expo';
 import { ZoomableVideo } from '@/components/ZoomableVideo';
 import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
 import { reelProgressText } from '@/lib/reelProgressText';
+import { forgetLocalGameVideo, getLocalGameVideo } from '@/lib/localGameVideo';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -732,6 +733,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const getTokenRef = useRef(getToken);
   getTokenRef.current = getToken;
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [localStreamUrl, setLocalStreamUrl] = useState<string | null>(null);
   const [streamIsHls, setStreamIsHls] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // proxyReady=false means the server is still building the H.264 proxy;
@@ -749,6 +751,18 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const replaceChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const player = useVideoPlayer('', configureReviewPlayer);
+  const playbackUrl = localStreamUrl ?? streamUrl;
+  const playbackIsHls = localStreamUrl ? false : streamIsHls;
+
+  useEffect(() => {
+    let cancelled = false;
+    getLocalGameVideo(game.id).then((uri) => {
+      if (!cancelled && uri) setLocalStreamUrl(uri);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [game.id]);
 
   const loadStream = useCallback(
     (cancelled: { value: boolean }) => {
@@ -813,19 +827,24 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   // leaves AVPlayer with a valid source but no native surface (black crossed-
   // play screen on iOS).
   useEffect(() => {
-    if (!streamUrl) return;
+    if (!playbackUrl) return;
     const generation = ++replaceGenerationRef.current;
     let cancelled = false;
     replaceChainRef.current = replaceChainRef.current
       .catch(() => {})
       .then(async () => {
         if (cancelled || generation !== replaceGenerationRef.current) return;
-        await player.replaceAsync(playbackSource(streamUrl, streamIsHls));
+        await player.replaceAsync(playbackSource(playbackUrl, playbackIsHls));
       })
-      .catch(() => {
+      .catch(async () => {
         if (!cancelled && generation === replaceGenerationRef.current) {
-          streamUrlCache.delete(streamCacheKey(game.id, 'video'));
-          setStreamUrl(null);
+          if (localStreamUrl) {
+            await forgetLocalGameVideo(game.id).catch(() => {});
+            setLocalStreamUrl(null);
+          } else {
+            streamUrlCache.delete(streamCacheKey(game.id, 'video'));
+            setStreamUrl(null);
+          }
           setProxyReady(false);
           retryAttemptsRef.current += 1;
           retryTimerRef.current = setTimeout(() => {
@@ -837,7 +856,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       cancelled = true;
       replaceGenerationRef.current++;
     };
-  }, [game.id, player, streamUrl, streamIsHls]);
+  }, [game.id, localStreamUrl, playbackIsHls, playbackUrl, player]);
 
   if (!game.videoObjectPath) {
     return (
@@ -850,7 +869,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
     );
   }
 
-  if (loadError) {
+  if (loadError && !localStreamUrl) {
     return (
       <View style={videoStyle.empty}>
         <Ionicons name="alert-circle-outline" size={40} color={colors.mutedForeground} />
@@ -879,7 +898,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   }
 
   // Game too long to transcode — proxy will never be built.
-  if (proxySkipped) {
+  if (proxySkipped && !localStreamUrl) {
     return (
       <View style={videoStyle.empty}>
         <Ionicons name="time-outline" size={40} color={colors.mutedForeground} style={{ marginBottom: 12 }} />
@@ -894,7 +913,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   }
 
   // Proxy is still being built — raw WebM is unplayable on iOS.
-  if (proxyReady === false) {
+  if (proxyReady === false && !localStreamUrl) {
     return (
       <View style={videoStyle.empty}>
         <ActivityIndicator color={colors.primary} style={{ marginBottom: 12 }} />
@@ -908,7 +927,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
     );
   }
 
-  if (!streamUrl) {
+  if (!playbackUrl) {
     return <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />;
   }
 
@@ -927,7 +946,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       <FilmRoomSection game={game} player={player} colors={colors} />
       <TouchableOpacity
         testID="save-full-game"
-        onPress={() => saveReviewVideo(streamUrl, `Full Game — vs ${game.opponent}`)}
+        onPress={() => saveReviewVideo(playbackUrl, `Full Game — vs ${game.opponent}`)}
         activeOpacity={0.8}
         style={[reviewAction.rowButton, { backgroundColor: colors.card, borderColor: colors.border }]}
       >

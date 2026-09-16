@@ -181,10 +181,44 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
         object: sampleBuffer
       )
     }
+    frameRouter.setMjpegFrameSink { [weak self] base64 in
+      self?.emitEvent("onMjpegFrame", ["base64": base64])
+    }
   }
 
   func activateFrameRouting() {
     installFrameSink()
+  }
+
+  func startMjpeg(promise: Promise) {
+    sessionQueue.async {
+      guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+        promise.reject(HoopsCameraSessionError.cameraPermissionDenied)
+        return
+      }
+      self.configureIfNeeded()
+      guard self.isConfigured else {
+        promise.reject(HoopsCameraSessionError.sessionUnavailable)
+        return
+      }
+      self.frameRouter.startMjpeg()
+      if !self.session.isRunning {
+        self.startSessionIfPossible()
+      }
+      guard self.session.isRunning else {
+        self.frameRouter.stopMjpeg()
+        promise.reject(HoopsCameraSessionError.sessionUnavailable)
+        return
+      }
+      promise.resolve(nil)
+    }
+  }
+
+  func stopMjpeg(promise: Promise) {
+    sessionQueue.async {
+      self.frameRouter.stopMjpeg()
+      promise.resolve(nil)
+    }
   }
 
   func permissionStatus() -> [String: String] {
@@ -546,6 +580,8 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     // Stop publishing immediately, before the asynchronous session teardown.
     // Any already-queued retained frame observes nil and is safely released.
     frameRouter.setFrameSink(nil)
+    frameRouter.stopMjpeg()
+    frameRouter.clearMjpegSink()
     DispatchQueue.main.async {
       self.removeAppDidBecomeActiveObserver()
     }

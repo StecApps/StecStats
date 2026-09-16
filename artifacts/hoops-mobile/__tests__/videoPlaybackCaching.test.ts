@@ -204,7 +204,7 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain('setStreamIsHls(result.isHls);');
     expect(gameScreen).toContain('setStreamUrl(result.url);');
     expect(gameScreen).not.toContain('setStreamUrl(result.url);\\n            player.replaceAsync');
-    expect(gameScreen).toContain('await player.replaceAsync(playbackSource(streamUrl, streamIsHls));');
+    expect(gameScreen).toContain('await player.replaceAsync(playbackSource(playbackUrl, playbackIsHls));');
   });
 
   test('does not leave an empty black player while a reel waits for Wi-Fi', () => {

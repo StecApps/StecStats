@@ -12,6 +12,10 @@ describe('iPad recording safeguards', () => {
     path.resolve(__dirname, '../modules/hoops-camera/src/index.ts'),
     'utf8',
   );
+  const nativeMjpegSource = fs.readFileSync(
+    path.resolve(__dirname, '../modules/hoops-camera/ios/HoopsCameraMjpegFrameProducer.swift'),
+    'utf8',
+  );
   const webRtcPatchSource = fs.readFileSync(
     path.resolve(__dirname, '../../../patches/react-native-webrtc@124.0.8.patch'),
     'utf8',
@@ -91,10 +95,10 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain("const cameraLandW = isTablet ? '62%' : '55%'");
     expect(source).toContain('const portraitRatio = isTablet ? 0.70');
     expect(source).toContain('setLiveMediaRecoveryGeneration((generation) => generation + 1)');
-    expect(source).toContain("videoMode: hasVideo ? 'webrtc' : 'none'");
+    expect(source).toContain("videoMode: 'webrtc' | 'mjpeg' | 'none'");
     expect(source).toContain("if (msg.type === 'broadcaster-joined')");
     expect(source).toContain('broadcastVideoModeWhenJoined(liveCode, true)');
-    expect(source).toContain('pendingVideoModeRef.current = { code, hasVideo }');
+    expect(source).toContain('pendingVideoModeRef.current = { code, hasVideo, videoMode }');
   });
 
   test('keeps the native recorder stable while scoring and blocks iPad camera reconfiguration', () => {
@@ -163,6 +167,22 @@ describe('iPad recording safeguards', () => {
     expect(nativeFacadeSource).not.toContain('releaseHoopsCameraVideoStreamNative?');
     expect(nativeFacadeSource).toContain('await webRTCModule.createHoopsCameraVideoStreamNative()');
     expect(source).toContain("broadcastClientDiagnostic('live-video-failed'");
+  });
+
+  test('keeps MJPEG capture on the shared output and bounds native conversion', () => {
+    expect(nativeCameraSource).toContain('startMjpeg');
+    expect(nativeCameraSource).toContain('stopMjpeg');
+    expect(nativeMjpegSource).toContain('minimumInterval');
+    expect(nativeMjpegSource).toContain('1.0 / 3.0');
+    expect(nativeMjpegSource).toContain('inFlight.wait(timeout: .now())');
+    expect(nativeMjpegSource).toContain('CIContext');
+    expect(nativeMjpegSource).toContain('640.0 / extent.width');
+    expect(nativeMjpegSource).toContain('360.0 / extent.height');
+    expect(nativeMjpegSource).toContain('base64EncodedString()');
+    expect(nativeMjpegSource).toContain('maximumJPEGBytes');
+    expect(nativeCameraSource).toContain('frameRouter.setMjpegFrameSink');
+    expect(nativeCameraSource).toContain('frameRouter.clearMjpegSink()');
+    expect(nativeMjpegSource).not.toContain('AVCaptureMovieFileOutput');
   });
 
   test('does not crop the iPad preview or background an active recording for Messages', () => {
