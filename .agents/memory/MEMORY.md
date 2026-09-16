@@ -98,3 +98,4 @@
 - [React Native category export gap](react-native-webrtc-category-exports.md) — a patched Objective-C category can compile into iOS yet its added bridge methods remain absent in JS.
 - [AVFoundation interruption finalization](avfoundation-interruption-finalization.md) — an interrupted movie output can remain logically active while saving only its initial playable prefix.
 - [iPad keyboard-safe screen presentation](ipad-keyboard-screen-presentation.md) — on iPadOS 26, settle keyboard removal before pushing a native screen or CoreAutoLayout can crash.
+- [Recording-safe MJPEG fallback](recording-safe-mjpeg-fallback.md) — fallback backpressure must be independent of WebRTC, and mode switches must clear score-only viewer state.
