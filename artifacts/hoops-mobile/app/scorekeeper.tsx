@@ -85,6 +85,7 @@ import { startLiveSession } from '@/lib/startLiveSession';
 import {
   HoopsCameraView,
   isHoopsCameraAvailable,
+  isHoopsCameraMjpegAvailable,
   requestHoopsCameraPermissionsAsync,
   startHoopsCameraRecordingAsync,
   stopHoopsCameraRecordingAsync,
@@ -811,6 +812,11 @@ export default function ScorekeeperScreen() {
       mjpegFallbackTransitionRef.current ||
       liveCodeRef.current !== code
     ) return;
+    if (!isHoopsCameraMjpegAvailable()) {
+      webrtcCameraFailedRef.current = true;
+      broadcastVideoModeWhenJoined(code, false, 'none');
+      return;
+    }
     const fallbackGeneration = ++mjpegFallbackGenerationRef.current;
     mjpegFallbackTransitionRef.current = true;
     try {

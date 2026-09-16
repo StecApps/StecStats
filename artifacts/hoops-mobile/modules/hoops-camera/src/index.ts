@@ -80,8 +80,8 @@ type HoopsCameraNativeModule = {
   requestPermissionsAsync(): Promise<HoopsCameraPermissionStatus>;
   startRecordingAsync(muted: boolean): Promise<HoopsCameraRecording>;
   stopRecordingAsync(): Promise<HoopsCameraRecording>;
-  startMjpegAsync(): Promise<void>;
-  stopMjpegAsync(): Promise<void>;
+  startMjpegAsync?: () => Promise<void>;
+  stopMjpegAsync?: () => Promise<void>;
   suspendForSharingAsync(): Promise<void>;
   resumeAfterSharingAsync(): Promise<void>;
   setMicrophoneMutedAsync(muted: boolean): Promise<void>;
@@ -132,6 +132,13 @@ const nativeModule = requireOptionalNativeModule<HoopsCameraNativeModule>(
 );
 
 export const isHoopsCameraAvailable = nativeModule !== null;
+
+export function isHoopsCameraMjpegAvailable(): boolean {
+  return (
+    typeof nativeModule?.startMjpegAsync === 'function' &&
+    typeof nativeModule?.stopMjpegAsync === 'function'
+  );
+}
 
 function getHoopsCameraWebRTCNativeModule(): HoopsCameraWebRTCNativeModule | null {
   if (nativeModule === null) {
@@ -208,11 +215,18 @@ export function stopHoopsCameraRecordingAsync(): Promise<HoopsCameraRecording> {
 }
 
 export function startHoopsCameraMjpegAsync(): Promise<void> {
-  return requireHoopsCamera().startMjpegAsync();
+  const start = requireHoopsCamera().startMjpegAsync;
+  if (typeof start !== 'function') {
+    return Promise.reject(new Error('HoopsCamera MJPEG fallback is unavailable in this build.'));
+  }
+  return start.call(nativeModule);
 }
 
 export function stopHoopsCameraMjpegAsync(): Promise<void> {
-  return requireHoopsCamera().stopMjpegAsync();
+  const stop = nativeModule?.stopMjpegAsync;
+  // Cleanup runs whenever the filming screen mounts and unmounts. Older
+  // binaries do not expose MJPEG, so missing support must be a safe no-op.
+  return typeof stop === 'function' ? stop.call(nativeModule) : Promise.resolve();
 }
 
 export function suspendHoopsCameraForSharingAsync(): Promise<void> {

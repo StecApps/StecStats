@@ -76,6 +76,14 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           Please reload the app to continue.
         </Text>
 
+        <Text
+          numberOfLines={3}
+          selectable
+          style={[styles.errorMessage, { color: colors.mutedForeground }]}
+        >
+          {error.message || 'Unknown application error'}
+        </Text>
+
         <Pressable
           onPress={handleRestart}
           style={({ pressed }) => [
@@ -193,6 +201,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  errorMessage: {
+    maxWidth: 520,
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 17,
   },
   topButton: {
     position: 'absolute',

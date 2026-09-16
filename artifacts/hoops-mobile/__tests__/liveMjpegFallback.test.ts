@@ -2,6 +2,10 @@ import fs from 'fs';
 import path from 'path';
 
 const source = fs.readFileSync(path.join(__dirname, '../app/scorekeeper.tsx'), 'utf8');
+const facade = fs.readFileSync(
+  path.join(__dirname, '../modules/hoops-camera/src/index.ts'),
+  'utf8',
+);
 
 describe('shared-camera MJPEG fallback', () => {
   test('falls back only after repeated zero outbound RTP observations', () => {
@@ -27,5 +31,10 @@ describe('shared-camera MJPEG fallback', () => {
     expect(source).toMatch(
       /liveWsRef\.current\?\.close\(\);[\s\S]*?closeAllWebRtcPeers\(\);[\s\S]*?stopWebRtcStream\(\);[\s\S]*?stopMjpegFallback\(\);/,
     );
+  });
+
+  test('does not crash the filming route on binaries without MJPEG exports', () => {
+    expect(source).toContain('if (!isHoopsCameraMjpegAvailable())');
+    expect(facade).toContain("typeof stop === 'function' ? stop.call(nativeModule) : Promise.resolve()");
   });
 });
