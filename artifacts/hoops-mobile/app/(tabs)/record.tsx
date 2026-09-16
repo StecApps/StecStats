@@ -262,7 +262,7 @@ export default function RecordScreen() {
             <View style={styles.toggleText}>
               <Text style={[styles.toggleTitle, { color: colors.foreground }]}>Record Video</Text>
               <Text style={[styles.toggleSub, { color: colors.mutedForeground }]}>
-                Film the game from your phone
+                Film the game from this device
               </Text>
             </View>
           </View>

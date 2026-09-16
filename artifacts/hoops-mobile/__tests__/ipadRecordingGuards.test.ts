@@ -104,6 +104,13 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('if (webrtcCameraFailedRef.current) return;');
   });
 
+  test('keeps landscape iPad stats-only games in the full-width layout', () => {
+    expect(source).toContain('recordVideo && isLandscape && styles.rootLandscape');
+    expect(source).toContain('recordVideo && isLandscape && styles.statsSectionLand');
+    expect(source).not.toContain('style={[styles.root, isLandscape && styles.rootLandscape]}');
+    expect(source).not.toContain('style={[styles.statsSection, isLandscape && styles.statsSectionLand]}');
+  });
+
   test('provides bounded recording zoom controls with a gentler pinch response', () => {
     expect(source).toContain('const [cameraZoom, setCameraZoom] = useState(0)');
     expect(source).toContain('const CAMERA_ZOOM_STEP = 0.05');
@@ -209,8 +216,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260938');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260938');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260939');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260939');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {

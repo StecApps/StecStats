@@ -2990,7 +2990,10 @@ export default function ScorekeeperScreen() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-    <View ref={sharePresentationAnchorRef} style={[styles.root, isLandscape && styles.rootLandscape]}>
+    <View
+      ref={sharePresentationAnchorRef}
+      style={[styles.root, recordVideo && isLandscape && styles.rootLandscape]}
+    >
       {goLiveSheet}
 
       {/* ── Compact scoreboard header — shown when not recording (camera hidden) ── */}
@@ -3316,7 +3319,7 @@ export default function ScorekeeperScreen() {
       </GestureDetector>
 
       {/* ── STATS SECTION (bottom half portrait / right half landscape) ── */}
-      <View style={[styles.statsSection, isLandscape && styles.statsSectionLand]}>
+      <View style={[styles.statsSection, recordVideo && isLandscape && styles.statsSectionLand]}>
         {statArea}
       </View>
     </View>
