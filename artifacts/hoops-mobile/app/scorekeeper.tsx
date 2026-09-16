@@ -89,6 +89,7 @@ import {
   stopHoopsCameraRecordingAsync,
   setHoopsCameraMicrophoneMutedAsync,
   createHoopsCameraLiveVideoAsync,
+  waitForHoopsCameraLiveVideoFramesAsync,
   releaseHoopsCameraLiveVideoAsync,
   suspendHoopsCameraForSharingAsync,
   resumeHoopsCameraAfterSharingAsync,
@@ -1753,6 +1754,13 @@ export default function ScorekeeperScreen() {
           // Do not call getUserMedia with video here: that would create a
           // second camera capturer and defeat the shared native pipeline.
           const liveVideo = await createHoopsCameraLiveVideoAsync();
+          const nativeFrameCount = await waitForHoopsCameraLiveVideoFramesAsync();
+          broadcastClientDiagnostic('live-video-native-ready', {
+            nativeFrameCount,
+            trackId: liveVideo.track.id,
+            trackEnabled: liveVideo.track.enabled,
+            trackReadyState: liveVideo.track.readyState,
+          });
           stream = liveVideo.stream;
           if (!isCurrentMedia()) {
             await releaseHoopsCameraLiveVideoAsync().catch(() => undefined);
@@ -1820,6 +1828,9 @@ export default function ScorekeeperScreen() {
           );
         }
       } catch (e) {
+        if (sharedCameraMode) {
+          await releaseHoopsCameraLiveVideoAsync().catch(() => undefined);
+        }
         console.warn(`[WebRTC] ${sharedCameraMode ? 'HoopsCamera video stream' : 'getUserMedia'} failed — viewers will see score-only:`, e);
         broadcastClientDiagnostic('live-video-failed', {
           sharedCameraMode,
@@ -3386,6 +3397,8 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       paddingBottom: isTabletLandscape ? 16 : 10,
       paddingHorizontal: isTabletLandscape ? 18 : 10,
       backgroundColor: 'rgba(0,0,0,0.52)',
+      zIndex: 30,
+      elevation: 30,
     },
     closeBtn: { alignSelf: 'center', padding: 4, marginBottom: 2 },
     scoreboard: { flexDirection: 'row', alignItems: 'center' },
@@ -3405,7 +3418,14 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       borderColor: 'rgba(255,255,255,0.3)',
     },
     halfText: { fontSize: isTabletLandscape ? 14 : 11, fontFamily: 'Inter_600SemiBold', color: 'rgba(255,255,255,0.75)' },
-    oppScoreRow: { flexDirection: 'row', alignItems: 'center', gap: isTabletLandscape ? 8 : 5 },
+    oppScoreRow: {
+      position: 'relative',
+      zIndex: 31,
+      elevation: 31,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: isTabletLandscape ? 8 : 5,
+    },
     // Compact quick-buttons used inside the dark camera overlay (white-tinted)
     oppOverlayQuickBtn: {
       minWidth: isTabletLandscape ? 52 : undefined,
@@ -3499,6 +3519,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       left: isTabletLandscape ? 14 : 10,
       flexDirection: 'column',
       gap: isTabletLandscape ? 10 : 6,
+      zIndex: 10,
     },
     cameraNotice: {
       position: 'absolute',
@@ -3799,6 +3820,9 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       flexShrink: 1,
     },
     oppBarRight: {
+      position: 'relative',
+      zIndex: 30,
+      elevation: 30,
       flexDirection: 'row',
       alignItems: 'center',
       gap: isTabletLandscape ? 8 : 4,

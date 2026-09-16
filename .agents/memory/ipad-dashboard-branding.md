@@ -18,3 +18,9 @@ All roster buttons need a visible orange-to-black glossy gradient that fills the
 **Why:** Separate logo treatments looked detached from the interface, while a pinned landscape player row sat behind the iPad status information and made player names appear faded or hidden. The user explicitly confirmed the desktop dashboard screenshots as the preferred visual direction.
 
 **How to apply:** Dashboard changes must preserve safe-area spacing and render player chips in a dedicated high-contrast content row. Prefer flat, information-dense sections over decorative glow/card effects. Do not reintroduce a pinned top-left selector or an independent logo image container.
+
+Recording-mode quick-score buttons should use large iPad touch targets and stay above nearby camera/phone controls in the native touch order.
+
+**Why:** Physical iPad testing confirmed the larger scoring controls were readable, but overlapping control layers still made taps land on nearby camera icons.
+
+**How to apply:** Keep quick-score controls visually prominent with explicit stacking/elevation and verify their full visible bounds receive the tap.

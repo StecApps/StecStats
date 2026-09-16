@@ -729,6 +729,8 @@ const cardStyle = StyleSheet.create({
 
 function VideoSection({ game, colors }: { game: any; colors: any }) {
   const { getToken } = useAuth();
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [streamIsHls, setStreamIsHls] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -740,6 +742,8 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   // to transcode on RAM-backed /tmp). Stop polling and show a static message.
   const [proxySkipped, setProxySkipped] = useState(false);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryAttemptsRef = useRef(0);
+  const [retryGeneration, setRetryGeneration] = useState(0);
   const optimizingStartedAtRef = useRef<number | null>(null);
   const replaceGenerationRef = useRef(0);
   const replaceChainRef = useRef<Promise<void>>(Promise.resolve());
@@ -749,7 +753,8 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const loadStream = useCallback(
     (cancelled: { value: boolean }) => {
       if (!game.videoObjectPath) return;
-      getToken()
+      setLoadError(false);
+      getTokenRef.current()
         .then((token) => {
           if (!token || cancelled.value) return;
           return getReusableStreamUrl(game.id, 'video', token);
@@ -764,6 +769,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           }
           setProxyReady(result.proxyReady);
           if (result.proxyReady) {
+            retryAttemptsRef.current = 0;
             optimizingStartedAtRef.current = null;
             setStreamIsHls(result.isHls);
             setStreamUrl(result.url);
@@ -773,10 +779,21 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
             // the readiness endpoint while the server owns one background build.
             retryTimerRef.current = setTimeout(() => {
               if (!cancelled.value) loadStream(cancelled);
-            }, 15_000);
+            }, 5_000);
           }
         })
-        .catch(() => { if (!cancelled.value) setLoadError(true); });
+        .catch(() => {
+          if (cancelled.value) return;
+          retryAttemptsRef.current += 1;
+          if (retryAttemptsRef.current >= 12) {
+            setLoadError(true);
+            return;
+          }
+          setProxyReady(false);
+          retryTimerRef.current = setTimeout(() => {
+            if (!cancelled.value) loadStream(cancelled);
+          }, 5_000);
+        });
     },
     [game.id, game.videoObjectPath],
   );
@@ -789,7 +806,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       cancelled.value = true;
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [game.videoObjectPath, loadStream]);
+  }, [game.videoObjectPath, loadStream, retryGeneration]);
 
   // Do not attach the source until streamUrl has caused the VideoView below to
   // mount. Attaching while this component still renders its loading spinner
@@ -806,13 +823,21 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
         await player.replaceAsync(playbackSource(streamUrl, streamIsHls));
       })
       .catch(() => {
-        if (!cancelled && generation === replaceGenerationRef.current) setLoadError(true);
+        if (!cancelled && generation === replaceGenerationRef.current) {
+          streamUrlCache.delete(streamCacheKey(game.id, 'video'));
+          setStreamUrl(null);
+          setProxyReady(false);
+          retryAttemptsRef.current += 1;
+          retryTimerRef.current = setTimeout(() => {
+            if (!cancelled) setRetryGeneration((value) => value + 1);
+          }, 5_000);
+        }
       });
     return () => {
       cancelled = true;
       replaceGenerationRef.current++;
     };
-  }, [player, streamUrl, streamIsHls]);
+  }, [game.id, player, streamUrl, streamIsHls]);
 
   if (!game.videoObjectPath) {
     return (
@@ -832,6 +857,23 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
           Could not load video
         </Text>
+        <TouchableOpacity
+          testID="retry-full-game-video"
+          onPress={() => {
+            retryAttemptsRef.current = 0;
+            streamUrlCache.delete(streamCacheKey(game.id, 'video'));
+            setLoadError(false);
+            setProxyReady(null);
+            setStreamUrl(null);
+            setRetryGeneration((value) => value + 1);
+          }}
+          style={{ backgroundColor: colors.primary, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12, marginTop: 12 }}
+          activeOpacity={0.8}
+        >
+          <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 15 }}>
+            Try Video Again
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -2492,7 +2534,7 @@ function HighlightSection({ gameId, colors }: { gameId: number; colors: any }) {
       <Ionicons name="film-outline" size={40} color={colors.mutedForeground} />
       <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
         {highlight.eligibleMoments > 0
-          ? `${highlight.eligibleMoments} highlight moments ready to clip`
+          ? `${highlight.eligibleMoments} highlight moments recorded`
           : 'No highlight moments recorded'}
       </Text>
       {highlight.eligibleMoments > 0 && (

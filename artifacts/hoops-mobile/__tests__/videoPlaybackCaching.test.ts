@@ -19,6 +19,20 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).toContain("await getReusableStreamUrl(gameId, 'lowlight'");
   });
 
+  test('keeps just-saved game film processing until the proxy is ready and allows retry', () => {
+    expect(gameScreen).toContain('retryAttemptsRef.current >= 12');
+    expect(gameScreen).toContain('}, 5_000);');
+    expect(gameScreen).toContain("streamUrlCache.delete(streamCacheKey(game.id, 'video'))");
+    expect(gameScreen).toContain('testID="retry-full-game-video"');
+    expect(gameScreen).toContain('Try Video Again');
+    expect(gameScreen).toContain('Full Game Film is saved');
+  });
+
+  test('describes recorded highlight moments without implying the reel already exists', () => {
+    expect(gameScreen).toContain('highlight moments recorded');
+    expect(gameScreen).not.toContain('highlight moments ready to clip');
+  });
+
   test('downloads native reels through the GCS-backed range proxy', () => {
     expect(gameScreen).toContain("Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight')");
     expect(gameScreen).toContain('const reelRangeProxyUrl =');

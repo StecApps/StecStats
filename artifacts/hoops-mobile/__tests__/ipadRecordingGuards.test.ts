@@ -80,6 +80,7 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("Platform.OS === 'android' && webrtcStreamRef.current");
     expect(source).toContain('recordVideo && !sharedCameraMode');
     expect(source).toContain('createHoopsCameraLiveVideoAsync');
+    expect(source).toContain('waitForHoopsCameraLiveVideoFramesAsync');
     expect(source).toContain('releaseHoopsCameraLiveVideoAsync');
     expect(source).toContain('if (webrtcStreamRef.current && !sharedCameraMode)');
     expect(source).toContain('getUserMedia({ audio: true, video: false })');
@@ -123,6 +124,7 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('adjustCameraZoom(CAMERA_ZOOM_STEP)');
     expect(source).toContain('pinchBaseZoom.value + (e.scale - 1) * CAMERA_PINCH_SENSITIVITY');
     expect(nativeCameraSource).toContain('min(device.activeFormat.videoMaxZoomFactor, 5)');
+    expect(nativeCameraSource).toContain('kCVPixelFormatType_420YpCbCr8BiPlanarFullRange');
   });
 
   test('retains an unexpectedly finalized recording and closes its timeline', () => {
@@ -151,6 +153,8 @@ describe('iPad recording safeguards', () => {
 
   test('registers shared-video bridge methods on the primary WebRTC module', () => {
     expect(webRtcPatchSource).toContain('RCT_REMAP_METHOD(createHoopsCameraVideoStreamNative');
+    expect(webRtcPatchSource).toContain('RCT_REMAP_METHOD(getHoopsCameraVideoStreamStatsNative');
+    expect(webRtcPatchSource).toContain('kHoopsCameraPrimaryFrameCountKey');
     expect(webRtcPatchSource).toContain('RCT_REMAP_METHOD(releaseHoopsCameraVideoStreamNative');
     expect(webRtcPatchSource).toContain('kHoopsCameraPrimaryVideoTrackKey');
     expect(webRtcPatchSource).toContain('addObserverForName:@"HoopsCamera.videoSampleBuffer"');
@@ -216,8 +220,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260941');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260941');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260942');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260942');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {

@@ -614,7 +614,10 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     let dataOutput = AVCaptureVideoDataOutput()
     dataOutput.alwaysDiscardsLateVideoFrames = true
     dataOutput.videoSettings = [
-      kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+      // NV12 is the native camera/WebRTC encoding format. BGRA made the shared
+      // Live path move and convert roughly 2.7x more pixel data while the movie
+      // recorder was active, which could leave the viewer track starved.
+      kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
     ]
     if session.canAddOutput(dataOutput) {
       session.addOutput(dataOutput)

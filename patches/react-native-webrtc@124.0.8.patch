@@ -167,7 +167,7 @@ index 93ff75097e95af737e35b5577f95c48a64c32f59..0581e51830a24e3e24e1842fcea8090c
  #import <React/RCTBridge.h>
  #import <React/RCTEventDispatcher.h>
  #import <React/RCTLog.h>
-@@ -11,8 +13,9 @@
+@@ -11,8 +13,10 @@
  #import "WebRTCModule.h"
  #import "WebRTCModuleOptions.h"
  
@@ -176,10 +176,11 @@ index 93ff75097e95af737e35b5577f95c48a64c32f59..0581e51830a24e3e24e1842fcea8090c
 +static const void *kHoopsCameraPrimaryVideoTrackKey = &kHoopsCameraPrimaryVideoTrackKey;
 +static const void *kHoopsCameraPrimaryVideoStreamKey = &kHoopsCameraPrimaryVideoStreamKey;
 +static const void *kHoopsCameraPrimaryVideoObserverKey = &kHoopsCameraPrimaryVideoObserverKey;
++static const void *kHoopsCameraPrimaryFrameCountKey = &kHoopsCameraPrimaryFrameCountKey;
  
  @implementation WebRTCModule
  
-@@ -124,4 +127,140 @@ RCT_EXPORT_MODULE();
+@@ -124,4 +127,160 @@ RCT_EXPORT_MODULE();
      ];
  }
  
@@ -221,6 +222,7 @@ index 93ff75097e95af737e35b5577f95c48a64c32f59..0581e51830a24e3e24e1842fcea8090c
 +
 +    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoTrackKey, videoTrack, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 +    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoStreamKey, mediaStream, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++    objc_setAssociatedObject(self, kHoopsCameraPrimaryFrameCountKey, @0, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 +    self.localTracks[trackId] = videoTrack;
 +    self.localStreams[streamId] = mediaStream;
 +
@@ -248,6 +250,14 @@ index 93ff75097e95af737e35b5577f95c48a64c32f59..0581e51830a24e3e24e1842fcea8090c
 +                    if (pixelBuffer == NULL) {
 +                        return;
 +                    }
++                    NSNumber *previousFrameCount =
++                        objc_getAssociatedObject(strongSelf, kHoopsCameraPrimaryFrameCountKey);
++                    objc_setAssociatedObject(
++                        strongSelf,
++                        kHoopsCameraPrimaryFrameCountKey,
++                        @((previousFrameCount ?: @0).unsignedLongLongValue + 1),
++                        OBJC_ASSOCIATION_RETAIN_NONATOMIC
++                    );
 +
 +                    RTCCVPixelBuffer *rtcPixelBuffer = [[RTCCVPixelBuffer alloc] initWithPixelBuffer:pixelBuffer];
 +                    CMTime presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
@@ -289,6 +299,16 @@ index 93ff75097e95af737e35b5577f95c48a64c32f59..0581e51830a24e3e24e1842fcea8090c
 +#endif
 +}
 +
++RCT_REMAP_METHOD(getHoopsCameraVideoStreamStatsNative,
++                 getHoopsCameraVideoStreamStatsNativeWithResolver
++                 : (RCTPromiseResolveBlock)resolve
++                 rejecter
++                 : (RCTPromiseRejectBlock)reject) {
++    NSNumber *frameCount =
++        objc_getAssociatedObject(self, kHoopsCameraPrimaryFrameCountKey);
++    resolve(@{ @"frameCount" : frameCount ?: @0 });
++}
++
 +RCT_REMAP_METHOD(releaseHoopsCameraVideoStreamNative,
 +                 releaseHoopsCameraVideoStreamNativeWithResolver
 +                 : (RCTPromiseResolveBlock)resolve
@@ -315,6 +335,7 @@ index 93ff75097e95af737e35b5577f95c48a64c32f59..0581e51830a24e3e24e1842fcea8090c
 +    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoObserverKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 +    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoTrackKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 +    objc_setAssociatedObject(self, kHoopsCameraPrimaryVideoStreamKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
++    objc_setAssociatedObject(self, kHoopsCameraPrimaryFrameCountKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 +    resolve(nil);
 +#endif
 +}

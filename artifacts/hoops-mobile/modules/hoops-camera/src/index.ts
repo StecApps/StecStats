@@ -101,6 +101,7 @@ type HoopsCameraWebRTCNativeStreamInfo = {
 
 type HoopsCameraWebRTCNativeModule = {
   createHoopsCameraVideoStreamNative(): Promise<HoopsCameraWebRTCNativeStreamInfo>;
+  getHoopsCameraVideoStreamStatsNative(): Promise<{ frameCount: number }>;
   releaseHoopsCameraVideoStreamNative(): Promise<void>;
 };
 
@@ -138,6 +139,7 @@ function getHoopsCameraWebRTCNativeModule(): HoopsCameraWebRTCNativeModule | nul
     const bridge = NativeModules?.WebRTCModule;
     const hasPrimaryExports =
       typeof bridge?.createHoopsCameraVideoStreamNative === 'function' &&
+      typeof bridge?.getHoopsCameraVideoStreamStatsNative === 'function' &&
       typeof bridge?.releaseHoopsCameraVideoStreamNative === 'function';
     if (bridge && hasPrimaryExports) {
       return bridge as HoopsCameraWebRTCNativeModule;
@@ -256,6 +258,22 @@ export async function createHoopsCameraLiveVideoAsync(): Promise<HoopsCameraLive
     throw new Error('HoopsCamera WebRTC integration returned no video track.');
   }
   return { stream, track };
+}
+
+export async function waitForHoopsCameraLiveVideoFramesAsync(
+  timeoutMs = 3_000,
+): Promise<number> {
+  const webRTCModule = getHoopsCameraWebRTCNativeModule();
+  if (webRTCModule === null) {
+    throw new Error('HoopsCamera WebRTC frame diagnostics are unavailable.');
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const stats = await webRTCModule.getHoopsCameraVideoStreamStatsNative();
+    if (stats.frameCount > 0) return stats.frameCount;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('HoopsCamera Live video did not receive a camera frame.');
 }
 
 export async function releaseHoopsCameraLiveVideoAsync(): Promise<void> {
