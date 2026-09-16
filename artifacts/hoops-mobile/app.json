@@ -26,7 +26,7 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "20260939"
+      "buildNumber": "20260940"
     },
     "android": {
       "adaptiveIcon": {
@@ -101,7 +101,7 @@
       "enabled": true,
       "checkAutomatically": "ON_LOAD"
     },
-    "runtimeVersion": "1.0.0-native-recorder-20260939",
+    "runtimeVersion": "1.0.0-native-recorder-20260940",
     "extra": {
       "router": {
         "origin": "https://replit.com/"
