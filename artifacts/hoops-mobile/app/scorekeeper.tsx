@@ -534,9 +534,9 @@ export default function ScorekeeperScreen() {
 
   function activateLiveBroadcast(code: string) {
     if (isLive) return;
-    if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {
+    if (recordingStartedRef.current || isRecording) {
       setShowGoLiveSheet(false);
-      showCameraNotice('Recording protected — Live must be started before recording.');
+      showCameraNotice('Recording protected — start Live before recording.');
       return;
     }
     setIsLive(true);
@@ -651,12 +651,13 @@ export default function ScorekeeperScreen() {
 
   async function startLiveBroadcast() {
     if (liveLoading || isLive) return;
-    if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {
-      // Never present a native Alert/Modal or begin networking over an active
-      // legacy iPad CameraView recording. Native presentation can interrupt
-      // that independent AVFoundation session.
-      showCameraNotice('Recording protected — finish this game before using Live.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    if (recordingStartedRef.current || isRecording) {
+      // Starting WebRTC audio or presenting native UI after AVCaptureMovieFileOutput
+      // has begun can interrupt iPad recording and silently finalize a short,
+      // playable prefix. Live and recording may run together, but Live must own
+      // the camera/audio session first.
+      showCameraNotice('Recording protected — start Live before recording.');
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       return;
     }
 
@@ -710,19 +711,11 @@ export default function ScorekeeperScreen() {
       const { code } = await res.json();
       setLiveCode(code);
       liveStartRequestIdRef.current = null;
-      if ((recordingStartedRef.current || isRecording) && sharedCameraMode) {
-        // Do not present the share sheet over an active recording. The shared
-        // capture session can safely start WebRTC in place, and the watch
-        // address remains available after recording for sharing.
-        activateLiveBroadcast(code);
-        showCameraNotice('Live video started — recording is still protected.');
-      } else {
-        setShowGoLiveSheet(true);
-        // Do not connect the broadcaster yet. The coach can open Messages and
-        // send the invite while the camera and live socket are both inactive.
-        // Broadcasting begins after Share reports success or the coach taps
-        // "Start Live Now" after returning to StecStats.
-      }
+      setShowGoLiveSheet(true);
+      // Do not connect the broadcaster yet. The coach can open Messages and
+      // send the invite while the camera and live socket are both inactive.
+      // Broadcasting begins after Share reports success or the coach taps
+      // "Start Live Now" after returning to StecStats.
     } catch (err: any) {
       Alert.alert('Go Live failed', err?.message ?? 'Could not start broadcast');
     } finally {
@@ -2895,6 +2888,7 @@ export default function ScorekeeperScreen() {
       visible={showGoLiveSheet}
       transparent
       animationType="slide"
+      supportedOrientations={['portrait', 'landscape']}
       onDismiss={sharePendingLiveLink}
       onRequestClose={() => setShowGoLiveSheet(false)}
     >
@@ -3166,17 +3160,17 @@ export default function ScorekeeperScreen() {
                 {/* Go Live / Live indicator */}
                 <TouchableOpacity
                   onPress={() => {
-                    if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {
-                      showCameraNotice('Recording protected — Live controls are locked.');
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    if (recordingStartedRef.current || isRecording) {
+                      showCameraNotice(
+                        isLive
+                          ? 'Live video is active. Share the link after recording.'
+                          : 'Recording protected — start Live before recording.',
+                      );
+                      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
                       return;
                     }
                     if (isLive) {
-                      if (recordingStartedRef.current || isRecording) {
-                        showCameraNotice('Live video is active. Share the link after recording.');
-                      } else {
-                        setShowGoLiveSheet(true);
-                      }
+                      setShowGoLiveSheet(true);
                     } else {
                       startLiveBroadcast();
                     }
@@ -3186,12 +3180,12 @@ export default function ScorekeeperScreen() {
                   style={[
                     styles.camControlBtn,
                     isLive && { backgroundColor: 'rgba(239,68,68,0.85)' },
-                    isRecording && !sharedCameraMode && { opacity: 0.48 },
+                    isRecording && { opacity: 0.48 },
                   ]}
                 >
                   {liveLoading ? (
                     <ActivityIndicator size="small" color="#fff" />
-                  ) : isRecording && !sharedCameraMode ? (
+                  ) : isRecording && !isLive ? (
                     <Ionicons name="lock-closed" size={isTablet ? 23 : 17} color="#fff" />
                   ) : isLive ? (
                     <Ionicons name="radio" size={isTablet ? 24 : 18} color="#fff" />
@@ -3430,14 +3424,20 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       lineHeight: 14,
     },
     oppQuickBtn: {
-      paddingHorizontal: 7,
-      paddingVertical: 4,
+      minWidth: isTabletLandscape ? 52 : undefined,
+      height: isTabletLandscape ? 48 : undefined,
+      paddingHorizontal: isTabletLandscape ? 12 : 7,
+      paddingVertical: isTabletLandscape ? 8 : 4,
       borderRadius: 6,
       borderWidth: 1,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    oppQuickBtnText: { fontSize: 12, fontFamily: 'Inter_700Bold', lineHeight: 14 },
+    oppQuickBtnText: {
+      fontSize: isTabletLandscape ? 16 : 12,
+      fontFamily: 'Inter_700Bold',
+      lineHeight: isTabletLandscape ? 20 : 14,
+    },
     oppBtn: {
       width: isTabletLandscape ? 48 : 40, height: isTabletLandscape ? 48 : 40, borderRadius: 10,
       alignItems: 'center', justifyContent: 'center',

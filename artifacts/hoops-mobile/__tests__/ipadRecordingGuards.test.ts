@@ -168,7 +168,7 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('Share the live link before you start the game clock.');
     expect(source).toContain('cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}');
     expect(source).toContain('if (result.action === Share.sharedAction)');
-    expect(source).toContain('activateLiveBroadcast(code)');
+    expect(source).toContain('activateLiveBroadcast(pending.code)');
     expect(source).toContain('const anchor = findNodeHandle(sharePresentationAnchorRef.current)');
     expect(source).toContain('setShowGoLiveSheet(false)');
     expect(source).toContain("Platform.OS === 'ios' && anchor");
@@ -197,16 +197,16 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('{watchUrl(liveCode)}');
   });
 
-  test('starts shared live video in place without presenting a modal over recording', () => {
-    expect(source).toContain('if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {');
-    expect(source).toContain('Recording protected — finish this game before using Live.');
-    expect(source).toContain('Recording protected — Live controls are locked.');
-    expect(source).toContain('activateLiveBroadcast(code);');
-    expect(source).toContain('Live video started — recording is still protected.');
+  test('requires Live to start before recording so WebRTC cannot truncate the master film', () => {
+    expect(source).toContain('if (recordingStartedRef.current || isRecording) {');
+    expect(source).toContain('Recording protected — start Live before recording.');
+    expect(source).not.toContain('Live video started — recording is still protected.');
     expect(source).toContain('Live video is active. Share the link after recording.');
     expect(source).toContain('setShowGoLiveSheet(false);');
     expect(source).toContain('<Ionicons name="lock-closed"');
     expect(source).toContain('LIVE · REC SAFE');
+    expect(source).toContain("supportedOrientations={['portrait', 'landscape']}");
+    expect(source).not.toContain('if ((recordingStartedRef.current || isRecording) && !sharedCameraMode) {');
   });
 
   test('enables the single-session shared native camera only in the isolated runtime', () => {
@@ -216,8 +216,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260940');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260940');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260941');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260941');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
@@ -230,6 +230,8 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('minWidth: isTabletLandscape ? 100 : undefined');
     expect(source).toContain('scoreNum: { ...tekoStyle(isTabletLandscape ? 62 : 44)');
     expect(source).toContain('width: isTabletLandscape ? 52 : 34');
+    expect(source).toContain('minWidth: isTabletLandscape ? 52 : undefined');
+    expect(source).toContain('fontSize: isTabletLandscape ? 16 : 12');
     expect(source).not.toContain("justifyContent: isTablet ? 'space-evenly' : 'flex-start'");
   });
 
