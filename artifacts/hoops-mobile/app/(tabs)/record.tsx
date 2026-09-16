@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
   Switch,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
@@ -39,6 +40,8 @@ export default function RecordScreen() {
   const [creatingTeam, setCreatingTeam] = useState(false);
   const [createTeamError, setCreateTeamError] = useState<string | null>(null);
   const [recordVideo, setRecordVideo] = useState(false);
+  const [startingGame, setStartingGame] = useState(false);
+  const startingGameRef = useRef(false);
 
   const selectedTeam = (teams as any[])?.[teamIdx] ?? null;
   const canStart = !!opponent.trim() && !!selectedTeam;
@@ -67,18 +70,36 @@ export default function RecordScreen() {
   }
 
   async function handleStart() {
-    if (!canStart) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push({
-      pathname: '/scorekeeper',
-      params: {
-        opponent: opponent.trim(),
-        teamId: String(selectedTeam!.id),
-        teamName: selectedTeam!.name,
-        date: new Date().toISOString().split('T')[0],
-        recordVideo: recordVideo ? 'true' : 'false',
-      },
-    });
+    if (!canStart || startingGameRef.current) return;
+    startingGameRef.current = true;
+    setStartingGame(true);
+
+    const routeParams = {
+      opponent: opponent.trim(),
+      teamId: String(selectedTeam!.id),
+      teamName: selectedTeam!.name,
+      date: new Date().toISOString().split('T')[0],
+      recordVideo: recordVideo ? 'true' : 'false',
+    };
+
+    try {
+      // iPadOS 26 can fault inside CoreAutoLayout if react-native-screens
+      // presents the scorekeeper while the opponent TextInput's keyboard view
+      // is still being removed. Dismiss it and let that native transition
+      // settle before presenting another view controller.
+      Keyboard.dismiss();
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      await new Promise<void>((resolve) => setTimeout(resolve, 350));
+
+      router.push({
+        pathname: '/scorekeeper',
+        params: routeParams,
+      });
+    } catch (error) {
+      startingGameRef.current = false;
+      setStartingGame(false);
+      Alert.alert('Could not start game', 'Please try again.');
+    }
   }
 
   const styles = makeStyles(colors, insets);
@@ -277,9 +298,9 @@ export default function RecordScreen() {
         {/* ── Start button ──────────────────────────────────────────────────── */}
         <TouchableOpacity
           onPress={handleStart}
-          disabled={!canStart}
+          disabled={!canStart || startingGame}
           activeOpacity={0.8}
-          style={[styles.startBtn, { backgroundColor: colors.primary, opacity: canStart ? 1 : 0.35, overflow: 'hidden' }]}
+          style={[styles.startBtn, { backgroundColor: colors.primary, opacity: canStart && !startingGame ? 1 : 0.35, overflow: 'hidden' }]}
         >
           <LinearGradient
             colors={['rgba(255,255,255,0.18)', 'rgba(255,255,255,0)'] as any}
@@ -287,8 +308,14 @@ export default function RecordScreen() {
             end={{ x: 0.9, y: 1 }}
             style={StyleSheet.absoluteFillObject}
           />
-          <Ionicons name={recordVideo ? 'videocam' : 'play-circle'} size={22} color="#fff" />
-          <Text style={styles.startText}>{recordVideo ? 'Start & Record' : 'Start Game'}</Text>
+          {startingGame ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name={recordVideo ? 'videocam' : 'play-circle'} size={22} color="#fff" />
+          )}
+          <Text style={styles.startText}>
+            {startingGame ? 'Starting…' : recordVideo ? 'Start & Record' : 'Start Game'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

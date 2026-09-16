@@ -1,0 +1,399 @@
+Incident Identifier: D87B25BC-D670-4E4D-ABA6-CDF9F02DADB8
+Distributor ID:      com.apple.TestFlight
+Hardware Model:      iPad16,5
+Process:             StecStats [17965]
+Path:                /private/var/containers/Bundle/Application/F02E49D0-51F5-4307-9760-65D6351F6B1B/StecStats.app/StecStats
+Identifier:          com.hoopsstats.coach
+Version:             1.0.0 (20260939)
+AppStoreTools:       27A261
+AppVariant:          1:iPad16,5-A:26
+Beta:                YES
+Code Type:           ARM-64 (Native)
+Role:                Foreground
+Parent Process:      launchd [1]
+Coalition:           com.hoopsstats.coach [1105]
+
+Date/Time:           2026-09-15 21:56:41.1165 -0400
+Launch Time:         2026-09-15 21:56:06.8661 -0400
+OS Version:          iPhone OS 26.6.2 (23G90)
+Release Type:        User
+Report Version:      104
+
+Exception Type:  EXC_BAD_ACCESS (SIGSEGV)
+Exception Subtype: KERN_INVALID_ADDRESS at 0x0000000000000050
+Exception Codes: 0x0000000000000001, 0x0000000000000050
+VM Region Info: 0x50 is not in any region.  Bytes before following region: 4338679728
+      REGION TYPE                 START - END      [ VSIZE] PRT/MAX SHRMOD  REGION DETAIL
+      UNUSED SPACE AT START
+--->  
+      __TEXT                   1029b0000-1029b4000 [   16K] r-x/r-x SM=COW  /var/containers/Bundle/Application/F02E49D0-51F5-4307-9760-65D6351F6B1B/StecStats.app/StecStats
+Termination Reason: SIGNAL 11 Segmentation fault: 11
+Terminating Process: exc handler [17965]
+
+Triggered by Thread:  13
+
+
+Thread 0 name:
+Thread 0:
+0   libsystem_platform.dylib      	0x00000002b4666adc _platform_memmove + 428 (:-1)
+1   CoreAutoLayout                	0x00000001e565e828 expression_merge + 1412 (:-1)
+2   CoreAutoLayout                	0x00000001e565f280 _row_rawReplaceColWithRowBody + 152 (:-1)
+3   CoreAutoLayout                	0x00000001e565f280 ___substituteOutAllOccurencesOfBodyVar_block_invoke + 352 (:-1)
+4   CoreAutoLayout                	0x00000001e565c088 _col_enumerateRows + 108 (:-1)
+5   CoreAutoLayout                	0x00000001e565c088 _substituteOutAllOccurencesOfBodyVar + 476 (:-1)
+6   CoreAutoLayout                	0x00000001e56614d4 _pivotToMakeColNewHeadOfRow + 972 (:-1)
+7   CoreAutoLayout                	0x00000001e56635dc -[NSISEngine removeConstraintWithMarker:] + 744 (:-1)
+8   CoreAutoLayout                	0x00000001e5663290 -[NSLayoutConstraint _removeFromEngine:] + 140 (:-1)
+9   UIKitCore                     	0x0000000199735290 __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke + 164 (:-1)
+10  CoreAutoLayout                	0x00000001e5659a4c -[NSISEngine withBehaviors:performModifications:] + 84 (:-1)
+11  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 24 (:-1)
+12  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:] + 212 (:-1)
+13  UIKitCore                     	0x0000000199735690 __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke_2 + 148 (:-1)
+14  UIKitCore                     	0x000000019973540c -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 36 (:-1)
+15  UIKitCore                     	0x000000019973540c __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke + 544 (:-1)
+16  CoreAutoLayout                	0x00000001e5659a4c -[NSISEngine withBehaviors:performModifications:] + 84 (:-1)
+17  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 24 (:-1)
+18  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:] + 212 (:-1)
+19  UIKitCore                     	0x0000000199735690 __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke_2 + 148 (:-1)
+20  UIKitCore                     	0x000000019973540c -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 36 (:-1)
+21  UIKitCore                     	0x000000019973540c __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke + 544 (:-1)
+22  CoreAutoLayout                	0x00000001e5659a4c -[NSISEngine withBehaviors:performModifications:] + 84 (:-1)
+31  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 24 (:-1)
+32  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:] + 212 (:-1)
+33  UIKitCore                     	0x0000000199735690 __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke_2 + 148 (:-1)
+34  UIKitCore                     	0x000000019973540c -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 36 (:-1)
+35  UIKitCore                     	0x000000019973540c __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke + 544 (:-1)
+36  CoreAutoLayout                	0x00000001e5659a4c -[NSISEngine withBehaviors:performModifications:] + 84 (:-1)
+37  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 24 (:-1)
+38  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:] + 212 (:-1)
+39  UIKitCore                     	0x0000000199735690 __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke_2 + 148 (:-1)
+40  UIKitCore                     	0x000000019973540c -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 36 (:-1)
+41  UIKitCore                     	0x000000019973540c __57-[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:]_block_invoke + 544 (:-1)
+42  CoreAutoLayout                	0x00000001e5659a4c -[NSISEngine withBehaviors:performModifications:] + 84 (:-1)
+43  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _withAutomaticEngineOptimizationDisabledIfEngineExists:] + 24 (:-1)
+44  UIKitCore                     	0x0000000199717134 -[UIView(AdditionalLayoutSupport) _switchToLayoutEngine:] + 212 (:-1)
+45  UIKitCore                     	0x00000001997155c8 __45-[UIView(Hierarchy) _postMovedFromSuperview:]_block_invoke + 92 (:-1)
+46  CoreAutoLayout                	0x00000001e5659a4c -[NSISEngine withBehaviors:performModifications:] + 84 (:-1)
+47  UIKitCore                     	0x000000019971550c _UIInvokeWithWindowsEngineOptimizationDisabled + 248 (:-1)
+48  UIKitCore                     	0x000000019971550c -[UIView _postMovedFromSuperview:] + 528 (:-1)
+49  UIKitCore                     	0x0000000199723f84 __UIViewWasRemovedFromSuperview + 136 (:-1)
+50  UIKitCore                     	0x0000000199724eb4 -[UIView(Hierarchy) removeFromSuperview] + 256 (:-1)
+51  UIKitCore                     	0x0000000199e0c07c __56-[UITrackingElementWindowController invalidateInputView]_block_invoke + 176 (:-1)
+52  UIKitCore                     	0x0000000199e0bee8 -[UIResponder _preserveResponderOverridesWhilePerforming:] + 120 (:-1)
+53  UIKitCore                     	0x0000000199de52b4 -[UITrackingElementWindowController invalidateInputView] + 140 (:-1)
+54  UIKitCore                     	0x0000000199a9eb80 -[UITrackingElementWindowController changeToInputViewSet:] + 780 (:-1)
+55  UIKitCore                     	0x0000000199e0a5c4 __53-[UITrackingElementWindowController setInputViewSet:]_block_invoke_8 + 48 (:-1)
+56  UIKitCore                     	0x0000000199de3f34 -[UITrackingElementWindowController moveFromPlacement:toPlacement:starting:completion:] + 1192 (:-1)
+57  UIKitCore                     	0x0000000199e0a540 __53-[UITrackingElementWindowController setInputViewSet:]_block_invoke_7 + 248 (:-1)
+58  UIKitCore                     	0x0000000199e0a3cc -[UITrackingElementWindowController performOperations:withTemplateNotificationInfo:] + 64 (:-1)
+59  UIKitCore                     	0x00000001997cba3c -[UITrackingElementWindowController setInputViewSet:] + 2200 (:-1)
+60  UIKitCore                     	0x00000001997cb160 -[UITrackingElementWindowController performOperations:withAnimationStyle:] + 68 (:-1)
+61  UIKitCore                     	0x00000001997aed78 -[UIKeyboardSceneDelegate setKeyWindowSceneInputViews:animationStyle:] + 2988 (:-1)
+62  UIKitCore                     	0x000000019979d698 -[UIKeyboardSceneDelegate setInputViews:animationStyle:] + 192 (:-1)
+63  UIKitCore                     	0x00000001997c67b0 -[UIKeyboardSceneDelegate setInputViews:animated:] + 80 (:-1)
+64  UIKitCore                     	0x00000001997c6548 -[UIKeyboardSceneDelegate setInputViews:] + 60 (:-1)
+65  UIKitCore                     	0x000000019a7964d4 __102-[UIKeyboardSceneDelegate _reloadInputViewsForKeyWindowSceneResponder:force:fromBecomeFirstResponder:]_block_invoke.599 + 36 (:-1)
+66  UIKitCore                     	0x00000001997aaa14 -[UIKeyboardSceneDelegate _reloadInputViewsForKeyWindowSceneResponder:force:fromBecomeFirstResponder:] + 7256 (:-1)
+67  UIKitCore                     	0x000000019979cffc -[UIKeyboardSceneDelegate _reloadInputViewsForResponder:force:fromBecomeFirstResponder:] + 340 (:-1)
+68  UIKitCore                     	0x000000019a798d48 -[UIKeyboardSceneDelegate _preserveInputViewsWithId:animated:reset:] + 852 (:-1)
+69  UIKitCore                     	0x0000000199b22380 -[UIViewController _presentViewController:modalSourceViewController:presentationController:animationController:interactionController:handoffData:completion:] + 1084 (:-1)
+70  UIKitCore                     	0x0000000199b2176c -[UIViewController _presentViewController:withAnimationController:completion:] + 3552 (:-1)
+71  UIKitCore                     	0x0000000199b239f8 __63-[UIViewController _presentViewController:animated:completion:]_block_invoke + 100 (:-1)
+72  UIKitCore                     	0x0000000199aedd44 -[UIViewController _performCoordinatedPresentOrDismiss:animated:] + 560 (:-1)
+73  UIKitCore                     	0x0000000199b238b0 -[UIViewController _presentViewController:animated:completion:] + 312 (:-1)
+74  UIKitCore                     	0x0000000199b2304c -[UIViewController presentViewController:animated:completion:] + 156 (:-1)
+75  StecStats                     	0x0000000103556b30 0x1029b0000 + 12217136
+76  StecStats                     	0x00000001035565e4 0x1029b0000 + 12215780
+77  StecStats                     	0x00000001035573bc 0x1029b0000 + 12219324
+78  StecStats                     	0x0000000103555db8 0x1029b0000 + 12213688
+79  libdispatch.dylib             	0x00000001ce5e69a8 _dispatch_call_block_and_release + 32 (:-1)
+80  libdispatch.dylib             	0x00000001ce6001e4 _dispatch_client_callout + 16 (:-1)
+81  libdispatch.dylib             	0x00000001ce61de10 _dispatch_continuation_invoke_inline + 208 (:-1)
+82  libdispatch.dylib             	0x00000001ce61de10 _dispatch_continuation_pop_inline + 476 (:-1)
+83  libdispatch.dylib             	0x00000001ce61de10 _dispatch_main_queue_drain.cold.6 + 832 (:-1)
+84  libdispatch.dylib             	0x00000001ce5f5964 _os_tsd_set_direct + 16 (:-1)
+85  libdispatch.dylib             	0x00000001ce5f5964 _pthread_setspecific_direct + 16 (:-1)
+86  libdispatch.dylib             	0x00000001ce5f5964 _dispatch_thread_setspecific + 16 (:-1)
+87  libdispatch.dylib             	0x00000001ce5f5964 _dispatch_adopt_wlh_anon_recurse + 72 (:-1)
+88  libdispatch.dylib             	0x00000001ce5f5964 _dispatch_adopt_wlh_anon + 72 (:-1)
+89  libdispatch.dylib             	0x00000001ce5f5964 _dispatch_main_queue_drain + 176 (:-1)
+90  libdispatch.dylib             	0x00000001ce5f58a4 _dispatch_main_queue_callback_4CF + 44 (:-1)
+91  CoreFoundation                	0x0000000193b61068 __CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__ + 16 (:-1)
+92  CoreFoundation                	0x0000000193aee604 __CFRunLoopRun + 1944 (:-1)
+93  CoreFoundation                	0x0000000193aed54c _CFRunLoopRunSpecificWithOptions + 532 (:-1)
+94  GraphicsServices              	0x0000000239699498 GSEventRunModal + 120 (:-1)
+95  UIKitCore                     	0x0000000199821670 -[UIApplication _run] + 796 (:-1)
+96  UIKitCore                     	0x000000019978c158 UIApplicationMain + 332 (:-1)
+97  StecStats                     	0x00000001029b5580 0x1029b0000 + 21888
+98  dyld                          	0x00000001906f9c1c start + 6928 (:-1)
+
+Thread 1:
+
+Thread 2:
+
+Thread 3 name:
+Thread 3:
+0   libsystem_kernel.dylib        	0x00000002430c4cd4 mach_msg2_trap + 8 (:-1)
+1   libsystem_kernel.dylib        	0x00000002430c830c mach_msg2_internal + 76 (:-1)
+2   libsystem_kernel.dylib        	0x00000002430c822c mach_msg2 + 4 (:-1)
+3   libsystem_kernel.dylib        	0x00000002430c822c mach_msg_overwrite + 424 (:-1)
+4   libsystem_kernel.dylib        	0x00000002430c8078 mach_msg + 24 (:-1)
+5   CoreFoundation                	0x0000000193b24374 __CFRunLoopServiceMachPort + 160 (:-1)
+6   CoreFoundation                	0x0000000193aee310 __CFRunLoopRun + 1188 (:-1)
+7   CoreFoundation                	0x0000000193aed54c _CFRunLoopRunSpecificWithOptions + 532 (:-1)
+8   Foundation                    	0x0000000190d5acf0 -[NSRunLoop(NSRunLoop) runMode:beforeDate:] + 212 (:-1)
+9   Foundation                    	0x0000000190d5abd8 -[NSRunLoop(NSRunLoop) runUntilDate:] + 64 (:-1)
+10  UIKitCore                     	0x00000001997e6eac -[UIEventFetcher threadMain] + 420 (:-1)
+11  Foundation                    	0x0000000190dde914 __NSThread__start__ + 732 (:-1)
+12  libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+13  libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 4 name:
+Thread 4:
+0   libsystem_kernel.dylib        	0x00000002430cb0c8 __psynch_mutexwait + 8 (:-1)
+1   libsystem_pthread.dylib       	0x00000001f33b3c90 _pthread_mutex_firstfit_lock_wait + 84 (:-1)
+2   libsystem_pthread.dylib       	0x00000001f33b2ca8 _pthread_mutex_firstfit_lock_slow + 216 (:-1)
+3   libc++.1.dylib                	0x00000001a322fb44 std::__1::__libcpp_recursive_mutex_lock[abi:nqe210106](_opaque_pthread_mutex_t*) + 4 (:-1)
+4   libc++.1.dylib                	0x00000001a322fb44 std::__1::recursive_mutex::lock() + 16 (:-1)
+5   hermes                        	0x0000000105f1bff8 hermes::vm::HadesGC::pauseBackgroundTask() + 52 (HadesGC.cpp:1648)
+6   hermes                        	0x0000000105e81e90 hermes::vm::HadesGC::ensureBackgroundTaskPaused() + 8 (HadesGC.h:924)
+7   hermes                        	0x0000000105e81e90 hermes::vm::DynamicStringPrimitive<char, true>* hermes::vm::HadesGC::makeA<hermes::vm::DynamicStringPrimitive<char, true>, false, (hermes::vm::HasFinalizer)0, (hermes::vm::LongLived)1, unsigned lon... + 8 (HadesGC.h:1089)
+8   hermes                        	0x0000000105e81e90 hermes::vm::DynamicStringPrimitive<char, true>* hermes::vm::GCBase::makeA<hermes::vm::DynamicStringPrimitive<char, true>, false, (hermes::vm::HasFinalizer)0, (hermes::vm::LongLived)1, unsigned long... + 40 (GCBase-inline.h:71)
+9   hermes                        	0x0000000105e81040 hermes::vm::DynamicStringPrimitive<char, true>* hermes::vm::GCBase::makeAVariable<hermes::vm::DynamicStringPrimitive<char, true>, (hermes::vm::HasFinalizer)0, (hermes::vm::LongLived)1, unsigned lon... + 16 (GCBase-inline.h:47)
+10  hermes                        	0x0000000105e81040 hermes::vm::DynamicStringPrimitive<char, true>* hermes::vm::Runtime::makeAVariable<hermes::vm::DynamicStringPrimitive<char, true>, (hermes::vm::HasFinalizer)0, (hermes::vm::LongLived)1, unsigned lo... + 20 (Runtime.h:1972)
+11  hermes                        	0x0000000105e81040 hermes::vm::CallResult<hermes::vm::PseudoHandle<hermes::vm::StringPrimitive>, (hermes::vm::detail::CallResultSpecialize)6> hermes::vm::IdentifierTable::allocateDynamicString<char, true>(hermes::vm:... + 240 (IdentifierTable.cpp:269)
+12  hermes                        	0x0000000105e80ae0 hermes::vm::IdentifierTable::materializeLazyIdentifier(hermes::vm::Runtime&, hermes::vm::SymbolID) + 84 (IdentifierTable.cpp:421)
+13  hermes                        	0x0000000105e74898 hermes::vm::Runtime::getStringPrimFromSymbolID(hermes::vm::SymbolID) + 12 (Runtime.h:2027)
+14  hermes                        	0x0000000105e74898 hermes::vm::Callable::defineNameLengthAndPrototype(hermes::vm::Handle<hermes::vm::Callable>, hermes::vm::Runtime&, hermes::vm::SymbolID, unsigned int, hermes::vm::Handle<hermes::vm::JSObject>, herm... + 212 (Callable.cpp:151)
+15  hermes                        	0x0000000105e93000 hermes::vm::JSObject::initializeLazyObject(hermes::vm::Runtime&, hermes::vm::Handle<hermes::vm::JSObject>) + 20 (JSObject.cpp:135)
+16  hermes                        	0x0000000105e93000 hermes::vm::JSObject::getNamedDescriptorUnsafe(hermes::vm::Handle<hermes::vm::JSObject>, hermes::vm::Runtime&, hermes::vm::SymbolID, hermes::vm::PropertyFlags, hermes::vm::NamedPropertyDescriptor&) + 452 (JSObject.cpp:906)
+17  hermes                        	0x0000000105e8fa24 hermes::vm::JSObject::getNamedDescriptorPredefined(hermes::vm::Handle<hermes::vm::JSObject>, hermes::vm::Runtime&, hermes::vm::Predefined::Str, hermes::vm::NamedPropertyDescriptor&) + 24 (JSObject.h:1895)
+18  hermes                        	0x0000000105e8fa24 hermes::vm::getCallStackFunctionNames(hermes::vm::Runtime&, bool, unsigned long) + 364 (JSError.cpp:364)
+19  hermes                        	0x0000000105e8fa24 hermes::vm::JSError::recordStackTrace(hermes::vm::Handle<hermes::vm::JSError>, hermes::vm::Runtime&, bool, hermes::vm::CodeBlock*, hermes::inst::Inst const*) + 2124 (JSError.cpp:491)
+20  hermes                        	0x0000000105e83eac hermes::vm::CallResult<hermes::vm::HermesValue, (hermes::vm::detail::CallResultSpecialize)2> hermes::vm::Interpreter::interpretFunction<false, false>(hermes::vm::Runtime&, hermes::vm::InterpreterSt... + 1372 (Interpreter.cpp:3634)
+21  hermes                        	0x0000000105e83928 hermes::vm::Runtime::interpretFunctionImpl(hermes::vm::CodeBlock*) + 52 (Interpreter.cpp:811)
+22  hermes                        	0x0000000105e76288 hermes::vm::JSFunction::_callImpl(hermes::vm::Handle<hermes::vm::Callable>, hermes::vm::Runtime&) + 40 (Callable.cpp:1110)
+23  hermes                        	0x0000000105e75288 hermes::vm::Callable::call(hermes::vm::Handle<hermes::vm::Callable>, hermes::vm::Runtime&) + 44 (Callable.h:253)
+24  hermes                        	0x0000000105e75288 hermes::vm::Callable::executeCall(hermes::vm::Handle<hermes::vm::Callable>, hermes::vm::Runtime&, hermes::vm::Handle<hermes::vm::HermesValue>, hermes::vm::Handle<hermes::vm::HermesValue>, hermes::v... + 1028 (Callable.cpp:346)
+25  hermes                        	0x0000000105efd738 hermes::vm::reflectConstruct(void*, hermes::vm::Runtime&, hermes::vm::NativeArgs) + 848 (Reflect.cpp:110)
+26  hermes                        	0x0000000105e761a0 hermes::vm::NativeFunction::_nativeCall(hermes::vm::NativeFunction*, hermes::vm::Runtime&) + 140 (Callable.h:507)
+27  hermes                        	0x0000000105e82928 hermes::vm::Interpreter::handleCallSlowPath(hermes::vm::Runtime&, hermes::vm::PinnedHermesValue*) + 60 (Interpreter.cpp:274)
+28  hermes                        	0x0000000105e84118 hermes::vm::CallResult<hermes::vm::HermesValue, (hermes::vm::detail::CallResultSpecialize)2> hermes::vm::Interpreter::interpretFunction<false, false>(hermes::vm::Runtime&, hermes::vm::InterpreterSt... + 1992 (Interpreter.cpp:1614)
+29  hermes                        	0x0000000105e83928 hermes::vm::Runtime::interpretFunctionImpl(hermes::vm::CodeBlock*) + 52 (Interpreter.cpp:811)
+30  hermes                        	0x0000000105e76288 hermes::vm::JSFunction::_callImpl(hermes::vm::Handle<hermes::vm::Callable>, hermes::vm::Runtime&) + 40 (Callable.cpp:1110)
+31  hermes                        	0x0000000105e75e94 hermes::vm::Callable::call(hermes::vm::Handle<hermes::vm::Callable>, hermes::vm::Runtime&) + 40 (Callable.h:253)
+32  hermes                        	0x0000000105e75e94 hermes::vm::BoundFunction::_boundCall(hermes::vm::BoundFunction*, hermes::inst::Inst const*, hermes::vm::Runtime&) + 344 (Callable.cpp:763)
+33  hermes                        	0x0000000105e5b804 hermes::vm::Callable::call(hermes::vm::Handle<hermes::vm::Callable>, hermes::vm::Runtime&) + 44 (Callable.h:253)
+34  hermes                        	0x0000000105e5b804 facebook::hermes::(anonymous namespace)::HermesRuntimeImpl::call(facebook::jsi::Function const&, facebook::jsi::Value const&, facebook::jsi::Value const*, unsigned long) + 300 (hermes.cpp:2513)
+35  React                         	0x00000001049ec8ec facebook::jsi::Function::call(facebook::jsi::Runtime&, facebook::jsi::Value const*, unsigned long) const + 40 (jsi-inl.h:282)
+36  React                         	0x00000001049ec8ec facebook::jsi::Function::call(facebook::jsi::Runtime&, std::initializer_list<facebook::jsi::Value>) const + 40 (jsi-inl.h:287)
+37  React                         	0x00000001049ec8ec facebook::react::Task::execute(facebook::jsi::Runtime&, bool) + 172 (Task.cpp:57)
+38  React                         	0x00000001049e98ac facebook::react::RuntimeScheduler_Modern::executeTask(facebook::jsi::Runtime&, facebook::react::Task&, bool) const + 116 (RuntimeScheduler_Modern.cpp:375)
+39  React                         	0x00000001049e9f94 facebook::react::RuntimeScheduler_Modern::runEventLoopTick(facebook::jsi::Runtime&, facebook::react::Task&) + 160 (RuntimeScheduler_Modern.cpp:312)
+40  React                         	0x00000001049e9d14 facebook::react::RuntimeScheduler_Modern::runEventLoop(facebook::jsi::Runtime&) + 96 (RuntimeScheduler_Modern.cpp:266)
+41  React                         	0x0000000104a0f094 std::__1::__function::__value_func<void (facebook::jsi::Runtime&)>::operator()[abi:ne180100](facebook::jsi::Runtime&) const + 24 (function.h:428)
+42  React                         	0x0000000104a0f094 std::__1::function<void (facebook::jsi::Runtime&)>::operator()(facebook::jsi::Runtime&) const + 24 (function.h:981)
+43  React                         	0x0000000104a0f094 _ZZZN8facebook5react13ReactInstanceC1ENSt3__110unique_ptrINS0_9JSRuntimeENS2_14default_deleteIS4_EEEENS2_10shared_ptrINS0_18MessageQueueThreadEEENS8_INS0_12TimerManagerEEENS2_8functionIFvRNS_3jsi7R... + 92 (ReactInstance.cpp:84)
+44  React                         	0x0000000104a0f094 _ZNSt3__18__invokeB8ne180100IRZZN8facebook5react13ReactInstanceC1ENS_10unique_ptrINS2_9JSRuntimeENS_14default_deleteIS5_EEEENS_10shared_ptrINS2_18MessageQueueThreadEEENS9_INS2_12TimerManagerEEENS_8... + 92 (invoke.h:344)
+45  React                         	0x0000000104a0f094 _ZNSt3__128__invoke_void_return_wrapperIvLb1EE6__callB8ne180100IJRZZN8facebook5react13ReactInstanceC1ENS_10unique_ptrINS4_9JSRuntimeENS_14default_deleteIS7_EEEENS_10shared_ptrINS4_18MessageQueueThr... + 92 (invoke.h:419)
+46  React                         	0x0000000104a0f094 _ZNSt3__110__function12__alloc_funcIZZN8facebook5react13ReactInstanceC1ENS_10unique_ptrINS3_9JSRuntimeENS_14default_deleteIS6_EEEENS_10shared_ptrINS3_18MessageQueueThreadEEENSA_INS3_12TimerManagerE... + 92 (function.h:169)
+47  React                         	0x0000000104a0f094 _ZNSt3__110__function6__funcIZZN8facebook5react13ReactInstanceC1ENS_10unique_ptrINS3_9JSRuntimeENS_14default_deleteIS6_EEEENS_10shared_ptrINS3_18MessageQueueThreadEEENSA_INS3_12TimerManagerEEENS_8f... + 116 (function.h:311)
+48  React                         	0x00000001048295d8 std::__1::__function::__value_func<void ()>::operator()[abi:ne180100]() const + 20 (function.h:428)
+49  React                         	0x00000001048295d8 std::__1::function<void ()>::operator()() const + 20 (function.h:981)
+50  React                         	0x00000001048295d8 facebook::react::tryAndReturnError(std::__1::function<void ()> const&) + 32 (RCTCxxUtils.mm:76)
+51  React                         	0x0000000104824560 facebook::react::RCTMessageThread::tryFunc(std::__1::function<void ()> const&) + 24 (RCTMessageThread.mm:68)
+52  React                         	0x0000000104824364 std::__1::__function::__value_func<void ()>::operator()[abi:ne180100]() const + 20 (function.h:428)
+53  React                         	0x0000000104824364 std::__1::function<void ()>::operator()() const + 20 (function.h:981)
+54  React                         	0x0000000104824364 invocation function for block in facebook::react::RCTMessageThread::runAsync(std::__1::function<void ()>) + 44 (RCTMessageThread.mm:44)
+55  CoreFoundation                	0x0000000193aecacc __CFRUNLOOP_IS_CALLING_OUT_TO_A_BLOCK__ + 28 (:-1)
+56  CoreFoundation                	0x0000000193aec798 __CFRunLoopDoBlocks + 396 (:-1)
+57  CoreFoundation                	0x0000000193aee7a0 __CFRunLoopRun + 2356 (:-1)
+58  CoreFoundation                	0x0000000193aed54c _CFRunLoopRunSpecificWithOptions + 532 (:-1)
+59  React                         	0x0000000104a24f14 +[RCTJSThreadManager runRunLoop] + 252 (RCTJSThreadManager.mm:102)
+60  Foundation                    	0x0000000190dde914 __NSThread__start__ + 732 (:-1)
+61  libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+62  libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 5 name:
+Thread 5:
+0   libsystem_kernel.dylib        	0x00000002430ca5e8 __psynch_cvwait + 8 (:-1)
+1   libsystem_pthread.dylib       	0x00000001f33b4b48 _pthread_psynch_cond_wait + 92 (:-1)
+2   libsystem_pthread.dylib       	0x00000001f33b4b48 _pthread_cond_wait + 980 (:-1)
+3   libc++.1.dylib                	0x00000001a3239bcc std::__1::__libcpp_condvar_wait[abi:nqe210106](_opaque_pthread_cond_t*, _opaque_pthread_mutex_t*) + 4 (:-1)
+4   libc++.1.dylib                	0x00000001a3239bcc std::__1::condition_variable::wait(std::__1::unique_lock<std::__1::mutex>&) + 32 (:-1)
+5   hermes                        	0x0000000105f1f9c4 void std::__1::condition_variable::wait<hermes::vm::HadesGC::Executor::worker()::'lambda'()>(std::__1::unique_lock<std::__1::mutex>&, hermes::vm::HadesGC::Executor::worker()::'lambda'()) + 28 (condition_variable.h:146)
+6   hermes                        	0x0000000105f1f9c4 hermes::vm::HadesGC::Executor::worker() + 116 (HadesGC.cpp:1062)
+7   hermes                        	0x0000000105f1f92c hermes::vm::HadesGC::Executor::Executor()::'lambda'()::operator()() const + 4 (HadesGC.cpp:1033)
+8   hermes                        	0x0000000105f1f92c decltype(std::declval<hermes::vm::HadesGC::Executor::Executor()::'lambda'()>()()) std::__1::__invoke[abi:nn180100]<hermes::vm::HadesGC::Executor::Executor()::'lambda'()>(hermes::vm::HadesGC::Execut... + 4 (invoke.h:344)
+9   hermes                        	0x0000000105f1f92c void std::__1::__thread_execute[abi:nn180100]<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, hermes::vm::HadesGC::Executor::Executor()::'lambd... + 4 (thread.h:199)
+10  hermes                        	0x0000000105f1f92c void* std::__1::__thread_proxy[abi:nn180100]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, hermes::vm::HadesGC::Executor::Exe... + 44 (thread.h:208)
+11  libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+12  libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 6 name:
+Thread 6:
+0   libsystem_kernel.dylib        	0x00000002430ca5e8 __psynch_cvwait + 8 (:-1)
+1   libsystem_pthread.dylib       	0x00000001f33b4b48 _pthread_psynch_cond_wait + 92 (:-1)
+2   libsystem_pthread.dylib       	0x00000001f33b4b48 _pthread_cond_wait + 980 (:-1)
+3   libc++.1.dylib                	0x00000001a3239bcc std::__1::__libcpp_condvar_wait[abi:nqe210106](_opaque_pthread_cond_t*, _opaque_pthread_mutex_t*) + 4 (:-1)
+4   libc++.1.dylib                	0x00000001a3239bcc std::__1::condition_variable::wait(std::__1::unique_lock<std::__1::mutex>&) + 32 (:-1)
+5   hermes                        	0x0000000105f1f9c4 void std::__1::condition_variable::wait<hermes::vm::HadesGC::Executor::worker()::'lambda'()>(std::__1::unique_lock<std::__1::mutex>&, hermes::vm::HadesGC::Executor::worker()::'lambda'()) + 28 (condition_variable.h:146)
+6   hermes                        	0x0000000105f1f9c4 hermes::vm::HadesGC::Executor::worker() + 116 (HadesGC.cpp:1062)
+7   hermes                        	0x0000000105f1f92c hermes::vm::HadesGC::Executor::Executor()::'lambda'()::operator()() const + 4 (HadesGC.cpp:1033)
+8   hermes                        	0x0000000105f1f92c decltype(std::declval<hermes::vm::HadesGC::Executor::Executor()::'lambda'()>()()) std::__1::__invoke[abi:nn180100]<hermes::vm::HadesGC::Executor::Executor()::'lambda'()>(hermes::vm::HadesGC::Execut... + 4 (invoke.h:344)
+9   hermes                        	0x0000000105f1f92c void std::__1::__thread_execute[abi:nn180100]<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, hermes::vm::HadesGC::Executor::Executor()::'lambd... + 4 (thread.h:199)
+10  hermes                        	0x0000000105f1f92c void* std::__1::__thread_proxy[abi:nn180100]<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct>>, hermes::vm::HadesGC::Executor::Exe... + 44 (thread.h:208)
+11  libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+12  libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 7 name:
+Thread 7:
+0   libsystem_kernel.dylib        	0x00000002430c4cd4 mach_msg2_trap + 8 (:-1)
+1   libsystem_kernel.dylib        	0x00000002430c830c mach_msg2_internal + 76 (:-1)
+2   libsystem_kernel.dylib        	0x00000002430c822c mach_msg2 + 4 (:-1)
+3   libsystem_kernel.dylib        	0x00000002430c822c mach_msg_overwrite + 424 (:-1)
+4   libsystem_kernel.dylib        	0x00000002430c8078 mach_msg + 24 (:-1)
+5   CoreFoundation                	0x0000000193b24374 __CFRunLoopServiceMachPort + 160 (:-1)
+6   CoreFoundation                	0x0000000193aee310 __CFRunLoopRun + 1188 (:-1)
+7   CoreFoundation                	0x0000000193aed54c _CFRunLoopRunSpecificWithOptions + 532 (:-1)
+8   CFNetwork                     	0x00000001a8ffdb54 -[__CFN_CoreSchedulingSetRunnable runForever] + 24 (:-1)
+9   CFNetwork                     	0x00000001a8ffdb54 +[__CFN_CoreSchedulingSetRunnable _run:] + 416 (:-1)
+10  Foundation                    	0x0000000190dde914 __NSThread__start__ + 732 (:-1)
+11  libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+12  libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 8 name:
+Thread 8:
+0   libsystem_kernel.dylib        	0x00000002430c4c50 semaphore_wait_trap + 8 (:-1)
+1   libdispatch.dylib             	0x00000001ce5e8410 _dispatch_sema4_wait + 28 (:-1)
+2   libdispatch.dylib             	0x00000001ce5e8aa0 _dispatch_semaphore_wait_slow + 132 (:-1)
+3   UIKitCore                     	0x0000000199ada1f8 0x199700000 + 4039160
+4   UIKitCore                     	0x0000000199ada1b0 closure #2 in InProcessAnimationManager.startAdvancing(_:) + 308 (:-1)
+5   UIKitCore                     	0x00000001997405c4 <deduplicated_symbol> + 36 (:-1)
+6   Foundation                    	0x0000000190dde914 __NSThread__start__ + 732 (:-1)
+7   libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+8   libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 9 name:
+Thread 9:
+0   libsystem_kernel.dylib        	0x00000002430cc370 __select + 8 (:-1)
+1   WebRTC                        	0x00000001055e6618 rtc::PhysicalSocketServer::WaitSelect(int, bool) + 668 (physical_socket_server.cc:1579)
+2   WebRTC                        	0x00000001055e636c rtc::PhysicalSocketServer::Wait(webrtc::TimeDelta, bool) + 164 (physical_socket_server.cc:1417)
+3   WebRTC                        	0x00000001055e8828 rtc::Thread::Get(int) + 484 (thread.cc:440)
+4   WebRTC                        	0x00000001055e7dec rtc::Thread::ProcessMessages(int) + 168 (thread.cc:848)
+5   WebRTC                        	0x00000001055e91e4 rtc::Thread::PreRun(void*) + 96 (thread.cc:702)
+6   libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+7   libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 10 name:
+Thread 10:
+0   libsystem_kernel.dylib        	0x00000002430ca5e8 __psynch_cvwait + 8 (:-1)
+1   libsystem_pthread.dylib       	0x00000001f33b4b48 _pthread_psynch_cond_wait + 92 (:-1)
+2   libsystem_pthread.dylib       	0x00000001f33b4b48 _pthread_cond_wait + 980 (:-1)
+3   WebRTC                        	0x00000001055ebeec rtc::Event::Wait(webrtc::TimeDelta, webrtc::TimeDelta)::$_0::operator()(std::__Cr::optional<timespec>) const + 64 (event.cc:188)
+4   WebRTC                        	0x00000001055ebeec rtc::Event::Wait(webrtc::TimeDelta, webrtc::TimeDelta) + 564 (:-1)
+5   WebRTC                        	0x00000001055ef0f0 rtc::NullSocketServer::Wait(webrtc::TimeDelta, bool) + 20 (null_socket_server.cc:28)
+6   WebRTC                        	0x00000001055e8828 rtc::Thread::Get(int) + 484 (thread.cc:440)
+7   WebRTC                        	0x00000001055e7dec rtc::Thread::ProcessMessages(int) + 168 (thread.cc:848)
+8   WebRTC                        	0x00000001055e91e4 rtc::Thread::PreRun(void*) + 96 (thread.cc:702)
+9   libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+10  libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 11 name:
+Thread 11:
+0   libsystem_kernel.dylib        	0x00000002430ca5e8 __psynch_cvwait + 8 (:-1)
+1   libsystem_pthread.dylib       	0x00000001f33b4b48 _pthread_psynch_cond_wait + 92 (:-1)
+2   libsystem_pthread.dylib       	0x00000001f33b4b48 _pthread_cond_wait + 980 (:-1)
+3   WebRTC                        	0x00000001055ebeec rtc::Event::Wait(webrtc::TimeDelta, webrtc::TimeDelta)::$_0::operator()(std::__Cr::optional<timespec>) const + 64 (event.cc:188)
+4   WebRTC                        	0x00000001055ebeec rtc::Event::Wait(webrtc::TimeDelta, webrtc::TimeDelta) + 564 (:-1)
+5   WebRTC                        	0x00000001055ef0f0 rtc::NullSocketServer::Wait(webrtc::TimeDelta, bool) + 20 (null_socket_server.cc:28)
+6   WebRTC                        	0x00000001055e8828 rtc::Thread::Get(int) + 484 (thread.cc:440)
+7   WebRTC                        	0x00000001055e7dec rtc::Thread::ProcessMessages(int) + 168 (thread.cc:848)
+8   WebRTC                        	0x00000001055e91e4 rtc::Thread::PreRun(void*) + 96 (thread.cc:702)
+9   libsystem_pthread.dylib       	0x00000001f33b6438 _pthread_start + 136 (:-1)
+10  libsystem_pthread.dylib       	0x00000001f33b28cc thread_start + 8 (:-1)
+
+Thread 12:
+
+Thread 13 name:
+Thread 13 Crashed:
+0   hermes                        	0x0000000105f1def4 std::__1::chrono::time_point<std::__1::chrono::steady_clock, std::__1::chrono::duration<long long, std::__1::ratio<1l, 1000000000l>>>::time_since_epoch[abi:nn180100]() const + 0 (time_point.h:58)
+1   hermes                        	0x0000000105f1def4 std::__1::common_type<std::__1::chrono::duration<long long, std::__1::ratio<1l, 1000000000l>>, std::__1::chrono::duration<long long, std::__1::ratio<1l, 1000000000l>>>::type std::__1::chrono::opera... + 0 (time_point.h:214)
+2   hermes                        	0x0000000105f1def4 hermes::vm::HadesGC::CollectionStats::getElapsedTime() + 4 (HadesGC.cpp:302)
+3   hermes                        	0x0000000105f1def4 hermes::vm::HadesGC::updateYoungGenSizeFactor() + 24 (HadesGC.cpp:2688)
+4   hermes                        	0x0000000105f1b428 hermes::vm::HadesGC::youngGenCollection(std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>, bool) + 916 (HadesGC.cpp:2534)
+5   hermes                        	0x0000000105f1d594 hermes::vm::HadesGC::allocSlow(unsigned int) + 56 (HadesGC.cpp:2197)
+6   hermes                        	0x0000000105ec70a8 void* hermes::vm::HadesGC::allocWork<false, (hermes::vm::HasFinalizer)0>(unsigned int) + 8 (HadesGC.h:1117)
+7   hermes                        	0x0000000105ec70a8 hermes::vm::DynamicStringPrimitive<char, false>* hermes::vm::HadesGC::makeA<hermes::vm::DynamicStringPrimitive<char, false>, false, (hermes::vm::HasFinalizer)0, (hermes::vm::LongLived)0, unsigned i... + 8 (HadesGC.h:1095)
+8   hermes                        	0x0000000105ec70a8 hermes::vm::DynamicStringPrimitive<char, false>* hermes::vm::GCBase::makeA<hermes::vm::DynamicStringPrimitive<char, false>, false, (hermes::vm::HasFinalizer)0, (hermes::vm::LongLived)0, unsigned in... + 8 (GCBase-inline.h:71)
+9   hermes                        	0x0000000105ec70a8 hermes::vm::DynamicStringPrimitive<char, false>* hermes::vm::GCBase::makeAVariable<hermes::vm::DynamicStringPrimitive<char, false>, (hermes::vm::HasFinalizer)0, (hermes::vm::LongLived)0, unsigned i... + 88 (GCBase-inline.h:47)
+10  hermes                        	0x0000000105ec4d70 hermes::vm::DynamicStringPrimitive<char, false>* hermes::vm::Runtime::makeAVariable<hermes::vm::DynamicStringPrimitive<char, false>, (hermes::vm::HasFinalizer)0, (hermes::vm::LongLived)0, unsigned ... + 12 (Runtime.h:1972)
+11  hermes                        	0x0000000105ec4d70 hermes::vm::DynamicStringPrimitive<char, false>::create(hermes::vm::Runtime&, unsigned int) + 20 (StringPrimitive.cpp:444)
+12  hermes                        	0x0000000105ec4d70 hermes::vm::StringPrimitive::create(hermes::vm::Runtime&, unsigned int, bool) + 32 (StringPrimitive.h:907)
+13  hermes                        	0x0000000105ec4d70 hermes::vm::CallResult<hermes::vm::HermesValue, (hermes::vm::detail::CallResultSpecialize)2> hermes::vm::StringPrimitive::createEfficientImpl<char>(hermes::vm::Runtime&, llvh::ArrayRef<char>, std::... + 176 (StringPrimitive.cpp:94)
+14  hermes                        	0x0000000105e5906c facebook::hermes::(anonymous namespace)::HermesRuntimeImpl::stringHVFromAscii(char const*, unsigned long) + 16 (hermes.cpp:2634)
+15  hermes                        	0x0000000105e5906c facebook::hermes::(anonymous namespace)::HermesRuntimeImpl::createStringFromAscii(char const*, unsigned long) + 140 (hermes.cpp:1949)
+16  React                         	0x0000000104a92068 facebook::jsi::String::createFromAscii(facebook::jsi::Runtime&, char const*, unsigned long) + 12 (jsi.h:816)
+17  React                         	0x0000000104a92068 facebook::jsi::String::createFromAscii(facebook::jsi::Runtime&, char const*) + 12 (jsi.h:822)
+18  React                         	0x0000000104a92068 facebook::jsi::detail::toValue(facebook::jsi::Runtime&, char const*) + 40 (jsi-inl.h:30)
+19  React                         	0x0000000104a92068 void facebook::jsi::Object::setProperty<char const*>(facebook::jsi::Runtime&, facebook::jsi::String const&, char const*&&) const + 76 (jsi-inl.h:141)
+20  React                         	0x0000000104a91e58 void facebook::jsi::Object::setProperty<char const*>(facebook::jsi::Runtime&, char const*, char const*&&) const + 92 (jsi-inl.h:133)
+21  React                         	0x0000000104a8eaec facebook::react::TurboModuleConvertUtils::convertNSExceptionToJSError(facebook::jsi::Runtime&, NSException*, std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>> con... + 184 (RCTTurboModule.mm:220)
+22  React                         	0x0000000104a8f5a4 invocation function for block in facebook::react::ObjCTurboModule::performVoidMethodInvocation(facebook::jsi::Runtime&, char const*, NSInvocation*, NSMutableArray*) + 328 (RCTTurboModule.mm:438)
+23  React                         	0x0000000104a944a8 facebook::react::ObjCTurboModule::performVoidMethodInvocation(facebook::jsi::Runtime&, char const*, NSInvocation*, NSMutableArray*)::$_1::operator()() const + 64 (RCTTurboModule.mm:460)
+24  React                         	0x0000000104a944a8 decltype(std::declval<facebook::react::ObjCTurboModule::performVoidMethodInvocation(facebook::jsi::Runtime&, char const*, NSInvocation*, NSMutableArray*)::$_1&>()()) std::__1::__invoke[abi:ne180100... + 64 (invoke.h:344)
+25  React                         	0x0000000104a944a8 void std::__1::__invoke_void_return_wrapper<void, true>::__call[abi:ne180100]<facebook::react::ObjCTurboModule::performVoidMethodInvocation(facebook::jsi::Runtime&, char const*, NSInvocation*, NSMu... + 64 (invoke.h:419)
+26  React                         	0x0000000104a944a8 std::__1::__function::__alloc_func<facebook::react::ObjCTurboModule::performVoidMethodInvocation(facebook::jsi::Runtime&, char const*, NSInvocation*, NSMutableArray*)::$_1, std::__1::allocator<face... + 64 (function.h:169)
+27  React                         	0x0000000104a944a8 std::__1::__function::__func<facebook::react::ObjCTurboModule::performVoidMethodInvocation(facebook::jsi::Runtime&, char const*, NSInvocation*, NSMutableArray*)::$_1, std::__1::allocator<facebook::... + 88 (function.h:311)
+28  libdispatch.dylib             	0x00000001ce5e69a8 _dispatch_call_block_and_release + 32 (:-1)
+29  libdispatch.dylib             	0x00000001ce6001e4 _dispatch_client_callout + 16 (:-1)
+30  libdispatch.dylib             	0x00000001ce5eefb0 _dispatch_continuation_invoke_inline + 136 (:-1)
+31  libdispatch.dylib             	0x00000001ce5eefb0 _dispatch_continuation_pop_inline + 136 (:-1)
+32  libdispatch.dylib             	0x00000001ce5eefb0 _dispatch_lane_drain + 700 (:-1)
+33  libdispatch.dylib             	0x00000001ce5eefb0 _dispatch_lane_serial_drain + 740 (:-1)
+34  libdispatch.dylib             	0x00000001ce5efaac _dispatch_lane_invoke2 + 56 (:-1)
+35  libdispatch.dylib             	0x00000001ce5efaac _dispatch_queue_class_invoke + 344 (:-1)
+36  libdispatch.dylib             	0x00000001ce5efaac _dispatch_lane_invoke + 392 (:-1)
+37  libdispatch.dylib             	0x00000001ce5f9dac _dispatch_root_queue_drain_deferred_wlh + 284 (:-1)
+38  libdispatch.dylib             	0x00000001ce5f96ac _dispatch_wlh_worker_thread + 520 (:-1)
+39  libdispatch.dylib             	0x00000001ce5f96ac _dispatch_workloop_worker_thread + 720 (:-1)
+40  libsystem_pthread.dylib       	0x00000001f33b33b0 _pthread_wqthread + 292 (:-1)
+41  libsystem_pthread.dylib       	0x00000001f33b28c0 start_wqthread + 8 (:-1)
+
+Thread 14:
+
+
+Thread 13 crashed with ARM Thread State (64-bit):
+    x0: 0x0001d9041b9e7f98   x1: 0x000000016db66270   x2: 0x00000000000120a8   x3: 0x00000001060626ac
+    x4: 0x0000000113fff000   x5: 0x0000000000000010   x6: 0x000000001a000028   x7: 0x0000000000000000
+    x8: 0x000000000007ef96   x9: 0x0000000026562398  x10: 0x000000003b9aca00  x11: 0x00000000fffffffd
+   x12: 0x0000000000000000  x13: 0x0000000000000000  x14: 0x0000000000000000  x15: 0x0000000000000000
+   x16: 0x00000002430c511c  x17: 0x00000001feb17df0  x18: 0x0000000000000000  x19: 0x000000010e47e388
+   x20: 0x0000000000000000  x21: 0x000000016db664b8  x22: 0x0000000000000001  x23: 0x000000010e47e6a0
+   x24: 0x000000010e480178  x25: 0x0000000000000af8  x26: 0x000000010e480178  x27: 0x0000000000000000
+   x28: 0x0000000000000990   fp: 0x000000016db662a0   lr: 0x0000000105f1def4
+    sp: 0x000000016db66290   pc: 0x0000000105f1def4 cpsr: 0x60000000
+   esr: 0x92000006 (Data Abort) byte read Translation fault
+
+
+Binary Images:
+        0x1029b0000 -         0x103f57fff StecStats arm64  <a2af34ffaf383a04b514e42a03259fd6> /private/var/containers/Bundle/Application/F02E49D0-51F5-4307-9760-65D6351F6B1B/StecStats.app/StecStats
+        0x1045f0000 -         0x1045fbfff libobjc-trampolines.dylib arm64e  <004ce93cf1423d68b3c330c6efef4d65> /private/preboot/Cryptexes/OS/usr/lib/libobjc-trampolines.dylib
+        0x104784000 -         0x104bbffff React arm64  <76fbcee9351730b39dc662c4e914e908> /private/var/containers/Bundle/Application/F02E49D0-51F5-4307-9760-65D6351F6B1B/StecStats.app/Frameworks/React.framework/React
+        0x105294000 -         0x10531bfff ReactNativeDependencies arm64  <b35f1182b82e33728a74a4fe502c0906> /private/var/containers/Bundle/Application/F02E49D0-51F5-4307-9760-65D6351F6B1B/StecStats.app/Frameworks/ReactNativeDependencies.framework/ReactNativeDependencies
+        0x1053ec000 -         0x105d17fff WebRTC arm64  <4c4c446b55553144a1c5dff75b5e5dd3> /private/var/containers/Bundle/Application/F02E49D0-51F5-4307-9760-65D6351F6B1B/StecStats.app/Frameworks/WebRTC.framework/WebRTC
+        0x105e50000 -         0x106053fff hermes arm64  <80d5528f2c783b90b90f747e89a9f880> /private/var/containers/Bundle/Application/F02E49D0-51F5-4307-9760-65D6351F6B1B/StecStats.app/Frameworks/hermes.framework/hermes
+        0x1906f5000 -         0x19079a47f dyld arm64e  <0f8d35b6556f3e348eaa80ab54047dc5> /usr/lib/dyld
+        0x190d50000 -         0x191bd9cbf Foundation arm64e  <73841aa3bfdd322d8dc2e5185a14dee1> /System/Library/Frameworks/Foundation.framework/Foundation
+        0x193abf000 -         0x19405ba3f CoreFoundation arm64e  <101eb2f1191534a08bc9631d03753b84> /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation
+        0x199700000 -         0x19bc4363f UIKitCore arm64e  <0d94422ffe7c302eb8963bc5873c0cfc> /System/Library/PrivateFrameworks/UIKitCore.framework/UIKitCore
+        0x1a322d000 -         0x1a32bda7b libc++.1.dylib arm64e  <be42c2212eb03636aef59cedc8b1f656> /usr/lib/libc++.1.dylib
+        0x1a8f6c000 -         0x1a931c77f CFNetwork arm64e  <c91c6beea5fe38c5bf00c5030b860279> /System/Library/Frameworks/CFNetwork.framework/CFNetwork
+        0x1ce5e5000 -         0x1ce62b5ff libdispatch.dylib arm64e  <49c0cd3ea6963b11ba925755f0c3c6e3> /usr/lib/system/libdispatch.dylib
+        0x1e5656000 -         0x1e569df3f CoreAutoLayout arm64e  <ffbcb1c4e3bc3b5da7e551a4a85dcda9> /System/Library/PrivateFrameworks/CoreAutoLayout.framework/CoreAutoLayout
+        0x1f33b2000 -         0x1f33be4ef libsystem_pthread.dylib arm64e  <34b44744bc64386eab90eee86b23ac46> /usr/lib/system/libsystem_pthread.dylib
+        0x239698000 -         0x2396a07bf GraphicsServices arm64e  <411165e2ee8e380eb2549977273971e3> /System/Library/PrivateFrameworks/GraphicsServices.framework/GraphicsServices
+        0x2430c4000 -         0x2430ffb1f libsystem_kernel.dylib arm64e  <18665b3f6d5133abb9e963062200ec42> /usr/lib/system/libsystem_kernel.dylib
+        0x2b4666000 -         0x2b466e433 libsystem_platform.dylib arm64e  <3edb2c1dbf7439f3a9f6b8c78bd66dd5> /usr/lib/system/libsystem_platform.dylib
+
+EOF
