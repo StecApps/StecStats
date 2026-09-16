@@ -62,7 +62,6 @@
 - [Token refresh race — getToken() null during active refresh](token-refresh-race.md) — await getToken() before resetQueries() or re-fetches go out with no Authorization header during the ~600ms Clerk token refresh window.
 - [Replit Clerk live vs test instance — mobile auth](clerk-live-vs-test-instance.md) — EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY isn't auto-swapped on publish; server uses live JWKS, mobile tokens use test instance → requireAuth fallback verifyToken needed.
 - [Account deletion tombstones](account-deletion-tombstones.md) — cross-service deletion must retain a scrubbed, write-blocked local tombstone until Clerk removal succeeds, so retries are safe.
-- [Clerk mobile JWT 401 — publishableKeyFromHost](clerk-mobile-jwt-401.md) — dynamic key resolution returns undefined for plain hostnames; use clerkMiddleware() with no args instead.
 - [TS segment absolute timestamps](ts-segment-timestamps.md) — fast-seek keeps source PTS; add `-reset_timestamps 1` to every mpegts encode or iOS Safari won't play the concat MP4.
 - [Orval params naming collision](orval-params-collision.md) — mixing a path param + query param in one operation can cause a TS2308 name collision between generators.
 - [Frontend API routing convention](api-routing-convention.md) — hoops-stats/monorepo apps call `/api/...` as root-relative paths directly, not prefixed by artifact BASE_URL.
@@ -157,3 +156,4 @@
 - [iPad recording cannot background for sharing](ipad-recording-background-sharing.md) — opening Messages suspends the active camera; share live links before starting the recording.
 - [Recorded-event timeline](recorded-event-timeline.md) — reel event timestamps must count only time represented by saved video segments, not the game clock or camera-switch gaps.
 - [React Native category export gap](react-native-webrtc-category-exports.md) — a patched Objective-C category can compile into iOS yet its added bridge methods remain absent in JS.
+- [AVFoundation interruption finalization](avfoundation-interruption-finalization.md) — an interrupted movie output can remain logically active while saving only its initial playable prefix.
