@@ -423,6 +423,9 @@ export default function ScorekeeperScreen() {
   const lifecycleResumePendingRef = useRef(false);
   const recordingDesiredRef = useRef(false);
   const unexpectedRecordingResumePendingRef = useRef(false);
+  const nativeRecordingActiveRef = useRef(false);
+  const recordingRecoveryWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordingFailureRecoveryRef = useRef(false);
   const startRecordingRef = useRef<(() => Promise<void>) | null>(null);
   // Saving is terminal for this recording session: a delayed native resume
   // event must never start another segment after End Game was tapped.
@@ -805,7 +808,7 @@ export default function ScorekeeperScreen() {
     void stopHoopsCameraMjpegAsync().catch(() => undefined);
   }
 
-  async function startMjpegFallback(code: string, reason: string) {
+  async function startMjpegFallback(code: string, reason: string, attempt = 0) {
     if (
       !sharedCameraMode ||
       mjpegFallbackActiveRef.current ||
@@ -855,8 +858,25 @@ export default function ScorekeeperScreen() {
       webrtcCameraFailedRef.current = true;
       broadcastClientDiagnostic('live-video-mjpeg-failed', {
         reason,
+        attempt,
         message: error instanceof Error ? error.message : String(error),
       });
+      if (
+        attempt < 3 &&
+        sharedCameraMode &&
+        liveCodeRef.current === code
+      ) {
+        const retryGeneration = mjpegFallbackGenerationRef.current;
+        setTimeout(() => {
+          if (
+            retryGeneration === mjpegFallbackGenerationRef.current &&
+            liveCodeRef.current === code
+          ) {
+            void startMjpegFallback(code, reason, attempt + 1);
+          }
+        }, 750);
+        return;
+      }
       broadcastVideoModeWhenJoined(code, false, 'none');
     } finally {
       if (fallbackGeneration === mjpegFallbackGenerationRef.current) {
@@ -1487,6 +1507,76 @@ export default function ScorekeeperScreen() {
     }
   }
 
+  function clearRecordingRecoveryWatchdog() {
+    if (recordingRecoveryWatchdogRef.current) {
+      clearTimeout(recordingRecoveryWatchdogRef.current);
+      recordingRecoveryWatchdogRef.current = null;
+    }
+  }
+
+  async function pauseForRecordingFailure(reason: string) {
+    if (
+      recordingFailureRecoveryRef.current ||
+      recordingTerminalIntentRef.current
+    ) return;
+    recordingFailureRecoveryRef.current = true;
+    clearRecordingRecoveryWatchdog();
+    setCameraRecoveryBlocked(true);
+    setRunning(false);
+    setIsRecording(false);
+    recordingDesiredRef.current = false;
+    unexpectedRecordingResumePendingRef.current = false;
+    broadcastClientDiagnostic('recording-recovery-timeout', { reason });
+
+    // A missing native "recording" event is ambiguous: capture may have
+    // started even though JS never received confirmation. Stop/finalize that
+    // possible segment before clearing refs so the next Play tap cannot overlap
+    // an active AVCaptureMovieFileOutput.
+    const staleCompletion = recordingPromiseRef.current;
+    recordingGenerationRef.current += 1;
+    try {
+      const stopped = await Promise.race([
+        stopHoopsCameraRecordingAsync().catch(() => undefined),
+        new Promise<undefined>((resolve) => setTimeout(resolve, 3_000)),
+      ]);
+      addRecordedUri(stopped?.uri);
+      if (staleCompletion) {
+        const finalized = await Promise.race([
+          staleCompletion.catch(() => undefined),
+          new Promise<undefined>((resolve) => setTimeout(resolve, 500)),
+        ]);
+        addRecordedUri(finalized?.uri);
+      }
+    } finally {
+      recordingStartedRef.current = false;
+      nativeRecordingActiveRef.current = false;
+      recordingPromiseRef.current = null;
+      recordingCompletionRef.current = null;
+      recordingFailureRecoveryRef.current = false;
+      setCameraRecoveryBlocked(false);
+    }
+    Alert.alert(
+      'Recording paused',
+      'The camera stopped and did not recover. The game clock was paused so no more action is recorded without video. Tap Play to resume recording.',
+    );
+  }
+
+  function armRecordingRecoveryWatchdog(reason: string) {
+    // Preserve one fixed deadline across native restart retries. Re-arming on
+    // every rejected attempt would let an endless retry loop keep the game
+    // clock running forever without confirmed video.
+    if (recordingRecoveryWatchdogRef.current) return;
+    recordingRecoveryWatchdogRef.current = setTimeout(() => {
+      recordingRecoveryWatchdogRef.current = null;
+      if (
+        nativeRecordingActiveRef.current ||
+        !recordingDesiredRef.current ||
+        recordingTerminalIntentRef.current
+      ) return;
+      void pauseForRecordingFailure(reason);
+    }, 5_000);
+  }
+
   async function settleRecordingForSave(): Promise<void> {
     if (recordingStartedRef.current) {
       await stopCameraRecording();
@@ -1533,6 +1623,10 @@ export default function ScorekeeperScreen() {
     }
     recordingStartedRef.current = true;
     recordingDesiredRef.current = true;
+    nativeRecordingActiveRef.current = false;
+    if (sharedCameraMode) {
+      armRecordingRecoveryWatchdog('recording-start');
+    }
     if (!sharedCameraMode) {
       startVideoTimelineSegment(videoTimelineClockRef.current);
     }
@@ -1582,18 +1676,30 @@ export default function ScorekeeperScreen() {
         unexpectedRecordingResumePendingRef.current &&
         recordingDesiredRef.current &&
         !recordingTerminalIntentRef.current;
+      const shouldPauseForFailedStart =
+        sharedCameraMode &&
+        recordingDesiredRef.current &&
+        !recordingTerminalIntentRef.current &&
+        !lifecycleInterruptedRef.current &&
+        !shouldRetryRecoveredRecording;
       if (myGen === recordingGenerationRef.current) {
         stopVideoTimelineSegment(videoTimelineClockRef.current);
         // Error on this specific session (not superseded by a camera flip)
         recordingStartedRef.current = false;
-        if (!lifecycleInterruptedRef.current && !shouldRetryRecoveredRecording) {
+        if (
+          !lifecycleInterruptedRef.current &&
+          !shouldRetryRecoveredRecording &&
+          !shouldPauseForFailedStart
+        ) {
           recordingDesiredRef.current = false;
         }
         recordingPromiseRef.current = null;
         recordingCompletionRef.current = null;
       }
       console.warn('Camera recording ended:', err?.message);
-      if (shouldRetryRecoveredRecording) {
+      if (shouldPauseForFailedStart) {
+        void pauseForRecordingFailure('recording-start-failed');
+      } else if (shouldRetryRecoveredRecording) {
         setTimeout(() => {
           if (
             unexpectedRecordingResumePendingRef.current &&
@@ -1659,6 +1765,8 @@ export default function ScorekeeperScreen() {
         setTimeout(() => void startRecordingRef.current?.(), 100);
       }
       if (event.state === 'recording' && recordingDesiredRef.current) {
+        nativeRecordingActiveRef.current = true;
+        clearRecordingRecoveryWatchdog();
         unexpectedRecordingResumePendingRef.current = false;
         startVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
       }
@@ -1667,6 +1775,7 @@ export default function ScorekeeperScreen() {
       lifecycleFinalizedRef.current = false;
       lifecycleResumePendingRef.current = false;
       recordingStartedRef.current = false;
+      nativeRecordingActiveRef.current = false;
       pendingRecordRef.current = false;
       stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
       setIsRecording(false);
@@ -1681,6 +1790,7 @@ export default function ScorekeeperScreen() {
       });
       addRecordedUri(event.uri);
       recordingStartedRef.current = false;
+      nativeRecordingActiveRef.current = false;
       stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
       if (event.reason === 'lifecycle') {
         lifecycleInterruptedRef.current = true;
@@ -1693,6 +1803,7 @@ export default function ScorekeeperScreen() {
         !recordingTerminalIntentRef.current
       ) {
         unexpectedRecordingResumePendingRef.current = true;
+        armRecordingRecoveryWatchdog(event.reason);
         // A plain movie-output stop can leave the capture session running, so
         // there may be no later "previewing" event to trigger recovery.
         setTimeout(() => {
@@ -1735,6 +1846,7 @@ export default function ScorekeeperScreen() {
       maybeResumeRecording();
     });
     return () => {
+      clearRecordingRecoveryWatchdog();
       stateSubscription.remove();
       finishedSubscription.remove();
       resumeSubscription.remove();
@@ -1879,6 +1991,16 @@ export default function ScorekeeperScreen() {
       stopWebRtcStream();
       broadcastVideoModeWhenJoined(liveCode, false);
       return;
+    }
+    // The bounded 3 fps MJPEG route shares HoopsCamera's existing capture
+    // output and has proven more reliable on physical iPads than the custom
+    // WebRTC bridge. Use it as the primary shared-camera transport instead of
+    // waiting for a WebRTC failure while the viewer remains score-only.
+    if (sharedCameraMode) {
+      void startMjpegFallback(liveCode, 'shared-camera-primary');
+      return () => {
+        cancelled = true;
+      };
     }
     // HoopsCameraView applies facing changes to the existing native session.
     // Do not tear down a shared viewer stream just because that prop changed

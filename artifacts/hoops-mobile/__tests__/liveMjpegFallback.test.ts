@@ -19,6 +19,13 @@ describe('shared-camera MJPEG fallback', () => {
     expect(source).toContain('}, 15_000);');
   });
 
+  test('uses bounded MJPEG as the primary shared-camera live transport', () => {
+    expect(source).toContain("startMjpegFallback(liveCode, 'shared-camera-primary')");
+    expect(source).toContain('attempt < 3');
+    expect(source).toContain('attempt + 1');
+    expect(facade).toContain("return typeof nativeModule?.startMjpegAsync === 'function'");
+  });
+
   test('bounds websocket buffering and announces the fallback mode', () => {
     expect(source).toContain('(ws.bufferedAmount ?? 0) > 512 * 1024');
     expect(source).toContain("type: 'video-frame', code, frame: event.base64");

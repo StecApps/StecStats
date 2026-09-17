@@ -153,6 +153,15 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain("event.reason === 'runtime-error'");
     expect(source).toContain('unexpectedRecordingResumePendingRef.current');
     expect(source).toContain('shouldRetryRecoveredRecording');
+    expect(source).toContain("armRecordingRecoveryWatchdog(event.reason)");
+    expect(source).toContain("broadcastClientDiagnostic('recording-recovery-timeout'");
+    expect(source).toContain("void pauseForRecordingFailure(reason)");
+    expect(source).toContain("if (recordingRecoveryWatchdogRef.current) return");
+    expect(source).toContain("void pauseForRecordingFailure('recording-start-failed')");
+    expect(source).toContain("stopHoopsCameraRecordingAsync().catch(() => undefined)");
+    expect(source).toContain("recordingStartedRef.current = false");
+    expect(source).toContain("setCameraRecoveryBlocked(false)");
+    expect(source).toContain("'Recording paused'");
   });
 
   test('registers shared-video bridge methods on the primary WebRTC module', () => {

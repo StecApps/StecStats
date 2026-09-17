@@ -134,10 +134,10 @@ const nativeModule = requireOptionalNativeModule<HoopsCameraNativeModule>(
 export const isHoopsCameraAvailable = nativeModule !== null;
 
 export function isHoopsCameraMjpegAvailable(): boolean {
-  return (
-    typeof nativeModule?.startMjpegAsync === 'function' &&
-    typeof nativeModule?.stopMjpegAsync === 'function'
-  );
+  // Starting the producer is the capability that determines whether Live
+  // video can work. stopMjpegAsync is deliberately optional because cleanup
+  // already degrades to a safe no-op on transitional native builds.
+  return typeof nativeModule?.startMjpegAsync === 'function';
 }
 
 function getHoopsCameraWebRTCNativeModule(): HoopsCameraWebRTCNativeModule | null {
