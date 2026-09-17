@@ -30,6 +30,9 @@ describe('shared-camera MJPEG fallback', () => {
     expect(source).toContain('(ws.bufferedAmount ?? 0) > 512 * 1024');
     expect(source).toContain("type: 'video-frame', code, frame: event.base64");
     expect(source).toContain("broadcastVideoModeWhenJoined(code, true, 'mjpeg')");
+    expect(source).not.toContain(
+      "broadcastVideoModeWhenJoined(code, false, 'none');\n      broadcastVideoModeWhenJoined(code, true, 'mjpeg')",
+    );
   });
 
   test('cancels an in-flight native start and cleans up on unmount', () => {

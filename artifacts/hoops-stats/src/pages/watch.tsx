@@ -644,18 +644,19 @@ export default function WatchStream() {
 
         if (message.type === "joined") {
           myViewerIdRef.current = message.viewerId;
-          if (message.hasVideo === false) {
-            // Mobile score-only broadcaster — skip WebRTC, go live immediately.
-            setScoreOnly(true);
+          if (message.videoMode === "mjpeg") {
+            // Delivery mode is authoritative if an older relay sends an
+            // inconsistent hasVideo boolean during a transport transition.
+            setScoreOnly(false);
+            setIsMjpeg(true);
             if (offerWatchdogRef.current) {
               clearTimeout(offerWatchdogRef.current);
               offerWatchdogRef.current = null;
             }
             setState("live");
-          } else if (message.videoMode === "mjpeg") {
-            // Mobile broadcaster sending MJPEG snapshots — skip WebRTC, show img feed.
-            setScoreOnly(false);
-            setIsMjpeg(true);
+          } else if (message.hasVideo === false) {
+            // Mobile score-only broadcaster — skip WebRTC, go live immediately.
+            setScoreOnly(true);
             if (offerWatchdogRef.current) {
               clearTimeout(offerWatchdogRef.current);
               offerWatchdogRef.current = null;
@@ -687,20 +688,20 @@ export default function WatchStream() {
         }
 
         if (message.type === "session-mode") {
-          if (message.hasVideo === false) {
-            setScoreOnly(true);
-            setIsMjpeg(false);
-            // Also clears any "Stream interrupted" banner — the mobile broadcaster
-            // is present (score-only) so there's no need to show a reconnecting state.
+          if (message.videoMode === "mjpeg") {
+            setScoreOnly(false);
+            setIsMjpeg(true);
             setBroadcasterReconnecting(false);
             if (offerWatchdogRef.current) {
               clearTimeout(offerWatchdogRef.current);
               offerWatchdogRef.current = null;
             }
             setState("live");
-          } else if (message.videoMode === "mjpeg") {
-            setScoreOnly(false);
-            setIsMjpeg(true);
+          } else if (message.hasVideo === false) {
+            setScoreOnly(true);
+            setIsMjpeg(false);
+            // Also clears any "Stream interrupted" banner — the mobile broadcaster
+            // is present (score-only) so there's no need to show a reconnecting state.
             setBroadcasterReconnecting(false);
             if (offerWatchdogRef.current) {
               clearTimeout(offerWatchdogRef.current);

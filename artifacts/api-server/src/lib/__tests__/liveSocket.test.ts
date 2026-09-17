@@ -381,6 +381,31 @@ describe("liveSocket signaling relay", () => {
     viewer2.close();
   });
 
+  it("pushes a transport-only webrtc to mjpeg change to existing viewers", async () => {
+    const broadcaster = new WebSocket(wsUrl);
+    await waitForOpen(broadcaster);
+    broadcaster.send(
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: true, videoMode: "webrtc" }),
+    );
+    await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");
+
+    const { ws: viewer } = await connectViewer();
+    await waitForMessage(broadcaster, (m) => m.type === "new-viewer");
+
+    broadcaster.send(
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: true, videoMode: "mjpeg" }),
+    );
+    const mode = await waitForMessage(viewer, (m) => m.type === "session-mode");
+    expect(mode).toMatchObject({
+      type: "session-mode",
+      hasVideo: true,
+      videoMode: "mjpeg",
+    });
+
+    broadcaster.close();
+    viewer.close();
+  });
+
   it("drops request-offer silently when sent by the broadcaster role", async () => {
     const broadcaster = await connectBroadcaster();
     await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");

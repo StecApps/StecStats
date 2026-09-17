@@ -142,6 +142,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           // Mobile score-keepers set hasVideo: false — viewers should skip WebRTC
           // negotiation and go straight to score-only mode.
           const prevHasVideo = session.broadcasterHasVideo;
+          const prevVideoMode = session.broadcasterVideoMode;
           session.broadcasterHasVideo = message.hasVideo !== false;
           // Derive video delivery mode from the explicit videoMode field; fall back to
           // legacy hasVideo inference for backwards-compatible web broadcasters.
@@ -150,16 +151,20 @@ export function attachLiveSocketServer(upgradeEmitter: {
             : message.videoMode === "none" ? "none"
             : session.broadcasterHasVideo ? "webrtc"
             : "none";
-          if (!session.broadcasterHasVideo && prevHasVideo) {
-            // Broadcaster changed to score-only (e.g. mobile reconnect) — tell viewers.
+          if (
+            session.broadcasterHasVideo !== prevHasVideo ||
+            session.broadcasterVideoMode !== prevVideoMode
+          ) {
+            // Existing viewers must receive every delivery-mode transition.
+            // In particular, true/webrtc → true/mjpeg changes transport without
+            // changing hasVideo; gating only on the boolean strands viewers in
+            // their previous UI state.
             for (const viewerWs of session.viewers.values()) {
-              safeSend(viewerWs, { type: "session-mode", hasVideo: false, videoMode: "none" });
-            }
-          }
-          if (session.broadcasterVideoMode === "mjpeg" && !prevHasVideo) {
-            // Mobile broadcaster upgraded from none → mjpeg — tell viewers.
-            for (const viewerWs of session.viewers.values()) {
-              safeSend(viewerWs, { type: "session-mode", hasVideo: true, videoMode: "mjpeg" });
+              safeSend(viewerWs, {
+                type: "session-mode",
+                hasVideo: session.broadcasterHasVideo,
+                videoMode: session.broadcasterVideoMode,
+              });
             }
           }
           // In score-only mode the viewer's "Stream interrupted" banner is

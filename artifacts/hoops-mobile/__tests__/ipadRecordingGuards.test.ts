@@ -162,6 +162,10 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain("recordingStartedRef.current = false");
     expect(source).toContain("setCameraRecoveryBlocked(false)");
     expect(source).toContain("'Recording paused'");
+    expect(source).toContain("pendingClockStartRef.current = true");
+    expect(source).toContain("armRecordingRecoveryWatchdog('camera-start-confirmation')");
+    expect(source).toContain("pendingClockStartRef.current &&");
+    expect(source).toContain("setRunning(true)");
   });
 
   test('registers shared-video bridge methods on the primary WebRTC module', () => {

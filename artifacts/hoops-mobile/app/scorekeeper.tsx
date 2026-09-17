@@ -424,6 +424,7 @@ export default function ScorekeeperScreen() {
   const recordingDesiredRef = useRef(false);
   const unexpectedRecordingResumePendingRef = useRef(false);
   const nativeRecordingActiveRef = useRef(false);
+  const pendingClockStartRef = useRef(false);
   const recordingRecoveryWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordingFailureRecoveryRef = useRef(false);
   const startRecordingRef = useRef<(() => Promise<void>) | null>(null);
@@ -848,9 +849,6 @@ export default function ScorekeeperScreen() {
       closeAllWebRtcPeers();
       stopWebRtcStream();
       broadcastClientDiagnostic('live-video-mjpeg-fallback', { reason });
-      // Older signaling deployments notify viewers of MJPEG only on a
-      // none → mjpeg transition. Preserve that transition for compatibility.
-      broadcastVideoModeWhenJoined(code, false, 'none');
       broadcastVideoModeWhenJoined(code, true, 'mjpeg');
     } catch (error) {
       if (fallbackGeneration !== mjpegFallbackGenerationRef.current) return;
@@ -1524,6 +1522,7 @@ export default function ScorekeeperScreen() {
     setCameraRecoveryBlocked(true);
     setRunning(false);
     setIsRecording(false);
+    pendingClockStartRef.current = false;
     recordingDesiredRef.current = false;
     unexpectedRecordingResumePendingRef.current = false;
     broadcastClientDiagnostic('recording-recovery-timeout', { reason });
@@ -1769,6 +1768,14 @@ export default function ScorekeeperScreen() {
         clearRecordingRecoveryWatchdog();
         unexpectedRecordingResumePendingRef.current = false;
         startVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
+        if (
+          pendingClockStartRef.current &&
+          !recordingTerminalIntentRef.current
+        ) {
+          pendingClockStartRef.current = false;
+          startRef.current = Date.now();
+          setRunning(true);
+        }
       }
       if (event.reason !== 'lifecycle-interruption') return;
       lifecycleInterruptedRef.current = true;
@@ -1855,6 +1862,7 @@ export default function ScorekeeperScreen() {
 
   function handleStartStop() {
     if (!running) {
+      if (pendingClockStartRef.current) return;
       if (isSharingLiveLinkRef.current) {
         Alert.alert(
           'Sharing in progress',
@@ -1870,6 +1878,25 @@ export default function ScorekeeperScreen() {
         return;
       }
       setGameStarted(true);
+      if (
+        recordVideo &&
+        sharedCameraMode &&
+        !nativeRecordingActiveRef.current
+      ) {
+        // Never let the game clock get ahead of the master recording. Sharing
+        // the Live link can leave AVCaptureSession recovering for several
+        // seconds, so wait for the authoritative native "recording" event.
+        pendingClockStartRef.current = true;
+        recordingDesiredRef.current = true;
+        armRecordingRecoveryWatchdog('camera-start-confirmation');
+        if (cameraReadyRef.current) {
+          void startRecording();
+        } else {
+          pendingRecordRef.current = true;
+        }
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        return;
+      }
       if (seconds === 0) startRef.current = Date.now();
       setRunning(true);
       if (recordVideo && !recordingStartedRef.current) {
@@ -1880,6 +1907,7 @@ export default function ScorekeeperScreen() {
         }
       }
     } else {
+      pendingClockStartRef.current = false;
       setRunning(false);
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2328,6 +2356,7 @@ export default function ScorekeeperScreen() {
     // A didBecomeActive callback already queued by native recovery must never
     // create another segment after End Game begins.
     recordingTerminalIntentRef.current = true;
+    pendingClockStartRef.current = false;
     recordingDesiredRef.current = false;
     unexpectedRecordingResumePendingRef.current = false;
     pendingRecordRef.current = false;
