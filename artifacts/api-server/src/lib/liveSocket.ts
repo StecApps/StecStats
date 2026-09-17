@@ -151,6 +151,16 @@ export function attachLiveSocketServer(upgradeEmitter: {
             : message.videoMode === "none" ? "none"
             : session.broadcasterHasVideo ? "webrtc"
             : "none";
+          logger.info(
+            {
+              code: session.code,
+              hasVideo: session.broadcasterHasVideo,
+              videoMode: session.broadcasterVideoMode,
+              previousHasVideo: prevHasVideo,
+              previousVideoMode: prevVideoMode,
+            },
+            "Broadcaster video mode registered",
+          );
           if (
             session.broadcasterHasVideo !== prevHasVideo ||
             session.broadcasterVideoMode !== prevVideoMode

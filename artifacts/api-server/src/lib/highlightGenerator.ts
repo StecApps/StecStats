@@ -319,7 +319,8 @@ const MAX_SEGMENT_SEC = 300;
 // v12 = publish each merged highlight segment as a validated Apple-safe MP4.
 // v15 = publish a complete four-second VOD HLS derivative before marking each
 //       Highlight or Lowlight ready, eliminating per-playback segment encodes.
-export const GENERATOR_VERSION = 15;
+// v16 = retain moments within the native finalization tolerance at video end.
+export const GENERATOR_VERSION = 16;
 export const HIGHLIGHT_PLAYBACK_VERSION = 1;
 export const REEL_HLS_SEGMENT_DURATION_SEC = 4;
 
@@ -364,6 +365,12 @@ export const HIGHLIGHT_FIELDS = new Set([
   "steals",
   "blocks",
 ]);
+
+// Native movie finalization and the asynchronous duration probe can disagree
+// by a few hundred milliseconds. Preserve a play tagged at the stop boundary,
+// but keep genuinely later stats classified as off-film.
+const END_EVENT_TOLERANCE_MS = 2_000;
+const END_EVENT_INSET_MS = 100;
 
 // Stat fields that count as "lowlights" — missed shots and turnovers only.
 export const LOWLIGHT_FIELDS = new Set([
@@ -2008,7 +2015,8 @@ function isTimestampOnFilm(
       ? game.videoHalftimeGapMs
       : 0;
   const adjustedMs = ts - (game.videoOffsetMs ?? 0) - gapAdj;
-  return adjustedMs >= 0 && adjustedMs < (game.videoDurationMs ?? 0);
+  const durationMs = game.videoDurationMs ?? 0;
+  return adjustedMs >= 0 && adjustedMs < durationMs + END_EVENT_TOLERANCE_MS;
 }
 
 /**
@@ -2091,13 +2099,16 @@ function buildSegments(
     const adjustedMs = ts - offsetMs - gapAdj;
     // Skip events that predate the video (before the recording started).
     if (adjustedMs < 0) continue;
-    const tSec = adjustedMs / 1000;
+    const rawTimeSec = adjustedMs / 1000;
     // Skip events beyond the video's duration — the recording ended before
-    // this play happened (e.g. the browser stopped writing chunks early).
-    // Clamping to `duration` would silently map every out-of-range event to
-    // the last frame and produce a garbage highlight of pre-game footage.
-    if (tSec <= 0 || tSec >= duration) continue;
-    const t = tSec;
+    // this play happened. Keep only the narrow native-finalization boundary:
+    // a tag within two seconds of the probed end belongs to the last playable
+    // frame, but a genuinely later stat must not become a false highlight.
+    if (rawTimeSec <= 0) continue;
+    if (rawTimeSec >= duration + END_EVENT_TOLERANCE_MS / 1000) continue;
+    const t = rawTimeSec >= duration
+      ? Math.max(0.001, duration - END_EVENT_INSET_MS / 1000)
+      : rawTimeSec;
     const start = Math.max(0, t - PRE_SECONDS);
     const end = Math.min(duration, t + POST_SECONDS);
     if (end - start < 0.5) continue;

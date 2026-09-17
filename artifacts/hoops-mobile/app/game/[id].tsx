@@ -347,6 +347,9 @@ const REVIEW_CATEGORIES = [
   { key: 'turnover', label: 'TOs', color: '#f97316', fields: ['turnovers'] },
 ] as const;
 
+const END_EVENT_TOLERANCE_SECONDS = 2;
+const END_EVENT_INSET_SECONDS = 0.1;
+
 function formatReviewTime(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainder = Math.floor(seconds % 60);
@@ -419,9 +422,21 @@ function FilmRoomSection({
   const filmDuration = game.videoDurationMs != null && game.videoDurationMs > 0
     ? game.videoDurationMs / 1000
     : mediaDuration;
+  const toPlayableVideoSeconds = useCallback((timestampMs: number) => {
+    const seconds = toVideoSeconds(timestampMs);
+    if (
+      filmDuration > 0 &&
+      seconds >= filmDuration &&
+      seconds < filmDuration + END_EVENT_TOLERANCE_SECONDS
+    ) {
+      return Math.max(0, filmDuration - END_EVENT_INSET_SECONDS);
+    }
+    return seconds;
+  }, [filmDuration, toVideoSeconds]);
   const isOffFilm = useCallback((event: ReviewEvent) => {
     if (!filmDuration || event.videoTimestampMs == null) return false;
-    return toVideoSeconds(event.videoTimestampMs) >= filmDuration;
+    return toVideoSeconds(event.videoTimestampMs) >=
+      filmDuration + END_EVENT_TOLERANCE_SECONDS;
   }, [filmDuration, toVideoSeconds]);
 
   const playerFilteredEvents = activePlayerId == null
@@ -435,14 +450,14 @@ function FilmRoomSection({
     });
   const offFilmCount = events.filter(isOffFilm).length;
   const currentEventIndex = filteredEvents.findLastIndex(
-    (event) => !isOffFilm(event) && toVideoSeconds(event.videoTimestampMs!) <= currentTime + 8,
+    (event) => !isOffFilm(event) && toPlayableVideoSeconds(event.videoTimestampMs!) <= currentTime + 8,
   );
 
   if (events.length === 0) return null;
 
   const seekToEvent = (event: ReviewEvent) => {
     if (event.videoTimestampMs == null || isOffFilm(event)) return;
-    player.currentTime = Math.max(0, toVideoSeconds(event.videoTimestampMs) - 8);
+    player.currentTime = Math.max(0, toPlayableVideoSeconds(event.videoTimestampMs) - 8);
     player.play();
   };
 
@@ -480,7 +495,7 @@ function FilmRoomSection({
         >
           <View style={[filmStyle.timelineFill, { width: `${filmDuration ? Math.min(100, (currentTime / filmDuration) * 100) : 0}%`, backgroundColor: colors.primary }]} />
           {events.map((event) => {
-            const seconds = toVideoSeconds(event.videoTimestampMs!);
+            const seconds = toPlayableVideoSeconds(event.videoTimestampMs!);
             const percent = filmDuration ? (seconds / filmDuration) * 100 : -1;
             if (percent < 0 || percent > 100) return null;
             return (

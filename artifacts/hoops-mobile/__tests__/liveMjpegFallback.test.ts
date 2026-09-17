@@ -35,6 +35,22 @@ describe('shared-camera MJPEG fallback', () => {
     );
   });
 
+  test('does not announce score-only while shared MJPEG startup is unresolved', () => {
+    expect(source).toContain('MJPEG startup is still unresolved');
+    expect(source).toContain('!pendingMode &&');
+    expect(source).toContain('pendingMode?.code === code');
+    expect(source).toContain('teamScore: latestScoresRef.current.teamScore');
+  });
+
+  test('bounds a never-settling native MJPEG start before retrying or downgrading', () => {
+    expect(source).toContain('async function startMjpegWithTimeout()');
+    expect(source).toContain('await Promise.race([');
+    expect(source).toContain("reject(new Error('HoopsCamera MJPEG start timed out.'))");
+    expect(source).toContain('await startMjpegWithTimeout()');
+    expect(source).toContain('fallbackGeneration !== mjpegFallbackGenerationRef.current');
+    expect(source).toContain("broadcastVideoModeWhenJoined(code, false, 'none')");
+  });
+
   test('cancels an in-flight native start and cleans up on unmount', () => {
     expect(source).toContain('fallbackGeneration !== mjpegFallbackGenerationRef.current');
     expect(source).toContain('if (fallbackGeneration !== mjpegFallbackGenerationRef.current) return;');

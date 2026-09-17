@@ -33,6 +33,13 @@ describe('saved-video playback caching', () => {
     expect(gameScreen).not.toContain('highlight moments ready to clip');
   });
 
+  test('keeps tags within native finalization tolerance on the film timeline', () => {
+    expect(gameScreen).toContain('const END_EVENT_TOLERANCE_SECONDS = 2');
+    expect(gameScreen).toContain('const toPlayableVideoSeconds');
+    expect(gameScreen).toContain('filmDuration + END_EVENT_TOLERANCE_SECONDS');
+    expect(gameScreen).toContain('filmDuration - END_EVENT_INSET_SECONDS');
+  });
+
   test('downloads native reels through the GCS-backed range proxy', () => {
     expect(gameScreen).toContain("Platform.OS !== 'web' && (type === 'highlight' || type === 'lowlight')");
     expect(gameScreen).toContain('const reelRangeProxyUrl =');

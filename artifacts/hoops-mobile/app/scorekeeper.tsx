@@ -809,6 +809,23 @@ export default function ScorekeeperScreen() {
     void stopHoopsCameraMjpegAsync().catch(() => undefined);
   }
 
+  async function startMjpegWithTimeout(): Promise<void> {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      await Promise.race([
+        startHoopsCameraMjpegAsync(),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('HoopsCamera MJPEG start timed out.')),
+            3_000,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  }
+
   async function startMjpegFallback(code: string, reason: string, attempt = 0) {
     if (
       !sharedCameraMode ||
@@ -836,7 +853,7 @@ export default function ScorekeeperScreen() {
         ) return;
         ws.send(JSON.stringify({ type: 'video-frame', code, frame: event.base64 }));
       });
-      await startHoopsCameraMjpegAsync();
+      await startMjpegWithTimeout();
       // An older native start may settle after a newer fallback already owns
       // the listener. Never let that stale continuation tear down the owner.
       if (fallbackGeneration !== mjpegFallbackGenerationRef.current) return;
@@ -1215,6 +1232,17 @@ export default function ScorekeeperScreen() {
   ) {
     if (!broadcasterJoinedRef.current) {
       pendingVideoModeRef.current = { code, hasVideo, videoMode };
+      const ws = liveWsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'join-broadcaster',
+          code,
+          teamScore: latestScoresRef.current.teamScore,
+          opponentScore: latestScoresRef.current.opponentScore,
+          hasVideo,
+          videoMode,
+        }));
+      }
       return;
     }
     pendingVideoModeRef.current = null;
@@ -1251,6 +1279,20 @@ export default function ScorekeeperScreen() {
 
     ws.onopen = () => {
       if (liveSessionGenerationRef.current !== sessionGeneration) return;
+      const pendingMode = pendingVideoModeRef.current;
+      if (
+        sharedCameraMode &&
+        !pendingMode &&
+        !mjpegFallbackActiveRef.current &&
+        !webrtcStreamRef.current &&
+        !webrtcCameraFailedRef.current
+      ) {
+        // MJPEG startup is still unresolved. Do not publish a false score-only
+        // state merely because the signaling socket opened first. The native
+        // success or terminal-failure path will send the authoritative initial
+        // join through broadcastVideoModeWhenJoined.
+        return;
+      }
       // Shared camera video is never advertised optimistically. Its optional
       // patched bridge is discovered lazily, so only an already-created stream
       // proves video is available. Stream creation sends a second authoritative
@@ -1261,10 +1303,14 @@ export default function ScorekeeperScreen() {
       const hasCameraPermission = sharedCameraMode
         ? hoopsCameraPermission?.camera === 'granted'
         : !!cameraPermission?.granted;
-      const hasVideo = sharedCameraMode
+      const hasVideo = pendingMode?.code === code
+        ? pendingMode.hasVideo
+        : sharedCameraMode
         ? (mjpegFallbackActiveRef.current || !!webrtcStreamRef.current) && !cameraFailed
         : webrtcSupported && !cameraFailed && hasCameraPermission;
-      const videoMode = hasVideo
+      const videoMode = pendingMode?.code === code
+        ? pendingMode.videoMode
+        : hasVideo
         ? (mjpegFallbackActiveRef.current ? 'mjpeg' : 'webrtc')
         : 'none';
       ws.send(JSON.stringify({
