@@ -399,6 +399,8 @@ export default function ScorekeeperScreen() {
   const mjpegFallbackTransitionRef = useRef(false);
   const mjpegFallbackGenerationRef = useRef(0);
   const mjpegFrameSubscriptionRef = useRef<{ remove: () => void } | null>(null);
+  const liveVideoTransportErrorRef = useRef<string | null>(null);
+  const diagnosticAckResolversRef = useRef<Map<string, () => void>>(new Map());
   // Mirrors the latest team/opponent scores so reconnect callbacks don't
   // depend on derived consts that are declared later in the function body.
   const latestScoresRef = useRef({ teamScore: 0, opponentScore: 0 });
@@ -435,6 +437,9 @@ export default function ScorekeeperScreen() {
   // finally block of an older recording doesn't clobber a newer one's state.
   const recordingGenerationRef = useRef(0);
   const recordingStartedRef = useRef(false);
+  const recordingFinishedForSaveRef = useRef<
+    ((details: Record<string, unknown>) => void) | null
+  >(null);
   const cameraReadyRef = useRef(false);
   const pendingRecordRef = useRef(false);
   const sharedCameraMode =
@@ -800,13 +805,13 @@ export default function ScorekeeperScreen() {
     audioStream?.getTracks?.().forEach((t: any) => t.stop());
   }
 
-  function stopMjpegFallback() {
+  function stopMjpegFallback(): Promise<void> {
     mjpegFallbackGenerationRef.current += 1;
     mjpegFallbackActiveRef.current = false;
     mjpegFallbackTransitionRef.current = false;
     mjpegFrameSubscriptionRef.current?.remove();
     mjpegFrameSubscriptionRef.current = null;
-    void stopHoopsCameraMjpegAsync().catch(() => undefined);
+    return stopHoopsCameraMjpegAsync().catch(() => undefined);
   }
 
   async function startMjpegWithTimeout(): Promise<void> {
@@ -826,23 +831,30 @@ export default function ScorekeeperScreen() {
     }
   }
 
-  async function startMjpegFallback(code: string, reason: string, attempt = 0) {
+  async function startMjpegFallback(code: string, reason: string) {
     if (
       !sharedCameraMode ||
+      recordingTerminalIntentRef.current ||
       mjpegFallbackActiveRef.current ||
       mjpegFallbackTransitionRef.current ||
       liveCodeRef.current !== code
     ) return;
     if (!isHoopsCameraMjpegAvailable()) {
       webrtcCameraFailedRef.current = true;
+      liveVideoTransportErrorRef.current = 'HoopsCamera MJPEG is unavailable in this build.';
       broadcastVideoModeWhenJoined(code, false, 'none');
       return;
     }
     const fallbackGeneration = ++mjpegFallbackGenerationRef.current;
     mjpegFallbackTransitionRef.current = true;
     try {
+      let resolveFirstFrame!: () => void;
+      const firstFrame = new Promise<void>((resolve) => {
+        resolveFirstFrame = resolve;
+      });
       mjpegFrameSubscriptionRef.current?.remove();
       mjpegFrameSubscriptionRef.current = addHoopsCameraListener('onMjpegFrame', (event) => {
+        resolveFirstFrame();
         const ws = liveWsRef.current;
         if (
           !mjpegFallbackActiveRef.current ||
@@ -854,6 +866,20 @@ export default function ScorekeeperScreen() {
         ws.send(JSON.stringify({ type: 'video-frame', code, frame: event.base64 }));
       });
       await startMjpegWithTimeout();
+      let firstFrameTimeout: ReturnType<typeof setTimeout> | null = null;
+      try {
+        await Promise.race([
+          firstFrame,
+          new Promise<never>((_, reject) => {
+            firstFrameTimeout = setTimeout(
+              () => reject(new Error('HoopsCamera MJPEG did not produce a camera frame.')),
+              3_000,
+            );
+          }),
+        ]);
+      } finally {
+        if (firstFrameTimeout) clearTimeout(firstFrameTimeout);
+      }
       // An older native start may settle after a newer fallback already owns
       // the listener. Never let that stale continuation tear down the owner.
       if (fallbackGeneration !== mjpegFallbackGenerationRef.current) return;
@@ -863,35 +889,24 @@ export default function ScorekeeperScreen() {
       }
       mjpegFallbackActiveRef.current = true;
       webrtcCameraFailedRef.current = false;
+      liveVideoTransportErrorRef.current = null;
       closeAllWebRtcPeers();
       stopWebRtcStream();
       broadcastClientDiagnostic('live-video-mjpeg-fallback', { reason });
       broadcastVideoModeWhenJoined(code, true, 'mjpeg');
     } catch (error) {
       if (fallbackGeneration !== mjpegFallbackGenerationRef.current) return;
-      stopMjpegFallback();
+      await stopMjpegFallback();
       webrtcCameraFailedRef.current = true;
+      const message = error instanceof Error ? error.message : String(error);
+      liveVideoTransportErrorRef.current = message;
       broadcastClientDiagnostic('live-video-mjpeg-failed', {
         reason,
-        attempt,
-        message: error instanceof Error ? error.message : String(error),
+        message,
       });
-      if (
-        attempt < 3 &&
-        sharedCameraMode &&
-        liveCodeRef.current === code
-      ) {
-        const retryGeneration = mjpegFallbackGenerationRef.current;
-        setTimeout(() => {
-          if (
-            retryGeneration === mjpegFallbackGenerationRef.current &&
-            liveCodeRef.current === code
-          ) {
-            void startMjpegFallback(code, reason, attempt + 1);
-          }
-        }, 750);
-        return;
-      }
+      // A JS timeout cannot cancel work already queued in a native module.
+      // Never stack retries on the AVFoundation path. The next authoritative
+      // camera-ready/recording event may make one fresh attachment attempt.
       broadcastVideoModeWhenJoined(code, false, 'none');
     } finally {
       if (fallbackGeneration === mjpegFallbackGenerationRef.current) {
@@ -1146,7 +1161,7 @@ export default function ScorekeeperScreen() {
     // Tear down WebRTC peers and camera stream before closing the WS.
     closeAllWebRtcPeers();
     stopWebRtcStream();
-    stopMjpegFallback();
+    await stopMjpegFallback();
     // Close broadcaster WS first so viewers get the broadcaster-left signal
     if (liveWsReconnectRef.current) {
       clearTimeout(liveWsReconnectRef.current);
@@ -1182,6 +1197,8 @@ export default function ScorekeeperScreen() {
     setLiveCode(null);
     liveCodeRef.current = null;
     pendingClientDiagnosticsRef.current = [];
+    for (const resolve of diagnosticAckResolversRef.current.values()) resolve();
+    diagnosticAckResolversRef.current.clear();
   }
 
   // ─── Broadcaster WebSocket helpers ───────────────────────────────────────
@@ -1225,6 +1242,41 @@ export default function ScorekeeperScreen() {
     ];
   }
 
+  async function broadcastClientDiagnosticWithAck(
+    category: string,
+    details: Record<string, unknown>,
+  ): Promise<boolean> {
+    const code = liveCodeRef.current;
+    const ws = liveWsRef.current;
+    if (
+      !code ||
+      !broadcasterJoinedRef.current ||
+      !ws ||
+      ws.readyState !== WebSocket.OPEN
+    ) {
+      return false;
+    }
+    const diagnosticId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    return new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        diagnosticAckResolversRef.current.delete(diagnosticId);
+        resolve(false);
+      }, 2_000);
+      diagnosticAckResolversRef.current.set(diagnosticId, () => {
+        clearTimeout(timeout);
+        diagnosticAckResolversRef.current.delete(diagnosticId);
+        resolve(true);
+      });
+      ws.send(JSON.stringify({
+        type: 'client-diagnostic',
+        code,
+        category,
+        details,
+        diagnosticId,
+      }));
+    });
+  }
+
   function broadcastVideoModeWhenJoined(
     code: string,
     hasVideo: boolean,
@@ -1241,6 +1293,7 @@ export default function ScorekeeperScreen() {
           opponentScore: latestScoresRef.current.opponentScore,
           hasVideo,
           videoMode,
+          videoTransportError: liveVideoTransportErrorRef.current,
         }));
       }
       return;
@@ -1251,6 +1304,7 @@ export default function ScorekeeperScreen() {
       code,
       hasVideo,
       videoMode,
+      videoTransportError: liveVideoTransportErrorRef.current,
     });
   }
 
@@ -1320,6 +1374,7 @@ export default function ScorekeeperScreen() {
         opponentScore: initOppScore,
         hasVideo,
         videoMode,
+        videoTransportError: liveVideoTransportErrorRef.current,
       }));
     };
 
@@ -1348,6 +1403,9 @@ export default function ScorekeeperScreen() {
               details: diagnostic.details,
             });
           }
+        } else if (msg.type === 'client-diagnostic-received') {
+          const resolve = diagnosticAckResolversRef.current.get(msg.diagnosticId);
+          resolve?.();
         } else if (msg.type === 'new-viewer') {
           if (mjpegFallbackActiveRef.current) return;
           // A record-enabled game intentionally advertises score-only mode.
@@ -1768,6 +1826,15 @@ export default function ScorekeeperScreen() {
 
   function onCameraReady() {
     cameraReadyRef.current = true;
+    const code = liveCodeRef.current;
+    if (
+      sharedCameraMode &&
+      code &&
+      !mjpegFallbackActiveRef.current &&
+      !mjpegFallbackTransitionRef.current
+    ) {
+      void startMjpegFallback(code, 'camera-preview-ready');
+    }
     if (
       pendingRecordRef.current &&
       !recordingStartedRef.current &&
@@ -1823,6 +1890,15 @@ export default function ScorekeeperScreen() {
           setRunning(true);
         }
       }
+      if (
+        (event.state === 'previewing' || event.state === 'recording') &&
+        liveCodeRef.current &&
+        !recordingTerminalIntentRef.current &&
+        !mjpegFallbackActiveRef.current &&
+        !mjpegFallbackTransitionRef.current
+      ) {
+        void startMjpegFallback(liveCodeRef.current, `camera-state-${event.state}`);
+      }
       if (event.reason !== 'lifecycle-interruption') return;
       lifecycleInterruptedRef.current = true;
       lifecycleFinalizedRef.current = false;
@@ -1834,13 +1910,15 @@ export default function ScorekeeperScreen() {
       setIsRecording(false);
     });
     const finishedSubscription = addHoopsCameraListener('onRecordingFinished', (event) => {
-      broadcastClientDiagnostic('recording-finished', {
+      const diagnosticDetails = {
         usable: event.usable ?? false,
         reason: event.reason ?? '',
         durationSeconds: event.durationSeconds ?? 0,
         fileSizeBytes: event.fileSizeBytes ?? 0,
         error: event.error ?? '',
-      });
+      };
+      broadcastClientDiagnostic('recording-finished', diagnosticDetails);
+      recordingFinishedForSaveRef.current?.(diagnosticDetails);
       addRecordedUri(event.uri);
       recordingStartedRef.current = false;
       nativeRecordingActiveRef.current = false;
@@ -2407,9 +2485,44 @@ export default function ScorekeeperScreen() {
     unexpectedRecordingResumePendingRef.current = false;
     pendingRecordRef.current = false;
 
-    // End any active broadcast before saving so viewers get the final score
-    if (liveCode) {
-      await stopLiveBroadcast(liveCode);
+    if (recordVideo) {
+      // Remove all CPU/GPU-heavy Live media before AVFoundation writes the
+      // movie trailer, but retain the signaling socket for the final result.
+      liveMediaGenerationRef.current += 1;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+      await stopMjpegFallback();
+      const expectsFinishedEvent =
+        recordingStartedRef.current || recordingPromiseRef.current !== null;
+      let resolveFinishedEvent!: (details: Record<string, unknown> | null) => void;
+      const finishedEvent = new Promise<Record<string, unknown> | null>((resolve) => {
+        resolveFinishedEvent = resolve;
+      });
+      if (expectsFinishedEvent) {
+        recordingFinishedForSaveRef.current = resolveFinishedEvent;
+      }
+      await settleRecordingForSave();
+      let finalRecordingDetails: Record<string, unknown> | null = null;
+      if (expectsFinishedEvent) {
+        finalRecordingDetails = await Promise.race([
+          finishedEvent,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+        ]);
+        recordingFinishedForSaveRef.current = null;
+      }
+      if (finalRecordingDetails && liveCodeRef.current) {
+        await broadcastClientDiagnosticWithAck(
+          'recording-finalized-for-save',
+          finalRecordingDetails,
+        );
+      }
+    }
+
+    // End any active broadcast after finalization so viewers get the final
+    // score and the server receives the native recording result first.
+    const activeLiveCode = liveCodeRef.current ?? liveCode;
+    if (activeLiveCode) {
+      await stopLiveBroadcast(activeLiveCode);
     }
 
     // ── Offline shortcut ───────────────────────────────────────────────────
@@ -2417,11 +2530,6 @@ export default function ScorekeeperScreen() {
     // locally.  Video requires a working upload connection so we offer
     // stats-only or cancellation.
     if (!isOnlineRef.current) {
-      if (recordVideo) {
-        // Finalize an active camera segment before persisting the offline marker.
-        // Otherwise End Game while offline would queue only prior flip segments.
-        await settleRecordingForSave();
-      }
       if (recordVideo && recordedUrisRef.current.length > 0) {
         const clientId = generateClientId();
         try {
@@ -2455,9 +2563,6 @@ export default function ScorekeeperScreen() {
       let videoObjectPath: string | null = null;
       let pendingClientId: string | undefined;
       if (recordVideo) {
-        // Stop the active recording and capture its URI into the array
-        await settleRecordingForSave();
-
         if (recordedUrisRef.current.length === 0) {
           showNoVideoAlert(recordingStartedRef.current, setSaving, doSaveGame);
           return;

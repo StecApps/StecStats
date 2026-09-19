@@ -191,34 +191,24 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   }
 
   func startMjpeg(promise: Promise) {
-    sessionQueue.async {
-      guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
-        promise.reject(HoopsCameraSessionError.cameraPermissionDenied)
-        return
-      }
-      self.configureIfNeeded()
-      guard self.isConfigured else {
-        promise.reject(HoopsCameraSessionError.sessionUnavailable)
-        return
-      }
-      self.frameRouter.startMjpeg()
-      if !self.session.isRunning {
-        self.startSessionIfPossible()
-      }
-      guard self.session.isRunning else {
-        self.frameRouter.stopMjpeg()
-        promise.reject(HoopsCameraSessionError.sessionUnavailable)
-        return
-      }
-      promise.resolve(nil)
+    guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+      promise.reject(HoopsCameraSessionError.cameraPermissionDenied)
+      return
     }
+    // Live is only a passive consumer of the existing video-data output. Do
+    // not enqueue MJPEG startup on sessionQueue and never call startRunning()
+    // from this path: a blocked AVFoundation resume previously left several
+    // timed-out Live calls queued ahead of startRecording(), delaying the real
+    // movie until the end of the game.
+    frameRouter.startMjpeg()
+    promise.resolve(nil)
   }
 
   func stopMjpeg(promise: Promise) {
-    sessionQueue.async {
-      self.frameRouter.stopMjpeg()
-      promise.resolve(nil)
-    }
+    // HoopsCameraMjpegFrameProducer is internally synchronized, so cleanup
+    // must not wait behind camera-session recovery or recording work either.
+    frameRouter.stopMjpeg()
+    promise.resolve(nil)
   }
 
   func permissionStatus() -> [String: String] {

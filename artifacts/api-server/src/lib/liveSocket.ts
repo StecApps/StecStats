@@ -12,7 +12,7 @@ const LIVE_WS_PATH = "/api/live/ws";
 const lastFrameRelayAt = new Map<string, number>();
 
 type ClientMessage =
-  | { type: "join-broadcaster"; code: string; teamScore?: number; opponentScore?: number; hasVideo?: boolean; videoMode?: "webrtc" | "mjpeg" | "none" }
+  | { type: "join-broadcaster"; code: string; teamScore?: number; opponentScore?: number; hasVideo?: boolean; videoMode?: "webrtc" | "mjpeg" | "none"; videoTransportError?: string | null }
   | { type: "join-viewer"; code: string }
   | { type: "video-frame"; code: string; frame: string }
   | { type: "offer"; code: string; targetId: string; sdp: unknown; renegotiate?: boolean }
@@ -24,7 +24,7 @@ type ClientMessage =
   | { type: "peer-connection-failed"; code: string; targetId: string }
   | { type: "request-offer"; code: string }
   | { type: "turn-status"; code: string; turnAvailable: boolean }
-  | { type: "client-diagnostic"; code: string; category: string; details?: Record<string, unknown> };
+  | { type: "client-diagnostic"; code: string; category: string; details?: Record<string, unknown>; diagnosticId?: string };
 
 function safeSend(ws: WebSocket, payload: unknown) {
   if (ws.readyState === ws.OPEN) {
@@ -124,6 +124,12 @@ export function attachLiveSocketServer(upgradeEmitter: {
             { code: session.code, category, details },
             "Mobile live diagnostic",
           );
+          if (typeof message.diagnosticId === "string") {
+            safeSend(ws, {
+              type: "client-diagnostic-received",
+              diagnosticId: message.diagnosticId.slice(0, 100),
+            });
+          }
           break;
         }
         case "join-broadcaster": {
@@ -158,6 +164,10 @@ export function attachLiveSocketServer(upgradeEmitter: {
               videoMode: session.broadcasterVideoMode,
               previousHasVideo: prevHasVideo,
               previousVideoMode: prevVideoMode,
+              videoTransportError:
+                typeof message.videoTransportError === "string"
+                  ? message.videoTransportError.slice(0, 500)
+                  : null,
             },
             "Broadcaster video mode registered",
           );

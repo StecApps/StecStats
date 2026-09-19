@@ -196,6 +196,13 @@ describe('iPad recording safeguards', () => {
     expect(nativeCameraSource).toContain('frameRouter.setMjpegFrameSink');
     expect(nativeCameraSource).toContain('frameRouter.clearMjpegSink()');
     expect(nativeMjpegSource).not.toContain('AVCaptureMovieFileOutput');
+    const nativeMjpegStart = nativeCameraSource.slice(
+      nativeCameraSource.indexOf('func startMjpeg(promise: Promise)'),
+      nativeCameraSource.indexOf('func permissionStatus()'),
+    );
+    expect(nativeMjpegStart).toContain('frameRouter.startMjpeg()');
+    expect(nativeMjpegStart).not.toContain('sessionQueue.async');
+    expect(nativeMjpegStart).not.toContain('startSessionIfPossible()');
   });
 
   test('does not crop the iPad preview or background an active recording for Messages', () => {
@@ -253,8 +260,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260944');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260944');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260945');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260945');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
