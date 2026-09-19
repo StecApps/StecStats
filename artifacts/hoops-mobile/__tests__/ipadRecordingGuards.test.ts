@@ -228,7 +228,7 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('Share the live link before you start the game clock.');
     expect(source).toContain('cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}');
     expect(source).toContain('if (result.action === Share.sharedAction)');
-    expect(source).toContain('activateLiveBroadcast(pending.code)');
+    expect(source).toContain('activateLiveBroadcast(pending.code, dailyCredentialsRef.current ?? undefined)');
     expect(source).toContain('const anchor = findNodeHandle(sharePresentationAnchorRef.current)');
     expect(source).toContain('setShowGoLiveSheet(false)');
     expect(source).toContain("Platform.OS === 'ios' && anchor");
@@ -276,8 +276,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260947');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260947');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-daily-20260948');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260948');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {

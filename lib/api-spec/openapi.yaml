@@ -24,6 +24,8 @@ tags:
     description: Object storage upload and serving endpoints.
   - name: billing
     description: Subscription plan status and Stripe checkout/portal.
+  - name: live
+    description: Live video and recording imports.
 paths:
   /users/me:
     get:
@@ -802,8 +804,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /live/{code}/daily-token:
+    get:
+      operationId: getLiveDailyViewerToken
+      tags: [live]
+      summary: Get a short-lived Daily viewer token for a live session
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Daily room URL and viewer token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [roomUrl, token, active]
+                properties:
+                  roomUrl: { type: string, format: uri }
+                  token: { type: string }
+                  active: { type: boolean }
+        "404": { description: Live video is unavailable }
+  /live/{code}/recording/attach:
+    post:
+      operationId: attachLiveRecordingToGame
+      tags: [live]
+      summary: Queue finalized Daily recording import for a saved game
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LiveRecordingAttachBody"
+      responses:
+        "202":
+          description: Import queued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties: { status: { type: string, enum: [queued] } }
+        "404": { description: Session or game not found }
+
 components:
   schemas:
+    LiveRecordingAttachBody:
+      type: object
+      required: [gameId]
+      properties:
+        gameId: { type: integer, minimum: 1 }
     UserProfile:
       type: object
       required: [firstName, lastName]
@@ -1115,6 +1166,10 @@ components:
         teamScore: { type: integer, minimum: 0 }
         opponentScore: { type: integer, minimum: 0 }
         videoObjectPath: { type: string, nullable: true }
+        liveSessionCode:
+          type: string
+          nullable: true
+          description: Live session code whose finalized Daily recording should be attached to this game.
         stats:
           type: array
           items:

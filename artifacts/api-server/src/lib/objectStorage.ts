@@ -379,6 +379,32 @@ export class ObjectStorageService {
   }
 
   /**
+   * Streams a remote response directly into owner-scoped App Storage. The
+   * response body is never accumulated in memory, which is required for
+   * full-game Daily recordings.
+   */
+  async uploadReadableStreamAsObjectEntity(
+    source: NodeJS.ReadableStream | ReadableStream,
+    ownerId: number,
+    contentType: string,
+  ): Promise<string> {
+    await this.assertOwnerUploadWritable(ownerId);
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectId = randomUUID();
+    const fullPath = `${privateObjectDir}/uploads/${ownerId}/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    const readable = source instanceof ReadableStream
+      ? Readable.fromWeb(source as globalThis.ReadableStream<Uint8Array>)
+      : source;
+    await pipeline(
+      readable,
+      file.createWriteStream({ metadata: { contentType }, resumable: false }),
+    );
+    return `/objects/uploads/${ownerId}/${objectId}`;
+  }
+
+  /**
    * Delete an object entity from GCS by its /objects/... path.
    * If the object does not exist this is a no-op (idempotent).
    */

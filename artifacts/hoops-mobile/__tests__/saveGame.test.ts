@@ -134,6 +134,14 @@ describe('saveGame(null) — success path', () => {
     expect(call[0].data.videoObjectPath).toBe('videos/game-123.mp4');
   });
 
+  test('passes Daily liveSessionCode on the atomic create-game request', async () => {
+    const deps = makeDeps({ liveSessionCode: 'LIVE-SESSION-123' });
+    await saveGame(null, deps);
+
+    const [call] = (deps.createGameMutateAsync as jest.Mock).mock.calls;
+    expect(call[0].data.liveSessionCode).toBe('LIVE-SESSION-123');
+  });
+
   test('invalidates listTeamGames query on success', async () => {
     const deps = makeDeps();
     await saveGame(null, deps);

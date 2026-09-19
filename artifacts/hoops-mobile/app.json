@@ -18,15 +18,15 @@
       "supportsTablet": true,
       "requireFullScreen": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "StecStats uses your camera to record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
-        "NSMicrophoneUsageDescription": "StecStats uses your microphone to capture audio during game recordings. Audio is included in your saved game footage and highlight clips.",
+        "NSCameraUsageDescription": "StecStats uses your camera to stream and record game footage during basketball games. Recorded video is saved to your account and used to generate highlight reels and support film review after the game.",
+        "NSMicrophoneUsageDescription": "StecStats uses your microphone to stream and record audio during basketball games. Audio is included in your saved game footage and highlight clips.",
         "LSApplicationQueriesSchemes": [
           "itms-apps",
           "itms-apps"
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "20260947"
+      "buildNumber": "20260948"
     },
     "android": {
       "adaptiveIcon": {
@@ -84,6 +84,13 @@
         }
       ],
       "./plugins/withSwiftConcurrencyFix",
+      [
+        "@daily-co/config-plugin-rn-daily-js",
+        {
+          "enableCamera": true,
+          "enableMicrophone": true
+        }
+      ],
       "@clerk/expo",
       "expo-apple-authentication",
       [
@@ -101,7 +108,7 @@
       "enabled": true,
       "checkAutomatically": "ON_LOAD"
     },
-    "runtimeVersion": "1.0.0-native-recorder-20260947",
+    "runtimeVersion": "1.0.0-daily-20260948",
     "extra": {
       "router": {
         "origin": "https://replit.com/"

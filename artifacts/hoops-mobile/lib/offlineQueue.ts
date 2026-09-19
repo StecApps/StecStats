@@ -49,6 +49,8 @@ export interface QueuedGame {
   opponentScore: number;
   stats: Array<{ playerId: number } & StatLine>;
   events: GameEvent[];
+  /** Daily recording session to associate when this queued game syncs. */
+  liveSessionCode?: string;
   queuedAt: string;
 }
 

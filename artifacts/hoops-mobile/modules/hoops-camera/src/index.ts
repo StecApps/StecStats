@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react';
 import type { ViewProps } from 'react-native';
 import { requireNativeView, requireOptionalNativeModule } from 'expo';
-import type { MediaStream as RTCMediaStream, MediaStreamTrack as RTCMediaStreamTrack } from 'react-native-webrtc';
+import type { MediaStream as RTCMediaStream, MediaStreamTrack as RTCMediaStreamTrack } from '@daily-co/react-native-webrtc';
 
 export type EventSubscription = { remove(): void };
 
@@ -271,7 +271,7 @@ export async function createHoopsCameraLiveVideoAsync(): Promise<HoopsCameraLive
   // object is the regular react-native-webrtc MediaStream class, so its track
   // can be passed directly to RTCPeerConnection.addTrack.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const webRTC = require('react-native-webrtc') as {
+  const webRTC = require('@daily-co/react-native-webrtc') as {
     MediaStream: new (info: {
       streamId: string;
       streamReactTag: string;

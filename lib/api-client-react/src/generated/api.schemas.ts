@@ -5,6 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface LiveRecordingAttachBody {
+  /** @minimum 1 */
+  gameId: number;
+}
+
 export interface UserProfile {
   /** @nullable */
   firstName: string | null;
@@ -301,6 +306,8 @@ export interface GameInput {
   /** @minimum 0 */
   opponentScore: number;
   videoObjectPath?: string | null;
+  /** Live session code whose finalized Daily recording should be attached to this game. */
+  liveSessionCode?: string | null;
   stats: PlayerGameStatInput[];
   events: GameEvent[];
 }
@@ -585,4 +592,21 @@ export interface LowlightStatus {
   /** Music track ID used during the most recent reel generation (e.g. "energetic"). Null means no music was used. */
   musicTrack?: string | null;
 }
+
+export type GetLiveDailyViewerToken200 = {
+  roomUrl: string;
+  token: string;
+  active: boolean;
+};
+
+export type AttachLiveRecordingToGame202Status = typeof AttachLiveRecordingToGame202Status[keyof typeof AttachLiveRecordingToGame202Status];
+
+
+export const AttachLiveRecordingToGame202Status = {
+  queued: 'queued',
+} as const;
+
+export type AttachLiveRecordingToGame202 = {
+  status: AttachLiveRecordingToGame202Status;
+};
 

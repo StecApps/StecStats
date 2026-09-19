@@ -4,12 +4,17 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import WebSocket from "ws";
 import { attachLiveSocketServer } from "../liveSocket";
 import { liveStreamRegistry } from "../liveStream";
+import { createBroadcasterToken } from "../liveAuth";
 
 const TEST_CODE = "TESTCODE";
+const TEST_OWNER_ID = 42;
+process.env.SESSION_SECRET = process.env.SESSION_SECRET ?? "live-socket-test-secret";
+const broadcasterToken = () => createBroadcasterToken(TEST_CODE, TEST_OWNER_ID);
 
 function seedSession() {
   const session = {
     code: TEST_CODE,
+    ownerId: TEST_OWNER_ID,
     meta: { opponent: "Rivals", teamName: "Home" },
     createdAt: Date.now(),
     broadcaster: null,
@@ -114,7 +119,7 @@ describe("liveSocket signaling relay", () => {
   async function connectBroadcaster() {
     const ws = new WebSocket(wsUrl);
     await waitForOpen(ws);
-    ws.send(JSON.stringify({ type: "join-broadcaster", code: TEST_CODE }));
+    ws.send(JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, authToken: broadcasterToken() }));
     return ws;
   }
 
@@ -135,6 +140,32 @@ describe("liveSocket signaling relay", () => {
     const joined = await waitForMessage(ws, (m) => m.type === "joined");
     expect(joined.hasVideo).toBe(false);
     expect(joined.videoMode).toBe("none");
+    ws.close();
+  });
+
+  it("rejects unauthenticated broadcaster joins", async () => {
+    const ws = new WebSocket(wsUrl);
+    await waitForOpen(ws);
+    ws.send(JSON.stringify({ type: "join-broadcaster", code: TEST_CODE }));
+    await expect(waitForMessage(ws, (m) => m.type === "error")).resolves.toMatchObject({
+      message: "Invalid broadcaster credential",
+    });
+    ws.close();
+  });
+
+  it("ignores cross-session mutations after a broadcaster binds", async () => {
+    const session = seedSession() as any;
+    const other = { ...session, code: "OTHER123", scoreboard: { teamScore: 0, opponentScore: 0 } };
+    (liveStreamRegistry as unknown as { sessions: Map<string, unknown> }).sessions.set(other.code, other);
+    const ws = await connectBroadcaster();
+    ws.send(JSON.stringify({
+      type: "scoreboard",
+      code: other.code,
+      teamScore: 99,
+      opponentScore: 99,
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(other.scoreboard).toEqual({ teamScore: 0, opponentScore: 0 });
     ws.close();
   });
 
@@ -189,7 +220,7 @@ describe("liveSocket signaling relay", () => {
     await waitForMessage(broadcaster, (m) => m.type === "new-viewer");
 
     viewer.send(
-      JSON.stringify({ type: "answer", code: TEST_CODE, targetId: viewerId, sdp: { fake: "answer-sdp" } }),
+      JSON.stringify({ type: "answer", code: TEST_CODE, targetId: "spoofed-viewer", sdp: { fake: "answer-sdp" } }),
     );
 
     const answer = await waitForMessage(broadcaster, (m) => m.type === "answer");
@@ -200,7 +231,7 @@ describe("liveSocket signaling relay", () => {
     viewer.close();
   });
 
-  it("relays ice-candidates in both directions", async () => {
+  it("relays ICE candidates in both directions", async () => {
     const broadcaster = await connectBroadcaster();
     const { ws: viewer, viewerId } = await connectViewer();
     await waitForMessage(broadcaster, (m) => m.type === "new-viewer");
@@ -232,7 +263,7 @@ describe("liveSocket signaling relay", () => {
     viewer.close();
   });
 
-  it("relays a peer-connection-failed notice from the broadcaster to the targeted viewer", async () => {
+  it("relays a peer-connection-failed notice from broadcaster to target viewer", async () => {
     const broadcaster = await connectBroadcaster();
     const { ws: viewer, viewerId } = await connectViewer();
     const { ws: otherViewer } = await connectViewer();
@@ -254,7 +285,7 @@ describe("liveSocket signaling relay", () => {
     otherViewer.close();
   });
 
-  it("ignores peer-connection-failed sent by a non-broadcaster role", async () => {
+  it("ignores peer-connection-failed sent by a viewer role", async () => {
     const broadcaster = await connectBroadcaster();
     const { ws: viewer, viewerId } = await connectViewer();
 
@@ -317,7 +348,7 @@ describe("liveSocket signaling relay", () => {
     await waitForOpen(broadcaster);
     // Camera failed before onopen — send score-only from the very first message.
     broadcaster.send(
-      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: false, videoMode: "none" }),
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, authToken: broadcasterToken(), hasVideo: false, videoMode: "none" }),
     );
     await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");
 
@@ -351,7 +382,7 @@ describe("liveSocket signaling relay", () => {
     const broadcaster = new WebSocket(wsUrl);
     await waitForOpen(broadcaster);
     broadcaster.send(
-      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: true, videoMode: "webrtc" }),
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, authToken: broadcasterToken(), hasVideo: true, videoMode: "webrtc" }),
     );
     await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");
 
@@ -364,7 +395,7 @@ describe("liveSocket signaling relay", () => {
 
     // getUserMedia failed — broadcaster downgrades to score-only.
     broadcaster.send(
-      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: false, videoMode: "none" }),
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, authToken: broadcasterToken(), hasVideo: false, videoMode: "none" }),
     );
 
     // Both viewers must receive session-mode immediately.
@@ -385,7 +416,7 @@ describe("liveSocket signaling relay", () => {
     const broadcaster = new WebSocket(wsUrl);
     await waitForOpen(broadcaster);
     broadcaster.send(
-      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: true, videoMode: "webrtc" }),
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, authToken: broadcasterToken(), hasVideo: true, videoMode: "webrtc" }),
     );
     await waitForMessage(broadcaster, (m) => m.type === "broadcaster-joined");
 
@@ -393,7 +424,7 @@ describe("liveSocket signaling relay", () => {
     await waitForMessage(broadcaster, (m) => m.type === "new-viewer");
 
     broadcaster.send(
-      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, hasVideo: true, videoMode: "mjpeg" }),
+      JSON.stringify({ type: "join-broadcaster", code: TEST_CODE, authToken: broadcasterToken(), hasVideo: true, videoMode: "mjpeg" }),
     );
     const mode = await waitForMessage(viewer, (m) => m.type === "session-mode");
     expect(mode).toMatchObject({

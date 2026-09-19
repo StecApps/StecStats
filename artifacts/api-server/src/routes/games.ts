@@ -16,6 +16,8 @@ import {
   gameEventsTable,
   retainedGameFilmsTable,
   usersTable,
+  liveSessionsTable,
+  liveRecordingJobsTable,
 } from "@workspace/db";
 import {
   CreateGameBody,
@@ -728,6 +730,23 @@ router.post("/games", requireAuth, async (req, res) => {
     ? objectStorageService.normalizeObjectEntityPath(body.videoObjectPath)
     : null;
 
+  const liveSessionCode = typeof body.liveSessionCode === "string"
+    ? body.liveSessionCode.toUpperCase()
+    : null;
+  let liveSession: typeof liveSessionsTable.$inferSelect | undefined;
+  if (liveSessionCode) {
+    liveSession = await db.query.liveSessionsTable.findFirst({
+      where: and(
+        eq(liveSessionsTable.code, liveSessionCode),
+        eq(liveSessionsTable.ownerId, ownerId),
+      ),
+    });
+    if (!liveSession?.dailyRoomName) {
+      res.status(404).json({ error: "Live session not found" });
+      return;
+    }
+  }
+
   if (videoObjectPath) {
     try {
       await claimVideoObjectPath(videoObjectPath, ownerId);
@@ -775,6 +794,16 @@ router.post("/games", requireAuth, async (req, res) => {
       });
       if (existing) {
         idempotentGameId = existing.id;
+        if (liveSession) {
+          await tx.insert(liveRecordingJobsTable).values({
+            liveSessionId: liveSession.id,
+            gameId: existing.id,
+            ownerId,
+            dailyRoomName: liveSession.dailyRoomName!,
+            dailyRecordingId: liveSession.dailyRecordingId,
+            status: "queued",
+          }).onConflictDoNothing();
+        }
         return null;
       }
     }
@@ -805,6 +834,17 @@ router.post("/games", requireAuth, async (req, res) => {
     if (videoObjectPath) {
       await retainGameMasterFilm(tx, ownerId, createdGame.id, videoObjectPath);
     }
+
+      if (liveSession) {
+        await tx.insert(liveRecordingJobsTable).values({
+          liveSessionId: liveSession.id,
+          gameId: createdGame.id,
+          ownerId,
+          dailyRoomName: liveSession.dailyRoomName!,
+          dailyRecordingId: liveSession.dailyRecordingId,
+          status: "queued",
+        }).onConflictDoNothing();
+      }
 
     if (videoObjectPath) scheduleVideoDurationProbe(createdGame.id, videoObjectPath);
 

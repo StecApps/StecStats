@@ -472,6 +472,7 @@ export const CreateGameBody = zod.object({
   "teamScore": zod.number().min(createGameBodyTeamScoreMin),
   "opponentScore": zod.number().min(createGameBodyOpponentScoreMin),
   "videoObjectPath": zod.string().nullish(),
+  "liveSessionCode": zod.string().nullish().describe('Live session code whose finalized Daily recording should be attached to this game.'),
   "stats": zod.array(zod.object({
   "playerId": zod.number(),
   "ftMade": zod.number().min(createGameBodyStatsItemFtMadeMin),
@@ -1249,5 +1250,38 @@ export const GetStorageObjectParams = zod.object({
 })
 
 export const GetStorageObjectResponse = zod.unknown()
+
+
+/**
+ * @summary Get a short-lived Daily viewer token for a live session
+ */
+export const GetLiveDailyViewerTokenParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const GetLiveDailyViewerTokenResponse = zod.object({
+  "roomUrl": zod.string().url(),
+  "token": zod.string(),
+  "active": zod.boolean()
+})
+
+
+/**
+ * @summary Queue finalized Daily recording import for a saved game
+ */
+export const AttachLiveRecordingToGameParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+
+
+
+export const AttachLiveRecordingToGameBody = zod.object({
+  "gameId": zod.number().min(1)
+})
+
+export const AttachLiveRecordingToGameResponse = zod.object({
+  "status": zod.enum(['queued'])
+})
 
 

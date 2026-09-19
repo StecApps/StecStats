@@ -4,6 +4,7 @@
 - [Frontend API routing convention](api-routing-convention.md) — hoops-stats/monorepo apps call `/api/...` as root-relative paths directly, not prefixed by artifact BASE_URL.
 - [Testing camera/media features](testing-camera-media.md) — test sandbox has no camera; design a graceful getUserMedia error path and verify via DB/API, not camera E2E.
 - [Live streaming via custom WebRTC signaling](live-streaming-webrtc.md) — in-memory `ws` signaling relay on api-server, now with Metered.ca TURN relay and DB-backed session metadata.
+- [Daily managed streaming](daily-managed-streaming.md) — Live uses Daily as sole camera owner with cloud recording; game save durably queues server-side import and reel generation.
 - [Metered.ca TURN credential-scoped API key](metered-turn-api-key.md) — turn/credentials endpoint needs the credential-scoped apiKey, not the account secret/project key.
 - [Arena scoreboard theme](arena-theme.md) — app is dark-mode-only via `<html class="dark">`; never leave text uncolored on `bg-secondary` (flips white-on-white).
 - [monday.com stats xlsx import](monday-stats-import.md) — Stec stat exports have stacked season sections + summary rows + two result formats (W/L text and ✅/❌); parse to /api/import (idempotent).

@@ -52,7 +52,7 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo
 import { LinearGradient } from 'expo-linear-gradient';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSharedValue, runOnJS } from 'react-native-reanimated';
-// react-native-webrtc is a native module — not available in Expo Go.
+// Daily's WebRTC fork is a native module — not available in Expo Go.
 // Require it dynamically so the app degrades to score-only live stream
 // instead of crashing on the module-not-found error.
 let RTCPeerConnection: any = null;
@@ -61,7 +61,7 @@ let RTCSessionDescription: any = null;
 let mediaDevices: any = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const rn = require('react-native-webrtc');
+  const rn = require('@daily-co/react-native-webrtc');
   RTCPeerConnection = rn.RTCPeerConnection;
   RTCIceCandidate = rn.RTCIceCandidate;
   RTCSessionDescription = rn.RTCSessionDescription;
@@ -104,6 +104,13 @@ import {
   initialBitrateState,
   nextBitrateState,
 } from '@/lib/adaptiveBitrate';
+import {
+  dailyRecordingElapsedMs,
+  startDailyBroadcast,
+  stopDailyBroadcast,
+  type DailyRecordingResult,
+  type DailyRoomCredentials,
+} from '@/lib/dailyBroadcast';
 
 const defaultLine = (): StatLine => ({
   ftMade: 0, ftAttempted: 0,
@@ -349,6 +356,9 @@ export default function ScorekeeperScreen() {
     hasVideo: boolean;
     videoMode: 'webrtc' | 'mjpeg' | 'none';
   } | null>(null);
+  // Server-issued broadcaster authorization. It must accompany every
+  // join-broadcaster, including later mode updates and reconnects.
+  const broadcasterTokenRef = useRef<string | null>(null);
   const pendingClientDiagnosticsRef = useRef<Array<{
     code: string;
     category: string;
@@ -509,6 +519,12 @@ export default function ScorekeeperScreen() {
   const [isLive, setIsLive] = useState(false);
   const [liveMediaRecoveryGeneration, setLiveMediaRecoveryGeneration] = useState(0);
   const [liveLoading, setLiveLoading] = useState(false);
+  const [dailyLive, setDailyLive] = useState(false);
+  const dailyLiveRef = useRef(false);
+  const dailyCredentialsRef = useRef<DailyRoomCredentials | null>(null);
+  const dailyRecordingRef = useRef<DailyRecordingResult | null>(null);
+  const dailyRecordingCodeRef = useRef<string | null>(null);
+  const [dailyProcessing, setDailyProcessing] = useState(false);
   const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
   const [isSharingLiveLink, setIsSharingLiveLink] = useState(false);
   const isSharingLiveLinkRef = useRef(false);
@@ -555,11 +571,27 @@ export default function ScorekeeperScreen() {
     }, 3200);
   }
 
-  function activateLiveBroadcast(code: string) {
+  async function activateLiveBroadcast(code: string, daily?: DailyRoomCredentials) {
     if (isLive) return;
     if (recordingStartedRef.current || isRecording) {
       setShowGoLiveSheet(false);
       showCameraNotice('Recording protected — start Live before recording.');
+      return;
+    }
+    if (!daily) {
+      Alert.alert('Live unavailable', 'The server did not return a Daily video room. Please update the app and try again.');
+      return;
+    }
+    try {
+      // Daily is the sole camera owner for Live. Do this before changing
+      // isLive so the legacy HoopsCamera/WebRTC effect cannot race it.
+      await startDailyBroadcast(daily);
+      dailyLiveRef.current = true;
+      setDailyLive(true);
+    } catch (error: any) {
+      dailyLiveRef.current = false;
+      setDailyLive(false);
+      Alert.alert('Live video unavailable', error?.message ?? 'Could not open the Daily camera.');
       return;
     }
     setIsLive(true);
@@ -567,6 +599,8 @@ export default function ScorekeeperScreen() {
     // between local recording and the viewer video. Older binaries retain the
     // score-only safety behavior while recording.
     webrtcCameraFailedRef.current = recordVideo && !sharedCameraMode;
+    // Daily carries media; retain the existing socket only for scoreboard
+    // updates until the web viewer is migrated to Daily.
     connectBroadcasterWs(code, teamScore, opponentScore);
   }
 
@@ -653,7 +687,7 @@ export default function ScorekeeperScreen() {
         }
         if (didShare) {
           setCameraRecoveryBlocked(false);
-          activateLiveBroadcast(pending.code);
+          void activateLiveBroadcast(pending.code, dailyCredentialsRef.current ?? undefined);
         }
       } catch (error: any) {
         didShare = false;
@@ -674,6 +708,9 @@ export default function ScorekeeperScreen() {
 
   async function startLiveBroadcast() {
     if (liveLoading || isLive) return;
+    // A fresh invite is a new authorization lifecycle. Reconnects within the
+    // same lifecycle retain the token returned below.
+    broadcasterTokenRef.current = null;
     if (recordingStartedRef.current || isRecording) {
       // Starting WebRTC audio or presenting native UI after AVCaptureMovieFileOutput
       // has begun can interrupt iPad recording and silently finalize a short,
@@ -731,7 +768,16 @@ export default function ScorekeeperScreen() {
         }
         return;
       }
-      const { code } = await res.json();
+      const payload = await res.json();
+      const { code } = payload;
+      broadcasterTokenRef.current = payload.broadcasterToken ?? null;
+      const daily: DailyRoomCredentials | undefined =
+        payload.daily ?? (payload.roomUrl && payload.token
+          ? { url: payload.roomUrl, token: payload.token, roomName: payload.roomName }
+          : payload.dailyUrl && payload.dailyToken
+          ? { url: payload.dailyUrl, token: payload.dailyToken, roomName: payload.dailyRoomName }
+          : undefined);
+      dailyCredentialsRef.current = daily ?? null;
       setLiveCode(code);
       liveStartRequestIdRef.current = null;
       setShowGoLiveSheet(true);
@@ -1149,8 +1195,16 @@ export default function ScorekeeperScreen() {
     // An intentional stop begins a new idempotency lifecycle. A future
     // broadcast must not resume this invite code.
     liveStartRequestIdRef.current = null;
+    broadcasterTokenRef.current = null;
     liveSessionGenerationRef.current += 1;
     liveMediaGenerationRef.current += 1;
+    if (dailyLiveRef.current) {
+      setDailyProcessing(true);
+      dailyRecordingCodeRef.current = code;
+      dailyRecordingRef.current = await stopDailyBroadcast().catch(() => null);
+      dailyLiveRef.current = false;
+      setDailyLive(false);
+    }
     // Dismiss the go-live sheet first so it doesn't linger open while the
     // stop sequence runs (handles the case where handleSave calls us directly
     // without the sheet's own dismiss-then-stop button handler).
@@ -1289,6 +1343,7 @@ export default function ScorekeeperScreen() {
         ws.send(JSON.stringify({
           type: 'join-broadcaster',
           code,
+          authToken: broadcasterTokenRef.current,
           teamScore: latestScoresRef.current.teamScore,
           opponentScore: latestScoresRef.current.opponentScore,
           hasVideo,
@@ -1302,6 +1357,7 @@ export default function ScorekeeperScreen() {
     broadcastWsSend({
       type: 'join-broadcaster',
       code,
+      authToken: broadcasterTokenRef.current,
       hasVideo,
       videoMode,
       videoTransportError: liveVideoTransportErrorRef.current,
@@ -1370,6 +1426,7 @@ export default function ScorekeeperScreen() {
       ws.send(JSON.stringify({
         type: 'join-broadcaster',
         code,
+        authToken: broadcasterTokenRef.current,
         teamScore: initTeamScore,
         opponentScore: initOppScore,
         hasVideo,
@@ -1701,6 +1758,7 @@ export default function ScorekeeperScreen() {
   }
 
   async function startRecording() {
+    if (dailyLiveRef.current) return;
     if (
       recordingTerminalIntentRef.current ||
       isSharingLiveLinkRef.current ||
@@ -1996,6 +2054,12 @@ export default function ScorekeeperScreen() {
         return;
       }
       setGameStarted(true);
+      if (dailyLiveRef.current) {
+        if (seconds === 0) startRef.current = Date.now();
+        setRunning(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        return;
+      }
       if (
         recordVideo &&
         sharedCameraMode &&
@@ -2035,7 +2099,9 @@ export default function ScorekeeperScreen() {
     // Stats-only games retain the game-clock timestamp for compatibility even
     // though no reel will consume it. Recorded games use only finalized/in-
     // progress movie time so every tagged play maps onto the uploaded video.
-    return recordVideo
+    return dailyLiveRef.current
+      ? dailyRecordingElapsedMs()
+      : recordVideo
       ? readVideoTimelineMs(videoTimelineClockRef.current)
       : running ? Date.now() - startRef.current : seconds * 1000;
   }
@@ -2121,7 +2187,7 @@ export default function ScorekeeperScreen() {
     const hasCameraPermission = sharedCameraMode
       ? hoopsCameraPermission?.camera === 'granted'
       : !!cameraPermission?.granted;
-    if (!isLive || !liveCode || !hasCameraPermission) {
+    if (dailyLiveRef.current || dailyLive || !isLive || !liveCode || !hasCameraPermission) {
       stopMjpegFallback();
       closeAllWebRtcPeers();
       stopWebRtcStream();
@@ -2259,7 +2325,7 @@ export default function ScorekeeperScreen() {
         stopWebRtcStream();
       }
     };
-  }, [isLive, liveCode, cameraPermission?.granted, hoopsCameraPermission?.camera, cameraFacing, recordVideo, sharedCameraMode, liveMediaRecoveryGeneration]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isLive, dailyLive, liveCode, cameraPermission?.granted, hoopsCameraPermission?.camera, cameraFacing, recordVideo, sharedCameraMode, liveMediaRecoveryGeneration]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Live scoreboard push — fires whenever score changes while broadcasting ──
   useEffect(() => {
@@ -2469,7 +2535,15 @@ export default function ScorekeeperScreen() {
     unexpectedRecordingResumePendingRef.current = false;
     pendingRecordRef.current = false;
 
-    if (recordVideo) {
+    if (dailyLiveRef.current) {
+      setDailyProcessing(true);
+      dailyRecordingCodeRef.current = liveCodeRef.current;
+      // Daily is stopped before stats are persisted. The recording remains in
+      // Daily Cloud; doSaveGame attaches it after the game row is committed.
+      dailyRecordingRef.current = await stopDailyBroadcast().catch(() => null);
+      dailyLiveRef.current = false;
+      setDailyLive(false);
+    } else if (recordVideo) {
       // Remove all CPU/GPU-heavy Live media before AVFoundation writes the
       // movie trailer, but retain the signaling socket for the final result.
       liveMediaGenerationRef.current += 1;
@@ -2706,6 +2780,7 @@ export default function ScorekeeperScreen() {
       opponentScore,
       stats: statLines,
       events,
+      liveSessionCode: dailyRecordingCodeRef.current ?? undefined,
       queuedAt: new Date().toISOString(),
     });
     await clearDraft();
@@ -2731,6 +2806,7 @@ export default function ScorekeeperScreen() {
       } catch { /* preserve the normal new-game fallback */ }
     }
     const saveClientId = existingClientId ?? markerClientId ?? generateClientId();
+    const liveSessionCode = dailyRecordingCodeRef.current ?? undefined;
 
     // ── Offline path: queue locally and navigate back ─────────────────────
     // Only available for stats-only saves (no video) — video upload requires
@@ -2765,6 +2841,7 @@ export default function ScorekeeperScreen() {
       opponent: opponent as string,
       date: date as string,
       events,
+      liveSessionCode,
       // Pass the stable ID so the server can store it and detect replays.
       clientId: saveClientId,
       createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
@@ -2803,6 +2880,12 @@ export default function ScorekeeperScreen() {
         // requested independently by Film Room if a non-network server error
         // prevents a particular reel from starting.
         void responses;
+      },
+      onSaveSuccess: async () => {
+        dailyRecordingRef.current = null;
+        dailyRecordingCodeRef.current = null;
+        dailyCredentialsRef.current = null;
+        setDailyProcessing(false);
       },
       setSaving,
       // If the network drops between tapping "End Game" and the POST completing,
@@ -2872,7 +2955,7 @@ export default function ScorekeeperScreen() {
   const isTablet = Math.min(sw, sh) >= 600;
 
   const styles = makeStyles(colors, insets, sw, sh, isLandscape);
-  const cameraReady = recordVideo && (
+  const cameraReady = recordVideo && !dailyLive && (
     sharedCameraMode
       ? hoopsCameraPermission?.camera === 'granted' && hoopsCameraPermission?.microphone === 'granted'
       : cameraPermission?.granted && micPermission?.granted
@@ -3404,7 +3487,7 @@ export default function ScorekeeperScreen() {
 
           {!isLive && (
             <TouchableOpacity
-              onPress={() => activateLiveBroadcast(liveCode)}
+              onPress={() => void activateLiveBroadcast(liveCode, dailyCredentialsRef.current ?? undefined)}
               activeOpacity={0.8}
               style={[styles.stopLiveBtn, { borderColor: colors.primary + '60' }]}
             >
@@ -3536,7 +3619,7 @@ export default function ScorekeeperScreen() {
                 {isLive && (isRecording ? (
                   <View style={styles.liveBadge}>
                     <Animated.View style={[styles.liveDot, { opacity: livePulse }]} />
-                    <Text style={styles.liveText}>LIVE · REC SAFE</Text>
+                    <Text style={styles.liveText}>{dailyLive ? 'LIVE · CLOUD REC' : 'LIVE · REC SAFE'}</Text>
                   </View>
                 ) : (
                   <TouchableOpacity onPress={() => setShowGoLiveSheet(true)} style={styles.liveBadge} activeOpacity={0.8}>
@@ -3544,6 +3627,14 @@ export default function ScorekeeperScreen() {
                     <Text style={styles.liveText}>LIVE</Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+            )}
+            {(dailyLive || dailyProcessing) && (
+              <View style={styles.dailyStatusBanner}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.dailyStatusText}>
+                  {dailyProcessing ? 'Saving game — processing cloud recording…' : 'Live video is recording in the cloud'}
+                </Text>
               </View>
             )}
 
@@ -4141,6 +4232,26 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     },
     liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#fff' },
     liveText: { fontSize: 9, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.5 },
+    dailyStatusBanner: {
+      position: 'absolute',
+      top: insets.top + (Platform.OS === 'web' ? 98 : 42),
+      left: 12,
+      right: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      backgroundColor: 'rgba(0,0,0,0.68)',
+    },
+    dailyStatusText: {
+      color: '#fff',
+      fontSize: 12,
+      fontFamily: 'Inter_600SemiBold',
+      textAlign: 'center',
+    },
 
     // Permission banner inside camera section
     permBanner: {

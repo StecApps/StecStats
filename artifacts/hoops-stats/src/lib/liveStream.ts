@@ -61,6 +61,8 @@ export type LiveStatus = {
   viewerCount: number;
   teamScore: number;
   opponentScore: number;
+  /** The broadcaster transport selected for this session. */
+  videoMode?: "daily" | "webrtc" | "mjpeg" | "none";
 };
 
 export async function startLiveSession(opponent: string, teamName: string): Promise<string> {
@@ -82,6 +84,26 @@ export async function getLiveStatus(code: string): Promise<LiveStatus | null> {
   const res = await fetch(`/api/live/${code}/status`);
   if (!res.ok) return null;
   return res.json();
+}
+
+export type DailyViewerCredentials = {
+  roomUrl: string;
+  token: string;
+};
+
+/**
+ * Fetches the short-lived, receive-only Daily credentials for a public invite.
+ * The API owns room membership and token TTL; the viewer never receives the
+ * Daily API key.
+ */
+export async function getDailyViewerCredentials(code: string): Promise<DailyViewerCredentials> {
+  const res = await fetch(`/api/live/${encodeURIComponent(code)}/daily-token`);
+  if (!res.ok) throw new Error("Live video is unavailable");
+  const data = await res.json() as Partial<DailyViewerCredentials>;
+  if (typeof data.roomUrl !== "string" || typeof data.token !== "string") {
+    throw new Error("Live video credentials are invalid");
+  }
+  return { roomUrl: data.roomUrl, token: data.token };
 }
 
 export function watchUrlForCode(code: string): string {

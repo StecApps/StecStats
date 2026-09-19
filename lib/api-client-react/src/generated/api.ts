@@ -21,6 +21,7 @@ import type {
 
 import type {
   AccountDeletionPending,
+  AttachLiveRecordingToGame202,
   BillingStatus,
   CheckoutSessionResponse,
   CreateCheckoutSessionInput,
@@ -29,10 +30,12 @@ import type {
   GameInput,
   GameUpdate,
   GameVideoAttachment,
+  GetLiveDailyViewerToken200,
   HealthStatus,
   HighlightStatus,
   ImportInput,
   ImportResult,
+  LiveRecordingAttachBody,
   LowlightStatus,
   MergeGamesInput,
   OkResponse,
@@ -2918,4 +2921,153 @@ export function useGetStorageObject<TData = Awaited<ReturnType<typeof getStorage
 
 
 
+
+export const getGetLiveDailyViewerTokenUrl = (code: string,) => {
+
+
+
+
+  return `/api/live/${code}/daily-token`
+}
+
+/**
+ * @summary Get a short-lived Daily viewer token for a live session
+ */
+export const getLiveDailyViewerToken = async (code: string, options?: RequestInit): Promise<GetLiveDailyViewerToken200> => {
+
+  return customFetch<GetLiveDailyViewerToken200>(getGetLiveDailyViewerTokenUrl(code),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLiveDailyViewerTokenQueryKey = (code: string,) => {
+    return [
+    `/api/live/${code}/daily-token`
+    ] as const;
+    }
+
+
+export const getGetLiveDailyViewerTokenQueryOptions = <TData = Awaited<ReturnType<typeof getLiveDailyViewerToken>>, TError = ErrorType<void>>(code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLiveDailyViewerToken>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLiveDailyViewerTokenQueryKey(code);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLiveDailyViewerToken>>> = ({ signal }) => getLiveDailyViewerToken(code, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: code !== null && code !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLiveDailyViewerToken>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLiveDailyViewerTokenQueryResult = NonNullable<Awaited<ReturnType<typeof getLiveDailyViewerToken>>>
+export type GetLiveDailyViewerTokenQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a short-lived Daily viewer token for a live session
+ */
+
+export function useGetLiveDailyViewerToken<TData = Awaited<ReturnType<typeof getLiveDailyViewerToken>>, TError = ErrorType<void>>(
+ code: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLiveDailyViewerToken>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLiveDailyViewerTokenQueryOptions(code,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAttachLiveRecordingToGameUrl = (code: string,) => {
+
+
+
+
+  return `/api/live/${code}/recording/attach`
+}
+
+/**
+ * @summary Queue finalized Daily recording import for a saved game
+ */
+export const attachLiveRecordingToGame = async (code: string,
+    liveRecordingAttachBody: LiveRecordingAttachBody, options?: RequestInit): Promise<AttachLiveRecordingToGame202> => {
+
+  return customFetch<AttachLiveRecordingToGame202>(getAttachLiveRecordingToGameUrl(code),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(liveRecordingAttachBody)
+  }
+);}
+
+
+
+
+
+export const getAttachLiveRecordingToGameMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attachLiveRecordingToGame>>, TError,{code: string;data: BodyType<LiveRecordingAttachBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof attachLiveRecordingToGame>>, TError,{code: string;data: BodyType<LiveRecordingAttachBody>}, TContext> => {
+
+const mutationKey = ['attachLiveRecordingToGame'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof attachLiveRecordingToGame>>, {code: string;data: BodyType<LiveRecordingAttachBody>}> = (props) => {
+          const {code,data} = props ?? {};
+
+          return  attachLiveRecordingToGame(code,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AttachLiveRecordingToGameMutationResult = NonNullable<Awaited<ReturnType<typeof attachLiveRecordingToGame>>>
+    export type AttachLiveRecordingToGameMutationBody = BodyType<LiveRecordingAttachBody>
+    export type AttachLiveRecordingToGameMutationError = ErrorType<void>
+
+    /**
+ * @summary Queue finalized Daily recording import for a saved game
+ */
+export const useAttachLiveRecordingToGame = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof attachLiveRecordingToGame>>, TError,{code: string;data: BodyType<LiveRecordingAttachBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof attachLiveRecordingToGame>>,
+        TError,
+        {code: string;data: BodyType<LiveRecordingAttachBody>},
+        TContext
+      > => {
+      return useMutation(getAttachLiveRecordingToGameMutationOptions(options));
+    }
 

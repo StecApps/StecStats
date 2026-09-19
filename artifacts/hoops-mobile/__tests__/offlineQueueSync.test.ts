@@ -245,6 +245,16 @@ describe('syncQueuedGames — multiple queued games', () => {
     );
     expect(sentIds).toEqual(expect.arrayContaining(['game-alpha', 'game-beta']));
   });
+
+  it('forwards a Daily live session code during retry sync', async () => {
+    await queueGame(makeQueuedGame({ liveSessionCode: 'LIVE-SESSION-123' }));
+    mockFetch.mockResolvedValue({ ok: true, status: 201 });
+
+    await syncQueuedGames(DEFAULT_DEPS);
+
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body as string).liveSessionCode)
+      .toBe('LIVE-SESSION-123');
+  });
 });
 
 describe('syncQueuedGames — retry and error paths', () => {
@@ -271,6 +281,22 @@ describe('syncQueuedGames — retry and error paths', () => {
 
     const remaining = await loadQueuedGames();
     expect(remaining).toHaveLength(0);
+  });
+
+  it('keeps a Daily-backed game queued when association temporarily returns 404', async () => {
+    const game = makeQueuedGame({
+      clientId: 'retry-daily-association',
+      liveSessionCode: 'LIVE-SESSION-404',
+    });
+    await queueGame(game);
+
+    mockFetch.mockResolvedValue({ ok: false, status: 404 });
+
+    const { synced, syncedGames } = await syncQueuedGames(DEFAULT_DEPS);
+
+    expect(synced).toBe(0);
+    expect(syncedGames).toHaveLength(0);
+    await expect(loadQueuedGames()).resolves.toEqual([game]);
   });
 
   it('leaves the game in the queue on a 5xx (server error — retry later)', async () => {

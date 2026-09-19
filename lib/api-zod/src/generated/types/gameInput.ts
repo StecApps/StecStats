@@ -20,6 +20,8 @@ export interface GameInput {
   /** @minimum 0 */
   opponentScore: number;
   videoObjectPath?: string | null;
+  /** Live session code whose finalized Daily recording should be attached to this game. */
+  liveSessionCode?: string | null;
   stats: PlayerGameStatInput[];
   events: GameEvent[];
 }

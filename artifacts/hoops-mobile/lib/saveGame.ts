@@ -24,6 +24,8 @@ export interface SaveGameDeps {
   opponent: string;
   date: string;
   events: GameEvent[];
+  /** Daily live session to associate server-side recording after this POST. */
+  liveSessionCode?: string;
   /** Bound mutateAsync from useCreateGame(). */
   createGameMutateAsync: (args: { data: object }) => Promise<{ id: number }>;
   /** Bound invalidateQueries from useQueryClient(). */
@@ -49,6 +51,8 @@ export interface SaveGameDeps {
   onNetworkFailure?: () => Promise<void> | void;
   /** Runs only after the server has acknowledged the game/video attachment. */
   onVideoAttached?: (gameId: number) => Promise<void> | void;
+  /** Runs only after the game save and navigation have succeeded. */
+  onSaveSuccess?: (gameId: number) => Promise<void> | void;
 }
 
 const defaultLine = (): StatLine => ({
@@ -84,6 +88,7 @@ export async function saveGame(
     opponent,
     date,
     events,
+    liveSessionCode,
     clientId,
     createGameMutateAsync,
     invalidateQueries,
@@ -113,6 +118,7 @@ export async function saveGame(
         opponentScore,
         stats: statLines,
         events,
+        ...(liveSessionCode ? { liveSessionCode } : {}),
         ...(videoObjectPath ? { videoObjectPath } : {}),
       },
     });
@@ -122,6 +128,7 @@ export async function saveGame(
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await invalidateQueries({ queryKey: ['listTeamGames'] });
     routerReplace(`/game/${game.id}`);
+    await deps.onSaveSuccess?.(game.id);
   } catch (err: any) {
     // Network-level failures (no connection, ECONNREFUSED, timeout) produce a
     // TypeError with 'Network request failed' rather than an HTTP status error.

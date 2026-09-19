@@ -8,6 +8,8 @@
 
 export * from './accountDeletionPending';
 export * from './accountDeletionPendingStatus';
+export * from './attachLiveRecordingToGame202';
+export * from './attachLiveRecordingToGame202Status';
 export * from './billingStatus';
 export * from './billingStatusPlan';
 export * from './checkoutSessionResponse';
@@ -25,6 +27,7 @@ export * from './gameResult';
 export * from './gameUpdate';
 export * from './gameUpdateResult';
 export * from './gameVideoAttachment';
+export * from './getLiveDailyViewerToken200';
 export * from './healthStatus';
 export * from './highlightClip';
 export * from './highlightStatus';
@@ -34,6 +37,7 @@ export * from './importGameRow';
 export * from './importGameRowResult';
 export * from './importInput';
 export * from './importResult';
+export * from './liveRecordingAttachBody';
 export * from './lowlightStatus';
 export * from './lowlightStatusProgressStage';
 export * from './lowlightStatusStatus';

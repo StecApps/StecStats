@@ -4,6 +4,7 @@ export * from "./games";
 export * from "./player-game-stats";
 export * from "./game-events";
 export * from "./live-sessions";
+export * from "./live-recording-jobs";
 export * from "./users";
 export * from "./feedback";
 export * from "./purchase-events";

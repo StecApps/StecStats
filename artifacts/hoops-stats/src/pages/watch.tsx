@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "wouter";
 import { Radio, Users, Loader2, WifiOff, VolumeX, Share2, Check, X, RotateCw, Maximize2, Minimize2, RefreshCw, AlertTriangle } from "lucide-react";
-import { getIceServers, liveWsUrl, getLiveStatus, type LiveStatus } from "@/lib/liveStream";
+import { getIceServers, liveWsUrl, getLiveStatus, getDailyViewerCredentials, type LiveStatus } from "@/lib/liveStream";
 import { trackEvent } from "@/lib/analytics";
+import DailyIframe from "@daily-co/daily-js";
 
 type ConnectionState = "connecting" | "waiting-for-broadcaster" | "live" | "reconnecting" | "ended" | "not-found";
 
@@ -101,9 +102,40 @@ export default function WatchStream() {
   // True when the broadcaster is a mobile score-keeper (no WebRTC video).
   // Skip offer negotiation and show a big score-only board instead of video.
   const [scoreOnly, setScoreOnly] = useState(false);
+  // Daily sessions keep the scoreboard WebSocket for stats/chat, but use the
+  // managed Daily room for media instead of negotiating the legacy peer.
+  const [dailyFailure, setDailyFailure] = useState(false);
+  const dailyFailureRef = useRef(false);
+  const dailySessionRef = useRef(false);
+  const dailyCallRef = useRef<ReturnType<typeof DailyIframe.createCallObject> | null>(null);
   // True when the broadcaster is sending MJPEG snapshots over WebSocket.
   const [isMjpeg, setIsMjpeg] = useState(false);
   const mjpegImgRef = useRef<HTMLImageElement | null>(null);
+
+  const joinDaily = async (roomUrl: string, token: string) => {
+    const call = DailyIframe.createCallObject({
+      audioSource: false,
+      videoSource: false,
+    });
+    dailyCallRef.current = call;
+    call.on("track-started", ({ participant, track }) => {
+      if (participant?.local || !track) return;
+      const stream = remoteStreamRef.current ?? new MediaStream();
+      if (!stream.getTracks().includes(track)) stream.addTrack(track);
+      remoteStreamRef.current = stream;
+      attachStream();
+      setState("live");
+    });
+    call.on("track-stopped", ({ track }) => {
+      remoteStreamRef.current?.removeTrack(track);
+    });
+    call.on("error", () => {
+      setDailyFailure(true);
+      setScoreOnly(true);
+      setState("live");
+    });
+    await call.join({ url: roomUrl, token });
+  };
 
   // Pinch-to-zoom / pan / double-tap-reset — all via refs so gesture
   // handling never triggers a React re-render.
@@ -548,7 +580,7 @@ export default function WatchStream() {
 
     let cancelled = false;
 
-    getLiveStatus(code).then((s) => {
+    getLiveStatus(code).then(async (s) => {
       if (cancelled) return;
       if (!s) {
         setState("not-found");
@@ -556,7 +588,26 @@ export default function WatchStream() {
       }
       setStatus(s);
       setScoreboard({ teamScore: s.teamScore, opponentScore: s.opponentScore });
-      setState(s.active ? "connecting" : "waiting-for-broadcaster");
+      if (s.videoMode === "daily") {
+        dailySessionRef.current = true;
+        dailyFailureRef.current = false;
+        setDailyFailure(false);
+        try {
+          const credentials = await getDailyViewerCredentials(code);
+          if (!cancelled) await joinDaily(credentials.roomUrl, credentials.token);
+        } catch {
+          if (!cancelled) {
+            dailyFailureRef.current = true;
+            setDailyFailure(true);
+            setScoreOnly(true);
+          }
+        }
+      }
+      if (!s.videoMode || s.videoMode !== "daily") {
+        setState(s.active ? "connecting" : "waiting-for-broadcaster");
+      } else if (!s.active) {
+        setState("waiting-for-broadcaster");
+      }
     });
 
     const connect = (isReconnect: boolean) => {
@@ -644,6 +695,15 @@ export default function WatchStream() {
 
         if (message.type === "joined") {
           myViewerIdRef.current = message.viewerId;
+          if (dailySessionRef.current || message.videoMode === "daily") {
+            // Daily owns media for this session; this socket remains active
+            // solely for scoreboard/stat/chat events.
+            dailySessionRef.current = true;
+            setScoreOnly(dailyFailureRef.current);
+            setIsMjpeg(false);
+            setState("connecting");
+            return;
+          }
           if (message.videoMode === "mjpeg") {
             // Delivery mode is authoritative if an older relay sends an
             // inconsistent hasVideo boolean during a transport transition.
@@ -688,6 +748,7 @@ export default function WatchStream() {
         }
 
         if (message.type === "session-mode") {
+          if (dailySessionRef.current) return;
           if (message.videoMode === "mjpeg") {
             setScoreOnly(false);
             setIsMjpeg(true);
@@ -936,6 +997,11 @@ export default function WatchStream() {
       stopConnectingTimer();
       pcRef.current?.close();
       wsRef.current?.close();
+      const dailyCall = dailyCallRef.current;
+      dailyCallRef.current = null;
+      dailyCall?.leave().catch(() => {});
+      dailyCall?.destroy().catch(() => {});
+      remoteStreamRef.current = null;
     };
   }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -971,7 +1037,7 @@ export default function WatchStream() {
           playsInline
           muted={muted}
           onLoadedMetadata={handleLoadedMetadata}
-          className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${!isMjpeg && state === "live" ? "" : "invisible"}`}
+          className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${!isMjpeg && !scoreOnly && state === "live" ? "" : "invisible"}`}
         />
       </div>
 
@@ -1185,9 +1251,13 @@ export default function WatchStream() {
             <Radio className="w-3 h-3" /> SCORE FEED
           </div>
           <div className="max-w-md px-5 text-center">
-            <p className="text-base font-semibold text-white">The coach is recording locally</p>
+            <p className="text-base font-semibold text-white">
+              {dailyFailure ? "Live video couldn't connect" : "The coach is recording locally"}
+            </p>
             <p className="mt-1 text-sm text-white/60">
-              Live video is unavailable while the iPad saves the full game video. Scores and plays will update here.
+              {dailyFailure
+                ? "Scores and plays are still updating. The coach's video connection needs to be restarted."
+                : "Live video is unavailable while the iPad saves the full game video. Scores and plays will update here."}
             </p>
           </div>
           <div className="flex items-center gap-8">

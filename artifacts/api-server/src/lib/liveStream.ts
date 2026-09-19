@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, isNull, lt } from "drizzle-orm";
 import { db, liveSessionsTable } from "@workspace/db";
 import { logger } from "./logger";
 
@@ -157,6 +157,7 @@ export const MAX_RECENT_STAT_EVENTS = 8;
 
 export type LiveSession = {
   code: string;
+  ownerId: number;
   meta: LiveSessionMeta;
   createdAt: number;
   broadcaster: WebSocket | null;
@@ -255,9 +256,10 @@ export class LiveStreamRegistry {
    * the drop and rejoin the same session once the server comes back up
    * instead of the invite link being permanently dead.
    */
-  async createSession(meta: LiveSessionMeta, preferredCode?: string): Promise<LiveSession> {
+  async createSession(meta: LiveSessionMeta, preferredCode?: string, ownerId = 0): Promise<LiveSession> {
     const makeSession = (code: string): LiveSession => ({
       code,
+      ownerId,
       meta,
       createdAt: Date.now(),
       broadcaster: null,
@@ -284,6 +286,7 @@ export class LiveStreamRegistry {
         .insert(liveSessionsTable)
         .values({
           code,
+          ownerId,
           opponent: meta.opponent,
           teamName: meta.teamName,
           active: true,
@@ -313,6 +316,7 @@ export class LiveStreamRegistry {
         .insert(liveSessionsTable)
         .values({
           code,
+          ownerId,
           opponent: meta.opponent,
           teamName: meta.teamName,
           active: true,
@@ -360,6 +364,7 @@ export class LiveStreamRegistry {
 
     const resumed: LiveSession = {
       code: row.code,
+      ownerId: row.ownerId,
       meta: { opponent: row.opponent, teamName: row.teamName },
       createdAt: row.createdAt.getTime(),
       broadcaster: null,
@@ -452,11 +457,19 @@ export class LiveStreamRegistry {
     try {
       const endedRows = await db
         .delete(liveSessionsTable)
-        .where(and(eq(liveSessionsTable.active, false), lt(liveSessionsTable.lastSeenAt, inactiveCutoff)))
+        .where(and(
+          eq(liveSessionsTable.active, false),
+          isNull(liveSessionsTable.dailyRoomName),
+          lt(liveSessionsTable.lastSeenAt, inactiveCutoff),
+        ))
         .returning({ code: liveSessionsTable.code });
       const abandonedRows = await db
         .delete(liveSessionsTable)
-        .where(and(eq(liveSessionsTable.active, true), lt(liveSessionsTable.lastSeenAt, abandonedCutoff)))
+        .where(and(
+          eq(liveSessionsTable.active, true),
+          isNull(liveSessionsTable.dailyRoomName),
+          lt(liveSessionsTable.lastSeenAt, abandonedCutoff),
+        ))
         .returning({ code: liveSessionsTable.code });
       for (const row of abandonedRows) {
         this.sessions.delete(row.code);

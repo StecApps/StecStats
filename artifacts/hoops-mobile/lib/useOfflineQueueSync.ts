@@ -94,6 +94,14 @@ export async function syncQueuedGames(
         await removeQueuedGame(game.clientId);
         synced++;
         syncedGames.push(game);
+      } else if (res.status === 404 && game.liveSessionCode) {
+        // A Daily-backed game can arrive before the live session association is
+        // available server-side. Keep the complete payload intact and stop this
+        // pass so a later sync can retry it rather than losing the linkage.
+        console.warn(
+          `[OfflineSync] Deferring Daily-backed game ${game.clientId}: HTTP 404`,
+        );
+        break;
       } else if (res.status >= 400 && res.status < 500) {
         // Client error (e.g. team deleted) — discard to avoid blocking
         // future games.  Log it so it can be investigated.

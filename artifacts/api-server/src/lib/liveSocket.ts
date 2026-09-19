@@ -4,6 +4,7 @@ import { WebSocketServer, type WebSocket, type RawData } from "ws";
 import { nanoid } from "nanoid";
 import { liveStreamRegistry, MAX_RECENT_STAT_EVENTS } from "./liveStream";
 import { logger } from "./logger";
+import { verifyBroadcasterToken } from "./liveAuth";
 
 const LIVE_WS_PATH = "/api/live/ws";
 
@@ -12,7 +13,7 @@ const LIVE_WS_PATH = "/api/live/ws";
 const lastFrameRelayAt = new Map<string, number>();
 
 type ClientMessage =
-  | { type: "join-broadcaster"; code: string; teamScore?: number; opponentScore?: number; hasVideo?: boolean; videoMode?: "webrtc" | "mjpeg" | "none"; videoTransportError?: string | null }
+  | { type: "join-broadcaster"; code: string; authToken: string; teamScore?: number; opponentScore?: number; hasVideo?: boolean; videoMode?: "webrtc" | "mjpeg" | "none"; videoTransportError?: string | null }
   | { type: "join-viewer"; code: string }
   | { type: "video-frame"; code: string; frame: string }
   | { type: "offer"; code: string; targetId: string; sdp: unknown; renegotiate?: boolean }
@@ -70,6 +71,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
 
     let role: "broadcaster" | "viewer" | null = null;
     let sessionCode: string | null = null;
+    let bindingCode: string | null = null;
     let viewerId: string | null = null;
 
     ws.on("message", async (raw: RawData) => {
@@ -85,6 +87,23 @@ export function attachLiveSocketServer(upgradeEmitter: {
       // this transparently recreates the in-memory shell and lets the
       // broadcaster/viewer rejoin the same session instead of hitting a
       // dead "stream not found" error.
+      const messageCode = String(message.code ?? "").toUpperCase();
+      if ((sessionCode !== null || bindingCode !== null) &&
+          messageCode !== (sessionCode ?? bindingCode)) {
+        safeSend(ws, { type: "error", message: "Message does not belong to this session" });
+        return;
+      }
+      const joiningDifferentRole =
+        (message.type === "join-broadcaster" && role !== null && role !== "broadcaster") ||
+        (message.type === "join-viewer" && role !== null && role !== "viewer");
+      if ((message.type === "join-broadcaster" || message.type === "join-viewer") &&
+          (joiningDifferentRole || bindingCode !== null)) {
+        safeSend(ws, { type: "error", message: "Socket is already bound to a session" });
+        return;
+      }
+      if (message.type === "join-broadcaster" || message.type === "join-viewer") {
+        bindingCode = messageCode;
+      }
       const session = await liveStreamRegistry.getOrResumeSession(message.code);
       if (!session) {
         safeSend(ws, { type: "error", message: "Stream not found" });
@@ -133,6 +152,13 @@ export function attachLiveSocketServer(upgradeEmitter: {
           break;
         }
         case "join-broadcaster": {
+          if (role !== null && role !== "broadcaster") break;
+          if (typeof message.authToken !== "string" ||
+              !verifyBroadcasterToken(message.authToken, session.code, session.ownerId)) {
+            bindingCode = null;
+            safeSend(ws, { type: "error", message: "Invalid broadcaster credential" });
+            break;
+          }
           // Cancel any pending grace-period timer: the broadcaster reconnected
           // within the window so viewers never need to see the disruption.
           const wasGracing = !!session.broadcasterLeftTimer;
@@ -144,6 +170,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           session.broadcaster = ws;
           role = "broadcaster";
           sessionCode = session.code;
+          bindingCode = null;
           // Record whether this broadcaster will send WebRTC video.
           // Mobile score-keepers set hasVideo: false — viewers should skip WebRTC
           // negotiation and go straight to score-only mode.
@@ -225,10 +252,12 @@ export function attachLiveSocketServer(upgradeEmitter: {
           break;
         }
         case "join-viewer": {
+          if (role !== null && role !== "viewer") break;
           viewerId = nanoid(8);
           session.viewers.set(viewerId, ws);
           role = "viewer";
           sessionCode = session.code;
+          bindingCode = null;
           // Include hasVideo + videoMode so the viewer knows whether to expect
           // WebRTC, MJPEG snapshots, or score-only mode.
           safeSend(ws, { type: "joined", viewerId, hasVideo: session.broadcasterHasVideo, videoMode: session.broadcasterVideoMode });
@@ -244,6 +273,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           break;
         }
         case "offer": {
+          if (role !== "broadcaster" || sessionCode !== session.code) break;
           const target = session.viewers.get(message.targetId);
           if (target) {
             safeSend(target, {
@@ -256,17 +286,21 @@ export function attachLiveSocketServer(upgradeEmitter: {
           break;
         }
         case "answer": {
+          if (role !== "viewer" || sessionCode !== session.code) break;
           if (session.broadcaster) {
             safeSend(session.broadcaster, {
               type: "answer",
               sdp: message.sdp,
-              viewerId: message.targetId,
+              // Never trust a client-supplied target/viewer id. The socket's
+              // server-assigned viewer identity is the only valid route.
+              viewerId,
             });
           }
           break;
         }
         case "ice-candidate": {
-          if (message.targetId === "broadcaster") {
+          if (sessionCode !== session.code) break;
+          if (role === "viewer" && message.targetId === "broadcaster") {
             if (session.broadcaster) {
               safeSend(session.broadcaster, {
                 type: "ice-candidate",
@@ -274,7 +308,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
                 viewerId,
               });
             }
-          } else {
+          } else if (role === "broadcaster") {
             const target = session.viewers.get(message.targetId);
             if (target) {
               safeSend(target, { type: "ice-candidate", candidate: message.candidate });
@@ -283,7 +317,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           break;
         }
         case "scoreboard": {
-          if (role !== "broadcaster") break;
+          if (role !== "broadcaster" || sessionCode !== session.code) break;
           const teamScore = Math.max(0, Math.round(Number(message.teamScore) || 0));
           const opponentScore = Math.max(0, Math.round(Number(message.opponentScore) || 0));
           session.scoreboard = { teamScore, opponentScore };
@@ -297,7 +331,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           break;
         }
         case "stat-event": {
-          if (role !== "broadcaster") break;
+          if (role !== "broadcaster" || sessionCode !== session.code) break;
           const playerName = String(message.playerName ?? "").slice(0, 80);
           const label = String(message.label ?? "").slice(0, 40);
           if (!playerName || !label) break;
@@ -312,7 +346,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           // The broadcaster re-sends its local event log on every (re)connect
           // so the server's recentEvents list is repopulated after a restart
           // instead of staying empty until new stats are tapped.
-          if (role !== "broadcaster") break;
+          if (role !== "broadcaster" || sessionCode !== session.code) break;
           if (!Array.isArray(message.events) || message.events.length === 0) break;
           const incoming = message.events
             .filter((e) => typeof e.playerName === "string" && typeof e.label === "string")
@@ -339,11 +373,9 @@ export function attachLiveSocketServer(upgradeEmitter: {
           // specific viewer's media connection. Let that viewer know so it
           // can show a clear "disconnected" state instead of a frozen
           // silent video.
-          if (role !== "broadcaster") break;
+          if (role !== "broadcaster" || sessionCode !== session.code) break;
           const target = session.viewers.get(message.targetId);
-          if (target) {
-            safeSend(target, { type: "peer-connection-failed" });
-          }
+          if (target) safeSend(target, { type: "peer-connection-failed" });
           break;
         }
         case "request-offer": {
@@ -360,7 +392,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           // Mobile broadcaster sends JPEG snapshots; relay to all current viewers.
           // Server-side rate cap (~12 fps) prevents flooding slow connections even
           // if the phone sends faster.
-          if (role !== "broadcaster") break;
+          if (role !== "broadcaster" || sessionCode !== session.code) break;
           if (typeof message.frame !== "string" || !message.frame) break;
           const now = Date.now();
           const last = lastFrameRelayAt.get(session.code) ?? 0;
@@ -372,6 +404,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           break;
         }
         case "turn-status": {
+          if (role !== "broadcaster" || sessionCode !== session.code) break;
           // The broadcaster's periodic TURN health-check detected a change in
           // relay availability. Fan the status out to every current viewer so
           // restricted-network viewers can show a self-diagnostic banner

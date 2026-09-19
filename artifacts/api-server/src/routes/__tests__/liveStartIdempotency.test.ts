@@ -100,6 +100,7 @@ describe("POST /api/live/start idempotency", () => {
     expect(createSessionMock).toHaveBeenCalledWith(
       { opponent: "Rivals", teamName: "Home" },
       undefined,
+      41,
     );
   });
 });
