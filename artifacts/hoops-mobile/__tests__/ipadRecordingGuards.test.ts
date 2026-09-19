@@ -138,6 +138,20 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs)');
     expect(nativeCameraSource).toContain('AVCaptureSession.wasInterruptedNotification');
     expect(nativeCameraSource).toContain('AVCaptureSession.runtimeErrorNotification');
+    expect(nativeCameraSource).toContain('private var recordingFinalizationInFlight = false');
+    expect(nativeCameraSource).toContain('private var recoveryRestartPending = false');
+    expect(nativeCameraSource).toContain('self.attemptPendingCaptureRecovery(reason: "session-interruption-ended")');
+    expect(nativeCameraSource).toContain('!recordingFinalizationInFlight');
+    expect(nativeCameraSource).toContain('isPreviewAttached');
+    expect(nativeCameraSource).toContain('isPreviewActive');
+    expect(nativeCameraSource).toContain('UIApplication.shared.applicationState == .active');
+    expect(nativeCameraSource).toContain('self.recoveryRestartPending = false');
+    expect(nativeCameraSource).toContain('private let recoveryIntentLock = NSLock()');
+    expect(nativeCameraSource).toContain('setAutomaticRecoverySuppressed(true)');
+    expect(nativeCameraSource).toContain('setAutomaticRecoverySuppressed(false)');
+    expect(nativeCameraSource).toContain('!isAutomaticRecoverySuppressed()');
+    expect(nativeCameraSource).toContain('self.sessionQueue.async {');
+    expect(nativeCameraSource).toContain('self.attemptPendingCaptureRecovery(reason: "recording-finalized-recovery")');
     expect(nativeCameraSource).toContain('if self.movieOutput.isRecording');
     expect(nativeCameraSource).toContain('self.movieOutput.stopRecording()');
     expect(nativeCameraSource).toContain('didStartRecordingTo fileURL');
@@ -148,6 +162,8 @@ describe('iPad recording safeguards', () => {
     expect(nativeCameraSource).toContain('"usable": hasUsableCheckpoint');
     expect(nativeCameraSource).toContain('"durationSeconds": durationSeconds.isFinite');
     expect(source).toContain("broadcastClientDiagnostic('recording-finished'");
+    expect(source).toContain("event.reason?.startsWith('session-interruption-')");
+    expect(source).toContain('if (wasRunning) pendingClockStartRef.current = true');
     expect(source).toContain("event.reason === 'unexpected'");
     expect(source).toContain("event.reason === 'session-interruption'");
     expect(source).toContain("event.reason === 'runtime-error'");
@@ -260,8 +276,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260945');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260945');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-native-recorder-20260946');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260946');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {

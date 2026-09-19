@@ -88,6 +88,11 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   private var lifecycleFinalizationComplete = false
   private var lifecycleFinalizedURI: String?
   private var recordingStopReason: String?
+  private var recordingFinalizationInFlight = false
+  private var sessionInterruptionActive = false
+  private var recoveryRestartPending = false
+  private let recoveryIntentLock = NSLock()
+  private var automaticRecoverySuppressed = false
   private var sharingResumePromise: Promise?
 
   var eventHandler: ((String, [String: Any]) -> Void)?
@@ -107,6 +112,8 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     ) { [weak self] notification in
       self?.sessionQueue.async {
         guard let self else { return }
+        self.sessionInterruptionActive = true
+        self.recoveryRestartPending = true
         if self.isRecording && self.recordingStopReason == nil {
           self.recordingStopReason = "session-interruption"
           // An interrupted AVCaptureMovieFileOutput can remain logically
@@ -114,6 +121,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
           // playable prefix immediately so recovery can start a fresh segment
           // when the session becomes available again.
           if self.movieOutput.isRecording {
+            self.recordingFinalizationInFlight = true
             self.movieOutput.stopRecording()
           }
         }
@@ -132,14 +140,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     ) { [weak self] _ in
       self?.sessionQueue.async {
         guard let self else { return }
-        self.startSessionIfPossible()
-        if self.session.isRunning {
-          self.emitState(
-            "previewing",
-            reason: "session-interruption-ended",
-            timestampMs: self.epochMilliseconds()
-          )
-        }
+        self.sessionInterruptionActive = false
+        self.recoveryRestartPending = true
+        self.attemptPendingCaptureRecovery(reason: "session-interruption-ended")
       }
     }
     sessionRuntimeErrorObserver = NotificationCenter.default.addObserver(
@@ -149,9 +152,11 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
     ) { [weak self] notification in
       self?.sessionQueue.async {
         guard let self else { return }
+        self.recoveryRestartPending = true
         if self.isRecording && self.recordingStopReason == nil {
           self.recordingStopReason = "runtime-error"
           if self.movieOutput.isRecording {
+            self.recordingFinalizationInFlight = true
             self.movieOutput.stopRecording()
           }
         }
@@ -161,17 +166,49 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
           recoverable: true
         )
         self.sessionQueue.asyncAfter(deadline: .now() + 0.35) {
-          self.startSessionIfPossible()
-          if self.session.isRunning {
-            self.emitState(
-              "previewing",
-              reason: "runtime-recovered",
-              timestampMs: self.epochMilliseconds()
-            )
-          }
+          self.attemptPendingCaptureRecovery(reason: "runtime-recovered")
         }
       }
     }
+  }
+
+  private func attemptPendingCaptureRecovery(reason: String) {
+    guard recoveryRestartPending,
+          !isAutomaticRecoverySuppressed(),
+          !recordingFinalizationInFlight,
+          !sessionInterruptionActive,
+          !isRecording,
+          !movieOutput.isRecording,
+          isPreviewAttached,
+          isPreviewActive,
+          UIApplication.shared.applicationState == .active else {
+      return
+    }
+    recoveryRestartPending = false
+    configureIfNeeded()
+    // A session can still report isRunning after media services stopped
+    // delivering samples. Restart it only after the movie delegate finalized
+    // the playable prefix, so startRunning cannot block that callback.
+    if session.isRunning {
+      session.stopRunning()
+    }
+    startSessionIfPossible()
+    if session.isRunning {
+      emitState("previewing", reason: reason, timestampMs: epochMilliseconds())
+    }
+  }
+
+  private func setAutomaticRecoverySuppressed(_ suppressed: Bool) {
+    recoveryIntentLock.lock()
+    automaticRecoverySuppressed = suppressed
+    recoveryIntentLock.unlock()
+  }
+
+  private func isAutomaticRecoverySuppressed() -> Bool {
+    recoveryIntentLock.lock()
+    let suppressed = automaticRecoverySuppressed
+    recoveryIntentLock.unlock()
+    return suppressed
   }
 
   private func installFrameSink() {
@@ -383,6 +420,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   }
 
   func startRecording(muted: Bool, promise: Promise) {
+    // A new explicit recording request is the only operation that re-enables
+    // interruption recovery after a terminal/manual stop.
+    setAutomaticRecoverySuppressed(false)
     sessionQueue.async {
       guard !self.isRecording else {
         promise.reject(HoopsCameraSessionError.alreadyRecording)
@@ -420,6 +460,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.lifecycleInterruptedAtMs = nil
       self.lifecycleFinalizationComplete = false
       self.lifecycleFinalizedURI = nil
+      self.recordingFinalizationInFlight = false
       let cacheDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
       let url = cacheDirectory
         .appendingPathComponent("hoops-recording-\(UUID().uuidString)")
@@ -432,11 +473,18 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
   }
 
   func stopRecording(promise: Promise) {
+    // Set suppression before entering sessionQueue. didFinishRecording may
+    // already be running there, so cancellation cannot wait behind it.
+    setAutomaticRecoverySuppressed(true)
     sessionQueue.async {
+      self.recoveryRestartPending = false
       guard self.isRecording else {
         promise.reject(HoopsCameraSessionError.notRecording)
         return
       }
+      // An explicit JS stop (End Game, camera switch, or teardown) owns what
+      // happens next. It must cancel any automatic interruption recovery so
+      // didFinishRecording cannot restart capture behind terminal save intent.
       // The recording delegate resolves the original start promise and this
       // stop promise together after AVFoundation has finalized the file.
       self.recordingPromise = self.recordingPromise ?? promise
@@ -444,6 +492,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       if self.recordingStopReason == nil {
         self.recordingStopReason = "stopped"
       }
+      self.recordingFinalizationInFlight = true
       self.movieOutput.stopRecording()
     }
   }
@@ -469,6 +518,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
           self.lifecycleFinalizationComplete = false
           self.lifecycleFinalizedURI = nil
           self.recordingStopReason = "lifecycle"
+          self.recordingFinalizationInFlight = true
           self.emitState(
             "paused",
             reason: "lifecycle-interruption",
@@ -584,6 +634,9 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       self.recordingPromise = nil
       self.stopPromise = nil
       self.recordingStopReason = nil
+      self.recordingFinalizationInFlight = false
+      self.sessionInterruptionActive = false
+      self.recoveryRestartPending = false
       self.sharingResumePromise?.reject(
         "ERR_HOOPS_CAMERA_DESTROYED",
         "The camera was destroyed while recovering from sharing."
@@ -794,6 +847,7 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
         self.emitEvent("onRecordingFinished", finishedPayload)
       }
       self.recordingStopReason = nil
+      self.recordingFinalizationInFlight = false
       if stopReason == "lifecycle" {
         // Backgrounding must leave AVFoundation paused after the interrupted
         // file finishes. A later didBecomeActive recovery owns the restart.
@@ -801,6 +855,12 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
         self.emitState(
           "paused",
           reason: "recording-finished",
+          interruptionID: self.lifecycleInterruptionID
+        )
+      } else if self.recoveryRestartPending {
+        self.emitState(
+          "paused",
+          reason: "recording-finished-waiting-recovery",
           interruptionID: self.lifecycleInterruptionID
         )
       } else {
@@ -812,6 +872,13 @@ final class HoopsCameraSessionController: NSObject, AVCaptureFileOutputRecording
       }
       if !self.isPreviewAttached && !self.isRecording {
         self.stopSession()
+      }
+      if stopReason != "lifecycle" {
+        // Yield one sessionQueue turn so an explicit stop already waiting in
+        // the queue can publish terminal recovery suppression first.
+        self.sessionQueue.async {
+          self.attemptPendingCaptureRecovery(reason: "recording-finalized-recovery")
+        }
       }
     }
   }

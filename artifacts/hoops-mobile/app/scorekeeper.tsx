@@ -1868,6 +1868,18 @@ export default function ScorekeeperScreen() {
         reason: event.reason ?? '',
         isRecording: event.isRecording,
       });
+      const isSessionInterruption =
+        event.state === 'paused' &&
+        event.reason?.startsWith('session-interruption-');
+      if (isSessionInterruption) {
+        nativeRecordingActiveRef.current = false;
+        stopVideoTimelineSegment(videoTimelineClockRef.current, event.timestampMs);
+        setIsRecording(false);
+        setRunning((wasRunning) => {
+          if (wasRunning) pendingClockStartRef.current = true;
+          return false;
+        });
+      }
       if (
         event.state === 'previewing' &&
         unexpectedRecordingResumePendingRef.current &&
