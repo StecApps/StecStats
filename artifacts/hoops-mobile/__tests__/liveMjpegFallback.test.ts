@@ -19,10 +19,14 @@ describe('shared-camera MJPEG fallback', () => {
     expect(source).toContain('}, 15_000);');
   });
 
-  test('uses bounded MJPEG as the primary shared-camera live transport', () => {
-    expect(source).toContain("startMjpegFallback(liveCode, 'shared-camera-primary')");
-    expect(source).toContain("startMjpegFallback(code, 'camera-preview-ready')");
-    expect(source).toContain('camera-state-${event.state}');
+  test('uses native WebRTC first and reserves MJPEG for actual stream failures', () => {
+    expect(source).toContain('const liveVideo = await createHoopsCameraLiveVideoAsync()');
+    expect(source).toContain('broadcastVideoModeWhenJoined(liveCode, true)');
+    expect(source).not.toContain("startMjpegFallback(liveCode, 'shared-camera-primary')");
+    expect(source).not.toContain("startMjpegFallback(code, 'camera-preview-ready')");
+    expect(source).not.toContain('camera-state-${event.state}');
+    expect(source).toContain("startMjpegFallback(liveCode, 'shared-stream-failed')");
+    expect(source).toContain("startMjpegFallback(liveCode, 'shared-track-ended')");
     expect(facade).toContain("return typeof nativeModule?.startMjpegAsync === 'function'");
   });
 

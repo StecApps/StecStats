@@ -1826,15 +1826,6 @@ export default function ScorekeeperScreen() {
 
   function onCameraReady() {
     cameraReadyRef.current = true;
-    const code = liveCodeRef.current;
-    if (
-      sharedCameraMode &&
-      code &&
-      !mjpegFallbackActiveRef.current &&
-      !mjpegFallbackTransitionRef.current
-    ) {
-      void startMjpegFallback(code, 'camera-preview-ready');
-    }
     if (
       pendingRecordRef.current &&
       !recordingStartedRef.current &&
@@ -1901,15 +1892,6 @@ export default function ScorekeeperScreen() {
           startRef.current = Date.now();
           setRunning(true);
         }
-      }
-      if (
-        (event.state === 'previewing' || event.state === 'recording') &&
-        liveCodeRef.current &&
-        !recordingTerminalIntentRef.current &&
-        !mjpegFallbackActiveRef.current &&
-        !mjpegFallbackTransitionRef.current
-      ) {
-        void startMjpegFallback(liveCodeRef.current, `camera-state-${event.state}`);
       }
       if (event.reason !== 'lifecycle-interruption') return;
       lifecycleInterruptedRef.current = true;
@@ -2155,16 +2137,6 @@ export default function ScorekeeperScreen() {
       stopWebRtcStream();
       broadcastVideoModeWhenJoined(liveCode, false);
       return;
-    }
-    // The bounded 3 fps MJPEG route shares HoopsCamera's existing capture
-    // output and has proven more reliable on physical iPads than the custom
-    // WebRTC bridge. Use it as the primary shared-camera transport instead of
-    // waiting for a WebRTC failure while the viewer remains score-only.
-    if (sharedCameraMode) {
-      void startMjpegFallback(liveCode, 'shared-camera-primary');
-      return () => {
-        cancelled = true;
-      };
     }
     // HoopsCameraView applies facing changes to the existing native session.
     // Do not tear down a shared viewer stream just because that prop changed
