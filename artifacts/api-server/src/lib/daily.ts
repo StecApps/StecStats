@@ -75,10 +75,55 @@ export async function createDailyMeetingToken(
 }
 
 export async function stopDailyRecording(roomName: string): Promise<void> {
-  await dailyRequest(`/rooms/${encodeURIComponent(roomName)}/recordings/stop`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
+  try {
+    await dailyRequest(`/rooms/${encodeURIComponent(roomName)}/recordings/stop`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Daily API (400|404|409)|no active recording|already stopped/i.test(message)) throw error;
+  }
+}
+
+export async function startDailyRtmp(
+  roomName: string,
+  ingestionAddress: string,
+  streamName: string,
+): Promise<void> {
+  // Daily expects the complete RTMP URL, while YouTube returns its endpoint
+  // and secret stream name separately. Normalize both sides without ever
+  // logging or returning the resulting URL.
+  const rtmpUrl = `${ingestionAddress.replace(/\/+$/, "")}/${streamName.replace(/^\/+/, "")}`;
+  try {
+    await dailyRequest(`/rooms/${encodeURIComponent(roomName)}/live-streaming/start`, {
+      method: "POST",
+      body: JSON.stringify({
+        rtmpUrl,
+        width: 1280,
+        height: 720,
+        fps: 30,
+        layout: { preset: "single-participant" },
+      }),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Daily API (400|409)|already (active|streaming)|live stream.*active/i.test(message)) throw error;
+  }
+}
+
+export async function stopDailyRtmp(roomName: string): Promise<void> {
+  try {
+    await dailyRequest(`/rooms/${encodeURIComponent(roomName)}/live-streaming/stop`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  } catch (error) {
+    // Stopping is deliberately idempotent: Daily reports no active stream as
+    // a 404/409 (or an equivalent descriptive error) after a prior stop.
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Daily API (404|409)|no active stream|already stopped/i.test(message)) throw error;
+  }
 }
 
 export async function listDailyRecordings(roomName: string): Promise<DailyRecording[]> {

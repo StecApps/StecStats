@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import { liveStreamRegistry, MAX_RECENT_STAT_EVENTS } from "./liveStream";
 import { logger } from "./logger";
 import { verifyBroadcasterToken } from "./liveAuth";
+import { enqueueLivePublicEvent } from "./livePublicEvents";
 
 const LIVE_WS_PATH = "/api/live/ws";
 
@@ -234,9 +235,12 @@ export function attachLiveSocketServer(upgradeEmitter: {
           ) {
             const teamScore = Math.max(0, Math.round(message.teamScore));
             const opponentScore = Math.max(0, Math.round(message.opponentScore));
-            session.scoreboard = { teamScore, opponentScore };
-            for (const viewerWs of session.viewers.values()) {
-              safeSend(viewerWs, { type: "scoreboard", teamScore, opponentScore });
+            session.authoritativeScoreboard = { teamScore, opponentScore };
+            if (!session.youtubeDelayed) {
+              session.scoreboard = { teamScore, opponentScore };
+              for (const viewerWs of session.viewers.values()) {
+                safeSend(viewerWs, { type: "scoreboard", teamScore, opponentScore });
+              }
             }
           }
           for (const [id] of session.viewers) {
@@ -320,14 +324,18 @@ export function attachLiveSocketServer(upgradeEmitter: {
           if (role !== "broadcaster" || sessionCode !== session.code) break;
           const teamScore = Math.max(0, Math.round(Number(message.teamScore) || 0));
           const opponentScore = Math.max(0, Math.round(Number(message.opponentScore) || 0));
-          session.scoreboard = { teamScore, opponentScore };
-          for (const viewerWs of session.viewers.values()) {
-            safeSend(viewerWs, { type: "scoreboard", teamScore, opponentScore });
+          session.authoritativeScoreboard = { teamScore, opponentScore };
+          if (session.youtubeDelayed) {
+            void enqueueLivePublicEvent(session.id, "scoreboard", { teamScore, opponentScore })
+              .catch((error) => logger.warn({ err: error }, "Failed to queue delayed live scoreboard"));
+          } else {
+            session.scoreboard = { teamScore, opponentScore };
+            for (const viewerWs of session.viewers.values()) safeSend(viewerWs, { type: "scoreboard", teamScore, opponentScore });
+            liveStreamRegistry.persistScoreboard(session.code, teamScore, opponentScore);
           }
           // Persist the latest score to the database (throttled) so that if
           // the server restarts, getOrResumeSession can restore the real score
           // immediately — without waiting for the broadcaster to reconnect.
-          liveStreamRegistry.persistScoreboard(session.code, teamScore, opponentScore);
           break;
         }
         case "stat-event": {
@@ -335,11 +343,12 @@ export function attachLiveSocketServer(upgradeEmitter: {
           const playerName = String(message.playerName ?? "").slice(0, 80);
           const label = String(message.label ?? "").slice(0, 40);
           if (!playerName || !label) break;
-          const statEvent = { id: nanoid(8), playerName, label, timestamp: Date.now() };
-          session.recentEvents = [...session.recentEvents, statEvent].slice(-MAX_RECENT_STAT_EVENTS);
-          for (const viewerWs of session.viewers.values()) {
-            safeSend(viewerWs, { type: "stat-event", event: statEvent });
-          }
+           const statEvent = { id: nanoid(8), playerName, label, timestamp: Date.now() };
+            if (session.youtubeDelayed) void enqueueLivePublicEvent(session.id, "stat-event", statEvent).catch((error) => logger.warn({ err: error }, "Failed to queue delayed live stat"));
+            else {
+              session.recentEvents = [...session.recentEvents, statEvent].slice(-MAX_RECENT_STAT_EVENTS);
+              for (const viewerWs of session.viewers.values()) safeSend(viewerWs, { type: "stat-event", event: statEvent });
+            }
           break;
         }
         case "resync-events": {
@@ -359,8 +368,13 @@ export function attachLiveSocketServer(upgradeEmitter: {
               // is correct on the viewer ticker; fall back to now only when absent.
               timestamp: typeof e.timestamp === "number" ? e.timestamp : Date.now(),
             }));
-          if (incoming.length === 0) break;
-          session.recentEvents = incoming;
+           if (incoming.length === 0) break;
+           if (session.youtubeDelayed) {
+             // The durable queue already contains the authoritative live
+             // events. Re-enqueuing a reconnect snapshot would duplicate them.
+             break;
+           }
+           session.recentEvents = incoming;
           // Push the repopulated list to every viewer currently watching so
           // their ticker fills in immediately without a page reload.
           for (const viewerWs of session.viewers.values()) {

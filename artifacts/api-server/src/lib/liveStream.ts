@@ -1,6 +1,6 @@
 import type { WebSocket } from "ws";
-import { and, eq, isNull, lt } from "drizzle-orm";
-import { db, liveSessionsTable } from "@workspace/db";
+import { and, desc, eq, isNull, lt } from "drizzle-orm";
+import { db, liveSessionsTable, livePublicEventsTable } from "@workspace/db";
 import { logger } from "./logger";
 
 export type IceServer = {
@@ -156,6 +156,7 @@ export type StatEvent = {
 export const MAX_RECENT_STAT_EVENTS = 8;
 
 export type LiveSession = {
+  id: number;
   code: string;
   ownerId: number;
   meta: LiveSessionMeta;
@@ -163,6 +164,9 @@ export type LiveSession = {
   broadcaster: WebSocket | null;
   viewers: Map<string, WebSocket>;
   scoreboard: Scoreboard;
+  authoritativeScoreboard: Scoreboard;
+  youtubeDelayed: boolean;
+  delayedScoreTimer: ReturnType<typeof setTimeout> | null;
   recentEvents: StatEvent[];
   /**
    * When the broadcaster's WebSocket drops, a grace-period timer is started
@@ -257,7 +261,8 @@ export class LiveStreamRegistry {
    * instead of the invite link being permanently dead.
    */
   async createSession(meta: LiveSessionMeta, preferredCode?: string, ownerId = 0): Promise<LiveSession> {
-    const makeSession = (code: string): LiveSession => ({
+    const makeSession = (code: string, id: number): LiveSession => ({
+      id,
       code,
       ownerId,
       meta,
@@ -265,6 +270,9 @@ export class LiveStreamRegistry {
       broadcaster: null,
       viewers: new Map(),
       scoreboard: { teamScore: 0, opponentScore: 0 },
+      authoritativeScoreboard: { teamScore: 0, opponentScore: 0 },
+      youtubeDelayed: false,
+      delayedScoreTimer: null,
       recentEvents: [],
       broadcasterLeftTimer: null,
       // Until a broadcaster socket explicitly announces its mode, there is no
@@ -292,7 +300,7 @@ export class LiveStreamRegistry {
           active: true,
         })
         .onConflictDoNothing()
-        .returning({ code: liveSessionsTable.code });
+        .returning({ code: liveSessionsTable.code, id: liveSessionsTable.id });
 
       if (inserted.length === 0) {
         const resumed = await this.getOrResumeSession(code);
@@ -302,7 +310,7 @@ export class LiveStreamRegistry {
 
       const raced = this.sessions.get(code);
       if (raced) return raced;
-      const session = makeSession(code);
+      const session = makeSession(code, inserted[0]!.id);
       this.sessions.set(code, session);
       return session;
     }
@@ -322,10 +330,10 @@ export class LiveStreamRegistry {
           active: true,
         })
         .onConflictDoNothing()
-        .returning({ code: liveSessionsTable.code });
+        .returning({ code: liveSessionsTable.code, id: liveSessionsTable.id });
       if (inserted.length === 0) continue;
 
-      const session = makeSession(code);
+      const session = makeSession(code, inserted[0]!.id);
       this.sessions.set(code, session);
       return session;
     }
@@ -333,6 +341,36 @@ export class LiveStreamRegistry {
 
   getSession(code: string): LiveSession | undefined {
     return this.sessions.get(code.toUpperCase());
+  }
+
+  markYoutubeDelayed(code: string): void {
+    const session = this.sessions.get(code.toUpperCase());
+    if (session) session.youtubeDelayed = true;
+  }
+
+  getSessionById(id: number): LiveSession | undefined {
+    for (const session of this.sessions.values()) if (session.id === id) return session;
+    return undefined;
+  }
+
+  publishPublicEvent(code: string, eventType: string, payload: unknown): void {
+    const session = this.sessions.get(code.toUpperCase());
+    if (!session) return;
+    if (eventType === "scoreboard") {
+      const score = payload as { teamScore: number; opponentScore: number };
+      session.scoreboard = { teamScore: score.teamScore, opponentScore: score.opponentScore };
+      for (const viewer of session.viewers.values()) {
+        if (viewer.readyState === viewer.OPEN) viewer.send(JSON.stringify({ type: "scoreboard", ...score }));
+      }
+      return;
+    }
+    if (eventType === "stat-event") {
+      const event = payload as StatEvent;
+      session.recentEvents = [...session.recentEvents, event].slice(-MAX_RECENT_STAT_EVENTS);
+      for (const viewer of session.viewers.values()) {
+        if (viewer.readyState === viewer.OPEN) viewer.send(JSON.stringify({ type: "stat-event", event }));
+      }
+    }
   }
 
   /**
@@ -364,6 +402,7 @@ export class LiveStreamRegistry {
 
     const resumed: LiveSession = {
       code: row.code,
+      id: row.id,
       ownerId: row.ownerId,
       meta: { opponent: row.opponent, teamName: row.teamName },
       createdAt: row.createdAt.getTime(),
@@ -371,7 +410,10 @@ export class LiveStreamRegistry {
       viewers: new Map(),
       // Restore the last-known scores from the database so viewers who join
       // before the broadcaster reconnects see the real score, not 0-0.
-      scoreboard: { teamScore: row.teamScore, opponentScore: row.opponentScore },
+       scoreboard: { teamScore: row.teamScore, opponentScore: row.opponentScore },
+       authoritativeScoreboard: { teamScore: row.teamScore, opponentScore: row.opponentScore },
+       youtubeDelayed: Boolean(row.youtubeVideoId),
+       delayedScoreTimer: null,
       recentEvents: [],
       broadcasterLeftTimer: null,
       // A resumed DB shell has no local broadcaster socket or media source.
@@ -380,6 +422,19 @@ export class LiveStreamRegistry {
       broadcasterVideoMode: 'none' as const,
     };
     this.sessions.set(upper, resumed);
+    if (resumed.youtubeDelayed) {
+      const delivered = await db.select({ payload: livePublicEventsTable.payload })
+        .from(livePublicEventsTable)
+        .where(and(
+          eq(livePublicEventsTable.liveSessionId, row.id),
+          eq(livePublicEventsTable.status, "delivered"),
+          eq(livePublicEventsTable.eventType, "stat-event"),
+        ))
+        .orderBy(desc(livePublicEventsTable.applyAt), desc(livePublicEventsTable.id))
+        .limit(8);
+      resumed.recentEvents = delivered.reverse()
+        .map((event) => event.payload as StatEvent);
+    }
     try {
       await db
         .update(liveSessionsTable)

@@ -824,6 +824,27 @@ paths:
                   token: { type: string }
                   active: { type: boolean }
         "404": { description: Live video is unavailable }
+  /live/{code}/youtube/start:
+    post:
+      operationId: startLiveYoutube
+      tags: [live]
+      summary: Start the public unlisted YouTube relay for an owner session
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Public YouTube watch metadata (never includes the stream key)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [videoId, watchUrl]
+                properties:
+                  videoId: { type: string }
+                  watchUrl: { type: string, format: uri }
+        "403": { description: YouTube authorization or Live enablement required }
+        "404": { description: Session or Daily room not found }
   /live/{code}/recording/attach:
     post:
       operationId: attachLiveRecordingToGame

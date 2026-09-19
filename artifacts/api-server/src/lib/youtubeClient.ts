@@ -30,10 +30,115 @@ export function getAuthUrl(state: string): string {
   const client = makeOAuth2Client();
   return client.generateAuthUrl({
     access_type: "offline",
-    scope: ["https://www.googleapis.com/auth/youtube.upload"],
+    scope: ["https://www.googleapis.com/auth/youtube.force-ssl"],
     state,
     prompt: "select_account consent",
   });
+}
+
+export type YouTubeLiveResources = {
+  broadcastId: string;
+  streamId: string;
+  videoId: string;
+  watchUrl: string;
+  rtmpUrl: string;
+  streamKey: string;
+};
+
+function youtubeAuth(refreshToken: string) {
+  const oauth2Client = makeOAuth2Client();
+  oauth2Client.setCredentials({ refresh_token: refreshToken });
+  return google.youtube({ version: "v3", auth: oauth2Client });
+}
+
+function mapYouTubeError(err: unknown): never {
+  const status = (err as { status?: number; code?: number })?.status ??
+    (err as { status?: number; code?: number })?.code;
+  const reason = String((err as { errors?: Array<{ reason?: string }> })?.errors?.[0]?.reason ?? "");
+  if (status === 401 || status === 403) {
+    if (/liveStreamingNotEnabled/i.test(reason)) {
+      throw new YouTubeAuthError("YouTube Live is not enabled for this account. Enable live streaming or reconnect YouTube.");
+    }
+    throw new YouTubeAuthError("YouTube token expired or revoked — please reconnect");
+  }
+  throw err;
+}
+
+export async function ensureLiveResources(refreshToken: string, existing?: {
+  broadcastId?: string | null; streamId?: string | null;
+  onBroadcastReady?: (broadcastId: string) => Promise<void>;
+  onStreamReady?: (streamId: string) => Promise<void>;
+}): Promise<YouTubeLiveResources> {
+  const youtube = youtubeAuth(refreshToken);
+  try {
+    let broadcast = existing?.broadcastId
+      ? (await youtube.liveBroadcasts.list({ part: ["id", "snippet", "status", "contentDetails"], id: [existing.broadcastId] })).data.items?.[0]
+      : undefined;
+    if (broadcast?.status?.lifeCycleStatus === "complete" ||
+        broadcast?.status?.lifeCycleStatus === "revoked") {
+      broadcast = undefined;
+    }
+    if (!broadcast) {
+      broadcast = (await youtube.liveBroadcasts.insert({
+        part: ["snippet", "status", "contentDetails"],
+        requestBody: {
+          snippet: { title: "StecStats Live", description: "Live game stream" },
+          status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
+          contentDetails: {
+            enableAutoStart: true,
+            enableAutoStop: true,
+            latencyPreference: "low",
+            enableClosedCaptions: false,
+          },
+        },
+      })).data;
+    }
+    const broadcastId = broadcast.id;
+    if (!broadcastId) throw new Error("YouTube did not return a broadcast ID");
+    await existing?.onBroadcastReady?.(broadcastId);
+    let stream = existing?.streamId
+      ? (await youtube.liveStreams.list({ part: ["id", "cdn", "status"], id: [existing.streamId] })).data.items?.[0]
+      : undefined;
+    if (!stream) {
+      stream = (await youtube.liveStreams.insert({
+        part: ["snippet", "cdn", "contentDetails", "status"],
+        requestBody: {
+          snippet: { title: "StecStats Live" },
+          cdn: { frameRate: "variable", ingestionType: "rtmp", resolution: "variable" },
+        },
+      })).data;
+    }
+    const streamId = stream.id;
+    const ingestion = stream.cdn?.ingestionInfo;
+    if (!streamId || !ingestion?.ingestionAddress || !ingestion.streamName) {
+      throw new Error("YouTube did not return a usable RTMP ingest endpoint");
+    }
+    await existing?.onStreamReady?.(streamId);
+    const bound = broadcast.contentDetails?.boundStreamId;
+    if (bound !== streamId) {
+      await youtube.liveBroadcasts.bind({ id: broadcastId, part: ["id", "contentDetails"], streamId });
+    }
+    return {
+      broadcastId,
+      streamId,
+      videoId: broadcastId,
+      watchUrl: `https://www.youtube.com/watch?v=${broadcastId}`,
+      rtmpUrl: ingestion.ingestionAddress,
+      streamKey: ingestion.streamName,
+    };
+  } catch (err) {
+    return mapYouTubeError(err);
+  }
+}
+
+export async function stopLiveBroadcast(refreshToken: string, broadcastId: string): Promise<void> {
+  try {
+    const youtube = youtubeAuth(refreshToken);
+    await youtube.liveBroadcasts.transition({ id: broadcastId, broadcastStatus: "complete", part: ["id", "status"] });
+  } catch (err) {
+    const status = (err as { status?: number; code?: number })?.status ?? (err as { status?: number; code?: number })?.code;
+    if (status !== 400 && status !== 404) mapYouTubeError(err);
+  }
 }
 
 export async function exchangeCode(code: string): Promise<{ refreshToken: string | null }> {

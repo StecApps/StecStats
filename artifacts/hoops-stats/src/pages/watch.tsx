@@ -108,6 +108,7 @@ export default function WatchStream() {
   const dailyFailureRef = useRef(false);
   const dailySessionRef = useRef(false);
   const dailyCallRef = useRef<ReturnType<typeof DailyIframe.createCallObject> | null>(null);
+  const youtubeSessionRef = useRef(false);
   // True when the broadcaster is sending MJPEG snapshots over WebSocket.
   const [isMjpeg, setIsMjpeg] = useState(false);
   const mjpegImgRef = useRef<HTMLImageElement | null>(null);
@@ -588,6 +589,9 @@ export default function WatchStream() {
       }
       setStatus(s);
       setScoreboard({ teamScore: s.teamScore, opponentScore: s.opponentScore });
+      if (s.videoMode === "youtube") {
+        youtubeSessionRef.current = true;
+      }
       if (s.videoMode === "daily") {
         dailySessionRef.current = true;
         dailyFailureRef.current = false;
@@ -603,10 +607,12 @@ export default function WatchStream() {
           }
         }
       }
-      if (!s.videoMode || s.videoMode !== "daily") {
+      if (!s.videoMode || (s.videoMode !== "daily" && s.videoMode !== "youtube")) {
         setState(s.active ? "connecting" : "waiting-for-broadcaster");
       } else if (!s.active) {
         setState("waiting-for-broadcaster");
+      } else if (s.videoMode === "youtube") {
+        setState("live");
       }
     });
 
@@ -695,6 +701,17 @@ export default function WatchStream() {
 
         if (message.type === "joined") {
           myViewerIdRef.current = message.viewerId;
+          if (youtubeSessionRef.current || message.videoMode === "youtube") {
+            youtubeSessionRef.current = true;
+            setScoreOnly(false);
+            setIsMjpeg(false);
+            if (offerWatchdogRef.current) {
+              clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = null;
+            }
+            setState("live");
+            return;
+          }
           if (dailySessionRef.current || message.videoMode === "daily") {
             // Daily owns media for this session; this socket remains active
             // solely for scoreboard/stat/chat events.
@@ -748,6 +765,18 @@ export default function WatchStream() {
         }
 
         if (message.type === "session-mode") {
+          if (youtubeSessionRef.current || message.videoMode === "youtube") {
+            youtubeSessionRef.current = true;
+            setScoreOnly(false);
+            setIsMjpeg(false);
+            setBroadcasterReconnecting(false);
+            if (offerWatchdogRef.current) {
+              clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = null;
+            }
+            setState("live");
+            return;
+          }
           if (dailySessionRef.current) return;
           if (message.videoMode === "mjpeg") {
             setScoreOnly(false);
@@ -1024,21 +1053,49 @@ export default function WatchStream() {
         className="w-full h-full flex items-center justify-center will-change-transform"
         style={{ transformOrigin: "center center" }}
       >
-        {/* MJPEG snapshot feed — shown for mobile broadcasters with camera */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          ref={mjpegImgRef}
-          alt="Live stream"
-          className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${isMjpeg && state === "live" ? "" : "hidden"}`}
-        />
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={muted}
-          onLoadedMetadata={handleLoadedMetadata}
-          className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${!isMjpeg && !scoreOnly && state === "live" ? "" : "invisible"}`}
-        />
+        {status?.videoMode === "youtube" ? (
+          status.youtubeVideoId ? (
+            <iframe
+              className={`w-full h-full border-0 pointer-events-auto ${state === "live" ? "" : "invisible"}`}
+              src={`https://www.youtube-nocookie.com/embed/${status.youtubeVideoId}?autoplay=1&mute=1&playsinline=1&controls=1`}
+              title="Live Stream"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          ) : (
+            <div className={`w-full h-full flex items-center justify-center ${state === "live" ? "" : "invisible"}`}>
+              {status.youtubeWatchUrl && (
+                <a
+                  href={status.youtubeWatchUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors pointer-events-auto"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Open in YouTube
+                </a>
+              )}
+            </div>
+          )
+        ) : (
+          <>
+            {/* MJPEG snapshot feed — shown for mobile broadcasters with camera */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              ref={mjpegImgRef}
+              alt="Live stream"
+              className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${isMjpeg && state === "live" ? "" : "hidden"}`}
+            />
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted={muted}
+              onLoadedMetadata={handleLoadedMetadata}
+              className={`w-full h-full ${fillMode ? "object-cover" : "object-contain"} ${!isMjpeg && !scoreOnly && state === "live" ? "" : "invisible"}`}
+            />
+          </>
+        )}
       </div>
 
       {broadcasterReconnecting && (
@@ -1200,37 +1257,44 @@ export default function WatchStream() {
 
       {state === "live" && (
         <div
-          className="absolute left-3 right-3 flex items-center gap-2"
+          className="absolute left-3 right-3 flex items-center justify-between gap-2"
           style={{ bottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
         >
-          <button
-            onClick={shareLink}
-            className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors pointer-events-auto"
-          >
-            {shareStatus === "copied"
-              ? <><Check className="w-4 h-4 text-green-400" /> Copied!</>
-              : <><Share2 className="w-4 h-4" /> Share</>}
-          </button>
-          {!scoreOnly && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setFillMode(prev => {
-                  if (!prev) resetZoom();
-                  return !prev;
-                });
-              }}
+              onClick={shareLink}
               className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors pointer-events-auto"
-              title={fillMode ? "Show full frame" : "Fill screen"}
             >
-              {fillMode
-                ? <><Minimize2 className="w-4 h-4" /> Fit</>
-                : <><Maximize2 className="w-4 h-4" /> Fill</>}
+              {shareStatus === "copied"
+                ? <><Check className="w-4 h-4 text-green-400" /> Copied!</>
+                : <><Share2 className="w-4 h-4" /> Share</>}
             </button>
+            {!scoreOnly && status?.videoMode !== "youtube" && (
+              <button
+                onClick={() => {
+                  setFillMode(prev => {
+                    if (!prev) resetZoom();
+                    return !prev;
+                  });
+                }}
+                className="flex items-center gap-1.5 rounded-full bg-black/70 text-white text-sm font-semibold px-4 py-2 backdrop-blur-sm hover:bg-black/80 transition-colors pointer-events-auto"
+                title={fillMode ? "Show full frame" : "Fill screen"}
+              >
+                {fillMode
+                  ? <><Minimize2 className="w-4 h-4" /> Fit</>
+                  : <><Maximize2 className="w-4 h-4" /> Fill</>}
+              </button>
+            )}
+          </div>
+          {status?.videoMode === "youtube" && status.scoreboardDelayMs !== undefined && status.scoreboardDelayMs > 0 && (
+            <div className="rounded-full bg-black/70 px-3 py-1.5 text-[11px] font-medium text-white/90 backdrop-blur-sm pointer-events-auto">
+              Video &amp; scoreboard delayed by {Math.round(status.scoreboardDelayMs / 1000)}s
+            </div>
           )}
         </div>
       )}
 
-      {state === "live" && muted && !scoreOnly && (
+      {state === "live" && muted && !scoreOnly && status?.videoMode !== "youtube" && (
         <button
           onClick={unmute}
           className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40 backdrop-blur-sm z-10"
@@ -1353,7 +1417,7 @@ export default function WatchStream() {
           {state === "waiting-for-broadcaster" && (
             <>
               <Users className="w-8 h-8 text-primary" />
-              <p className="max-w-sm text-white">{explicitEndRef.current ? "Game hasn't started yet. You're in the right place — it'll connect automatically when the coach goes live." : "Stream interrupted — staying connected. It'll resume automatically when the coach reconnects."}</p>
+              <p className="max-w-sm text-white">{!status?.active ? "Game hasn't started yet. You're in the right place — it'll connect automatically when the coach goes live." : "Stream interrupted — staying connected. It'll resume automatically when the coach reconnects."}</p>
               <button
                 onClick={handleCheckAgain}
                 disabled={isCheckingAgain || checkAgainCooldown > 0}
@@ -1369,6 +1433,16 @@ export default function WatchStream() {
                 <p className="text-xs text-red-400 text-center max-w-xs" role="alert">
                   Couldn't reach the server — check your connection and try again.
                 </p>
+              )}
+              {status?.videoMode === "youtube" && status.youtubeWatchUrl && (
+                <a
+                  href={status.youtubeWatchUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors pointer-events-auto"
+                >
+                  Open in YouTube
+                </a>
               )}
               <button
                 onClick={shareLink}

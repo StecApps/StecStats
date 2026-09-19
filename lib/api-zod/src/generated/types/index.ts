@@ -53,6 +53,7 @@ export * from './playerSummarySeasonScope';
 export * from './playerTeamGroup';
 export * from './playerUpdate';
 export * from './portalSessionResponse';
+export * from './startLiveYoutube200';
 export * from './team';
 export * from './teamInput';
 export * from './teamInputSport';

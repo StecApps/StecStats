@@ -599,6 +599,11 @@ export type GetLiveDailyViewerToken200 = {
   active: boolean;
 };
 
+export type StartLiveYoutube200 = {
+  videoId: string;
+  watchUrl: string;
+};
+
 export type AttachLiveRecordingToGame202Status = typeof AttachLiveRecordingToGame202Status[keyof typeof AttachLiveRecordingToGame202Status];
 
 

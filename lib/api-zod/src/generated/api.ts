@@ -1267,6 +1267,19 @@ export const GetLiveDailyViewerTokenResponse = zod.object({
 
 
 /**
+ * @summary Start the public unlisted YouTube relay for an owner session
+ */
+export const StartLiveYoutubeParams = zod.object({
+  "code": zod.coerce.string()
+})
+
+export const StartLiveYoutubeResponse = zod.object({
+  "videoId": zod.string(),
+  "watchUrl": zod.string().url()
+})
+
+
+/**
  * @summary Queue finalized Daily recording import for a saved game
  */
 export const AttachLiveRecordingToGameParams = zod.object({

@@ -19,6 +19,8 @@ import {
 } from "./lib/seed";
 import { PROXY_VERSION, buildGameProxyNow } from "./lib/highlightGenerator";
 import { startDailyRecordingImportWorker } from "./lib/dailyRecordingImport";
+import { startLivePublicEventWorker } from "./lib/livePublicEvents";
+import { startLiveFinalizerWorker } from "./lib/liveFinalizer";
 
 const rawPort = process.env["PORT"];
 
@@ -619,6 +621,8 @@ async function boot() {
   attachLiveSocketServer(server);
   liveStreamRegistry.startCleanupTimer();
   if (process.env.NODE_ENV !== "test") startDailyRecordingImportWorker();
+  if (process.env.NODE_ENV !== "test") startLivePublicEventWorker();
+  if (process.env.NODE_ENV !== "test") startLiveFinalizerWorker();
 
   // Check TURN relay availability once at startup and log the result so
   // operators know immediately if streams will fall back to STUN-only on

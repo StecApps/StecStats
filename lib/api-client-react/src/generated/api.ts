@@ -45,6 +45,7 @@ import type {
   PlayerTeamGroup,
   PlayerUpdate,
   PortalSessionResponse,
+  StartLiveYoutube200,
   Team,
   TeamInput,
   TeamUpdate,
@@ -2998,6 +2999,77 @@ export function useGetLiveDailyViewerToken<TData = Awaited<ReturnType<typeof get
 
 
 
+
+export const getStartLiveYoutubeUrl = (code: string,) => {
+
+
+
+
+  return `/api/live/${code}/youtube/start`
+}
+
+/**
+ * @summary Start the public unlisted YouTube relay for an owner session
+ */
+export const startLiveYoutube = async (code: string, options?: RequestInit): Promise<StartLiveYoutube200> => {
+
+  return customFetch<StartLiveYoutube200>(getStartLiveYoutubeUrl(code),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartLiveYoutubeMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startLiveYoutube>>, TError,{code: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startLiveYoutube>>, TError,{code: string}, TContext> => {
+
+const mutationKey = ['startLiveYoutube'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startLiveYoutube>>, {code: string}> = (props) => {
+          const {code} = props ?? {};
+
+          return  startLiveYoutube(code,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartLiveYoutubeMutationResult = NonNullable<Awaited<ReturnType<typeof startLiveYoutube>>>
+
+    export type StartLiveYoutubeMutationError = ErrorType<void>
+
+    /**
+ * @summary Start the public unlisted YouTube relay for an owner session
+ */
+export const useStartLiveYoutube = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startLiveYoutube>>, TError,{code: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startLiveYoutube>>,
+        TError,
+        {code: string},
+        TContext
+      > => {
+      return useMutation(getStartLiveYoutubeMutationOptions(options));
+    }
 
 export const getAttachLiveRecordingToGameUrl = (code: string,) => {
 

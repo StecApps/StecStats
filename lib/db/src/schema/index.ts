@@ -5,6 +5,7 @@ export * from "./player-game-stats";
 export * from "./game-events";
 export * from "./live-sessions";
 export * from "./live-recording-jobs";
+export * from "./live-public-events";
 export * from "./users";
 export * from "./feedback";
 export * from "./purchase-events";

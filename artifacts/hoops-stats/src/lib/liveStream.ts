@@ -62,7 +62,10 @@ export type LiveStatus = {
   teamScore: number;
   opponentScore: number;
   /** The broadcaster transport selected for this session. */
-  videoMode?: "daily" | "webrtc" | "mjpeg" | "none";
+  videoMode?: "daily" | "webrtc" | "mjpeg" | "youtube" | "none";
+  youtubeVideoId?: string;
+  youtubeWatchUrl?: string;
+  scoreboardDelayMs?: number;
 };
 
 export async function startLiveSession(opponent: string, teamName: string): Promise<string> {

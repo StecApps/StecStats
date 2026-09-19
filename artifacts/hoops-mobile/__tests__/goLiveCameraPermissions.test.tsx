@@ -36,7 +36,21 @@ const mockWsInstance = {
   if (String(url).includes('/api/live/start')) {
     return {
       ok: true,
-      json: async () => ({ code: 'TESTLIVE' }),
+      json: async () => ({
+        code: 'TESTLIVE',
+        roomUrl: 'https://test.daily.co/test-room',
+        token: 'daily-token',
+        broadcasterToken: 'broadcaster-token',
+      }),
+    };
+  }
+  if (String(url).includes('/api/live/TESTLIVE/youtube/start')) {
+    return {
+      ok: true,
+      json: async () => ({
+        videoId: 'youtube-video-id',
+        watchUrl: 'https://youtu.be/youtube-video-id',
+      }),
     };
   }
   return { ok: true, json: async () => ({}) };
@@ -129,6 +143,12 @@ jest.mock('@/lib/saveGame',         () => ({ saveGame: jest.fn(), defaultLine: (
 jest.mock('@/lib/uploadStallAlert', () => ({ makeUploadStallHandler: jest.fn(() => jest.fn()) }));
 jest.mock('@/lib/fetchIceServers',  () => ({ fetchIceServers: jest.fn(async () => []) }));
 jest.mock('@/lib/drainPendingViewers', () => ({ drainPendingViewers: jest.fn() }));
+jest.mock('@/lib/dailyBroadcast', () => ({
+  startDailyBroadcast: jest.fn(async () => {}),
+  stopDailyBroadcast: jest.fn(async () => null),
+  isDailyBroadcastActive: jest.fn(() => false),
+  getDailyBroadcastDurationMs: jest.fn(() => 0),
+}));
 jest.mock('@/modules/hoops-camera/src', () => ({
   HoopsCameraView: null,
   isHoopsCameraAvailable: false,
@@ -138,6 +158,7 @@ jest.mock('@/modules/hoops-camera/src', () => ({
   stopHoopsCameraRecordingAsync: jest.fn(),
   createHoopsCameraLiveVideoAsync: jest.fn(),
   releaseHoopsCameraLiveVideoAsync: jest.fn(),
+  stopHoopsCameraMjpegAsync: jest.fn(async () => {}),
 }));
 
 // ── expo-camera — permissions controlled per-test via the imported mock refs ──
@@ -374,19 +395,9 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
       expect(startLiveBtn).toBeDefined();
       await act(async () => { startLiveBtn.props.onPress(); });
 
-      // ── Step 2: press the dismiss/eye-off button to collapse the preview ──
-      // camControlBtn buttons all have activeOpacity={0.75}.
-      // Order: [flip, mute, orientation, eye-off(dismiss), Go Live]  → index 3.
-      const camCtrlBtns = findNodes(
-        tree.toJSON(),
-        (n) => n.type === 'TouchableOpacity' && n.props?.activeOpacity === 0.75,
-      );
-      // Must have at least the 5 camControl buttons.
-      expect(camCtrlBtns.length).toBeGreaterThanOrEqual(5);
-
-      const dismissBtn = camCtrlBtns[3]; // eye-off button (4th camControl)
-      await act(async () => { dismissBtn.props.onPress(); });
-
+      // Daily becomes the sole camera owner once Live starts, so the legacy
+      // preview controls intentionally unmount. The persistent LIVE indicator
+      // must remain visible after that transition.
       return tree;
     }
 

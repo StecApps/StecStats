@@ -524,6 +524,8 @@ export default function ScorekeeperScreen() {
   const dailyCredentialsRef = useRef<DailyRoomCredentials | null>(null);
   const dailyRecordingRef = useRef<DailyRecordingResult | null>(null);
   const dailyRecordingCodeRef = useRef<string | null>(null);
+  const youtubeLiveDistributedRef = useRef(false);
+  const liveStopPromiseRef = useRef<Promise<void> | null>(null);
   const [dailyProcessing, setDailyProcessing] = useState(false);
   const [showGoLiveSheet, setShowGoLiveSheet] = useState(false);
   const [isSharingLiveLink, setIsSharingLiveLink] = useState(false);
@@ -588,10 +590,54 @@ export default function ScorekeeperScreen() {
       await startDailyBroadcast(daily);
       dailyLiveRef.current = true;
       setDailyLive(true);
+
+      // Daily must be connected before the server can publish its RTMP
+      // output to YouTube. The server owns the YouTube broadcast and stream
+      // key; the mobile client only receives the resulting video metadata.
+      const youtubeToken = await getToken();
+      const youtubeResponse = await fetch(
+        `${API_BASE}/api/live/${encodeURIComponent(code)}/youtube/start`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(youtubeToken ? { Authorization: `Bearer ${youtubeToken}` } : {}),
+          },
+        },
+      );
+      const youtubePayload = await youtubeResponse.json().catch(() => ({}));
+      if (!youtubeResponse.ok) {
+        const youtubeCode = (youtubePayload as any)?.code;
+        const message =
+          youtubeCode === 'YOUTUBE_NOT_CONNECTED'
+            ? 'Connect your YouTube account in Profile before going Live.'
+            : youtubeCode === 'YOUTUBE_RECONNECT_REQUIRED'
+              ? 'Reconnect your YouTube account in Profile, then try again.'
+              : youtubeCode === 'YOUTUBE_LIVE_NOT_ENABLED'
+                ? 'Enable YouTube Live for your channel and try again. First activation may take up to 24 hours.'
+                : (youtubePayload as any)?.error ?? `YouTube Live could not start (${youtubeResponse.status}).`;
+        throw Object.assign(new Error(message), { youtubeCode });
+      }
+      youtubeLiveDistributedRef.current = true;
+      // Keep the public StecStats watch link as the only link shared with
+      // viewers. videoId/watchUrl are intentionally not exposed here.
     } catch (error: any) {
+      // Roll back both Daily and the server-side live session. This also keeps
+      // the normal /live/:code/stop cleanup path authoritative.
+      await stopLiveBroadcast(code).catch(() => {});
+      youtubeLiveDistributedRef.current = false;
       dailyLiveRef.current = false;
       setDailyLive(false);
-      Alert.alert('Live video unavailable', error?.message ?? 'Could not open the Daily camera.');
+      dailyRecordingRef.current = null;
+      dailyRecordingCodeRef.current = null;
+      setDailyProcessing(false);
+      if (error?.youtubeCode === 'YOUTUBE_NOT_CONNECTED' ||
+          error?.youtubeCode === 'YOUTUBE_RECONNECT_REQUIRED' ||
+          error?.youtubeCode === 'YOUTUBE_LIVE_NOT_ENABLED') {
+        Alert.alert('YouTube Live unavailable', error.message);
+      } else {
+        Alert.alert('Live video unavailable', error?.message ?? 'Could not open the Daily camera.');
+      }
       return;
     }
     setIsLive(true);
@@ -1192,67 +1238,92 @@ export default function ScorekeeperScreen() {
   }
 
   async function stopLiveBroadcast(code: string) {
-    // An intentional stop begins a new idempotency lifecycle. A future
-    // broadcast must not resume this invite code.
-    liveStartRequestIdRef.current = null;
-    broadcasterTokenRef.current = null;
-    liveSessionGenerationRef.current += 1;
-    liveMediaGenerationRef.current += 1;
-    if (dailyLiveRef.current) {
-      setDailyProcessing(true);
-      dailyRecordingCodeRef.current = code;
-      dailyRecordingRef.current = await stopDailyBroadcast().catch(() => null);
-      dailyLiveRef.current = false;
-      setDailyLive(false);
+    if (liveStopPromiseRef.current) {
+      return liveStopPromiseRef.current;
     }
-    // Dismiss the go-live sheet first so it doesn't linger open while the
-    // stop sequence runs (handles the case where handleSave calls us directly
-    // without the sheet's own dismiss-then-stop button handler).
-    setShowGoLiveSheet(false);
-    // Mark as intentional BEFORE closing so ws.onclose does not schedule a
-    // reconnect — even if the stop-API call below is slow or hangs.
-    liveWsIntentionalCloseRef.current = true;
-    // Tear down WebRTC peers and camera stream before closing the WS.
-    closeAllWebRtcPeers();
-    stopWebRtcStream();
-    await stopMjpegFallback();
-    // Close broadcaster WS first so viewers get the broadcaster-left signal
-    if (liveWsReconnectRef.current) {
-      clearTimeout(liveWsReconnectRef.current);
-      liveWsReconnectRef.current = null;
-    }
-    if (liveWsRef.current) {
-      liveWsRef.current.close();
-      liveWsRef.current = null;
-    }
-    try {
-      // 5-second hard cap — getToken() or fetch can hang if the network is flaky.
-      // This is best-effort; the WS is already closed so viewers are notified
-      // regardless of whether the HTTP call succeeds.
-      const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 5000);
+    const stopPromise = (async () => {
+      const youtubeDistributed = youtubeLiveDistributedRef.current;
+      let serverStopSucceeded = false;
+      // An intentional stop begins a new idempotency lifecycle. A future
+      // broadcast must not resume this invite code.
+      liveStartRequestIdRef.current = null;
+      broadcasterTokenRef.current = null;
+      liveSessionGenerationRef.current += 1;
+      liveMediaGenerationRef.current += 1;
+
+      // YouTube RTMP must be stopped while the Daily room still exists.
+      // Otherwise the server cannot finalize the distributed broadcast.
       try {
-        const token = await Promise.race([
-          getToken(),
-          new Promise<null>((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 4000)),
-        ]);
-        await fetch(`${API_BASE}/api/live/${encodeURIComponent(code)}/stop`, {
-          method: 'POST',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          signal: ac.signal,
-        });
-      } finally {
-        clearTimeout(timer);
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 5000);
+        try {
+          const token = await Promise.race([
+            getToken(),
+            new Promise<null>((_, rej) => setTimeout(() => rej(new Error('getToken timeout')), 4000)),
+          ]);
+          const response = await fetch(`${API_BASE}/api/live/${encodeURIComponent(code)}/stop`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            signal: ac.signal,
+          });
+          if (!response.ok) throw new Error(`Server returned HTTP ${response.status}`);
+          serverStopSucceeded = true;
+        } finally {
+          clearTimeout(timer);
+        }
+      } catch (error: any) {
+        if (youtubeDistributed) {
+          Alert.alert(
+            'Live stop needs retry',
+            `YouTube could not be stopped cleanly (${error?.message ?? 'connection failed'}). The live session is retained; try End Broadcast again when you are back online.`,
+          );
+        }
       }
-    } catch {
-      // best-effort — game save must not be blocked by a slow or failed stop call
+
+      if (dailyLiveRef.current) {
+        setDailyProcessing(true);
+        dailyRecordingCodeRef.current = code;
+        dailyRecordingRef.current = await stopDailyBroadcast().catch(() => null);
+        dailyLiveRef.current = false;
+        setDailyLive(false);
+      }
+      // Dismiss the go-live sheet first so it doesn't linger open while the
+      // stop sequence runs (handles the case where handleSave calls us directly
+      // without the sheet's own dismiss-then-stop button handler).
+      setShowGoLiveSheet(false);
+      // Mark as intentional BEFORE closing so ws.onclose does not schedule a
+      // reconnect — even if the stop-API call below is slow or hangs.
+      liveWsIntentionalCloseRef.current = true;
+      closeAllWebRtcPeers();
+      stopWebRtcStream();
+      await stopMjpegFallback();
+      if (liveWsReconnectRef.current) {
+        clearTimeout(liveWsReconnectRef.current);
+        liveWsReconnectRef.current = null;
+      }
+      if (liveWsRef.current) {
+        liveWsRef.current.close();
+        liveWsRef.current = null;
+      }
+
+      if (serverStopSucceeded || !youtubeDistributed) {
+        youtubeLiveDistributedRef.current = false;
+        setIsLive(false);
+        setLiveCode(null);
+        liveCodeRef.current = null;
+        pendingClientDiagnosticsRef.current = [];
+        for (const resolve of diagnosticAckResolversRef.current.values()) resolve();
+        diagnosticAckResolversRef.current.clear();
+      }
+    })();
+    liveStopPromiseRef.current = stopPromise;
+    try {
+      await stopPromise;
+    } finally {
+      if (liveStopPromiseRef.current === stopPromise) {
+        liveStopPromiseRef.current = null;
+      }
     }
-    setIsLive(false);
-    setLiveCode(null);
-    liveCodeRef.current = null;
-    pendingClientDiagnosticsRef.current = [];
-    for (const resolve of diagnosticAckResolversRef.current.values()) resolve();
-    diagnosticAckResolversRef.current.clear();
   }
 
   // ─── Broadcaster WebSocket helpers ───────────────────────────────────────
@@ -3442,8 +3513,8 @@ export default function ScorekeeperScreen() {
 
           <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
             {isLive
-              ? 'The watch link is active. You can now start the game clock and recording.'
-              : 'Send the watch link first. The broadcast starts after you return to StecStats, keeping Messages from interrupting the game.'}
+              ? 'The broadcast is shared through an unlisted YouTube stream. Anyone with this StecStats watch link can watch without an account.'
+              : 'Send this watch link first. When you start Live, StecStats shares an unlisted YouTube stream that anyone with the link can watch without an account.'}
           </Text>
 
           {/* Session code */}

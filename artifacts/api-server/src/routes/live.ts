@@ -1,13 +1,15 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { createHmac } from "crypto";
+import { createHmac, randomUUID } from "crypto";
 import { liveStreamRegistry, getIceServers, getTurnAvailable } from "../lib/liveStream";
 import { requireAuth } from "../middlewares/requireAuth";
 import { getEntitlementsForUser, getEntitlements, isPro } from "../lib/entitlements";
-import { and, eq } from "drizzle-orm";
-import { db, gamesTable, liveSessionsTable } from "@workspace/db";
-import { createDailyMeetingToken, createDailyRoom, getDailyRoom, dailyConfigured, stopDailyRecording } from "../lib/daily";
+import { and, eq, ne, sql } from "drizzle-orm";
+import { db, gamesTable, liveSessionsTable, usersTable } from "@workspace/db";
+import { createDailyMeetingToken, createDailyRoom, getDailyRoom, dailyConfigured, stopDailyRecording, startDailyRtmp, stopDailyRtmp } from "../lib/daily";
 import { enqueueDailyRecordingImport } from "../lib/dailyRecordingImport";
 import { createBroadcasterToken } from "../lib/liveAuth";
+import { decryptToken, encryptToken } from "../lib/tokenEncryption";
+import { ensureLiveResources, YouTubeAuthError } from "../lib/youtubeClient";
 
 const router: IRouter = Router();
 const LIVE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
@@ -84,6 +86,10 @@ router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
     preferredCode,
     req.appUser!.id,
   );
+  if (process.env.NODE_ENV !== "test") {
+    await db.update(liveSessionsTable).set({ youtubeLifecycleStatus: "pending" })
+      .where(eq(liveSessionsTable.id, session.id));
+  }
   if (process.env.NODE_ENV === "test") {
     res.json({
       code: session.code,
@@ -137,7 +143,30 @@ router.get("/live/:code/daily-token", async (req: Request, res: Response) => {
     res.status(404).json({ error: "Live video is not available" });
     return;
   }
+  if (session.youtubeLifecycleStatus === "live" && session.youtubeVideoId) {
+    res.json({ videoId: session.youtubeVideoId, watchUrl: session.youtubeWatchUrl });
+    return;
+  }
+  if (session.youtubeLifecycleStatus === "starting" || session.youtubeLifecycleStatus === "resources_ready") {
+    res.status(202).json({ status: "starting", videoId: session.youtubeVideoId, watchUrl: session.youtubeWatchUrl });
+    return;
+  }
+  if (session.youtubeVideoId || session.youtubeBroadcastId || session.youtubeLifecycleStatus) {
+    res.status(410).json({ error: "Daily viewers are not available for YouTube-distributed live" });
+    return;
+  }
   try {
+    const claimed = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${session.id})`);
+      return tx.update(liveSessionsTable).set({ youtubeLifecycleStatus: "starting", youtubeLifecycleError: null })
+        .where(and(eq(liveSessionsTable.id, session.id), ne(liveSessionsTable.youtubeLifecycleStatus, "starting")))
+        .returning({ id: liveSessionsTable.id });
+    });
+    if (!claimed.length) {
+      const current = await db.query.liveSessionsTable.findFirst({ where: eq(liveSessionsTable.id, session.id) });
+      res.status(202).json({ status: "starting", videoId: current?.youtubeVideoId, watchUrl: current?.youtubeWatchUrl });
+      return;
+    }
     const room = await createDailyMeetingToken(session.dailyRoomName, {
       owner: false,
       userId: `viewer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -181,8 +210,95 @@ router.get("/live/:code/status", async (req: Request, res: Response) => {
     viewerCount: session.viewers.size,
     teamScore: session.scoreboard.teamScore,
     opponentScore: session.scoreboard.opponentScore,
-    videoMode: persisted?.dailyRoomName ? "daily" : "webrtc",
+    videoMode: persisted?.youtubeVideoId ? "youtube" : persisted?.dailyRoomName ? "daily" : "webrtc",
+    youtubeVideoId: persisted?.youtubeVideoId ?? null,
+    youtubeWatchUrl: persisted?.youtubeWatchUrl ?? null,
+    scoreboardDelayMs: persisted?.youtubeVideoId ? 10_000 : 0,
   });
+});
+
+router.post("/live/:code/youtube/start", requireAuth, async (req: Request, res: Response) => {
+  const code = String(req.params.code ?? "").toUpperCase();
+  try {
+    const phase = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${code}, 0))`);
+      const session = await tx.query.liveSessionsTable.findFirst({
+        where: and(eq(liveSessionsTable.code, code), eq(liveSessionsTable.ownerId, req.appUser!.id)),
+      });
+      if (!session?.dailyRoomName) throw Object.assign(new Error("Live session or Daily room not found"), { status: 404 });
+      if (session.youtubeLifecycleStatus === "live" && session.youtubeVideoId) {
+        return { existing: true, videoId: session.youtubeVideoId, watchUrl: session.youtubeWatchUrl, code: session.code };
+      }
+      if (session.youtubeLifecycleStatus === "starting" &&
+          session.youtubeAttemptLeaseUntil && session.youtubeAttemptLeaseUntil > new Date()) {
+        return { existing: true, starting: true, videoId: session.youtubeVideoId, watchUrl: session.youtubeWatchUrl, code: session.code };
+      }
+      const user = await tx.query.usersTable.findFirst({ where: eq(usersTable.id, req.appUser!.id), columns: { youtubeRefreshToken: true } });
+      if (!user?.youtubeRefreshToken) throw Object.assign(new Error("Connect YouTube before starting public live"), { status: 409, code: "YOUTUBE_NOT_CONNECTED" });
+      const attemptToken = randomUUID();
+      await tx.update(liveSessionsTable).set({
+        youtubeLifecycleStatus: "starting", youtubeLifecycleError: null,
+        youtubeAttemptToken: attemptToken, youtubeAttemptLeaseUntil: new Date(Date.now() + 5 * 60_000),
+      })
+        .where(eq(liveSessionsTable.id, session.id));
+      return { existing: false, code: session.code, sessionId: session.id, room: session.dailyRoomName, token: attemptToken, refreshToken: decryptToken(user.youtubeRefreshToken), broadcastId: session.youtubeBroadcastId, streamId: session.youtubeStreamId };
+    });
+    if (phase.existing) {
+      res.status(phase.starting ? 202 : 200).json({ videoId: phase.videoId, watchUrl: phase.watchUrl, ...(phase.starting ? { status: "starting" } : {}) });
+      return;
+    }
+    const work = phase as { refreshToken: string; sessionId: number; token: string; room: string; broadcastId?: string | null; streamId?: string | null; code: string };
+    const fenced = and(eq(liveSessionsTable.id, work.sessionId), eq(liveSessionsTable.youtubeAttemptToken, work.token));
+    let dailyMayHaveStarted = false;
+    const resources = await ensureLiveResources(work.refreshToken, {
+      broadcastId: work.broadcastId,
+      streamId: work.streamId,
+      onBroadcastReady: async (broadcastId) => {
+        await db.update(liveSessionsTable).set({ youtubeBroadcastId: broadcastId }).where(fenced);
+      },
+      onStreamReady: async (streamId) => {
+        await db.update(liveSessionsTable).set({ youtubeStreamId: streamId }).where(fenced);
+      },
+    });
+    await db.update(liveSessionsTable).set({
+      youtubeBroadcastId: resources.broadcastId, youtubeStreamId: resources.streamId,
+      youtubeVideoId: null, youtubeWatchUrl: null, youtubeRtmpUrl: resources.rtmpUrl,
+      youtubeStreamKey: encryptToken(resources.streamKey), youtubeLifecycleStatus: "resources_ready",
+    }).where(fenced);
+    await startDailyRtmp(work.room, resources.rtmpUrl, resources.streamKey);
+    dailyMayHaveStarted = true;
+    await db.update(liveSessionsTable).set({
+      youtubeLifecycleStatus: "live", youtubeVideoId: resources.videoId, youtubeWatchUrl: resources.watchUrl,
+      youtubeAttemptToken: null, youtubeAttemptLeaseUntil: null,
+    }).where(fenced);
+    liveStreamRegistry.markYoutubeDelayed(work.code);
+    res.json({ videoId: resources.videoId, watchUrl: resources.watchUrl });
+  } catch (error) {
+    const persisted = await db.query.liveSessionsTable.findFirst({
+      where: and(eq(liveSessionsTable.code, code), eq(liveSessionsTable.ownerId, req.appUser!.id)),
+    }).catch(() => undefined);
+    if (persisted?.dailyRoomName && persisted.youtubeLifecycleStatus === "resources_ready") {
+      await stopDailyRtmp(persisted.dailyRoomName).catch(() => {});
+    }
+    await db.update(liveSessionsTable).set({
+      youtubeLifecycleStatus: "error",
+      youtubeLifecycleError: error instanceof Error ? error.message.slice(0, 1000) : String(error),
+      youtubeAttemptToken: null,
+      youtubeAttemptLeaseUntil: null,
+    }).where(eq(liveSessionsTable.code, code)).catch(() => {});
+    if (error instanceof YouTubeAuthError) {
+      const code = /not enabled/i.test(error.message) ? "YOUTUBE_LIVE_NOT_ENABLED" : "YOUTUBE_RECONNECT_REQUIRED";
+      res.status(403).json({ error: error.message, code });
+      return;
+    }
+    const typed = error as { status?: number; code?: string; message?: string };
+    if (typed.status === 404 || typed.status === 409) {
+      res.status(typed.status).json({ error: typed.message, code: typed.code });
+      return;
+    }
+    req.log.error({ err: error, code }, "Failed to start YouTube Live");
+    res.status(502).json({ error: "Unable to start public YouTube live" });
+  }
 });
 
 /**
@@ -197,7 +313,27 @@ router.post("/live/:code/stop", requireAuth, async (req: Request, res: Response)
     where: and(eq(liveSessionsTable.code, code ?? ""), eq(liveSessionsTable.ownerId, req.appUser!.id)),
   });
   if (!persisted) { res.status(404).json({ error: "Stream not found" }); return; }
+  if (persisted.youtubeLifecycleStatus === "ending" || persisted.youtubeLifecycleStatus === "ending_error") {
+    res.status(202).json({ success: true, endingAt: persisted.youtubeEndingAt });
+    return;
+  }
   if (persisted.dailyRoomName) {
+    if (persisted.youtubeVideoId) {
+      try {
+        await stopDailyRtmp(persisted.dailyRoomName);
+      } catch (error) {
+        req.log.warn({ err: error }, "Daily RTMP stop failed");
+        res.status(502).json({ error: "Unable to stop public live relay; retry" });
+        return;
+      }
+      const endingAt = new Date(Date.now() + 10_000);
+      await db.update(liveSessionsTable).set({
+        youtubeEndingAt: endingAt,
+        youtubeLifecycleStatus: "ending",
+      }).where(eq(liveSessionsTable.id, persisted.id));
+      res.status(202).json({ success: true, endingAt });
+      return;
+    }
     await stopDailyRecording(persisted.dailyRoomName).catch((error) =>
       req.log.warn({ err: error }, "Daily recording stop failed; import worker will retry"),
     );
