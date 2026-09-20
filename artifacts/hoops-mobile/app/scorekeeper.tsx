@@ -3839,7 +3839,7 @@ export default function ScorekeeperScreen() {
             )}
 
             {/* Permission denied — shown inside camera box */}
-            {recordVideo && !cameraReady && (
+            {recordVideo && !dailyLive && !cameraReady && (
               <View style={styles.permBanner}>
                 <Ionicons name="videocam-off" size={15} color="rgba(255,255,255,0.6)" />
                 <Text style={styles.permText}>Camera permission needed</Text>

@@ -15,6 +15,7 @@ describe('Daily cloud recording migration guards', () => {
     expect(scorekeeper).toContain('startDailyBroadcast');
     expect(scorekeeper).toContain('if (dailyLiveRef.current) return;');
     expect(scorekeeper).toContain('dailyLiveRef.current || dailyLive');
+    expect(scorekeeper).toContain('recordVideo && !dailyLive && !cameraReady');
   });
 
   test('timestamps Live events from the Daily recording clock', () => {

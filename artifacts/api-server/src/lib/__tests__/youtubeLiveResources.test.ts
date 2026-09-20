@@ -67,6 +67,7 @@ describe("ensureLiveResources", () => {
     expect(scheduled).toBeGreaterThan(before);
     expect(scheduled).toBeLessThanOrEqual(before + 31_000);
     expect(request.requestBody.contentDetails.enableAutoStart).toBe(true);
+    expect(request.requestBody.contentDetails.enableEmbed).toBe(true);
     expect(request.requestBody.status.privacyStatus).toBe("unlisted");
   });
 });

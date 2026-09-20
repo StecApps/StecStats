@@ -95,6 +95,7 @@ export async function ensureLiveResources(refreshToken: string, existing?: {
           contentDetails: {
             enableAutoStart: true,
             enableAutoStop: true,
+            enableEmbed: true,
             latencyPreference: "low",
             enableClosedCaptions: false,
           },
