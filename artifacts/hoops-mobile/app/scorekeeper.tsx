@@ -113,6 +113,8 @@ import {
 } from '@/lib/adaptiveBitrate';
 import {
   dailyRecordingElapsedMs,
+  cycleDailyCamera,
+  setDailyMicrophoneMuted,
   startDailyBroadcast,
   stopDailyBroadcast,
   type DailyRecordingResult,
@@ -3739,11 +3741,24 @@ export default function ScorekeeperScreen() {
             )}
 
             {/* Camera controls — top-left */}
-            {cameraReady && (
+            {(cameraReady || dailyLive) && (
               <View style={styles.camControls}>
                 {/* Flip front/back — always enabled; prompts to save clip while recording */}
                 <TouchableOpacity
-                  onPress={toggleCameraFacing}
+                  onPress={() => {
+                    if (dailyLive) {
+                      void cycleDailyCamera()
+                        .then((facing) => {
+                          if (facing) setCameraFacing(facing);
+                          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        })
+                        .catch((error) => {
+                          Alert.alert('Camera switch failed', error instanceof Error ? error.message : 'Could not switch cameras.');
+                        });
+                      return;
+                    }
+                    toggleCameraFacing();
+                  }}
                   activeOpacity={0.75}
                   style={[
                     styles.camControlBtn,
@@ -3756,18 +3771,20 @@ export default function ScorekeeperScreen() {
                 {/* Mute / unmute mic */}
                 <TouchableOpacity
                   onPress={() => {
-                    if (isRecording && isTablet) {
+                    if (!dailyLive && isRecording && isTablet) {
                       Alert.alert('Recording in progress', 'Microphone settings apply when the next recording starts.');
                       return;
                     }
-                    setMicMuted((m) => !m);
+                    const nextMuted = !micMuted;
+                    setMicMuted(nextMuted);
+                    if (dailyLive) setDailyMicrophoneMuted(nextMuted);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
                   activeOpacity={0.75}
                   style={[
                     styles.camControlBtn,
                     micMuted && { backgroundColor: 'rgba(239,68,68,0.75)' },
-                    isRecording && isTablet && { opacity: 0.4 },
+                    !dailyLive && isRecording && isTablet && { opacity: 0.4 },
                   ]}
                 >
                   <Ionicons name={micMuted ? 'mic-off' : 'mic'} size={isTablet ? 24 : 18} color="#fff" />
@@ -3837,7 +3854,7 @@ export default function ScorekeeperScreen() {
               </View>
             )}
 
-            {cameraReady && (
+            {cameraReady && !dailyLive && (
               <View style={styles.zoomControls}>
                 <TouchableOpacity
                   testID="camera-zoom-out"

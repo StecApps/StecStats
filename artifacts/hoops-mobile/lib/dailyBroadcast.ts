@@ -29,6 +29,8 @@ type DailyCall = {
   stopRecording: () => Promise<unknown>;
   leave: () => Promise<unknown>;
   destroy: () => Promise<unknown>;
+  setLocalAudio: (enabled: boolean) => DailyCall;
+  cycleCamera: () => Promise<{ device: { facingMode: 'user' | 'environment' } | null }>;
   participants?: () => {
     local?: {
       local?: boolean;
@@ -77,6 +79,20 @@ export function isDailyBroadcastActive(): boolean {
 
 export function dailyRecordingElapsedMs(): number {
   return recordingStartedAt > 0 ? Math.max(0, Date.now() - recordingStartedAt) : 0;
+}
+
+export async function cycleDailyCamera(): Promise<'front' | 'back' | null> {
+  if (!activeCall) return null;
+  const result = await activeCall.cycleCamera();
+  return result.device?.facingMode === 'user'
+    ? 'front'
+    : result.device?.facingMode === 'environment'
+      ? 'back'
+      : null;
+}
+
+export function setDailyMicrophoneMuted(muted: boolean): void {
+  activeCall?.setLocalAudio(!muted);
 }
 
 export async function startDailyBroadcast(
