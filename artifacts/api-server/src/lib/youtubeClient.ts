@@ -79,10 +79,18 @@ export async function ensureLiveResources(refreshToken: string, existing?: {
       broadcast = undefined;
     }
     if (!broadcast) {
+      // YouTube requires scheduledStartTime even when encoder ingestion uses
+      // enableAutoStart. Keep it slightly in the future so clock skew cannot
+      // make an otherwise immediate broadcast look invalid.
+      const scheduledStartTime = new Date(Date.now() + 30_000).toISOString();
       broadcast = (await youtube.liveBroadcasts.insert({
         part: ["snippet", "status", "contentDetails"],
         requestBody: {
-          snippet: { title: "StecStats Live", description: "Live game stream" },
+          snippet: {
+            title: "StecStats Live",
+            description: "Live game stream",
+            scheduledStartTime,
+          },
           status: { privacyStatus: "unlisted", selfDeclaredMadeForKids: false },
           contentDetails: {
             enableAutoStart: true,
