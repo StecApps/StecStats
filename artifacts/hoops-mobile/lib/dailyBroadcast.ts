@@ -29,6 +29,13 @@ type DailyCall = {
   stopRecording: () => Promise<unknown>;
   leave: () => Promise<unknown>;
   destroy: () => Promise<unknown>;
+  participants?: () => {
+    local?: {
+      local?: boolean;
+      videoTrack?: unknown | false;
+      tracks?: { video?: { persistentTrack?: unknown } };
+    };
+  };
   on?: (event: string, listener: (event?: any) => void) => unknown;
   off?: (event: string, listener: (event?: any) => void) => unknown;
 };
@@ -42,6 +49,15 @@ let activeRoomName = '';
 let recordingStartedAt = 0;
 let recordingId: string | undefined;
 let recordingStoppedListener: ((event?: any) => void) | undefined;
+let participantUpdatedListener: ((event?: any) => void) | undefined;
+let localVideoTrackListener: ((track: unknown | null) => void) | undefined;
+
+function readLocalVideoTrack(participant?: {
+  videoTrack?: unknown | false;
+  tracks?: { video?: { persistentTrack?: unknown } };
+}): unknown | null {
+  return participant?.tracks?.video?.persistentTrack ?? participant?.videoTrack ?? null;
+}
 
 function getDailyModule(): DailyModule {
   // Keep Expo Go scorekeeping usable. Daily is a native module and is loaded
@@ -65,6 +81,7 @@ export function dailyRecordingElapsedMs(): number {
 
 export async function startDailyBroadcast(
   credentials: DailyRoomCredentials,
+  onLocalVideoTrack?: (track: unknown | null) => void,
 ): Promise<void> {
   if (activeCall) return;
   if (!credentials.url || !credentials.token) {
@@ -75,6 +92,7 @@ export async function startDailyBroadcast(
   activeCall = call;
   activeRoomName = credentials.roomName ?? credentials.url.split('/').pop() ?? '';
   recordingId = undefined;
+  localVideoTrackListener = onLocalVideoTrack;
   recordingStoppedListener = (event) => {
     recordingId =
       event?.recordingId ??
@@ -83,6 +101,13 @@ export async function startDailyBroadcast(
       recordingId;
   };
   call.on?.('recording-stopped', recordingStoppedListener);
+  participantUpdatedListener = (event) => {
+    const participant = event?.participant;
+    if (participant?.local) {
+      localVideoTrackListener?.(readLocalVideoTrack(participant));
+    }
+  };
+  call.on?.('participant-updated', participantUpdatedListener);
   try {
     await call.join({
       url: credentials.url,
@@ -90,6 +115,7 @@ export async function startDailyBroadcast(
       startVideoOff: false,
       startAudioOff: false,
     });
+    localVideoTrackListener?.(readLocalVideoTrack(call.participants?.()?.local));
     try {
       await call.startRecording({
         type: 'cloud',
@@ -123,11 +149,15 @@ export async function stopDailyBroadcast(): Promise<DailyRecordingResult | null>
     await new Promise((resolve) => setTimeout(resolve, 150));
   } finally {
     if (recordingStoppedListener) call.off?.('recording-stopped', recordingStoppedListener);
+    if (participantUpdatedListener) call.off?.('participant-updated', participantUpdatedListener);
+    localVideoTrackListener?.(null);
     await call.leave().catch(() => undefined);
     await call.destroy().catch(() => undefined);
     activeCall = null;
     recordingStartedAt = 0;
     recordingStoppedListener = undefined;
+    participantUpdatedListener = undefined;
+    localVideoTrackListener = undefined;
   }
   return { recordingId, roomName: activeRoomName, durationMs };
 }

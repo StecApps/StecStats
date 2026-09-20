@@ -59,6 +59,7 @@ let RTCPeerConnection: any = null;
 let RTCIceCandidate: any = null;
 let RTCSessionDescription: any = null;
 let mediaDevices: any = null;
+let DailyMediaView: any = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const rn = require('@daily-co/react-native-webrtc');
@@ -68,6 +69,12 @@ try {
   mediaDevices = rn.mediaDevices;
 } catch {
   // Expo Go — WebRTC unavailable; live video will fall back to score-only
+}
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  DailyMediaView = require('@daily-co/react-native-daily-js').DailyMediaView;
+} catch {
+  // Expo Go — Daily's native media view is unavailable.
 }
 import { saveGame, type StatLine, type GameEvent } from '@/lib/saveGame';
 import {
@@ -520,6 +527,7 @@ export default function ScorekeeperScreen() {
   const [liveMediaRecoveryGeneration, setLiveMediaRecoveryGeneration] = useState(0);
   const [liveLoading, setLiveLoading] = useState(false);
   const [dailyLive, setDailyLive] = useState(false);
+  const [dailyLocalVideoTrack, setDailyLocalVideoTrack] = useState<any>(null);
   const dailyLiveRef = useRef(false);
   const dailyCredentialsRef = useRef<DailyRoomCredentials | null>(null);
   const dailyRecordingRef = useRef<DailyRecordingResult | null>(null);
@@ -587,7 +595,7 @@ export default function ScorekeeperScreen() {
     try {
       // Daily is the sole camera owner for Live. Do this before changing
       // isLive so the legacy HoopsCamera/WebRTC effect cannot race it.
-      await startDailyBroadcast(daily);
+      await startDailyBroadcast(daily, setDailyLocalVideoTrack);
       dailyLiveRef.current = true;
       setDailyLive(true);
 
@@ -3661,19 +3669,40 @@ export default function ScorekeeperScreen() {
           if (width > 0 && height > 0) setCameraContainerSize({ w: width, h: height });
         }}
       >
-        {/* Camera always mounted so recording is uninterrupted when preview is hidden */}
-        <RecordingCameraPreview
-          cameraRef={cameraRef}
-          sharedCameraMode={sharedCameraMode}
-          cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}
-          cameraReady={!!cameraReady}
-          cameraFacing={cameraFacing}
-          cameraZoom={cameraZoom}
-          containerWidth={cameraContainerSize.w}
-          containerHeight={cameraContainerSize.h}
-          isLandscape={isLandscape}
-          onCameraReady={onCameraReady}
-        />
+        {/* Daily owns the camera during Live; show its local track instead of
+            the separate recording preview, which must stay inactive. */}
+        {dailyLive ? (
+          dailyLocalVideoTrack && DailyMediaView ? (
+            <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+              <DailyMediaView
+                videoTrack={dailyLocalVideoTrack}
+                audioTrack={null}
+                mirror={false}
+                zOrder={0}
+                objectFit="cover"
+                style={StyleSheet.absoluteFillObject}
+              />
+            </View>
+          ) : (
+            <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.centered]}>
+              <ActivityIndicator color="#ff5722" />
+              <Text style={styles.dailyCameraStarting}>Starting live camera…</Text>
+            </View>
+          )
+        ) : (
+          <RecordingCameraPreview
+            cameraRef={cameraRef}
+            sharedCameraMode={sharedCameraMode}
+            cameraActive={!isSharingLiveLink || recordingStartedRef.current || isRecording}
+            cameraReady={!!cameraReady}
+            cameraFacing={cameraFacing}
+            cameraZoom={cameraZoom}
+            containerWidth={cameraContainerSize.w}
+            containerHeight={cameraContainerSize.h}
+            isLandscape={isLandscape}
+            onCameraReady={onCameraReady}
+          />
+        )}
 
         {previewVisible ? (
           <>
@@ -3957,6 +3986,12 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     root: { flex: 1, backgroundColor: colors.background },
     rootLandscape: { flexDirection: 'row' },
     centered: { alignItems: 'center', justifyContent: 'center' },
+    dailyCameraStarting: {
+      marginTop: 10,
+      color: 'rgba(255,255,255,0.72)',
+      fontFamily: 'Inter_500Medium',
+      fontSize: 13,
+    },
 
     // ── Offline banner ──────────────────────────────────────────────────────
     offlineBanner: {
