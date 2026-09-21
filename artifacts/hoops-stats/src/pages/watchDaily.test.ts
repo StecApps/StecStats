@@ -14,6 +14,12 @@ describe("Daily live viewer", () => {
     expect(source).toContain("call.join({ url: roomUrl, token })");
   });
 
+  test("keeps the branded watch page on Daily instead of relying on YouTube embeds", () => {
+    expect(source).toContain('s.videoMode === "daily"');
+    expect(source).toContain("getDailyViewerCredentials(code)");
+    expect(source).toContain("setScoreboard");
+  });
+
   test("leaves and destroys the Daily call when the watch page unmounts", () => {
     expect(source).toContain("dailyCall?.leave()");
     expect(source).toContain("dailyCall?.destroy()");
