@@ -56,6 +56,7 @@ const mocks = vi.hoisted(() => {
 
   // Controls what uploadToYoutube does in integration tests.
   const uploadToYoutubeImpl = vi.fn<() => Promise<string>>();
+  const probeTokenImpl = vi.fn<() => Promise<void>>();
 
   // Controls what googleapis videos.insert does in youtubeClient unit tests.
   const videosInsert = vi.fn<() => Promise<unknown>>();
@@ -68,6 +69,7 @@ const mocks = vi.hoisted(() => {
     findFirstUser,
     selectPlayerStats,
     uploadToYoutubeImpl,
+    probeTokenImpl,
     videosInsert,
   };
 });
@@ -157,6 +159,7 @@ vi.mock("../../lib/youtubeClient", async (importOriginal) => {
   return {
     ...original,
     uploadToYoutube: mocks.uploadToYoutubeImpl,
+    probeToken: mocks.probeTokenImpl,
   };
 });
 
@@ -279,6 +282,7 @@ describe("YouTube upload route — token-expiry reconnect flow", () => {
     mocks.dbUpdateSet.mockReturnValue({ where: mocks.dbUpdateWhere });
     mocks.dbUpdateWhere.mockResolvedValue(undefined);
     mocks.selectPlayerStats.mockResolvedValue([]);
+    mocks.probeTokenImpl.mockResolvedValue(undefined);
   });
 
   async function post(body: object) {
@@ -288,6 +292,67 @@ describe("YouTube upload route — token-expiry reconnect flow", () => {
       body: JSON.stringify(body),
     });
   }
+
+  async function getStatus() {
+    return fetch(`${baseUrl}/auth/youtube/status`);
+  }
+
+  it("probes a stored token before reporting YouTube connected", async () => {
+    mocks.findFirstUser.mockResolvedValue({
+      id: 42,
+      youtubeRefreshToken: encryptedToken,
+    });
+
+    const res = await getStatus();
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ connected: true });
+    expect(mocks.probeTokenImpl).toHaveBeenCalledWith("fake-google-refresh-token");
+    expect(mocks.dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("clears a revoked stored token before Profile can report connected", async () => {
+    mocks.findFirstUser.mockResolvedValue({
+      id: 42,
+      youtubeRefreshToken: encryptedToken,
+    });
+    mocks.probeTokenImpl.mockRejectedValue(
+      new YouTubeAuthError("YouTube token expired or revoked — please reconnect"),
+    );
+
+    const res = await getStatus();
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ connected: false });
+    expect(mocks.dbUpdateSet).toHaveBeenCalledWith({ youtubeRefreshToken: null });
+  });
+
+  it("preserves a stored token when the status probe has a transient failure", async () => {
+    mocks.findFirstUser.mockResolvedValue({
+      id: 42,
+      youtubeRefreshToken: encryptedToken,
+    });
+    mocks.probeTokenImpl.mockRejectedValue(new Error("Network timeout"));
+
+    const res = await getStatus();
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ connected: true });
+    expect(mocks.dbUpdate).not.toHaveBeenCalled();
+  });
+
+  it("reports disconnected without probing when no token is stored", async () => {
+    mocks.findFirstUser.mockResolvedValue({
+      id: 42,
+      youtubeRefreshToken: null,
+    });
+
+    const res = await getStatus();
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ connected: false });
+    expect(mocks.probeTokenImpl).not.toHaveBeenCalled();
+  });
 
   // -------------------------------------------------------------------------
   // Test 1: expired token (simulated by YouTubeAuthError) → DB cleared + 403

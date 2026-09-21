@@ -173,11 +173,10 @@ router.post("/auth/youtube/disconnect", requireAuth, async (req, res) => {
 });
 
 // GET /api/auth/youtube/status
-// Returns whether the current user has connected their YouTube account.
-// Pass ?probe=true to also make a lightweight googleapis call (channels.list)
-// that verifies the stored token is still valid.  If the probe fails with an
-// auth error the DB record is cleared and connected:false is returned, so the
-// coach sees the reconnect prompt before attempting an upload.
+// Verifies the stored token with a lightweight googleapis call (channels.list).
+// If the probe fails with an auth error the DB record is cleared and
+// connected:false is returned, so every client sees the reconnect prompt
+// before attempting an upload or Live broadcast.
 router.get("/auth/youtube/status", requireAuth, async (req, res) => {
   const user = await db.query.usersTable.findFirst({
     where: eq(usersTable.id, req.appUser!.id),
@@ -189,12 +188,7 @@ router.get("/auth/youtube/status", requireAuth, async (req, res) => {
     return;
   }
 
-  if (req.query.probe !== "true") {
-    res.json({ connected: true });
-    return;
-  }
-
-  // Probe path: decrypt + make a real API call to catch revoked tokens early.
+  // Decrypt + make a real API call to catch revoked tokens early.
   let plainToken: string;
   try {
     plainToken = decryptToken(user.youtubeRefreshToken);
