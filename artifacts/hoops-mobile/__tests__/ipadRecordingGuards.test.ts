@@ -48,9 +48,11 @@ describe('iPad recording safeguards', () => {
     expect(dailyWebRtcPatchSource).toContain('RTCVideoRotation_180');
     expect(dailyWebRtcPatchSource).toContain('didCaptureVideoFrame');
     expect(dailyWebRtcPatchSource).toContain('timeStampNs:frame.timeStampNs');
-    expect(dailyWebRtcPatchSource).not.toContain(
-      'return self.usingFrontCamera ? RTCVideoRotation',
-    );
+    expect(dailyWebRtcPatchSource).toContain('landscapeRotationForFrame');
+    expect(dailyWebRtcPatchSource).toContain('case RTCVideoRotation_90');
+    expect(dailyWebRtcPatchSource).toContain('case RTCVideoRotation_270');
+    expect(dailyWebRtcPatchSource).toContain('return frame.rotation');
+    expect(dailyWebRtcPatchSource).not.toContain('UIDevice.currentDevice.orientation');
   });
 
   test('recovers lifecycle recording through native interruption and resume events', () => {
@@ -292,8 +294,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-daily-20260958');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260958');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-daily-20260959');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260959');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
