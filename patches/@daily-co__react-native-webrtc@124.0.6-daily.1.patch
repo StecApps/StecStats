@@ -11,10 +11,89 @@ index 04bbbbce98589d84e481e8190ba7f5daab8b3ada..4989b46d1d7fe80a8523e7cc0c53309f
  @end
  #endif
 diff --git a/ios/RCTWebRTC/VideoCaptureController.m b/ios/RCTWebRTC/VideoCaptureController.m
-index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..3e8e0d1fd7bce86f7f8cc714bb32b1d45b08ef9f 100644
+index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..c1e057b2e9f7019a97fc1c464ca97a0945ca28af 100644
 --- a/ios/RCTWebRTC/VideoCaptureController.m
 +++ b/ios/RCTWebRTC/VideoCaptureController.m
-@@ -198,6 +198,34 @@
+@@ -3,6 +3,49 @@
+ #import "VideoCaptureController.h"
+ 
+ #import <React/RCTLog.h>
++#import <UIKit/UIKit.h>
++
++@interface HoopsIpadLandscapeVideoDelegate : NSObject <RTCVideoCapturerDelegate>
++
++@property(nonatomic, weak) id<RTCVideoCapturerDelegate> downstream;
++@property(nonatomic, assign) BOOL usingFrontCamera;
++
++@end
++
++@implementation HoopsIpadLandscapeVideoDelegate
++
++- (RTCVideoRotation)landscapeRotation {
++    UIDeviceOrientation orientation = UIDevice.currentDevice.orientation;
++    switch (orientation) {
++        case UIDeviceOrientationLandscapeLeft:
++            return self.usingFrontCamera ? RTCVideoRotation_180 : RTCVideoRotation_0;
++        case UIDeviceOrientationLandscapeRight:
++            return self.usingFrontCamera ? RTCVideoRotation_0 : RTCVideoRotation_180;
++        default:
++            // StecStats supports landscape-only iPad capture. WebRTC defaults
++            // unknown/face-up devices to portrait (90°), which sends a sideways
++            // stream when Live starts while the iPad is flat on a tripod.
++            return self.usingFrontCamera ? RTCVideoRotation_180 : RTCVideoRotation_0;
++    }
++}
++
++- (void)capturer:(RTCVideoCapturer *)capturer didCaptureVideoFrame:(RTCVideoFrame *)frame {
++    id<RTCVideoCapturerDelegate> downstream = self.downstream;
++    if (!downstream) {
++        return;
++    }
++    RTCVideoRotation rotation = [self landscapeRotation];
++    if (frame.rotation == rotation) {
++        [downstream capturer:capturer didCaptureVideoFrame:frame];
++        return;
++    }
++    RTCVideoFrame *adjustedFrame = [[RTCVideoFrame alloc] initWithBuffer:frame.buffer
++                                                                rotation:rotation
++                                                             timeStampNs:frame.timeStampNs];
++    [downstream capturer:capturer didCaptureVideoFrame:adjustedFrame];
++}
++
++@end
+ 
+ @interface VideoCaptureController ()
+ 
+@@ -14,6 +57,7 @@
+ @property(nonatomic, assign) int width;
+ @property(nonatomic, assign) int height;
+ @property(nonatomic, assign) int frameRate;
++@property(nonatomic, strong) HoopsIpadLandscapeVideoDelegate *ipadLandscapeVideoDelegate;
+ 
+ @end
+ 
+@@ -24,6 +68,12 @@
+     if (self) {
+         self.capturer = capturer;
+         self.running = NO;
++        if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
++            HoopsIpadLandscapeVideoDelegate *orientationDelegate = [HoopsIpadLandscapeVideoDelegate new];
++            orientationDelegate.downstream = capturer.delegate;
++            capturer.delegate = orientationDelegate;
++            self.ipadLandscapeVideoDelegate = orientationDelegate;
++        }
+         [self applyConstraints:constraints error:nil];
+     }
+ 
+@@ -167,6 +217,7 @@
+             hasChanged = YES;
+             self.usingFrontCamera = usingFrontCamera;
+         }
++        self.ipadLandscapeVideoDelegate.usingFrontCamera = usingFrontCamera;
+     }
+ 
+     if (!deviceId) {
+@@ -198,6 +249,34 @@
      return self.usingFrontCamera ? @"user" : @"environment";
  }
  
