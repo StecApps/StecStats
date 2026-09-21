@@ -24,9 +24,13 @@
           "itms-apps",
           "itms-apps"
         ],
+        "UISupportedInterfaceOrientations~ipad": [
+          "UIInterfaceOrientationLandscapeLeft",
+          "UIInterfaceOrientationLandscapeRight"
+        ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "20260954"
+      "buildNumber": "20260955"
     },
     "android": {
       "adaptiveIcon": {
@@ -108,7 +112,7 @@
       "enabled": true,
       "checkAutomatically": "ON_LOAD"
     },
-    "runtimeVersion": "1.0.0-daily-20260954",
+    "runtimeVersion": "1.0.0-daily-20260955",
     "extra": {
       "router": {
         "origin": "https://replit.com/"

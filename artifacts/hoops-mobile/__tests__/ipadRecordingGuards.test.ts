@@ -276,8 +276,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-daily-20260954');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260954');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-daily-20260955');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260955');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
@@ -310,5 +310,13 @@ describe('iPad recording safeguards', () => {
     expect(source).toContain('testID="start-game-footer"');
     expect(source).toContain('<Text style={styles.saveBtnText}>Start Game</Text>');
     expect(source).toContain(') : !hasGameActivity ? (');
+    expect(source).toContain('Live video is recording. Tap Start Game below when play begins.');
+  });
+
+  test('shows an explicit exit flow and uses the full Daily camera frame', () => {
+    expect(source).toContain("'Exit this game?'");
+    expect(source).toContain("'Discard game'");
+    expect(source).toContain('<Text style={styles.closeBtnText}>Exit game</Text>');
+    expect(source).toContain('objectFit="contain"');
   });
 });
