@@ -11,6 +11,7 @@ import {
   getDailyRecording,
   listDailyRecordings,
   downloadDailyRecording,
+  stopDailyRecording,
   type DailyRecording,
 } from "./daily";
 import { scheduleVideoDurationProbe } from "./videoDuration";
@@ -106,7 +107,13 @@ async function processJob(job: NonNullable<Awaited<ReturnType<typeof claimJob>>>
     recording = recordings
       .filter((item) => item.status === "finished")
       .sort((a, b) => (b.start_ts ?? 0) - (a.start_ts ?? 0))[0];
-    if (!recording) throw new Error("Daily recording is not finalized yet");
+    if (!recording) {
+      // A client or an earlier server path may have marked the session stopped
+      // without Daily receiving the stop command. Repeating the idempotent stop
+      // here guarantees that a queued game eventually gets a finalized master.
+      await stopDailyRecording(job.daily_room_name);
+      throw new Error("Daily recording is not finalized yet");
+    }
     await db.update(liveRecordingJobsTable).set({
       dailyRecordingId: recording.id,
       updatedAt: new Date(),

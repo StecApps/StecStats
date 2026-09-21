@@ -51,11 +51,22 @@ export async function finalizeDueLiveSessions(): Promise<void> {
     }
     try {
       if (session.youtubeStreamKey && session.dailyRoomName) await stopDailyRtmp(session.dailyRoomName).catch(() => {});
+      // Daily owns the only master recording. Finalize it before touching
+      // YouTube so an expired/revoked YouTube token can never strand the game
+      // recording in an active state.
+      if (session.dailyRoomName) {
+        await stopDailyRecording(session.dailyRoomName);
+        await db.update(liveSessionsTable).set({
+          dailyRecordingStatus: "stopped",
+        }).where(and(
+          eq(liveSessionsTable.id, session.id),
+          eq(liveSessionsTable.youtubeFinalizerClaimToken, claimToken),
+        ));
+      }
       const user = await db.query.usersTable.findFirst({ where: eq(usersTable.id, session.ownerId), columns: { youtubeRefreshToken: true } });
       if (user?.youtubeRefreshToken && session.youtubeBroadcastId) {
         await stopLiveBroadcast(decryptToken(user.youtubeRefreshToken), session.youtubeBroadcastId);
       }
-      if (session.dailyRoomName) await stopDailyRecording(session.dailyRoomName);
       await db.update(liveSessionsTable).set({
         active: false,
         youtubeLifecycleStatus: "complete",

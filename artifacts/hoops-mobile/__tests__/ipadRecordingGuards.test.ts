@@ -20,6 +20,10 @@ describe('iPad recording safeguards', () => {
     path.resolve(__dirname, '../../../patches/react-native-webrtc@124.0.8.patch'),
     'utf8',
   );
+  const dailyWebRtcPatchSource = fs.readFileSync(
+    path.resolve(__dirname, '../../../patches/@daily-co__react-native-webrtc@124.0.6-daily.1.patch'),
+    'utf8',
+  );
   const packageConfig = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'),
   );
@@ -35,6 +39,15 @@ describe('iPad recording safeguards', () => {
     expect(nativeCameraSource).toContain('DispatchQueue.main.asyncAfter(deadline: .now() + 0.35)');
     expect(nativeCameraSource).toContain('UIApplication.shared.applicationState == .active');
     expect(nativeCameraSource).toContain('generation == lifecycleGeneration');
+  });
+
+  test('forces Daily iPad frames to landscape before WebRTC sends them', () => {
+    expect(dailyWebRtcPatchSource).toContain('HoopsIpadLandscapeVideoDelegate');
+    expect(dailyWebRtcPatchSource).toContain('UIUserInterfaceIdiomPad');
+    expect(dailyWebRtcPatchSource).toContain('RTCVideoRotation_0');
+    expect(dailyWebRtcPatchSource).toContain('RTCVideoRotation_180');
+    expect(dailyWebRtcPatchSource).toContain('didCaptureVideoFrame');
+    expect(dailyWebRtcPatchSource).toContain('timeStampNs:frame.timeStampNs');
   });
 
   test('recovers lifecycle recording through native interruption and resume events', () => {
@@ -276,8 +289,8 @@ describe('iPad recording safeguards', () => {
     expect(source).not.toContain("isHoopsCameraAvailable &&\n    isHoopsCameraWebRTCAvailable");
     expect(packageConfig.expo.autolinking.exclude).toBeUndefined();
     expect(packageConfig.dependencies).not.toHaveProperty('expo-screen-orientation');
-    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-daily-20260956');
-    expect(appConfig.expo.ios.buildNumber).toBe('20260956');
+    expect(appConfig.expo.runtimeVersion).toBe('1.0.0-daily-20260957');
+    expect(appConfig.expo.ios.buildNumber).toBe('20260957');
   });
 
   test('keeps compact iPad stat controls readable and near the shooting controls', () => {
