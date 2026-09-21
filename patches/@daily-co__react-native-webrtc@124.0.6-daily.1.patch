@@ -11,10 +11,10 @@ index 04bbbbce98589d84e481e8190ba7f5daab8b3ada..4989b46d1d7fe80a8523e7cc0c53309f
  @end
  #endif
 diff --git a/ios/RCTWebRTC/VideoCaptureController.m b/ios/RCTWebRTC/VideoCaptureController.m
-index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..cae6b014c1f3d0171c543e676b9ab7333fd1d500 100644
+index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..2e49f579af5747ddca0669146bf4eab9fa8fc34b 100644
 --- a/ios/RCTWebRTC/VideoCaptureController.m
 +++ b/ios/RCTWebRTC/VideoCaptureController.m
-@@ -3,6 +3,48 @@
+@@ -3,6 +3,46 @@
  #import "VideoCaptureController.h"
  
  #import <React/RCTLog.h>
@@ -28,18 +28,16 @@ index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..cae6b014c1f3d0171c543e676b9ab733
 +
 +@implementation HoopsIpadLandscapeVideoDelegate
 +
-+- (RTCVideoRotation)landscapeRotation {
-+    UIDeviceOrientation orientation = UIDevice.currentDevice.orientation;
-+    switch (orientation) {
-+        case UIDeviceOrientationLandscapeLeft:
++- (RTCVideoRotation)landscapeRotationForFrame:(RTCVideoFrame *)frame {
++    switch (frame.rotation) {
++        case RTCVideoRotation_90:
++            // Preserve WebRTC's per-lens orientation metadata while converting
++            // its portrait fallback into the equivalent landscape rotation.
 +            return RTCVideoRotation_180;
-+        case UIDeviceOrientationLandscapeRight:
++        case RTCVideoRotation_270:
 +            return RTCVideoRotation_0;
 +        default:
-+            // StecStats supports landscape-only iPad capture. WebRTC defaults
-+            // unknown/face-up devices to portrait (90°), which sends a sideways
-+            // stream when Live starts while the iPad is flat on a tripod.
-+            return RTCVideoRotation_180;
++            return frame.rotation;
 +    }
 +}
 +
@@ -48,7 +46,7 @@ index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..cae6b014c1f3d0171c543e676b9ab733
 +    if (!downstream) {
 +        return;
 +    }
-+    RTCVideoRotation rotation = [self landscapeRotation];
++    RTCVideoRotation rotation = [self landscapeRotationForFrame:frame];
 +    if (frame.rotation == rotation) {
 +        [downstream capturer:capturer didCaptureVideoFrame:frame];
 +        return;
@@ -63,7 +61,7 @@ index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..cae6b014c1f3d0171c543e676b9ab733
  
  @interface VideoCaptureController ()
  
-@@ -14,6 +56,7 @@
+@@ -14,6 +54,7 @@
  @property(nonatomic, assign) int width;
  @property(nonatomic, assign) int height;
  @property(nonatomic, assign) int frameRate;
@@ -71,7 +69,7 @@ index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..cae6b014c1f3d0171c543e676b9ab733
  
  @end
  
-@@ -24,6 +67,12 @@
+@@ -24,6 +65,12 @@
      if (self) {
          self.capturer = capturer;
          self.running = NO;
@@ -84,7 +82,7 @@ index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..cae6b014c1f3d0171c543e676b9ab733
          [self applyConstraints:constraints error:nil];
      }
  
-@@ -198,6 +247,34 @@
+@@ -198,6 +245,34 @@
      return self.usingFrontCamera ? @"user" : @"environment";
  }
  
