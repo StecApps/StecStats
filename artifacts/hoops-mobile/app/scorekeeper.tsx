@@ -2494,9 +2494,47 @@ export default function ScorekeeperScreen() {
   // can't accidentally lose all stats by navigating away mid-upload.
   // The stats + video URIs are written to AsyncStorage BEFORE any upload bytes
   // are sent, so "Leave anyway" is safe — the Games tab will offer recovery.
+  async function discardGameAndExit() {
+    setRunning(false);
+    pendingClockStartRef.current = false;
+    recordingTerminalIntentRef.current = true;
+    const activeCode = liveCodeRef.current ?? liveCode;
+    if (activeCode) {
+      await stopLiveBroadcast(activeCode);
+    } else if (dailyLiveRef.current) {
+      await stopDailyBroadcast().catch(() => null);
+      dailyLiveRef.current = false;
+      setDailyLive(false);
+    } else if (recordVideo && (recordingStartedRef.current || recordingPromiseRef.current)) {
+      await settleRecordingForSave().catch(() => undefined);
+    }
+    await clearDraft();
+    router.replace('/(tabs)/record' as any);
+  }
+
   function handleClose() {
     if (!saving) {
-      router.back();
+      const hasActivity =
+        gameStarted ||
+        events.length > 0 ||
+        seconds > 0 ||
+        opponentScore !== 0 ||
+        teamScoreAdj !== 0 ||
+        Boolean(liveCodeRef.current) ||
+        dailyLiveRef.current;
+      if (!hasActivity) {
+        router.replace('/(tabs)/record' as any);
+        return;
+      }
+      Alert.alert(
+        'Exit this game?',
+        'You can save the game, keep working, or discard it. Discarding ends Live and removes unsaved stats.',
+        [
+          { text: 'Keep working', style: 'cancel' },
+          { text: 'Save game', onPress: () => void handleSave() },
+          { text: 'Discard game', style: 'destructive', onPress: () => void discardGameAndExit() },
+        ],
+      );
       return;
     }
     const isUploading = uploadProgress !== null;
@@ -3058,7 +3096,8 @@ export default function ScorekeeperScreen() {
   const scoreboardOverlay = (
     <View style={styles.scoreOverlay}>
       <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-        <Ionicons name="chevron-down" size={22} color="rgba(255,255,255,0.85)" />
+        <Ionicons name="close-circle-outline" size={20} color="rgba(255,255,255,0.85)" />
+        <Text style={styles.closeBtnText}>Exit game</Text>
       </TouchableOpacity>
       <View style={styles.scoreboard}>
         {/* Our score — tap +1/+2/+3 to credit quick points not tracked to a player */}
@@ -3611,7 +3650,8 @@ export default function ScorekeeperScreen() {
       {!recordVideo && (
         <View style={[styles.scoreHeader, { paddingTop: insets.top + (Platform.OS === 'ios' ? 8 : 24), backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-            <Ionicons name="chevron-down" size={22} color={colors.mutedForeground} />
+            <Ionicons name="close-circle-outline" size={20} color={colors.mutedForeground} />
+            <Text style={[styles.closeBtnText, { color: colors.mutedForeground }]}>Exit game</Text>
           </TouchableOpacity>
           <View style={styles.scoreboard}>
             <View style={styles.scoreCol}>
@@ -3684,7 +3724,7 @@ export default function ScorekeeperScreen() {
                 audioTrack={null}
                 mirror={false}
                 zOrder={0}
-                objectFit="cover"
+                objectFit="contain"
                 style={StyleSheet.absoluteFillObject}
               />
             </View>
@@ -3738,7 +3778,11 @@ export default function ScorekeeperScreen() {
               <View style={styles.dailyStatusBanner}>
                 <ActivityIndicator size="small" color="#fff" />
                 <Text style={styles.dailyStatusText}>
-                  {dailyProcessing ? 'Saving game — processing cloud recording…' : 'Live video is recording in the cloud'}
+                  {dailyProcessing
+                    ? 'Saving game — processing cloud recording…'
+                    : gameStarted
+                      ? 'Live video is recording in the cloud'
+                      : 'Live video is recording. Tap Start Game below when play begins.'}
                 </Text>
               </View>
             )}
@@ -4056,7 +4100,22 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       zIndex: 30,
       elevation: 30,
     },
-    closeBtn: { alignSelf: 'center', padding: 4, marginBottom: 2 },
+    closeBtn: {
+      alignSelf: 'center',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      marginBottom: 2,
+      borderRadius: 999,
+      backgroundColor: 'rgba(0,0,0,0.38)',
+    },
+    closeBtnText: {
+      color: 'rgba(255,255,255,0.85)',
+      fontSize: 12,
+      fontFamily: 'Inter_600SemiBold',
+    },
     scoreboard: { flexDirection: 'row', alignItems: 'center' },
     scoreCol: { flex: 1, alignItems: 'center' },
     teamLabel: {

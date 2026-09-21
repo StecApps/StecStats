@@ -6,8 +6,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useLocation } from "wouter";
 
 export default function FeedbackButton() {
+  const [location] = useLocation();
   const { user } = useUser();
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
@@ -18,6 +20,7 @@ export default function FeedbackButton() {
 
   const displayName = user?.fullName ?? user?.firstName ?? "";
   const displayEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+  const isWatchPage = location.startsWith("/watch/");
 
   function handleOpen() {
     setDone(false);
@@ -54,10 +57,14 @@ export default function FeedbackButton() {
       <button
         onClick={handleOpen}
         aria-label="Report an issue"
-        className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-40 flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white rounded-full px-3 py-2 text-xs font-medium shadow-lg transition-colors"
+        className={`fixed z-40 flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 hover:text-white rounded-full px-3 py-2 text-xs font-medium shadow-lg transition-colors ${
+          isWatchPage
+            ? "top-[calc(env(safe-area-inset-top)+4.5rem)] right-3"
+            : "bottom-20 left-4 md:bottom-6 md:left-6"
+        }`}
       >
         <MessageCircle className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Report an issue</span>
+        <span className={isWatchPage ? "sr-only" : "hidden sm:inline"}>Report an issue</span>
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>

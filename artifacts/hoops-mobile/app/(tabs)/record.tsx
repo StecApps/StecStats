@@ -15,7 +15,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useListTeams, useCreateTeam, getListTeamsQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
@@ -42,6 +42,15 @@ export default function RecordScreen() {
   const [recordVideo, setRecordVideo] = useState(false);
   const [startingGame, setStartingGame] = useState(false);
   const startingGameRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      // This tab remains mounted beneath the scorekeeper route. Always release
+      // the single-flight guard when the coach returns after finishing/exiting.
+      startingGameRef.current = false;
+      setStartingGame(false);
+    }, []),
+  );
 
   const selectedTeam = (teams as any[])?.[teamIdx] ?? null;
   const canStart = !!opponent.trim() && !!selectedTeam;

@@ -2699,6 +2699,7 @@ export default function GameDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>('stats');
   const [isSharing, setIsSharing] = useState(false);
   const { getToken } = useAuth();
@@ -2732,9 +2733,24 @@ export default function GameDetailScreen() {
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.foreground,
         headerShadowVisible: false,
+        headerBackVisible: false,
+        headerLeft: () => (
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Back to games"
+            onPress={() => {
+              if (navigation.canGoBack()) navigation.goBack();
+              else router.replace('/(tabs)/games');
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 8, paddingRight: 12 }}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.foreground} />
+            <Text style={{ color: colors.foreground, fontSize: 15 }}>Games</Text>
+          </TouchableOpacity>
+        ),
       });
     }
-  }, [game, navigation, colors]);
+  }, [game, navigation, router, colors]);
 
   const styles = makeStyles(colors, insets);
 
