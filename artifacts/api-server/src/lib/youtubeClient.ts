@@ -95,7 +95,10 @@ export async function ensureLiveResources(refreshToken: string, existing?: {
           contentDetails: {
             enableAutoStart: true,
             enableAutoStop: true,
-            enableEmbed: true,
+            // Some channels reject enableEmbed during liveBroadcasts.insert
+            // with invalidEmbedSetting even though the resulting video can be
+            // made embeddable through the regular Videos API.
+            enableEmbed: false,
             latencyPreference: "low",
             enableClosedCaptions: false,
           },
@@ -104,6 +107,17 @@ export async function ensureLiveResources(refreshToken: string, existing?: {
     }
     const broadcastId = broadcast.id;
     if (!broadcastId) throw new Error("YouTube did not return a broadcast ID");
+    await youtube.videos.update({
+      part: ["status"],
+      requestBody: {
+        id: broadcastId,
+        status: {
+          privacyStatus: "unlisted",
+          embeddable: true,
+          selfDeclaredMadeForKids: false,
+        },
+      },
+    });
     await existing?.onBroadcastReady?.(broadcastId);
     let stream = existing?.streamId
       ? (await youtube.liveStreams.list({ part: ["id", "cdn", "status"], id: [existing.streamId] })).data.items?.[0]

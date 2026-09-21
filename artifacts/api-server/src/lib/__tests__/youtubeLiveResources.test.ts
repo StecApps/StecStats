@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   broadcastList: vi.fn(),
   broadcastInsert: vi.fn(),
   broadcastBind: vi.fn(),
+  videoUpdate: vi.fn(),
   streamList: vi.fn(),
   streamInsert: vi.fn(),
 }));
@@ -24,6 +25,9 @@ vi.mock("googleapis", () => ({
       liveStreams: {
         list: mocks.streamList,
         insert: mocks.streamInsert,
+      },
+      videos: {
+        update: mocks.videoUpdate,
       },
     }),
   },
@@ -54,6 +58,7 @@ describe("ensureLiveResources", () => {
       },
     });
     mocks.broadcastBind.mockResolvedValue({ data: {} });
+    mocks.videoUpdate.mockResolvedValue({ data: {} });
   });
 
   it("supplies YouTube's required scheduled start time for an immediate auto-start broadcast", async () => {
@@ -67,7 +72,18 @@ describe("ensureLiveResources", () => {
     expect(scheduled).toBeGreaterThan(before);
     expect(scheduled).toBeLessThanOrEqual(before + 31_000);
     expect(request.requestBody.contentDetails.enableAutoStart).toBe(true);
-    expect(request.requestBody.contentDetails.enableEmbed).toBe(true);
+    expect(request.requestBody.contentDetails.enableEmbed).toBe(false);
     expect(request.requestBody.status.privacyStatus).toBe("unlisted");
+    expect(mocks.videoUpdate).toHaveBeenCalledWith({
+      part: ["status"],
+      requestBody: {
+        id: "broadcast-1",
+        status: {
+          privacyStatus: "unlisted",
+          embeddable: true,
+          selfDeclaredMadeForKids: false,
+        },
+      },
+    });
   });
 });

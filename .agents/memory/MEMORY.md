@@ -6,6 +6,7 @@
 - [Live streaming via custom WebRTC signaling](live-streaming-webrtc.md) — in-memory `ws` signaling relay on api-server, now with Metered.ca TURN relay and DB-backed session metadata.
 - [Daily managed streaming](daily-managed-streaming.md) — Live uses Daily as sole camera owner with cloud recording; game save durably queues server-side import and reel generation.
 - [YouTube auto-start schedule requirement](youtube-live-scheduled-start.md) — liveBroadcasts.insert still requires a future scheduledStartTime when enableAutoStart is true.
+- [YouTube live embedding workaround](youtube-live-embedding-workaround.md) — some channels reject enableEmbed during broadcast insert; enable video status.embeddable after creation instead.
 - [Metered.ca TURN credential-scoped API key](metered-turn-api-key.md) — turn/credentials endpoint needs the credential-scoped apiKey, not the account secret/project key.
 - [Arena scoreboard theme](arena-theme.md) — app is dark-mode-only via `<html class="dark">`; never leave text uncolored on `bg-secondary` (flips white-on-white).
 - [monday.com stats xlsx import](monday-stats-import.md) — Stec stat exports have stacked season sections + summary rows + two result formats (W/L text and ✅/❌); parse to /api/import (idempotent).
