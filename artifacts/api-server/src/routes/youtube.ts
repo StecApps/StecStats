@@ -178,6 +178,19 @@ router.post("/auth/youtube/disconnect", requireAuth, async (req, res) => {
 // connected:false is returned, so every client sees the reconnect prompt
 // before attempting an upload or Live broadcast.
 router.get("/auth/youtube/status", requireAuth, async (req, res) => {
+  // This is authenticated, mutable account state. React Native's HTTP cache
+  // can otherwise reuse an older "connected" response after the server clears
+  // a revoked token. Strip validators as well as setting no-store so even a
+  // request carrying a previously cached ETag receives a fresh 200 + JSON body.
+  delete req.headers["if-none-match"];
+  delete req.headers["if-modified-since"];
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+    "Surrogate-Control": "no-store",
+  });
+
   const user = await db.query.usersTable.findFirst({
     where: eq(usersTable.id, req.appUser!.id),
     columns: { youtubeRefreshToken: true },

@@ -354,6 +354,26 @@ describe("YouTube upload route — token-expiry reconnect flow", () => {
     expect(mocks.probeTokenImpl).not.toHaveBeenCalled();
   });
 
+  it("does not return 304 from a cached YouTube connection status", async () => {
+    mocks.findFirstUser.mockResolvedValue({
+      id: 42,
+      youtubeRefreshToken: null,
+    });
+
+    const first = await getStatus();
+    expect(first.status).toBe(200);
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+
+    const second = await fetch(`${baseUrl}/auth/youtube/status`, {
+      headers: { "If-None-Match": etag! },
+    });
+
+    expect(second.status).toBe(200);
+    expect(second.headers.get("cache-control")).toContain("no-store");
+    await expect(second.json()).resolves.toEqual({ connected: false });
+  });
+
   // -------------------------------------------------------------------------
   // Test 1: expired token (simulated by YouTubeAuthError) → DB cleared + 403
   // -------------------------------------------------------------------------
