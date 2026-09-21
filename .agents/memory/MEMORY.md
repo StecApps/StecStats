@@ -103,3 +103,5 @@
 - [iPad keyboard-safe screen presentation](ipad-keyboard-screen-presentation.md) — on iPadOS 26, settle keyboard removal before pushing a native screen or CoreAutoLayout can crash.
 - [Recording-safe MJPEG fallback](recording-safe-mjpeg-fallback.md) — fallback backpressure must be independent of WebRTC, and mode switches must clear score-only viewer state.
 - [Recording-confirmed game clock](recording-confirmed-game-clock.md) — recorded games must not start the clock until native capture confirms it is writing.
+- [Daily recording finalization order](daily-recording-finalization-order.md) — finalize Daily independently before YouTube; import retries should reissue an idempotent stop.
+- [Daily iPad frame rotation](daily-ipad-frame-rotation.md) — WebRTC defaults unknown/flat iPads to portrait rotation; force landscape rotation at the outgoing frame boundary.
