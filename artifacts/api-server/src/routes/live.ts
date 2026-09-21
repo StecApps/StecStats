@@ -143,30 +143,7 @@ router.get("/live/:code/daily-token", async (req: Request, res: Response) => {
     res.status(404).json({ error: "Live video is not available" });
     return;
   }
-  if (session.youtubeLifecycleStatus === "live" && session.youtubeVideoId) {
-    res.json({ videoId: session.youtubeVideoId, watchUrl: session.youtubeWatchUrl });
-    return;
-  }
-  if (session.youtubeLifecycleStatus === "starting" || session.youtubeLifecycleStatus === "resources_ready") {
-    res.status(202).json({ status: "starting", videoId: session.youtubeVideoId, watchUrl: session.youtubeWatchUrl });
-    return;
-  }
-  if (session.youtubeVideoId || session.youtubeBroadcastId || session.youtubeLifecycleStatus) {
-    res.status(410).json({ error: "Daily viewers are not available for YouTube-distributed live" });
-    return;
-  }
   try {
-    const claimed = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${session.id})`);
-      return tx.update(liveSessionsTable).set({ youtubeLifecycleStatus: "starting", youtubeLifecycleError: null })
-        .where(and(eq(liveSessionsTable.id, session.id), ne(liveSessionsTable.youtubeLifecycleStatus, "starting")))
-        .returning({ id: liveSessionsTable.id });
-    });
-    if (!claimed.length) {
-      const current = await db.query.liveSessionsTable.findFirst({ where: eq(liveSessionsTable.id, session.id) });
-      res.status(202).json({ status: "starting", videoId: current?.youtubeVideoId, watchUrl: current?.youtubeWatchUrl });
-      return;
-    }
     const room = await createDailyMeetingToken(session.dailyRoomName, {
       owner: false,
       userId: `viewer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -210,10 +187,13 @@ router.get("/live/:code/status", async (req: Request, res: Response) => {
     viewerCount: session.viewers.size,
     teamScore: session.scoreboard.teamScore,
     opponentScore: session.scoreboard.opponentScore,
-    videoMode: persisted?.youtubeVideoId ? "youtube" : persisted?.dailyRoomName ? "daily" : "webrtc",
+    // The branded watch page uses Daily directly so it can keep the live
+    // scoreboard overlay. YouTube remains the external distribution/archive;
+    // channels can reject third-party embedding even when the video is live.
+    videoMode: persisted?.dailyRoomName ? "daily" : "webrtc",
     youtubeVideoId: persisted?.youtubeVideoId ?? null,
     youtubeWatchUrl: persisted?.youtubeWatchUrl ?? null,
-    scoreboardDelayMs: persisted?.youtubeVideoId ? 10_000 : 0,
+    scoreboardDelayMs: 0,
   });
 });
 
