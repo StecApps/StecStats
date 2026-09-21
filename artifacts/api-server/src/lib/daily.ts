@@ -103,15 +103,16 @@ export async function startDailyRtmp(
         width: 1280,
         height: 720,
         fps: 30,
-        // single-participant requires a participant session_id. This stream
-        // has one coach, so the default layout is full-frame without needing
-        // a session target.
-        layout: { preset: "default", max_cam_streams: 1 },
+        // Omit layout entirely so Daily applies its default composition. The
+        // REST API has rejected max_cam_streams even when its docs list it,
+        // while single-participant cannot be used without a session_id.
       }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (!/Daily API (400|409)|already (active|streaming)|live stream.*active/i.test(message)) throw error;
+    // Starting is idempotent only when Daily explicitly says the stream is
+    // already active. Never swallow a generic 400 validation error.
+    if (!/Daily API 409|already (active|streaming)|live stream.*active/i.test(message)) throw error;
   }
 }
 
@@ -125,7 +126,7 @@ export async function stopDailyRtmp(roomName: string): Promise<void> {
     // Stopping is deliberately idempotent: Daily reports no active stream as
     // a 404/409 (or an equivalent descriptive error) after a prior stop.
     const message = error instanceof Error ? error.message : String(error);
-    if (!/Daily API (404|409)|no active stream|already stopped/i.test(message)) throw error;
+    if (!/Daily API (404|409)|no active stream|does not have an active live stream|already stopped/i.test(message)) throw error;
   }
 }
 

@@ -46,14 +46,33 @@ describe("Daily recording import safety", () => {
       width: 1280,
       height: 720,
       fps: 30,
-      layout: { preset: "default", max_cam_streams: 1 },
     });
+  });
+
+  it("does not hide Daily request validation failures", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({
+        error: "invalid-request-error",
+        info: "\"layout.max_cam_streams\" is not allowed",
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await expect(startDailyRtmp(
+      "room",
+      "rtmps://a.example/live",
+      "secret",
+    )).rejects.toThrow("max_cam_streams");
   });
 
   it("uses the documented stop path and treats an already-stopped stream as success", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "no active stream" }), {
-        status: 404,
+      new Response(JSON.stringify({
+        error: "invalid-request-error",
+        info: "room room/name does not have an active live stream",
+      }), {
+        status: 400,
         headers: { "Content-Type": "application/json" },
       }),
     );
