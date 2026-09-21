@@ -71,5 +71,8 @@ describe('Daily cloud recording migration guards', () => {
     expect(daily).toContain("type: 'cloud'");
     expect(daily).toContain('startVideoOff: false');
     expect(daily).toContain('startAudioOff: false');
+    expect(daily).toContain("layout: { preset: 'default', max_cam_streams: 1 }");
+    expect(scorekeeper).toContain('recordVideo && !dailyRecordingCodeRef.current');
+    expect(daily).not.toContain("layout: { preset: 'single-participant' }");
   });
 });

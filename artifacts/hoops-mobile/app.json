@@ -26,7 +26,7 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "20260952"
+      "buildNumber": "20260953"
     },
     "android": {
       "adaptiveIcon": {
@@ -108,7 +108,7 @@
       "enabled": true,
       "checkAutomatically": "ON_LOAD"
     },
-    "runtimeVersion": "1.0.0-daily-20260952",
+    "runtimeVersion": "1.0.0-daily-20260953",
     "extra": {
       "router": {
         "origin": "https://replit.com/"

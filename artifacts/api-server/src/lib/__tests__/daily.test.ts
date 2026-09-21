@@ -46,7 +46,7 @@ describe("Daily recording import safety", () => {
       width: 1280,
       height: 720,
       fps: 30,
-      layout: { preset: "single-participant" },
+      layout: { preset: "default", max_cam_streams: 1 },
     });
   });
 

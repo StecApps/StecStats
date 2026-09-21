@@ -103,7 +103,10 @@ export async function startDailyRtmp(
         width: 1280,
         height: 720,
         fps: 30,
-        layout: { preset: "single-participant" },
+        // single-participant requires a participant session_id. This stream
+        // has one coach, so the default layout is full-frame without needing
+        // a session target.
+        layout: { preset: "default", max_cam_streams: 1 },
       }),
     });
   } catch (error) {

@@ -2701,7 +2701,10 @@ export default function ScorekeeperScreen() {
     try {
       let videoObjectPath: string | null = null;
       let pendingClientId: string | undefined;
-      if (recordVideo) {
+      // Daily owns the master during a Daily Live session. There will be no
+      // local URI to upload; save the game with its live session code so the
+      // server can attach the finalized cloud recording.
+      if (recordVideo && !dailyRecordingCodeRef.current) {
         if (recordedUrisRef.current.length === 0) {
           showNoVideoAlert(recordingStartedRef.current, setSaving, doSaveGame);
           return;

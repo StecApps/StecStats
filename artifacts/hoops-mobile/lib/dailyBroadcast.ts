@@ -138,7 +138,9 @@ export async function startDailyBroadcast(
         width: 1280,
         height: 720,
         fps: 30,
-        layout: { preset: 'single-participant' },
+        // single-participant requires Daily's participant session_id. The
+        // default layout safely renders the sole coach without a target ID.
+        layout: { preset: 'default', max_cam_streams: 1 },
       });
     } catch (error) {
       // The API may start the room recording before returning the broadcaster
