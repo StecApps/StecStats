@@ -114,6 +114,7 @@ import {
 import {
   dailyRecordingElapsedMs,
   cycleDailyCamera,
+  setDailyCameraZoom,
   setDailyMicrophoneMuted,
   startDailyBroadcast,
   stopDailyBroadcast,
@@ -490,9 +491,23 @@ export default function ScorekeeperScreen() {
   const zoomBadgeOpacity = useRef(new Animated.Value(0)).current;
   const zoomHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pinchBaseZoom = useSharedValue(0);
+  const dailyZoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDailyZoomRef = useRef(0);
 
   function showZoomBadge(zoom: number) {
-    setCameraZoom(clampCameraZoom(zoom));
+    const nextZoom = clampCameraZoom(zoom);
+    setCameraZoom(nextZoom);
+    if (dailyLiveRef.current) {
+      pendingDailyZoomRef.current = nextZoom;
+      if (!dailyZoomTimerRef.current) {
+        dailyZoomTimerRef.current = setTimeout(() => {
+          dailyZoomTimerRef.current = null;
+          void setDailyCameraZoom(pendingDailyZoomRef.current).catch((error) => {
+            showCameraNotice(error instanceof Error ? error.message : 'Could not zoom the Live camera.');
+          });
+        }, 80);
+      }
+    }
     setZoomBadgeVisible(true);
     zoomBadgeOpacity.stopAnimation();
     Animated.timing(zoomBadgeOpacity, { toValue: 1, duration: 120, useNativeDriver: true }).start();
@@ -600,6 +615,9 @@ export default function ScorekeeperScreen() {
       await startDailyBroadcast(daily, setDailyLocalVideoTrack);
       dailyLiveRef.current = true;
       setDailyLive(true);
+      await setDailyCameraZoom(cameraZoom).catch((error) => {
+        showCameraNotice(error instanceof Error ? error.message : 'Could not restore the camera zoom.');
+      });
 
       // Daily must be connected before the server can publish its RTMP
       // output to YouTube. The server owns the YouTube broadcast and stream
@@ -3143,10 +3161,30 @@ export default function ScorekeeperScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Opponent score — display only in overlay; use the OPP bar below to score */}
+        {/* Opponent score — mirrors our quick-score controls */}
         <View style={styles.scoreCol}>
           <Text style={styles.teamLabel} numberOfLines={1}>{opponent}</Text>
-          <Text style={styles.scoreNum}>{opponentScore}</Text>
+          <View style={styles.oppScoreRow}>
+            <TouchableOpacity
+              onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              disabled={opponentScore === 0}
+              style={[styles.oppBtn, { opacity: opponentScore === 0 ? 0.35 : 1 }]}
+              hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
+            >
+              <Text style={styles.oppBtnText}>−</Text>
+            </TouchableOpacity>
+            <Text style={styles.scoreNum}>{opponentScore}</Text>
+            {([1, 2, 3] as const).map((pts) => (
+              <TouchableOpacity
+                key={pts}
+                onPress={() => { setOpponentScore((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                style={styles.oppOverlayQuickBtn}
+                hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
+              >
+                <Text style={styles.oppOverlayQuickBtnText}>+{pts}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
     </View>
@@ -3166,36 +3204,6 @@ export default function ScorekeeperScreen() {
           <Text style={styles.offlineBannerText}>Stats saving locally — will sync when connected</Text>
         </View>
       )}
-
-      {/* ── Opponent score bar — shown only during recording; non-recording uses the compact header ── */}
-      {recordVideo && <View style={[styles.oppBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <View style={styles.oppBarLeft}>
-          <View style={[styles.oppBarTagPill, { backgroundColor: colors.primary + '1A' }]}>
-            <Text style={[styles.oppBarTagText, { color: colors.primary }]}>OPP</Text>
-          </View>
-          <Text style={[styles.oppBarName, { color: colors.foreground }]} numberOfLines={1}>{opponent}</Text>
-        </View>
-        <View style={styles.oppBarRight}>
-          <TouchableOpacity
-            onPress={() => { setOpponentScore((s) => Math.max(0, s - 1)); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-            style={[styles.oppBtn, { backgroundColor: colors.muted }]}
-            hitSlop={{ top: 14, bottom: 14, left: 14, right: 8 }}
-          >
-            <Text style={[styles.oppBtnText, { color: colors.foreground }]}>−</Text>
-          </TouchableOpacity>
-          <Text style={[styles.oppBarScore, { color: colors.foreground }]}>{opponentScore}</Text>
-          {([1, 2, 3] as const).map((pts) => (
-            <TouchableOpacity
-              key={pts}
-              onPress={() => { setOpponentScore((s) => s + pts); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-              style={[styles.oppQuickBtn, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '50' }]}
-              hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
-            >
-              <Text style={[styles.oppQuickBtnText, { color: colors.primary }]}>+{pts}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>}
 
       {/* Camera hidden badge — subtle reminder that recording is still running */}
       {recordVideo && !previewVisible && (
@@ -3724,7 +3732,7 @@ export default function ScorekeeperScreen() {
                 audioTrack={null}
                 mirror={false}
                 zOrder={0}
-                objectFit="contain"
+                objectFit="cover"
                 style={StyleSheet.absoluteFillObject}
               />
             </View>
@@ -3797,6 +3805,9 @@ export default function ScorekeeperScreen() {
                       void cycleDailyCamera()
                         .then((facing) => {
                           if (facing) setCameraFacing(facing);
+                          return setDailyCameraZoom(cameraZoom);
+                        })
+                        .then(() => {
                           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         })
                         .catch((error) => {
@@ -3901,7 +3912,7 @@ export default function ScorekeeperScreen() {
               </View>
             )}
 
-            {cameraReady && !dailyLive && (
+            {(cameraReady || dailyLive) && (
               <View style={styles.zoomControls}>
                 <TouchableOpacity
                   testID="camera-zoom-out"
