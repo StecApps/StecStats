@@ -1,0 +1,99 @@
+diff --git a/ios/RCTWebRTC/VideoCaptureController.h b/ios/RCTWebRTC/VideoCaptureController.h
+index 04bbbbce98589d84e481e8190ba7f5daab8b3ada..4989b46d1d7fe80a8523e7cc0c53309fd7294e04 100644
+--- a/ios/RCTWebRTC/VideoCaptureController.h
++++ b/ios/RCTWebRTC/VideoCaptureController.h
+@@ -17,6 +17,7 @@
+ - (void)applyConstraints:(NSDictionary *)constraints error:(NSError **)outError;
+ -(NSString *)switchCamera;
+ -(NSString *)facingMode;
++- (CGFloat)setNormalizedZoom:(CGFloat)normalizedZoom error:(NSError **)outError;
+ 
+ @end
+ #endif
+diff --git a/ios/RCTWebRTC/VideoCaptureController.m b/ios/RCTWebRTC/VideoCaptureController.m
+index 532276a2aedc6be5d2fcfc1476d952ef24d6a7a2..3e8e0d1fd7bce86f7f8cc714bb32b1d45b08ef9f 100644
+--- a/ios/RCTWebRTC/VideoCaptureController.m
++++ b/ios/RCTWebRTC/VideoCaptureController.m
+@@ -198,6 +198,34 @@
+     return self.usingFrontCamera ? @"user" : @"environment";
+ }
+ 
++- (CGFloat)setNormalizedZoom:(CGFloat)normalizedZoom error:(NSError **)outError {
++    AVCaptureDevice *device = self.device;
++    if (!device) {
++        if (outError) {
++            *outError = [NSError errorWithDomain:@"WebRTCModule"
++                                            code:1
++                                        userInfo:@{NSLocalizedDescriptionKey : @"Camera is not active"}];
++        }
++        return 1.0;
++    }
++
++    CGFloat boundedZoom = MIN(1.0, MAX(0.0, normalizedZoom));
++    CGFloat minimumFactor = 1.0;
++    CGFloat maximumFactor = MIN(5.0, device.activeFormat.videoMaxZoomFactor);
++    CGFloat requestedFactor = minimumFactor + boundedZoom * (maximumFactor - minimumFactor);
++    NSError *configurationError = nil;
++    if (![device lockForConfiguration:&configurationError]) {
++        if (outError) {
++            *outError = configurationError;
++        }
++        return device.videoZoomFactor;
++    }
++    device.videoZoomFactor = MIN(maximumFactor, MAX(minimumFactor, requestedFactor));
++    CGFloat appliedFactor = device.videoZoomFactor;
++    [device unlockForConfiguration];
++    return appliedFactor;
++}
++
+ - (NSDictionary *)getSettings {
+     AVCaptureDeviceFormat *format = self.selectedFormat;
+     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+diff --git a/ios/RCTWebRTC/WebRTCModule.m b/ios/RCTWebRTC/WebRTCModule.m
+index 5cd60db988965f136265c69fab69d17cf67b97af..fd5f4c0d662d17ef39a60ceb319511feb5a052b5 100644
+--- a/ios/RCTWebRTC/WebRTCModule.m
++++ b/ios/RCTWebRTC/WebRTCModule.m
+@@ -10,6 +10,8 @@
+ #import "WebRTCModule+RTCPeerConnection.h"
+ #import "WebRTCModule.h"
+ #import "WebRTCModuleOptions.h"
++#import "RTCMediaStreamTrack+React.h"
++#import "VideoCaptureController.h"
+ 
+ @interface WebRTCModule ()
+ @end
+@@ -125,4 +127,34 @@ RCT_EXPORT_MODULE();
+     ];
+ }
+ 
++RCT_REMAP_METHOD(setCameraZoom,
++                 setCameraZoom:(nonnull NSString *)trackID
++                 normalizedZoom:(nonnull NSNumber *)normalizedZoom
++                 resolver:(RCTPromiseResolveBlock)resolve
++                 rejecter:(RCTPromiseRejectBlock)reject) {
++#if TARGET_OS_TV
++    reject(@"unsupported_platform", @"Camera zoom is not supported on tvOS", nil);
++#else
++    RTCMediaStreamTrack *track = self.localTracks[trackID];
++    if (![track isKindOfClass:[RTCVideoTrack class]]) {
++        reject(@"camera_zoom_track_missing", @"Local camera track was not found", nil);
++        return;
++    }
++    RTCVideoTrack *videoTrack = (RTCVideoTrack *)track;
++    if (![videoTrack.captureController isKindOfClass:[VideoCaptureController class]]) {
++        reject(@"camera_zoom_unavailable", @"The active video track is not a camera", nil);
++        return;
++    }
++    NSError *error = nil;
++    CGFloat appliedFactor = [(VideoCaptureController *)videoTrack.captureController
++        setNormalizedZoom:normalizedZoom.doubleValue
++                    error:&error];
++    if (error) {
++        reject(@"camera_zoom_failed", error.localizedDescription, error);
++        return;
++    }
++    resolve(@(appliedFactor));
++#endif
++}
++
+ @end

@@ -22,7 +22,15 @@ describe('Daily cloud recording migration guards', () => {
     expect(scorekeeper).toContain('(cameraReady || dailyLive)');
     expect(scorekeeper).toContain('cycleDailyCamera()');
     expect(scorekeeper).toContain('setDailyMicrophoneMuted(nextMuted)');
-    expect(scorekeeper).toContain('cameraReady && !dailyLive');
+    expect(scorekeeper).toContain('(cameraReady || dailyLive)');
+    expect(scorekeeper).toContain('setDailyCameraZoom(cameraZoom)');
+    expect(daily).toContain('NativeModules.WebRTCModule?.setCameraZoom');
+  });
+
+  test('keeps Live framing full and scores both teams from the shared scoreboard', () => {
+    expect(scorekeeper).toContain('objectFit="cover"');
+    expect(scorekeeper).toContain('Opponent score — mirrors our quick-score controls');
+    expect(scorekeeper).not.toContain('Opponent score bar — shown only during recording');
   });
 
   test('timestamps Live events from the Daily recording clock', () => {

@@ -1,3 +1,5 @@
+import { NativeModules, Platform } from 'react-native';
+
 /**
  * Daily cloud-recorded broadcaster.
  *
@@ -93,6 +95,16 @@ export async function cycleDailyCamera(): Promise<'front' | 'back' | null> {
 
 export function setDailyMicrophoneMuted(muted: boolean): void {
   activeCall?.setLocalAudio(!muted);
+}
+
+export async function setDailyCameraZoom(normalizedZoom: number): Promise<number | null> {
+  if (!activeCall || Platform.OS !== 'ios') return null;
+  const track = readLocalVideoTrack(activeCall.participants?.()?.local) as { id?: string } | null;
+  const setCameraZoom = NativeModules.WebRTCModule?.setCameraZoom;
+  if (!track?.id || typeof setCameraZoom !== 'function') {
+    throw new Error('Camera zoom is unavailable in this build.');
+  }
+  return setCameraZoom(track.id, Math.min(1, Math.max(0, normalizedZoom)));
 }
 
 export async function startDailyBroadcast(
