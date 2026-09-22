@@ -231,9 +231,12 @@ describe("youtubeClient — googleapis error mapping", () => {
     await expect(realUpload(uploadArgs())).rejects.toThrow(YouTubeAuthError);
   });
 
-  it("converts a googleapis 403 status into YouTubeAuthError", async () => {
+  it("converts a googleapis auth 403 into YouTubeAuthError", async () => {
     mocks.videosInsert.mockRejectedValue(
-      Object.assign(new Error("Forbidden"), { status: 403 }),
+      Object.assign(new Error("Forbidden"), {
+        status: 403,
+        errors: [{ reason: "authError" }],
+      }),
     );
     await expect(realUpload(uploadArgs())).rejects.toThrow(YouTubeAuthError);
   });

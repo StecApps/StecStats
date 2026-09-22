@@ -9,7 +9,7 @@ import { createDailyMeetingToken, createDailyRoom, getDailyRoom, dailyConfigured
 import { enqueueDailyRecordingImport } from "../lib/dailyRecordingImport";
 import { createBroadcasterToken } from "../lib/liveAuth";
 import { decryptToken, encryptToken } from "../lib/tokenEncryption";
-import { ensureLiveResources, YouTubeAuthError } from "../lib/youtubeClient";
+import { ensureLiveResources, YouTubeAuthError, YouTubeLiveError } from "../lib/youtubeClient";
 
 const router: IRouter = Router();
 const LIVE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
@@ -269,6 +269,11 @@ router.post("/live/:code/youtube/start", requireAuth, async (req: Request, res: 
     if (error instanceof YouTubeAuthError) {
       const code = /not enabled/i.test(error.message) ? "YOUTUBE_LIVE_NOT_ENABLED" : "YOUTUBE_RECONNECT_REQUIRED";
       res.status(403).json({ error: error.message, code });
+      return;
+    }
+    if (error instanceof YouTubeLiveError) {
+      req.log.warn({ err: error, code }, "YouTube rejected Live start");
+      res.status(403).json({ error: error.message, code: error.code });
       return;
     }
     const typed = error as { status?: number; code?: string; message?: string };

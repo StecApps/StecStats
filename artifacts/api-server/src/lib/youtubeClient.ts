@@ -8,6 +8,16 @@ export class YouTubeAuthError extends Error {
   }
 }
 
+export class YouTubeLiveError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+  ) {
+    super(message);
+    this.name = "YouTubeLiveError";
+  }
+}
+
 export function isYoutubeConfigured(): boolean {
   return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
@@ -51,15 +61,60 @@ function youtubeAuth(refreshToken: string) {
   return google.youtube({ version: "v3", auth: oauth2Client });
 }
 
+type GoogleApiError = {
+  status?: number;
+  code?: number;
+  message?: string;
+  errors?: Array<{ reason?: string; message?: string }>;
+  response?: {
+    status?: number;
+    data?: {
+      error?: {
+        code?: number;
+        message?: string;
+        status?: string;
+        errors?: Array<{ reason?: string; message?: string }>;
+      };
+    };
+  };
+};
+
+function getGoogleErrorDetails(err: unknown) {
+  const typed = err as GoogleApiError;
+  const nested = typed.response?.data?.error;
+  const detail = typed.errors?.[0] ?? nested?.errors?.[0];
+  return {
+    status: typed.status ?? typed.code ?? typed.response?.status ?? nested?.code,
+    reason: String(detail?.reason ?? nested?.status ?? ""),
+    message: String(detail?.message ?? nested?.message ?? typed.message ?? ""),
+  };
+}
+
+function isGoogleAuthFailure(status: number | undefined, reason: string, message: string): boolean {
+  if (status === 401) return true;
+  if (status !== 403) return false;
+  return /(authError|invalidCredentials|insufficientPermissions|unauthorized)/i.test(`${reason} ${message}`);
+}
+
 function mapYouTubeError(err: unknown): never {
-  const status = (err as { status?: number; code?: number })?.status ??
-    (err as { status?: number; code?: number })?.code;
-  const reason = String((err as { errors?: Array<{ reason?: string }> })?.errors?.[0]?.reason ?? "");
-  if (status === 401 || status === 403) {
-    if (/liveStreamingNotEnabled/i.test(reason)) {
-      throw new YouTubeAuthError("YouTube Live is not enabled for this account. Enable live streaming or reconnect YouTube.");
-    }
+  const { status, reason, message } = getGoogleErrorDetails(err);
+  const detail = `${reason} ${message}`;
+  if (status === 403 &&
+      /(liveStreamingNotEnabled|not enabled for live streaming|youtubeSignupRequired|livePermissionBlocked|accountClosed|accountSuspended)/i.test(detail)) {
+    throw new YouTubeAuthError(
+      "YouTube Live is not enabled for this channel. Enable Live in YouTube Studio; first activation may take up to 24 hours.",
+    );
+  }
+  if (isGoogleAuthFailure(status, reason, message)) {
     throw new YouTubeAuthError("YouTube token expired or revoked — please reconnect");
+  }
+  if (status === 403) {
+    const safeReason = reason || "forbidden";
+    const safeMessage = message || "YouTube rejected the request";
+    throw new YouTubeLiveError(
+      `YouTube Live could not start (${safeReason}): ${safeMessage}`,
+      "YOUTUBE_LIVE_REJECTED",
+    );
   }
   throw err;
 }
@@ -173,7 +228,9 @@ export async function exchangeCode(code: string): Promise<{ refreshToken: string
 /**
  * Performs a cheap read-only probe (channels.list?mine=true&part=id) to verify
  * the stored refresh token is still valid.  Throws YouTubeAuthError if Google
- * rejects it with 401 or 403, so the caller can clear the DB record.
+ * rejects the credential, so the caller can clear the DB record. Other 403s
+ * (quota, API/channel restrictions) are preserved as service errors because
+ * reconnecting cannot repair them.
  *
  * @param timeoutMs  Maximum ms to wait for the Google API call (default 4 s).
  *                   The server-side default is kept short so the route handler
@@ -191,10 +248,8 @@ export async function probeToken(refreshToken: string, timeoutMs = 4_000): Promi
       { timeout: timeoutMs },
     );
   } catch (err: unknown) {
-    const status =
-      (err as { status?: number; code?: number })?.status ??
-      (err as { status?: number; code?: number })?.code;
-    if (status === 401 || status === 403) {
+    const { status, reason, message } = getGoogleErrorDetails(err);
+    if (isGoogleAuthFailure(status, reason, message)) {
       throw new YouTubeAuthError("YouTube token revoked or expired");
     }
     throw err;

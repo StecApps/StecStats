@@ -33,7 +33,7 @@ vi.mock("googleapis", () => ({
   },
 }));
 
-import { ensureLiveResources } from "../youtubeClient";
+import { ensureLiveResources, YouTubeAuthError, YouTubeLiveError } from "../youtubeClient";
 
 describe("ensureLiveResources", () => {
   beforeEach(() => {
@@ -85,5 +85,47 @@ describe("ensureLiveResources", () => {
         },
       },
     });
+  });
+
+  it("reports a nested liveStreamingNotEnabled response as a channel setup issue", async () => {
+    mocks.broadcastInsert.mockRejectedValue({
+      response: {
+        status: 403,
+        data: {
+          error: {
+            code: 403,
+            message: "The user is not enabled for live streaming.",
+            errors: [{ reason: "liveStreamingNotEnabled" }],
+          },
+        },
+      },
+    });
+
+    const error = await ensureLiveResources("refresh-token").catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(YouTubeAuthError);
+    expect((error as Error).message).toMatch(/Live is not enabled/i);
+  });
+
+  it("does not misreport a non-auth Google 403 as an expired token", async () => {
+    mocks.broadcastInsert.mockRejectedValue({
+      response: {
+        status: 403,
+        data: {
+          error: {
+            code: 403,
+            message: "The request cannot be completed because you have exceeded your quota.",
+            errors: [{ reason: "quotaExceeded" }],
+          },
+        },
+      },
+    });
+
+    const error = await ensureLiveResources("refresh-token").catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(YouTubeLiveError);
+    expect(error).not.toBeInstanceOf(YouTubeAuthError);
+    expect((error as YouTubeLiveError).code).toBe("YOUTUBE_LIVE_REJECTED");
+    expect((error as Error).message).toMatch(/quotaExceeded/);
   });
 });
