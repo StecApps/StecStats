@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>StecStats YouTube User Flow</title>
+    <style>
+      @page { size: 13.333in 7.5in; margin: 0; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; width: 1280px; height: 720px; overflow: hidden;
+        background: #090909; color: #f7f5f2; font-family: Arial, Helvetica, sans-serif;
+      }
+      main { padding: 38px 50px 30px; height: 100%; }
+      header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 28px; }
+      .eyebrow { color: #ff5a24; font-size: 14px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
+      h1 { margin: 6px 0 0; font-size: 32px; }
+      .date { color: #aaa29d; font-size: 13px; }
+      .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px 26px; }
+      .step {
+        position: relative; min-height: 190px; border: 1px solid #35302e; border-radius: 14px;
+        background: #151312; padding: 20px 20px 17px;
+      }
+      .step:nth-child(2), .step:nth-child(3), .step:nth-child(6), .step:nth-child(7) { border-color: #77301e; }
+      .step.youtube { border-color: #7d2222; background: linear-gradient(145deg, #1d1111, #151313); }
+      .num {
+        width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+        background: #ff4f1f; color: white; font-weight: 900; margin-bottom: 14px;
+      }
+      .youtube .num { background: #ff0033; }
+      h2 { margin: 0 0 8px; font-size: 17px; }
+      p { margin: 0; color: #bdb6b1; font-size: 13px; line-height: 1.42; }
+      .arrow { position: absolute; right: -21px; top: 78px; color: #ff5a24; font-size: 23px; z-index: 2; }
+      .down { position: absolute; left: calc(50% - 7px); bottom: -25px; color: #ff5a24; font-size: 23px; z-index: 2; }
+      .controls {
+        margin-top: 22px; border: 1px solid #35302e; border-radius: 12px; padding: 14px 18px;
+        display: flex; justify-content: space-between; gap: 22px; background: #11100f;
+      }
+      .controls span { color: #aaa29d; font-size: 12px; line-height: 1.4; }
+      .controls strong { color: #fff; }
+      footer { margin-top: 17px; display: flex; justify-content: space-between; color: #716b67; font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow">StecStats Compliance Evidence</div>
+          <h1>YouTube Connection, Live Broadcast &amp; Removal Flow</h1>
+        </div>
+        <div class="date">September 22, 2026</div>
+      </header>
+
+      <section class="grid" aria-label="YouTube user flow">
+        <article class="step">
+          <div class="num">1</div><h2>Coach signs in</h2>
+          <p>The adult coach signs into StecStats and opens the Profile or game-recording screen.</p>
+          <span class="arrow">→</span>
+        </article>
+        <article class="step">
+          <div class="num">2</div><h2>Selects Connect YouTube</h2>
+          <p>The coach explicitly starts the connection flow. StecStats redirects to Google OAuth.</p>
+          <span class="arrow">→</span>
+        </article>
+        <article class="step youtube">
+          <div class="num">3</div><h2>Reviews Google consent</h2>
+          <p>Google displays the requested YouTube permissions. The coach chooses whether to grant access.</p>
+          <span class="arrow">→</span>
+        </article>
+        <article class="step">
+          <div class="num">4</div><h2>Returns connected</h2>
+          <p>StecStats securely stores the encrypted authorization token and displays connection status.</p>
+          <span class="down">↓</span>
+        </article>
+
+        <article class="step">
+          <div class="num">8</div><h2>Disconnects or deletes</h2>
+          <p>The coach can revoke access from Profile or delete the account, removing stored authorization and connection data.</p>
+        </article>
+        <article class="step youtube">
+          <div class="num">7</div><h2>Broadcast completes</h2>
+          <p>When the coach ends the session, StecStats transitions the YouTube Live broadcast to complete.</p>
+          <span class="arrow" style="left:-21px;right:auto">←</span>
+        </article>
+        <article class="step">
+          <div class="num">6</div><h2>YouTube Live runs</h2>
+          <p>StecStats creates and binds the broadcast and stream. Status checks support recovery and completion.</p>
+          <span class="arrow" style="left:-21px;right:auto">←</span>
+        </article>
+        <article class="step">
+          <div class="num">5</div><h2>Coach starts a game</h2>
+          <p>The coach chooses YouTube Live, confirms the title and privacy, and explicitly starts broadcasting.</p>
+          <span class="arrow" style="left:-21px;right:auto">←</span>
+        </article>
+      </section>
+
+      <section class="controls">
+        <span><strong>Optional video upload:</strong> A coach may separately choose a saved game or highlight and initiate an upload to their YouTube account.</span>
+        <span><strong>User control:</strong> No broadcast or upload is created without a coach action. Access can be revoked at any time.</span>
+      </section>
+
+      <footer>
+        <span>StecStats · stecstats.com</span>
+        <span>User-flow overview for YouTube Data API quota and compliance review</span>
+      </footer>
+    </main>
+  </body>
+</html>
