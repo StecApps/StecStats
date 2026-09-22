@@ -307,3 +307,45 @@ mtime_ms = 1790120239113
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:aae487fc-cd3a-4c3a-8c60-4afde524dae2/ec374f81-3c98-4941-9ff2-08a1756991ac/2219b452-6d6c-4613-b00f-e5a8fcc94cc0"
 storage_version_token = "1790120290589788"
 content_type = "application/pdf"
+
+[[outputs]]
+id = "1a23jTTs7Wg8UijaM90vQ"
+uri = "file://audit-evidence/stecstats-privacy-and-deletion-evidence.png"
+type = "image"
+title = "Privacy and Deletion Evidence"
+description = "Production Privacy Policy and Account Deletion pages with URLs shown. Upload to Privacy Policy Screenshots."
+logical_id = "7faaf6cf-9745-4ead-8d10-ed5f80c7008d"
+content_hash = "sha256:25f58884428f89fb2e6b23edc18209ca5f7f81b21c31e0ce225e6de32c14a8eb"
+size = 1352683
+mtime_ms = 1790121025264
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:aae487fc-cd3a-4c3a-8c60-4afde524dae2/7faaf6cf-9745-4ead-8d10-ed5f80c7008d/8dbb51c5-3ca7-46b4-8589-6f2650c64bb1"
+storage_version_token = "1790121053546521"
+content_type = "image/png"
+
+[[outputs]]
+id = "mdmY5ShTW_ZhpgysGfIav"
+uri = "file://audit-evidence/stecstats-homepage-youtube-privacy.png"
+type = "image"
+title = "Homepage YouTube and Privacy Evidence"
+description = "Production homepage showing YouTube branding beside the Privacy Policy link. Upload to Homepage Screenshot."
+logical_id = "471d7675-03c0-4cbc-998c-5b4968b228db"
+content_hash = "sha256:10251a1a28e3c2a236418548fd9e212cc92a0c335537dcf742b1902c986b1557"
+size = 490830
+mtime_ms = 1790121008512
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:aae487fc-cd3a-4c3a-8c60-4afde524dae2/471d7675-03c0-4cbc-998c-5b4968b228db/569b9fcc-e25d-4708-b986-54f41a9624c2"
+storage_version_token = "1790121054705311"
+content_type = "image/png"
+
+[[outputs]]
+id = "wchGa8tGVuGmrx28kNEz-"
+uri = "file://audit-evidence/stecstats-terms-of-service.png"
+type = "image"
+title = "Terms of Service Evidence"
+description = "Production Terms page including the YouTube API Services section. Upload to Terms of Service Documentation."
+logical_id = "485ec898-5cb4-4e81-b319-4607f6d3ea12"
+content_hash = "sha256:2b0dec99ff03f9aace355885aa83f6498b0aa8699927356addfbdca337b94de3"
+size = 905540
+mtime_ms = 1790121010660
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:aae487fc-cd3a-4c3a-8c60-4afde524dae2/485ec898-5cb4-4e81-b319-4607f6d3ea12/98993a78-89cb-4333-857b-a3f86e8c8cf3"
+storage_version_token = "1790121058732914"
+content_type = "image/png"
