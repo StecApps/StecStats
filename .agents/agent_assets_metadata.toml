@@ -89,165 +89,221 @@ id = "FZj9W2EktEJeb43lNxG9Q"
 uri = "file://attached_assets/logo_option_1.png"
 type = "image"
 title = "Option 1 — Icon + Text integrated"
+logical_id = "9beb808b-aa68-4d26-93f8-201d57980ec3"
 
 [[outputs]]
 id = "zESyqc1LfiSMLOOsHOYUv"
 uri = "file://attached_assets/logo_option_2.png"
 type = "image"
 title = "Option 2 — Icon mark only"
+logical_id = "a143c823-9d5a-4724-b531-a15afd51aca6"
 
 [[outputs]]
 id = "vE4VlKutPOc80ACGcnskE"
 uri = "file://attached_assets/logo_option_3.png"
 type = "image"
 title = "Option 3 — Horizontal wordmark"
+logical_id = "90e145e1-4556-4bc4-aeb6-2fc8c3e1cdeb"
 
 [[outputs]]
 id = "elcT0r38tpLK8SekqIVeY"
 uri = "file://artifacts/api-server/assets/music/energetic.mp3"
 type = "audio"
 title = "energetic"
+logical_id = "827e7e25-70da-419c-9168-7b8d3146e76d"
 
 [[outputs]]
 id = "vvpiSi810aD8HLBuMwhmq"
 uri = "file://artifacts/api-server/assets/music/upbeat.mp3"
 type = "audio"
 title = "upbeat"
+logical_id = "9ce1bfd9-99f1-4715-8bc5-b588a0df0702"
 
 [[outputs]]
 id = "Hf-zr1_4djvaMuRSut5vG"
 uri = "file://artifacts/api-server/assets/music/dynamic.mp3"
 type = "audio"
 title = "dynamic"
+logical_id = "0542d79d-6e86-43cd-938c-e4f1ced9f9f9"
 
 [[outputs]]
 id = "D5aDxrqhuUz-jSDy4dF1z"
 uri = "file://artifacts/api-server/assets/music/lofi.mp3"
 type = "audio"
 title = "lofi"
+logical_id = "32384f37-ea59-40ff-980d-dc7cf4d75619"
 
 [[outputs]]
 id = "U6oRS84NAlUYwVMFvduRH"
 uri = "file://artifacts/api-server/assets/music/cinematic.mp3"
 type = "audio"
 title = "cinematic"
+logical_id = "69d5f90e-1b25-4d0c-8e62-cb8f1b67545b"
 
 [[outputs]]
 id = "sCZtNaHuZZdYWHcJKnSqm"
 uri = "file://artifacts/api-server/assets/music/oldschool.mp3"
 type = "audio"
 title = "oldschool"
+logical_id = "1e1c284d-2275-42aa-acad-e9cb0cd8cea7"
 
 [[outputs]]
 id = "o-is_xg6n0QAKkEt6snpt"
 uri = "file://attached_assets/icon-v1-basketball.png"
 type = "image"
 title = "Option 1 — Basketball glow"
+logical_id = "46864a25-00b7-42fc-89f3-0202c3f335a3"
 
 [[outputs]]
 id = "1C2Qo___xlLOYoW6Oz2Qf"
 uri = "file://attached_assets/icon-v2-s-basketball.png"
 type = "image"
 title = "Option 2 — Stylized S"
+logical_id = "35e4908c-2e20-4b7d-a900-3259df3d31ea"
 
 [[outputs]]
 id = "zNKu4QgsRfCqELWutHr8E"
 uri = "file://attached_assets/icon-v3-slash.png"
 type = "image"
 title = "Option 3 — Basketball + stat slash"
+logical_id = "a16ede14-7c7f-4adf-9128-a26731176b4f"
 
 [[outputs]]
 id = "tfqsGF0hEwoQiwcFt8Won"
 uri = "file://attached_assets/icon-v4-text.png"
 type = "image"
 title = "Option A — S logo + StecStats text"
+logical_id = "8789d326-b28e-4f71-a227-91dcaa1bb474"
 
 [[outputs]]
 id = "pK904vEELN2wugqC5oydL"
 uri = "file://attached_assets/icon-v5-ball-text.png"
 type = "image"
 title = "Option B — Basketball + StecStats text"
+logical_id = "e79dddeb-7101-4288-aef8-c4d3e3c8cf72"
 
 [[outputs]]
 id = "bzwegz_wYplGZlBJVbqbB"
 uri = "file://attached_assets/icon-final.png"
 type = "image"
 title = "StecStats icon — orange text"
+logical_id = "cb89b6c6-1f64-408d-99af-4617f1e51468"
 
 [[outputs]]
 id = "O44kwnf7tdkgRdc3jfz8-"
 uri = "file://attached_assets/ads/stecstats-ad-coach-sideline.png"
 type = "image"
 title = "Coach on Sideline (Landscape 16:9)"
+logical_id = "15dacc11-76c2-4bd8-8185-d0d57defc210"
 
 [[outputs]]
 id = "3MmWuaVnCQuvSWc5vGmm4"
 uri = "file://attached_assets/ads/stecstats-ad-parent-filming.png"
 type = "image"
 title = "Parent Filming Game (Landscape 16:9)"
+logical_id = "a5e6ad04-de64-4b68-bdcd-6c559650a246"
 
 [[outputs]]
 id = "9NLrSEQMCr800qtKIrvct"
 uri = "file://attached_assets/ads/stecstats-ad-overhead-court.png"
 type = "image"
 title = "Overhead Court View (Landscape 16:9)"
+logical_id = "42cc2255-0306-4862-8ace-f7f85bd1347c"
 
 [[outputs]]
 id = "5IjzJBvxd-jikz10QdE35"
 uri = "file://attached_assets/ads/stecstats-ad-player-layup-square.png"
 type = "image"
 title = "Player Layup (Square 1:1)"
+logical_id = "7184da0d-936d-4f06-9315-329f1a622685"
 
 [[outputs]]
 id = "TJeJYTqf0qoN6Np0zqzoA"
 uri = "file://attached_assets/ads/stecstats-ad-coach-player-square.png"
 type = "image"
 title = "Coach Showing Stats (Square 1:1)"
+logical_id = "1627906f-b035-44a5-938d-de739b07435d"
 
 [[outputs]]
 id = "RkRvsXgVg_KKOBVmFHExA"
 uri = "file://artifacts/hoops-stats/public/logo.png"
 type = "image"
 title = "StecStats Logo"
+logical_id = "2fa90032-8298-438b-890d-ef2b298853d5"
 
 [[outputs]]
 id = "JekU2bjDuj7M01WtKjEXv"
 uri = "file://attached_assets/ads/app-screenshot-home.jpg"
 type = "image"
 title = "Homepage Hero (Landscape 16:9)"
+logical_id = "5fd09388-3fd9-4c03-976a-4b8136592440"
 
 [[outputs]]
 id = "QgyUMtdydkLR3yTSoRXmS"
 uri = "file://attached_assets/ads/app-screenshot-pricing.jpg"
 type = "image"
 title = "Pricing Page (Landscape 16:9)"
+logical_id = "728c68b4-29e6-411d-9ec2-efc53539bd2f"
 
 [[outputs]]
 id = "qitdlPTskhyq5WWs6hWTP"
 uri = "file://attached_assets/ads/app-screenshot-home-full.jpg"
 type = "image"
 title = "Full Homepage (features section)"
+logical_id = "834dd219-4f0d-4d14-a3d1-2b46fe79cc60"
 
 [[outputs]]
 id = "DEijnbJOycrVmxz9IMrMw"
 uri = "file://attached_assets/stecstats-google-ads-keywords.csv"
 type = "table"
 title = "StecStats Google Ads Keywords (68 keywords)"
+logical_id = "8967868f-7df3-4d23-9a8f-6de0530b85a0"
 
 [[outputs]]
 id = "kpGkGn5gLQt4oUljuThV_"
 uri = "file://attached_assets/stecstats-google-ads-keywords-upload.csv"
 type = "table"
 title = "StecStats Keywords — Google Ads Upload Ready"
+logical_id = "4dc653a6-52d0-4cb8-920c-92d420742529"
 
 [[outputs]]
 id = "wW2EhZdlG0pktX-MztT8Y"
 uri = "file://screenshots/card-front.jpg"
 type = "image"
 title = "Business Card — FRONT"
+logical_id = "89cd8416-e4ec-4256-b6ea-65a5b71eb322"
 
 [[outputs]]
 id = "yIJVWKVRmeAxjbUQevIxW"
 uri = "file://screenshots/card-back.jpg"
 type = "image"
 title = "Business Card — BACK"
+logical_id = "d93a4966-2e5b-4294-8d54-916cf6359616"
+
+[[outputs]]
+id = "zMEq4c-TdhTUGIjE0Dnj_"
+uri = "file://audit-evidence/stecstats-youtube-api-architecture.pdf"
+type = "pdf"
+title = "StecStats YouTube API Architecture"
+description = "Architecture diagram for the Google YouTube API audit. PDF, one page, 1280×720."
+logical_id = "92e41793-5898-460e-8ea7-e599199763a4"
+content_hash = "sha256:b8ff939035e3054503a4d217e963149f0255103f6bfa52d590102ece0dbd8e63"
+size = 155399
+mtime_ms = 1790120163792
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:aae487fc-cd3a-4c3a-8c60-4afde524dae2/92e41793-5898-460e-8ea7-e599199763a4/8d3026e8-ff07-4402-8c34-b5600ae21fed"
+storage_version_token = "1790120289841220"
+content_type = "application/pdf"
+
+[[outputs]]
+id = "peYwwOlBRO2p-euCYLVrn"
+uri = "file://audit-evidence/stecstats-youtube-user-flow.pdf"
+type = "pdf"
+title = "StecStats YouTube User Flow"
+description = "OAuth, live broadcast, upload, disconnect, and deletion user-flow diagram. PDF, one page, 1280×720."
+logical_id = "ec374f81-3c98-4941-9ff2-08a1756991ac"
+content_hash = "sha256:55913882576ab6ec1cfe6d53f7eb8be39b5e56ad81066fbed18c85a69441e5e9"
+size = 76098
+mtime_ms = 1790120239113
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:aae487fc-cd3a-4c3a-8c60-4afde524dae2/ec374f81-3c98-4941-9ff2-08a1756991ac/2219b452-6d6c-4613-b00f-e5a8fcc94cc0"
+storage_version_token = "1790120290589788"
+content_type = "application/pdf"
