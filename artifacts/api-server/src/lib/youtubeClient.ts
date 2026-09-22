@@ -99,6 +99,12 @@ function isGoogleAuthFailure(status: number | undefined, reason: string, message
 function mapYouTubeError(err: unknown): never {
   const { status, reason, message } = getGoogleErrorDetails(err);
   const detail = `${reason} ${message}`;
+  if (status === 403 && /(quotaExceeded|dailyLimitExceeded|rateLimitExceeded)/i.test(detail)) {
+    throw new YouTubeLiveError(
+      "YouTube's daily API quota has been reached. Try again after Google's daily quota reset or increase the YouTube Data API quota in Google Cloud.",
+      "YOUTUBE_QUOTA_EXCEEDED",
+    );
+  }
   if (status === 403 &&
       /(liveStreamingNotEnabled|not enabled for live streaming|youtubeSignupRequired|livePermissionBlocked|accountClosed|accountSuspended)/i.test(detail)) {
     throw new YouTubeAuthError(

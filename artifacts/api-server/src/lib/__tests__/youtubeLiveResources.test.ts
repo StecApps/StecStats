@@ -107,7 +107,7 @@ describe("ensureLiveResources", () => {
     expect((error as Error).message).toMatch(/Live is not enabled/i);
   });
 
-  it("does not misreport a non-auth Google 403 as an expired token", async () => {
+  it("reports a quota 403 without exposing Google's raw HTML or blaming the token", async () => {
     mocks.broadcastInsert.mockRejectedValue({
       response: {
         status: 403,
@@ -125,7 +125,8 @@ describe("ensureLiveResources", () => {
 
     expect(error).toBeInstanceOf(YouTubeLiveError);
     expect(error).not.toBeInstanceOf(YouTubeAuthError);
-    expect((error as YouTubeLiveError).code).toBe("YOUTUBE_LIVE_REJECTED");
-    expect((error as Error).message).toMatch(/quotaExceeded/);
+    expect((error as YouTubeLiveError).code).toBe("YOUTUBE_QUOTA_EXCEEDED");
+    expect((error as Error).message).toMatch(/daily API quota/i);
+    expect((error as Error).message).not.toContain("<a");
   });
 });
