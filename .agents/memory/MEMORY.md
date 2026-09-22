@@ -106,3 +106,4 @@
 - [Daily recording finalization order](daily-recording-finalization-order.md) — finalize Daily independently before YouTube; import retries should reissue an idempotent stop.
 - [Daily iPad frame rotation](daily-ipad-frame-rotation.md) — WebRTC defaults unknown/flat iPads to portrait rotation; force landscape rotation at the outgoing frame boundary.
 - [YouTube connection status must probe Google](youtube-connection-probe.md) — a stored refresh token can be revoked; Profile must not equate token presence with a working connection.
+- [YouTube Live quota capacity](youtube-live-quota-capacity.md) — one complete Live session costs about 250 shared units; uploads use a separate granular quota bucket.
