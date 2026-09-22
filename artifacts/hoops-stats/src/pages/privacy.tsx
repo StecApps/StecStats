@@ -9,7 +9,7 @@ export default function PrivacyPolicy() {
             Privacy Policy
           </h1>
           <p className="text-muted-foreground text-sm">
-            Effective date: January 1, 2025 · Last updated: June 1, 2025
+            Effective date: January 1, 2025 · Last updated: September 22, 2026
           </p>
         </div>
 
@@ -119,7 +119,56 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">7. Data Retention</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">7. YouTube API Services</h2>
+            <p className="mb-3">
+              StecStats uses YouTube API Services when you choose to connect your YouTube account.
+              Your use of these features is also subject to the{" "}
+              <a
+                href="https://www.youtube.com/t/terms"
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                YouTube Terms of Service
+              </a>{" "}
+              and the{" "}
+              <a
+                href="https://policies.google.com/privacy"
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Google Privacy Policy
+              </a>.
+            </p>
+            <p className="mb-3">
+              After you grant permission through Google OAuth, StecStats receives and securely stores
+              an encrypted authorization token. We use that authorization only to verify the connection,
+              create and manage coach-initiated YouTube Live broadcasts, upload videos you explicitly
+              choose to upload, and complete broadcasts you started. We also store the YouTube broadcast,
+              stream, video, and watch-link identifiers needed to operate those features. We do not use
+              YouTube API data for advertising, sell it, or share it with unrelated third parties.
+            </p>
+            <p>
+              You can remove StecStats&apos; access at any time by disconnecting YouTube from your
+              StecStats Profile or through the{" "}
+              <a
+                href="https://security.google.com/settings/security/permissions"
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Google security permissions page
+              </a>.
+              Disconnecting through StecStats revokes the Google authorization token and deletes the
+              stored token from StecStats. Deleting your StecStats account also removes the stored
+              authorization and associated YouTube connection data, subject to the retention periods
+              described below.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">8. Data Retention</h2>
             <p>
               We retain your account and associated data for as long as your account is active. If you
               delete your account, we will delete your personal data within 30 days, except where we
@@ -129,7 +178,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">8. Your Rights</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">9. Your Rights</h2>
             <p className="mb-3">You have the right to:</p>
             <ul className="list-disc pl-5 space-y-2">
               <li><strong className="text-foreground">Access</strong> the personal data we hold about you</li>
@@ -150,7 +199,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">9. Cookies and Tracking</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">10. Cookies and Tracking</h2>
             <p>
               Our website uses essential cookies required for authentication and session management. We
               do not use third-party advertising cookies or tracking pixels. The mobile app does not use
@@ -160,7 +209,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">10. Changes to This Policy</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">11. Changes to This Policy</h2>
             <p>
               We may update this Privacy Policy from time to time. We will notify you of material changes
               by posting the new policy on this page with an updated effective date. Continued use of
@@ -169,7 +218,7 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">11. Contact Us</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">12. Contact Us</h2>
             <p>
               If you have questions about this Privacy Policy or our data practices, please contact us:
             </p>
