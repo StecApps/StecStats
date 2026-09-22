@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Trophy, Radio, BarChart3, Sparkles, ArrowRight, Users, Film } from "lucide-react";
+import { Trophy, Radio, BarChart3, Sparkles, ArrowRight, Users, Film, Youtube } from "lucide-react";
 import MarketingHeader from "@/components/marketing-header";
 
 export default function Home() {
@@ -106,6 +106,26 @@ export default function Home() {
           </div>
         </section>
       </main>
+
+      <footer className="border-t border-border/60 bg-background">
+        <div className="max-w-5xl mx-auto px-4 py-8 flex flex-col md:flex-row items-center justify-between gap-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Youtube className="h-5 w-5 text-red-500" aria-hidden="true" />
+            <span>Live streaming and video uploads powered by YouTube</span>
+          </div>
+          <nav aria-label="Legal" className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
+            <Link href="/privacy" className="text-muted-foreground hover:text-foreground transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="text-muted-foreground hover:text-foreground transition-colors">
+              Terms of Service
+            </Link>
+            <Link href="/account-deletion" className="text-muted-foreground hover:text-foreground transition-colors">
+              Account Deletion
+            </Link>
+          </nav>
+        </div>
+      </footer>
     </div>
   );
 }

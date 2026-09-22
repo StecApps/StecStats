@@ -9,7 +9,7 @@ export default function TermsOfService() {
             Terms of Service
           </h1>
           <p className="text-muted-foreground text-sm">
-            Effective date: January 1, 2025 · Last updated: August 1, 2026
+            Effective date: January 1, 2025 · Last updated: September 22, 2026
           </p>
         </div>
 
@@ -139,7 +139,40 @@ export default function TermsOfService() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">8. Disclaimer of Warranties</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">8. YouTube API Services</h2>
+            <p className="mb-3">
+              When you connect your YouTube account or use StecStats features that interact with
+              YouTube, your use of those features is also subject to the{" "}
+              <a
+                href="https://www.youtube.com/t/terms"
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                YouTube Terms of Service
+              </a>{" "}
+              and the{" "}
+              <a
+                href="https://policies.google.com/privacy"
+                className="text-primary hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Google Privacy Policy
+              </a>.
+            </p>
+            <p>
+              You authorize StecStats to use YouTube API Services only for actions you initiate,
+              including verifying your connection, creating and managing YouTube Live broadcasts,
+              and uploading videos you choose to upload. You remain responsible for the content
+              sent to YouTube and for complying with YouTube&apos;s policies. You can revoke
+              StecStats&apos; access at any time from your StecStats Profile or through your Google
+              account security permissions.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">9. Disclaimer of Warranties</h2>
             <p>
               The Service is provided "as is" and "as available" without warranties of any kind, either
               express or implied. We do not warrant that the Service will be uninterrupted, error-free,
@@ -148,7 +181,7 @@ export default function TermsOfService() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">9. Limitation of Liability</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">10. Limitation of Liability</h2>
             <p>
               To the maximum extent permitted by law, StecStats shall not be liable for any indirect,
               incidental, special, consequential, or punitive damages arising from your use of the Service,
@@ -159,7 +192,7 @@ export default function TermsOfService() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">10. Changes to Terms</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">11. Changes to Terms</h2>
             <p>
               We may update these Terms from time to time. We will notify you of material changes by
               updating the "Last updated" date above. Continued use of the Service after changes
@@ -168,7 +201,7 @@ export default function TermsOfService() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">11. Governing Law</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">12. Governing Law</h2>
             <p>
               These Terms are governed by the laws of the State of New York, without regard to its
               conflict of law provisions. Any disputes arising from these Terms shall be resolved in
@@ -177,7 +210,7 @@ export default function TermsOfService() {
           </section>
 
           <section>
-            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">12. Contact</h2>
+            <h2 className="text-foreground text-lg font-bold uppercase tracking-wide mb-3">13. Contact</h2>
             <p>
               If you have questions about these Terms, please contact us at{" "}
               <a href="mailto:support@stecstats.com" className="text-primary hover:underline">
