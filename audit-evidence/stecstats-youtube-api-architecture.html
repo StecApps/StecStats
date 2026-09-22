@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>StecStats YouTube API Architecture</title>
+    <style>
+      @page { size: 13.333in 7.5in; margin: 0; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: #090909;
+        color: #f7f5f2;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      main { padding: 42px 54px 34px; height: 100%; }
+      header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 36px; }
+      .eyebrow { color: #ff5a24; font-size: 14px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; }
+      h1 { margin: 7px 0 0; font-size: 32px; letter-spacing: -0.02em; }
+      .date { color: #aaa29d; font-size: 13px; }
+      .flow { display: grid; grid-template-columns: 1fr 38px 1.16fr 38px 1.06fr 38px 1.15fr; align-items: stretch; }
+      .node {
+        min-height: 198px;
+        border: 1px solid #34302e;
+        border-radius: 14px;
+        background: #151312;
+        padding: 24px 22px;
+        box-shadow: 0 12px 34px rgba(0,0,0,.28);
+      }
+      .node.accent { border-color: #8f351e; background: linear-gradient(145deg, #1b1411, #151312); }
+      .node.youtube { border-color: #7d2222; background: linear-gradient(145deg, #1d1111, #151313); }
+      .icon {
+        width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+        margin-bottom: 17px; color: #fff; background: #ff4f1f; font-size: 20px; font-weight: 900;
+      }
+      .youtube .icon { background: #ff0033; }
+      h2 { margin: 0 0 10px; font-size: 20px; }
+      .node p { margin: 0; color: #bdb6b1; font-size: 14px; line-height: 1.48; }
+      .arrow { display: grid; place-items: center; color: #ff5a24; font-size: 30px; font-weight: 300; }
+      .oauth {
+        margin: 24px 0 22px;
+        border: 1px solid #34302e;
+        border-radius: 12px;
+        padding: 14px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 22px;
+        background: #11100f;
+      }
+      .oauth strong { color: #fff; }
+      .oauth span { color: #bdb6b1; font-size: 13px; line-height: 1.35; }
+      .pill { flex: 0 0 auto; color: #ff7450; border: 1px solid #67311f; border-radius: 999px; padding: 7px 12px; font-weight: 700; font-size: 12px; }
+      .notes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+      .note { border-top: 2px solid #ff5a24; background: #121110; padding: 15px 16px; min-height: 96px; }
+      .note strong { display: block; font-size: 13px; margin-bottom: 7px; }
+      .note span { color: #aaa29d; font-size: 12px; line-height: 1.38; }
+      footer { margin-top: 20px; display: flex; justify-content: space-between; color: #716b67; font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <div class="eyebrow">StecStats Compliance Evidence</div>
+          <h1>YouTube API Services Architecture</h1>
+        </div>
+        <div class="date">September 22, 2026</div>
+      </header>
+
+      <section class="flow" aria-label="System architecture flow">
+        <article class="node">
+          <div class="icon">1</div>
+          <h2>Coach</h2>
+          <p>Signs into StecStats and explicitly chooses to connect YouTube, start a live broadcast, upload a video, or disconnect.</p>
+        </article>
+        <div class="arrow">→</div>
+        <article class="node accent">
+          <div class="icon">2</div>
+          <h2>StecStats Web &amp; Mobile</h2>
+          <p>Displays the connection and broadcast controls. User actions are sent securely over HTTPS to the StecStats API.</p>
+        </article>
+        <div class="arrow">→</div>
+        <article class="node accent">
+          <div class="icon">3</div>
+          <h2>StecStats API Server</h2>
+          <p>Handles OAuth callbacks, stores encrypted authorization tokens, and makes only the YouTube API calls needed for each coach action.</p>
+        </article>
+        <div class="arrow">→</div>
+        <article class="node youtube">
+          <div class="icon">▶</div>
+          <h2>Google OAuth &amp; YouTube</h2>
+          <p>Google obtains user consent. YouTube Data API creates and manages Live broadcasts and processes user-selected video uploads.</p>
+        </article>
+      </section>
+
+      <section class="oauth">
+        <span><strong>Authorization boundary:</strong> StecStats receives scoped OAuth authorization only after Google consent. It never receives the user’s Google password.</span>
+        <span class="pill">HTTPS + encrypted token storage</span>
+      </section>
+
+      <section class="notes">
+        <div class="note"><strong>Coach-initiated only</strong><span>Broadcast creation, completion, and uploads require an explicit action in StecStats.</span></div>
+        <div class="note"><strong>Limited API use</strong><span>Connection checks, Live setup and status, broadcast completion, and selected uploads.</span></div>
+        <div class="note"><strong>No advertising or sale</strong><span>YouTube API data is not used for advertising, sold, or shared with unrelated third parties.</span></div>
+        <div class="note"><strong>User-controlled removal</strong><span>Disconnect revokes authorization and removes the stored token; account deletion removes connection data.</span></div>
+      </section>
+
+      <footer>
+        <span>StecStats · stecstats.com</span>
+        <span>Architecture overview for YouTube Data API quota and compliance review</span>
+      </footer>
+    </main>
+  </body>
+</html>
