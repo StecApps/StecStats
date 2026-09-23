@@ -349,3 +349,17 @@ mtime_ms = 1790121010660
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:aae487fc-cd3a-4c3a-8c60-4afde524dae2/485ec898-5cb4-4e81-b319-4607f6d3ea12/98993a78-89cb-4333-857b-a3f86e8c8cf3"
 storage_version_token = "1790121058732914"
 content_type = "image/png"
+
+[[outputs]]
+id = "MB6rBzyAJj0AycLhcNZaE"
+uri = "file://audit-evidence/stecstats-conditional-evidence.pdf"
+type = "pdf"
+title = "StecStats Conditional Evidence"
+description = "Four-page, 2 MB PDF covering OAuth flow and scopes, revocation, the YouTube upload interface, and player/mobile screenshots. Upload this single file to Conditional Evidence for Project #1."
+logical_id = "56dcb88a-f2c4-4a85-8a1d-9cd5f4fbdeeb"
+content_hash = "sha256:62c19c79c0127bb5ffcfb0e5f42da2db3b43695dcd760a30e2cf3db4af93909a"
+size = 2077470
+mtime_ms = 1790122737149
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:aae487fc-cd3a-4c3a-8c60-4afde524dae2/56dcb88a-f2c4-4a85-8a1d-9cd5f4fbdeeb/90e5687c-06f4-4771-a702-526966ab5b3a"
+storage_version_token = "1790122768891771"
+content_type = "application/pdf"
