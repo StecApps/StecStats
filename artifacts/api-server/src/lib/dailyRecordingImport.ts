@@ -61,11 +61,12 @@ async function claimJob() {
       LIMIT 1
     )
     RETURNING id, live_session_id, game_id, owner_id, daily_room_name,
-      daily_recording_id, object_path, lease_token
+      daily_recording_id, object_path, lease_token, attempts
   `);
   return (rows.rows[0] as {
     id: number; live_session_id: number; game_id: number; owner_id: number;
-    daily_room_name: string; daily_recording_id: string | null; object_path: string | null; lease_token: string;
+    daily_room_name: string; daily_recording_id: string | null; object_path: string | null;
+    lease_token: string; attempts: number;
   } | undefined);
 }
 
@@ -99,6 +100,40 @@ async function processJob(job: NonNullable<Awaited<ReturnType<typeof claimJob>>>
     if (!rows[0]) throw new Error("Daily recording import lease was lost");
   };
   try {
+  // A native recording upload is already a durable master. If Daily never
+  // finalizes after repeated idempotent stop requests (for example after an
+  // iPad interruption), stop polling forever and keep the local master.
+  if (job.attempts >= 10) {
+    const localGame = await db.query.gamesTable.findFirst({
+      where: and(eq(gamesTable.id, job.game_id), eq(gamesTable.ownerId, job.owner_id)),
+    });
+    if (localGame?.videoObjectPath) {
+      await stopDailyRecording(job.daily_room_name);
+      await scheduleVideoDurationProbe(localGame.id, localGame.videoObjectPath);
+      await db.transaction(async (tx) => {
+        await tx.update(liveSessionsTable).set({
+          dailyRecordingStatus: "local_fallback",
+        }).where(eq(liveSessionsTable.id, job.live_session_id));
+        await tx.update(liveRecordingJobsTable).set({
+          status: "complete",
+          objectPath: localGame.videoObjectPath,
+          lastError: "Daily recording did not finalize; retained uploaded local master",
+          leaseToken: null,
+          leaseExpiresAt: null,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(liveRecordingJobsTable.id, job.id),
+          eq(liveRecordingJobsTable.leaseToken, job.lease_token),
+        ));
+      });
+      logger.warn({
+        gameId: job.game_id,
+        attempts: job.attempts,
+      }, "Daily recording abandoned after repeated finalization failures; local master retained");
+      return;
+    }
+  }
+
   let recording: DailyRecording | undefined;
   if (job.daily_recording_id) {
     recording = await getDailyRecording(job.daily_recording_id);

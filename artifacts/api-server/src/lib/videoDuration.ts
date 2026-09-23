@@ -1,5 +1,11 @@
 import { db, gamesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { ObjectStorageService } from "./objectStorage";
 import { logger } from "./logger";
 
@@ -87,6 +93,64 @@ async function readRange(
   return Buffer.concat(chunks);
 }
 
+async function probeLocalFileDurationMs(localPath: string): Promise<number | null> {
+  const output = await new Promise<string>((resolve) => {
+    const child = spawn("ffprobe", [
+      "-v", "error",
+      "-analyzeduration", "150000000",
+      "-probesize", "150000000",
+      "-show_entries", "format=duration:stream=duration",
+      "-of", "json",
+      localPath,
+    ], { stdio: ["ignore", "pipe", "ignore"] });
+    const chunks: Buffer[] = [];
+    child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+    const timer = setTimeout(() => child.kill("SIGKILL"), 60_000);
+    child.on("close", () => {
+      clearTimeout(timer);
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+  });
+  try {
+    const parsed = JSON.parse(output) as {
+      format?: { duration?: string };
+      streams?: Array<{ duration?: string }>;
+    };
+    const candidates = [
+      Number(parsed.format?.duration),
+      ...(parsed.streams ?? []).map((stream) => Number(stream.duration)),
+    ].filter((value) => Number.isFinite(value) && value > 0);
+    return candidates.length > 0 ? Math.round(Math.max(...candidates) * 1000) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function probeSmallStoredFileWithFfprobe(
+  file: {
+    createReadStream: (opts?: { start?: number; end?: number }) => NodeJS.ReadableStream;
+  },
+  size: number,
+): Promise<number | null> {
+  // Native iOS recordings can be fragmented MP4s whose mvhd duration is zero.
+  // A bounded full-file ffprobe is the reliable fallback, but only for files
+  // small enough that downloading them cannot exhaust RAM-backed /tmp.
+  const MAX_FALLBACK_BYTES = 200 * 1024 * 1024;
+  if (size > MAX_FALLBACK_BYTES) return null;
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "video-duration-"));
+  const localPath = path.join(tempDir, "source");
+  try {
+    await pipeline(file.createReadStream(), createWriteStream(localPath));
+    return await probeLocalFileDurationMs(localPath);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 export async function probeStoredVideoDurationMs(objectPath: string): Promise<number | null> {
   const svc = new ObjectStorageService();
   const file = await svc.getObjectEntityFile(objectPath);
@@ -103,7 +167,8 @@ export async function probeStoredVideoDurationMs(objectPath: string): Promise<nu
     // moov may be at the tail (no faststart) — check the last 1 MB too.
     const tail = await readRange(file, Math.max(0, size - 1024 * 1024), size - 1);
     const fromTail = parseMp4DurationMs(tail);
-    return fromTail != null && fromTail > 0 ? fromTail : null;
+    if (fromTail != null && fromTail > 0) return fromTail;
+    return probeSmallStoredFileWithFfprobe(file, size);
   }
 
   // WebM? (EBML magic 0x1A45DFA3)

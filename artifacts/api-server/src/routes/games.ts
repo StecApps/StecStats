@@ -2423,6 +2423,12 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
   let objectPath: string | null = null;
   if (type === "video") {
     if (!game.videoObjectPath) return void res.status(404).json({ error: "No video available" });
+    if (game.videoDurationMs == null) {
+      // Polling Film Room must also retry duration discovery. Native fMP4 files
+      // can have a zero mvhd duration, so the initial upload-time probe may need
+      // the bounded ffprobe fallback before proxy generation can begin.
+      scheduleVideoDurationProbe(game.id, game.videoObjectPath);
+    }
     const hasValidProxy = !!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION;
     const durSec = game.videoDurationMs != null ? game.videoDurationMs / 1000 : null;
     const MAX_PROXY_BUILD_DURATION_SEC = 900;
