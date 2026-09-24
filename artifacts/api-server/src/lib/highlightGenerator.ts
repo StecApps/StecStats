@@ -34,6 +34,58 @@ import { planProxyChunkBuild } from "./reelChunkPlan";
 
 const objectStorageService = new ObjectStorageService();
 
+const DIRECT_MASTER_MAX_DURATION_MS = 5 * 60 * 1000;
+const DIRECT_MASTER_MAX_SIZE_BYTES = 120 * 1024 * 1024;
+
+/**
+ * Short MP4 masters are already seekable and can be rendered without the
+ * additional CRF proxy encode. Keep this deliberately narrow: metadata must
+ * prove both that the object is an MP4 and that downloading it fits safely
+ * within the API worker's bounded temporary-storage budget.
+ */
+export function isEligibleForDirectMaster(input: {
+  durationMs: number | null;
+  contentType: string | null | undefined;
+  sizeBytes: number | null | undefined;
+}): boolean {
+  if (
+    input.durationMs == null
+    || input.durationMs <= 0
+    || input.durationMs > DIRECT_MASTER_MAX_DURATION_MS
+  ) return false;
+  const contentType = String(input.contentType ?? "").split(";", 1)[0].trim().toLowerCase();
+  return contentType === "video/mp4"
+    && input.sizeBytes != null
+    && Number.isFinite(input.sizeBytes)
+    && input.sizeBytes > 0
+    && input.sizeBytes <= DIRECT_MASTER_MAX_SIZE_BYTES;
+}
+
+async function canRenderDirectlyFromMaster(game: {
+  videoObjectPath: string | null;
+  videoDurationMs: number | null;
+}): Promise<boolean> {
+  if (
+    !game.videoObjectPath
+    || game.videoDurationMs == null
+    || game.videoDurationMs <= 0
+    || game.videoDurationMs > DIRECT_MASTER_MAX_DURATION_MS
+  ) return false;
+  try {
+    const file = await objectStorageService.getObjectEntityFile(game.videoObjectPath);
+    const [metadata] = await file.getMetadata();
+    const sizeBytes = Number(metadata.size ?? 0);
+    return isEligibleForDirectMaster({
+      durationMs: game.videoDurationMs,
+      contentType: metadata.contentType,
+      sizeBytes,
+    });
+  } catch (error) {
+    logger.warn({ err: error }, "Direct master quality check unavailable; using proxy");
+    return false;
+  }
+}
+
 /**
  * Expose one private GCS object to ffmpeg through a loopback-only HTTP server.
  * ffmpeg needs a seekable input for MP4/WebM probing, while production GCS
@@ -3332,14 +3384,37 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
     // download-all-chunks-and-concat path (~2.8 GB peak on a 34-min game)
     // was OOM-killed every time. Falls back to the raw source only if the
     // chunk path fails (e.g. video duration unknown).
-    logger.info({ gameId }, "Highlight: preparing proxy chunks");
+    logger.info({ gameId }, "Highlight: preparing reel source");
     let rendered: { segPaths: string[]; hasAudio: boolean };
 
-    // Compute the last proxy chunk that actually contains a highlight moment.
-    // Passing this to ensureProxyChunksInGcs lets the encoder stop after that
-    // chunk instead of transcoding the entire game — a major win when all
-    // moments cluster in the first half (saves encoding the tail chunks).
-    const highlightMaxChunkNeeded = (() => {
+    const renderFromMaster = await canRenderDirectlyFromMaster(game);
+    if (renderFromMaster) {
+      logger.info({ gameId }, "Highlight: rendering directly from short MP4 master");
+      const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, ac.signal);
+      try {
+        rendered = await renderGameSegments(
+          srcPath, tmpDir, "g", eligible, nameById,
+          game.videoOffsetMs ?? 0,
+          game.videoHalf2StartMs ?? undefined,
+          game.videoHalftimeGapMs ?? undefined,
+          game.videoDurationMs ?? undefined,
+          undefined,
+          (completed, total) =>
+            updateReelProgressIfOwner(gameId, "highlight", runToken, "clips", completed, total)
+              .then((owned) => {
+                if (!owned) ac.abort();
+              }),
+        );
+      } finally {
+        release();
+      }
+    } else {
+      logger.info({ gameId }, "Highlight: preparing proxy chunks");
+      // Compute the last proxy chunk that actually contains a highlight moment.
+      // Passing this to ensureProxyChunksInGcs lets the encoder stop after that
+      // chunk instead of transcoding the entire game — a major win when all
+      // moments cluster in the first half (saves encoding the tail chunks).
+      const highlightMaxChunkNeeded = (() => {
       const durSec = (game.videoDurationMs ?? 0) / 1000;
       const totalChunks = Math.max(1, Math.ceil(durSec / PROXY_CHUNK_DURATION_SEC));
       const adjustedEndTimes = eligible.map((e) => {
@@ -3355,8 +3430,8 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
       if (adjustedEndTimes.length === 0) return undefined;
       const maxTimeSec = Math.max(...adjustedEndTimes) + POST_SECONDS;
       return Math.min(Math.floor(maxTimeSec / PROXY_CHUNK_DURATION_SEC), totalChunks - 1);
-    })();
-    logger.info({ gameId, highlightMaxChunkNeeded }, "Highlight: computed max needed chunk index");
+      })();
+      logger.info({ gameId, highlightMaxChunkNeeded }, "Highlight: computed max needed chunk index");
 
     // Track whether ensureProxyChunksInGcs confirmed chunks are in GCS.
     // If true, the raw-source fallback MUST NOT fire — downloading a 1+ GB raw
@@ -3364,8 +3439,8 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
     // /tmp limit and OOM-kill the server. Fail cleanly instead so the user can
     // retry; on retry the chunks are already in GCS and only the extraction
     // (not the source download) needs to succeed.
-    let highlightChunksConfirmed = false;
-    try {
+      let highlightChunksConfirmed = false;
+      try {
       const chunkObjectPaths = await ensureProxyChunksInGcs(
         gameId, game.ownerId, game, ac.signal, highlightMaxChunkNeeded,
         (completed, total) =>
@@ -3388,7 +3463,7 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
               if (!owned) ac.abort();
             }),
       );
-    } catch (chunkErr) {
+      } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
       if (highlightChunksConfirmed || rawSourceFallbackIsUnsafe(game)) {
         // Chunks are confirmed, or this is a long game whose full master must
@@ -3419,6 +3494,7 @@ export async function generateHighlight(gameId: number, musicTrackPath: string |
         );
       } finally {
         release();
+      }
       }
     }
     const { segPaths, hasAudio } = rendered;
@@ -3595,12 +3671,35 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
     // Cut clips directly from individual proxy chunks in GCS — same bounded
     // tmpfs reasoning as generateHighlight. Concurrent highlight + lowlight
     // jobs share one chunk-ensure pass via the single-flight guard.
-    logger.info({ gameId }, "Lowlight: preparing proxy chunks");
+    logger.info({ gameId }, "Lowlight: preparing reel source");
     let rendered: { segPaths: string[]; hasAudio: boolean };
 
-    // Same early-termination optimization as generateHighlight: compute the
-    // last proxy chunk that contains a lowlight moment and stop encoding there.
-    const lowlightMaxChunkNeeded = (() => {
+    const renderFromMaster = await canRenderDirectlyFromMaster(game);
+    if (renderFromMaster) {
+      logger.info({ gameId }, "Lowlight: rendering directly from short MP4 master");
+      const { srcPath, release } = await acquireSourceVideo(game.videoObjectPath, ac.signal);
+      try {
+        rendered = await renderGameSegments(
+          srcPath, tmpDir, "ll", eligible, nameById,
+          game.videoOffsetMs ?? 0,
+          game.videoHalf2StartMs ?? undefined,
+          game.videoHalftimeGapMs ?? undefined,
+          game.videoDurationMs ?? undefined,
+          undefined,
+          (completed, total) =>
+            updateReelProgressIfOwner(gameId, "lowlight", runToken, "clips", completed, total)
+              .then((owned) => {
+                if (!owned) ac.abort();
+              }),
+        );
+      } finally {
+        release();
+      }
+    } else {
+      logger.info({ gameId }, "Lowlight: preparing proxy chunks");
+      // Same early-termination optimization as generateHighlight: compute the
+      // last proxy chunk that contains a lowlight moment and stop encoding there.
+      const lowlightMaxChunkNeeded = (() => {
       const durSec = (game.videoDurationMs ?? 0) / 1000;
       const totalChunks = Math.max(1, Math.ceil(durSec / PROXY_CHUNK_DURATION_SEC));
       const adjustedEndTimes = eligible.map((e) => {
@@ -3616,11 +3715,11 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
       if (adjustedEndTimes.length === 0) return undefined;
       const maxTimeSec = Math.max(...adjustedEndTimes) + POST_SECONDS;
       return Math.min(Math.floor(maxTimeSec / PROXY_CHUNK_DURATION_SEC), totalChunks - 1);
-    })();
-    logger.info({ gameId, lowlightMaxChunkNeeded }, "Lowlight: computed max needed chunk index");
+      })();
+      logger.info({ gameId, lowlightMaxChunkNeeded }, "Lowlight: computed max needed chunk index");
 
-    let lowlightChunksConfirmed = false;
-    try {
+      let lowlightChunksConfirmed = false;
+      try {
       const chunkObjectPaths = await ensureProxyChunksInGcs(
         gameId, game.ownerId, game, ac.signal, lowlightMaxChunkNeeded,
         (completed, total) =>
@@ -3643,7 +3742,7 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
               if (!owned) ac.abort();
             }),
       );
-    } catch (chunkErr) {
+      } catch (chunkErr) {
       if (ac.signal.aborted) throw chunkErr;
       if (lowlightChunksConfirmed || rawSourceFallbackIsUnsafe(game)) {
         // Same bounded-memory rule as generateHighlight: long games and
@@ -3673,6 +3772,7 @@ export async function generateLowlight(gameId: number, musicTrackPath: string | 
         );
       } finally {
         release();
+      }
       }
     }
     const { segPaths, hasAudio } = rendered;

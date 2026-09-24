@@ -104,6 +104,7 @@
 - [Recording-safe MJPEG fallback](recording-safe-mjpeg-fallback.md) — fallback backpressure must be independent of WebRTC, and mode switches must clear score-only viewer state.
 - [Recording-confirmed game clock](recording-confirmed-game-clock.md) — recorded games must not start the clock until native capture confirms it is writing.
 - [Daily recording finalization order](daily-recording-finalization-order.md) — finalize Daily independently before YouTube; import retries should reissue an idempotent stop.
+- [Daily recording quality gate](daily-recording-quality-gate.md) — larger cloud output isn't better unless the iPad sends real higher-resolution frames; retain a 720p fallback.
 - [Daily iPad frame rotation](daily-ipad-frame-rotation.md) — WebRTC defaults unknown/flat iPads to portrait rotation; force landscape rotation at the outgoing frame boundary.
 - [YouTube connection status must probe Google](youtube-connection-probe.md) — a stored refresh token can be revoked; Profile must not equate token presence with a working connection.
 - [YouTube Live quota capacity](youtube-live-quota-capacity.md) — one complete Live session costs about 250 shared units; uploads use a separate granular quota bucket.

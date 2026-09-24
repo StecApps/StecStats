@@ -45,7 +45,7 @@ type DailyCall = {
 };
 
 type DailyModule = {
-  createCallObject: () => DailyCall;
+  createCallObject: (options?: Record<string, unknown>) => DailyCall;
 };
 
 let activeCall: DailyCall | null = null;
@@ -61,6 +61,25 @@ function readLocalVideoTrack(participant?: {
   tracks?: { video?: { persistentTrack?: unknown } };
 }): unknown | null {
   return participant?.tracks?.video?.persistentTrack ?? participant?.videoTrack ?? null;
+}
+
+export function cloudRecordingQualityForTrack(track: unknown): { width: number; height: number; videoBitrate?: number } {
+  // Do not pay to upscale a 720p input. Some native tracks do not report
+  // settings; those continue to record at the proven 720p profile.
+  let dimensions: { width?: number; height?: number } | undefined;
+  try {
+    dimensions = (track as { getSettings?: () => { width?: number; height?: number } } | null)?.getSettings?.();
+  } catch {
+    // An unavailable native getSettings must not prevent a recording.
+  }
+  const width = dimensions?.width ?? 0;
+  const height = dimensions?.height ?? 0;
+  if (Number.isFinite(width) && Number.isFinite(height) &&
+      Math.max(width, height) >= 1920 && Math.min(width, height) >= 1080) {
+    // Daily's 1080p default is 5 Mbps. 4 Mbps reduces stored bytes by 20%.
+    return { width: 1920, height: 1080, videoBitrate: 4000 };
+  }
+  return { width: 1280, height: 720 };
 }
 
 function getDailyModule(): DailyModule {
@@ -116,7 +135,15 @@ export async function startDailyBroadcast(
     throw new Error('The server did not return Daily room credentials.');
   }
 
-  const call = getDailyModule().createCallObject();
+  const call = getDailyModule().createCallObject({
+    inputSettings: {
+      video: { settings: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 },
+      } },
+    },
+  });
   activeCall = call;
   activeRoomName = credentials.roomName ?? credentials.url.split('/').pop() ?? '';
   recordingId = undefined;
@@ -143,12 +170,12 @@ export async function startDailyBroadcast(
       startVideoOff: false,
       startAudioOff: false,
     });
-    localVideoTrackListener?.(readLocalVideoTrack(call.participants?.()?.local));
+    const localTrack = readLocalVideoTrack(call.participants?.()?.local);
+    localVideoTrackListener?.(localTrack);
     try {
       await call.startRecording({
         type: 'cloud',
-        width: 1280,
-        height: 720,
+        ...cloudRecordingQualityForTrack(localTrack),
         fps: 30,
         // single-participant requires Daily's participant session_id. The
         // default layout safely renders the sole coach without a target ID.
