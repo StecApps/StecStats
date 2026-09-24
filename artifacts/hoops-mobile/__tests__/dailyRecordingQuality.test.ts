@@ -1,6 +1,16 @@
-import { cloudRecordingQualityForTrack } from '../lib/dailyBroadcast';
+import { cloudRecordingQualityForTrack, dailyLiveVideoOptions } from '../lib/dailyBroadcast';
 
 describe('Daily cloud recording quality', () => {
+  test('keeps the selected camera lens and requests a high-quality Live source', () => {
+    expect(dailyLiveVideoOptions('back')).toEqual({
+      inputSettings: { video: { settings: {
+        facingMode: 'environment', width: 1920, height: 1080, frameRate: 30,
+      } } },
+      sendSettings: { video: 'quality-optimized' },
+    });
+    expect(dailyLiveVideoOptions('front').inputSettings.video.settings.facingMode).toBe('user');
+  });
+
   test('requests 1080p only from a camera track that reports real 1080p frames', () => {
     expect(cloudRecordingQualityForTrack({
       getSettings: () => ({ width: 1920, height: 1080 }),

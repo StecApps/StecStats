@@ -27,6 +27,7 @@ export type DailyRecordingResult = {
 
 type DailyCall = {
   join: (options: { url: string; token: string; startVideoOff?: boolean; startAudioOff?: boolean }) => Promise<unknown>;
+  updateInputSettings: (settings: ReturnType<typeof dailyLiveVideoOptions>['inputSettings']) => Promise<unknown>;
   startRecording: (options?: Record<string, unknown>) => Promise<unknown>;
   stopRecording: () => Promise<unknown>;
   leave: () => Promise<unknown>;
@@ -48,6 +49,27 @@ type DailyModule = {
   createCallObject: (options?: Record<string, unknown>) => DailyCall;
 };
 
+type CameraFacing = 'front' | 'back';
+
+export function dailyLiveVideoOptions(cameraFacing: CameraFacing) {
+  return {
+    inputSettings: {
+      video: { settings: {
+        facingMode: cameraFacing === 'back' ? 'environment' : 'user',
+        // Request an explicit iOS capture format and preserve the lens
+        // selected in the scorekeeper when Live starts.
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+      } },
+    },
+    // Daily's default React Native profile is optimized for video calls.
+    // Give the cloud recorder and Live viewers the best source the network
+    // supports without hard-coding a bitrate that can stall a weak uplink.
+    sendSettings: { video: 'quality-optimized' },
+  };
+}
+
 let activeCall: DailyCall | null = null;
 let activeRoomName = '';
 let recordingStartedAt = 0;
@@ -60,18 +82,24 @@ function readLocalVideoTrack(participant?: {
   videoTrack?: unknown | false;
   tracks?: { video?: { persistentTrack?: unknown } };
 }): unknown | null {
-  return participant?.tracks?.video?.persistentTrack ?? participant?.videoTrack ?? null;
+  const track = participant?.tracks?.video?.persistentTrack ?? participant?.videoTrack;
+  return track || null;
+}
+
+function localVideoDimensions(track: unknown): { width?: number; height?: number } | undefined {
+  try {
+    const { width, height } = (track as { getSettings?: () => { width?: number; height?: number } } | null)
+      ?.getSettings?.() ?? {};
+    return { width, height };
+  } catch {
+    return undefined;
+  }
 }
 
 export function cloudRecordingQualityForTrack(track: unknown): { width: number; height: number; videoBitrate?: number } {
   // Do not pay to upscale a 720p input. Some native tracks do not report
   // settings; those continue to record at the proven 720p profile.
-  let dimensions: { width?: number; height?: number } | undefined;
-  try {
-    dimensions = (track as { getSettings?: () => { width?: number; height?: number } } | null)?.getSettings?.();
-  } catch {
-    // An unavailable native getSettings must not prevent a recording.
-  }
+  const dimensions = localVideoDimensions(track);
   const width = dimensions?.width ?? 0;
   const height = dimensions?.height ?? 0;
   if (Number.isFinite(width) && Number.isFinite(height) &&
@@ -129,21 +157,14 @@ export async function setDailyCameraZoom(normalizedZoom: number): Promise<number
 export async function startDailyBroadcast(
   credentials: DailyRoomCredentials,
   onLocalVideoTrack?: (track: unknown | null) => void,
+  cameraFacing: CameraFacing = 'back',
 ): Promise<void> {
   if (activeCall) return;
   if (!credentials.url || !credentials.token) {
     throw new Error('The server did not return Daily room credentials.');
   }
 
-  const call = getDailyModule().createCallObject({
-    inputSettings: {
-      video: { settings: {
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 30 },
-      } },
-    },
-  });
+  const call = getDailyModule().createCallObject(dailyLiveVideoOptions(cameraFacing));
   activeCall = call;
   activeRoomName = credentials.roomName ?? credentials.url.split('/').pop() ?? '';
   recordingId = undefined;
@@ -170,12 +191,30 @@ export async function startDailyBroadcast(
       startVideoOff: false,
       startAudioOff: false,
     });
-    const localTrack = readLocalVideoTrack(call.participants?.()?.local);
+    // Older Daily RN call-object versions may ignore constructor inputSettings.
+    // This method resolves only once the camera constraints have been applied.
+    await call.updateInputSettings(dailyLiveVideoOptions(cameraFacing).inputSettings);
+    // Daily may resolve join before participant-updated publishes the camera.
+    // Avoid locking in a 720p cloud recording merely because we inspected an
+    // empty local participant on the first bridge tick.
+    let localTrack = readLocalVideoTrack(call.participants?.()?.local);
+    for (let attempt = 0; !localTrack && attempt < 20; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      localTrack = readLocalVideoTrack(call.participants?.()?.local);
+    }
+    if (!localTrack) throw new Error('Live camera did not start. Please try again.');
     localVideoTrackListener?.(localTrack);
+    const recordingQuality = cloudRecordingQualityForTrack(localTrack);
+    const input = localVideoDimensions(localTrack);
+    console.info('[Daily] Live camera quality', {
+      cameraFacing,
+      input: input?.width && input?.height ? `${input.width}x${input.height}` : 'unknown',
+      recording: `${recordingQuality.width}x${recordingQuality.height}`,
+    });
     try {
       await call.startRecording({
         type: 'cloud',
-        ...cloudRecordingQualityForTrack(localTrack),
+        ...recordingQuality,
         fps: 30,
         // single-participant requires Daily's participant session_id. The
         // default layout safely renders the sole coach without a target ID.

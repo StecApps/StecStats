@@ -612,7 +612,7 @@ export default function ScorekeeperScreen() {
     try {
       // Daily is the sole camera owner for Live. Do this before changing
       // isLive so the legacy HoopsCamera/WebRTC effect cannot race it.
-      await startDailyBroadcast(daily, setDailyLocalVideoTrack);
+      await startDailyBroadcast(daily, setDailyLocalVideoTrack, cameraFacing);
       dailyLiveRef.current = true;
       setDailyLive(true);
       await setDailyCameraZoom(cameraZoom).catch((error) => {

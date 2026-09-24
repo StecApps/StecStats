@@ -51,7 +51,7 @@ describe('Daily cloud recording migration guards', () => {
 
   test('starts YouTube distribution only after Daily joins and rolls back on failure', () => {
     expect(scorekeeper).toContain('/youtube/start');
-    expect(scorekeeper).toContain('await startDailyBroadcast(daily, setDailyLocalVideoTrack)');
+    expect(scorekeeper).toContain('await startDailyBroadcast(daily, setDailyLocalVideoTrack, cameraFacing)');
     expect(scorekeeper).toContain('await stopLiveBroadcast(code)');
     expect(scorekeeper).toContain('YOUTUBE_NOT_CONNECTED');
     expect(scorekeeper).toContain('YOUTUBE_RECONNECT_REQUIRED');
