@@ -39,6 +39,7 @@ import { ZoomableVideo } from '@/components/ZoomableVideo';
 import { reelDownloadManager, useReelDownloads } from '@/lib/reelDownloadManager';
 import { reelProgressText } from '@/lib/reelProgressText';
 import { forgetLocalGameVideo, getLocalGameVideo } from '@/lib/localGameVideo';
+import { forgetSeekableGameFilm, getSeekableGameFilm, isSeekableGameFilm } from '@/lib/seekableGameFilm';
 
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN
   ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
@@ -364,10 +365,12 @@ function FilmRoomSection({
   game,
   player,
   colors,
+  onSeek,
 }: {
   game: any;
   player: ReturnType<typeof useVideoPlayer>;
   colors: any;
+  onSeek: (seconds: number) => void;
 }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [mediaDuration, setMediaDuration] = useState(0);
@@ -457,13 +460,12 @@ function FilmRoomSection({
 
   const seekToEvent = (event: ReviewEvent) => {
     if (event.videoTimestampMs == null || isOffFilm(event)) return;
-    player.currentTime = Math.max(0, toPlayableVideoSeconds(event.videoTimestampMs) - 8);
-    player.play();
+    onSeek(Math.max(0, toPlayableVideoSeconds(event.videoTimestampMs) - 8));
   };
 
   const seekOnTimeline = (locationX: number) => {
     if (!timelineWidth || !filmDuration) return;
-    player.currentTime = Math.max(0, Math.min(filmDuration, (locationX / timelineWidth) * filmDuration));
+    onSeek(Math.max(0, Math.min(filmDuration, (locationX / timelineWidth) * filmDuration)));
   };
 
   return (
@@ -752,6 +754,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const [streamIsHls, setStreamIsHls] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [loadErrorMessage, setLoadErrorMessage] = useState('Could not load video');
+  const [preparingSeek, setPreparingSeek] = useState(false);
   // proxyReady=false means the server is still building the H.264 proxy;
   // the raw file (VP9/WebM) is not playable on iOS, so we show a processing
   // state and poll until the proxy is ready.
@@ -767,10 +770,37 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const replaceChainRef = useRef<Promise<void>>(Promise.resolve());
   const recoveringRef = useRef(false);
   const sourceAttachStartedRef = useRef(false);
+  const pendingSeekRef = useRef<number | null>(null);
+  const seekRequestRef = useRef(0);
 
   const player = useVideoPlayer('', configureReviewPlayer);
   const playbackUrl = localStreamUrl ?? streamUrl;
   const playbackIsHls = localStreamUrl ? false : streamIsHls;
+
+  const seekToFilmMoment = useCallback(async (seconds: number) => {
+    pendingSeekRef.current = seconds;
+    if (localStreamUrl || streamIsHls || Platform.OS === 'web' ||
+        !streamUrl ||
+        game.videoDurationMs == null || game.videoDurationMs > 5 * 60_000) {
+      player.currentTime = seconds;
+      player.play();
+      pendingSeekRef.current = null;
+      return;
+    }
+    const request = ++seekRequestRef.current;
+    setPreparingSeek(true);
+    try {
+      const uri = await getSeekableGameFilm(game.id, unsignedStreamIdentity(streamUrl), streamUrl);
+      if (request !== seekRequestRef.current) return;
+      setLocalStreamUrl(uri);
+    } catch {
+      if (request !== seekRequestRef.current) return;
+      pendingSeekRef.current = null;
+      Alert.alert('Could not prepare film', 'The full video could not be downloaded for reliable seeking. Check your connection and try again.');
+    } finally {
+      if (request === seekRequestRef.current) setPreparingSeek(false);
+    }
+  }, [game.id, game.videoDurationMs, localStreamUrl, player, streamIsHls, streamUrl]);
 
   const retryPlayback = useCallback((message: string) => {
     if (recoveringRef.current) return;
@@ -785,7 +815,11 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
     }
     // A stale local handoff must not keep shadowing the server proxy.
     if (localStreamUrl) {
-      void forgetLocalGameVideo(game.id).catch(() => {});
+      if (isSeekableGameFilm(localStreamUrl)) {
+        void forgetSeekableGameFilm(localStreamUrl).catch(() => {});
+      } else {
+        void forgetLocalGameVideo(game.id).catch(() => {});
+      }
       setLocalStreamUrl(null);
     }
     setStreamUrl(null);
@@ -802,6 +836,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
     });
     return () => {
       cancelled = true;
+      seekRequestRef.current++;
     };
   }, [game.id]);
 
@@ -879,6 +914,12 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
         if (cancelled || generation !== replaceGenerationRef.current) return;
         sourceAttachStartedRef.current = true;
         await player.replaceAsync(playbackSource(playbackUrl, playbackIsHls));
+        if (cancelled || generation !== replaceGenerationRef.current) return;
+        if (pendingSeekRef.current !== null && player.status === 'readyToPlay') {
+          player.currentTime = pendingSeekRef.current;
+          pendingSeekRef.current = null;
+          player.play();
+        }
       })
       .catch((error) => {
         if (!cancelled && generation === replaceGenerationRef.current) {
@@ -897,6 +938,11 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       if (!sourceAttachStartedRef.current || recoveringRef.current) return;
       if (status === 'readyToPlay') {
         retryAttemptsRef.current = 0;
+        if (pendingSeekRef.current !== null && playbackUrl?.startsWith('file:')) {
+          player.currentTime = pendingSeekRef.current;
+          pendingSeekRef.current = null;
+          player.play();
+        }
         return;
       }
       if (status !== 'error') return;
@@ -991,7 +1037,13 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           nativeControls
         />
       </ZoomableVideo>
-      <FilmRoomSection game={game} player={player} colors={colors} />
+      {preparingSeek && (
+        <View style={videoStyle.seekNotice}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={{ color: colors.foreground }}>Preparing film for reliable seeking…</Text>
+        </View>
+      )}
+      <FilmRoomSection game={game} player={player} colors={colors} onSeek={seekToFilmMoment} />
       <TouchableOpacity
         testID="save-full-game"
         onPress={() => saveReviewVideo(playbackUrl, `Full Game — vs ${game.opponent}`)}
@@ -1008,6 +1060,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
 const videoStyle = StyleSheet.create({
   wrap: { marginHorizontal: 16, marginTop: 16, borderRadius: 12, overflow: 'hidden' },
   video: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' },
+  seekNotice: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 10 },
   empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 8 },
   emptyText: { fontSize: 15, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   emptySubText: { fontSize: 13, fontFamily: 'Inter_400Regular', textAlign: 'center', marginTop: 4, opacity: 0.75 },
