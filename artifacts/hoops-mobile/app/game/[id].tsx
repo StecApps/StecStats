@@ -751,6 +751,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const [localStreamUrl, setLocalStreamUrl] = useState<string | null>(null);
   const [streamIsHls, setStreamIsHls] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [loadErrorMessage, setLoadErrorMessage] = useState('Could not load video');
   // proxyReady=false means the server is still building the H.264 proxy;
   // the raw file (VP9/WebM) is not playable on iOS, so we show a processing
   // state and poll until the proxy is ready.
@@ -764,10 +765,35 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   const optimizingStartedAtRef = useRef<number | null>(null);
   const replaceGenerationRef = useRef(0);
   const replaceChainRef = useRef<Promise<void>>(Promise.resolve());
+  const recoveringRef = useRef(false);
+  const sourceAttachStartedRef = useRef(false);
 
   const player = useVideoPlayer('', configureReviewPlayer);
   const playbackUrl = localStreamUrl ?? streamUrl;
   const playbackIsHls = localStreamUrl ? false : streamIsHls;
+
+  const retryPlayback = useCallback((message: string) => {
+    if (recoveringRef.current) return;
+    recoveringRef.current = true;
+    retryAttemptsRef.current += 1;
+    streamUrlCache.delete(streamCacheKey(game.id, 'video'));
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    if (retryAttemptsRef.current >= 3) {
+      setLoadErrorMessage(message);
+      setLoadError(true);
+      return;
+    }
+    // A stale local handoff must not keep shadowing the server proxy.
+    if (localStreamUrl) {
+      void forgetLocalGameVideo(game.id).catch(() => {});
+      setLocalStreamUrl(null);
+    }
+    setStreamUrl(null);
+    setProxyReady(false);
+    retryTimerRef.current = setTimeout(() => {
+      setRetryGeneration((value) => value + 1);
+    }, 2_000);
+  }, [game.id, localStreamUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -798,7 +824,6 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           }
           setProxyReady(result.proxyReady);
           if (result.proxyReady) {
-            retryAttemptsRef.current = 0;
             optimizingStartedAtRef.current = null;
             setStreamIsHls(result.isHls);
             setStreamUrl(result.url);
@@ -815,6 +840,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
           if (cancelled.value) return;
           retryAttemptsRef.current += 1;
           if (retryAttemptsRef.current >= 12) {
+            setLoadErrorMessage('Could not reach the video service. Check your connection and try again.');
             setLoadError(true);
             return;
           }
@@ -843,35 +869,41 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
   // play screen on iOS).
   useEffect(() => {
     if (!playbackUrl) return;
+    recoveringRef.current = false;
+    sourceAttachStartedRef.current = false;
     const generation = ++replaceGenerationRef.current;
     let cancelled = false;
     replaceChainRef.current = replaceChainRef.current
       .catch(() => {})
       .then(async () => {
         if (cancelled || generation !== replaceGenerationRef.current) return;
+        sourceAttachStartedRef.current = true;
         await player.replaceAsync(playbackSource(playbackUrl, playbackIsHls));
       })
-      .catch(async () => {
+      .catch((error) => {
         if (!cancelled && generation === replaceGenerationRef.current) {
-          if (localStreamUrl) {
-            await forgetLocalGameVideo(game.id).catch(() => {});
-            setLocalStreamUrl(null);
-          } else {
-            streamUrlCache.delete(streamCacheKey(game.id, 'video'));
-            setStreamUrl(null);
-          }
-          setProxyReady(false);
-          retryAttemptsRef.current += 1;
-          retryTimerRef.current = setTimeout(() => {
-            if (!cancelled) setRetryGeneration((value) => value + 1);
-          }, 5_000);
+          retryPlayback(error instanceof Error ? error.message : 'The video could not be opened.');
         }
       });
     return () => {
       cancelled = true;
       replaceGenerationRef.current++;
     };
-  }, [game.id, localStreamUrl, playbackIsHls, playbackUrl, player]);
+  }, [playbackIsHls, playbackUrl, player, retryPlayback]);
+
+  useEffect(() => {
+    if (!playbackUrl) return;
+    const subscription = player.addListener('statusChange', ({ status, error }) => {
+      if (!sourceAttachStartedRef.current || recoveringRef.current) return;
+      if (status === 'readyToPlay') {
+        retryAttemptsRef.current = 0;
+        return;
+      }
+      if (status !== 'error') return;
+      retryPlayback(error?.message ?? 'The video could not be played on this device.');
+    });
+    return () => subscription.remove();
+  }, [playbackUrl, player, retryPlayback]);
 
   if (!game.videoObjectPath) {
     return (
@@ -889,7 +921,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
       <View style={videoStyle.empty}>
         <Ionicons name="alert-circle-outline" size={40} color={colors.mutedForeground} />
         <Text style={[videoStyle.emptyText, { color: colors.mutedForeground }]}>
-          Could not load video
+          {loadErrorMessage}
         </Text>
         <TouchableOpacity
           testID="retry-full-game-video"
@@ -897,6 +929,7 @@ function VideoSection({ game, colors }: { game: any; colors: any }) {
             retryAttemptsRef.current = 0;
             streamUrlCache.delete(streamCacheKey(game.id, 'video'));
             setLoadError(false);
+            setLoadErrorMessage('Could not load video');
             setProxyReady(null);
             setStreamUrl(null);
             setRetryGeneration((value) => value + 1);
@@ -1099,6 +1132,71 @@ const videoStyle = StyleSheet.create({
     overflow: 'hidden',
   },
 });
+
+function VideoReelActions({ game, colors }: { game: any; colors: any }) {
+  const generateHighlight = useGenerateGameHighlight();
+  const generateLowlight = useGenerateGameLowlight();
+  const [busy, setBusy] = useState<'highlight' | 'lowlight' | null>(null);
+
+  const regenerate = (type: 'highlight' | 'lowlight') => {
+    Alert.alert(
+      `Regenerate ${type === 'highlight' ? 'Highlights' : 'Lowlights'}?`,
+      'The current reel will be unavailable while a new one is generated. Your full game recording will not change.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Regenerate',
+          onPress: async () => {
+            setBusy(type);
+            try {
+              if (type === 'highlight') {
+                await generateHighlight.mutateAsync({ gameId: game.id });
+              } else {
+                await generateLowlight.mutateAsync({ gameId: game.id });
+              }
+              await reelDownloadManager.invalidate(
+                game.id,
+                type,
+                type === 'highlight' ? game.highlightObjectPath : game.lowlightObjectPath,
+              ).catch(() => {});
+              streamUrlCache.delete(streamCacheKey(game.id, type));
+              Alert.alert('Reel queued', `Open ${type === 'highlight' ? 'Highlights' : 'Lowlights'} to follow its progress.`);
+            } catch {
+              Alert.alert('Could Not Regenerate', 'Please try again in a moment.');
+            } finally {
+              setBusy(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  if (!game.videoObjectPath) return null;
+  return (
+    <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 16, marginTop: 14 }}>
+      {(['highlight', 'lowlight'] as const).map((type) => (
+        <TouchableOpacity
+          key={type}
+          testID={`video-regenerate-${type}`}
+          onPress={() => regenerate(type)}
+          disabled={busy !== null}
+          activeOpacity={0.8}
+          style={{
+            flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+            gap: 7, minHeight: 44, borderWidth: 1, borderRadius: 10,
+            borderColor: colors.border, backgroundColor: colors.card, opacity: busy ? 0.6 : 1,
+          }}
+        >
+          {busy === type ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh-outline" size={16} color={colors.primary} />}
+          <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold', fontSize: 13 }}>
+            {type === 'highlight' ? 'Regenerate Highlights' : 'Regenerate Lowlights'}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
 
 function LowlightSection({ gameId, colors }: { gameId: number; colors: any }) {
   const { getToken } = useAuth();
@@ -2885,7 +2983,12 @@ export default function GameDetailScreen() {
               )}
             </>
           )}
-          {tab === 'video' && <VideoSection game={game} colors={colors} />}
+          {tab === 'video' && (
+            <>
+              <VideoReelActions game={game} colors={colors} />
+              <VideoSection game={game} colors={colors} />
+            </>
+          )}
         </ScrollView>
       )}
     </View>

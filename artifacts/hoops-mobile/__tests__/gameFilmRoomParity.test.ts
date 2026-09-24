@@ -35,7 +35,7 @@ describe('mobile game-video parity', () => {
 
   test('lets coaches jump from timeline markers and event rows', () => {
     expect(gameScreen).toContain('testID="film-room-timeline"');
-    expect(gameScreen).toContain('player.currentTime = Math.max(0, toVideoSeconds(event.videoTimestampMs) - 8)');
+    expect(gameScreen).toContain('player.currentTime = Math.max(0, toPlayableVideoSeconds(event.videoTimestampMs) - 8)');
     expect(gameScreen).toContain('player.play()');
   });
 
@@ -43,7 +43,10 @@ describe('mobile game-video parity', () => {
     expect(gameScreen).toContain('testID="save-full-game"');
     expect(gameScreen).toContain('testID="save-highlight-video"');
     expect(gameScreen).toContain('testID="save-lowlight-video"');
-    expect(gameScreen).toContain('saveReviewVideo(streamUrl, `Full Game — vs ${game.opponent}`)');
+    expect(gameScreen).toContain('testID={`video-regenerate-${type}`}');
+    expect(gameScreen).toContain('<VideoReelActions game={game} colors={colors} />');
+    expect(gameScreen).toContain("player.addListener('statusChange', ({ status, error }) => {");
+    expect(gameScreen).toContain('saveReviewVideo(playbackUrl, `Full Game — vs ${game.opponent}`)');
     expect(gameScreen).toMatch(/ensureLocalReelForSave\(\s*gameId,\s*'highlight'/);
     expect(gameScreen).toContain("await ensureLocalReelForSave(gameId, 'lowlight'");
     expect(gameScreen).not.toContain('if (!objectPath || !signedUrl) return;');
