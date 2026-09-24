@@ -1626,7 +1626,7 @@ router.get("/games/:gameId/video-signed-url", requireAuth, async (req, res) => {
   // Safari cannot play at all and desktop browsers cannot seek in. The proxy
   // is 720p, faststart, and universally playable.
   const hasValidProxy =
-    !!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION;
+    !!game.videoProxyObjectPath && (game.videoProxyVersion === PROXY_VERSION || game.videoProxyVersion === 6);
   if (!hasValidProxy) {
     // Kick off a background build so this game gets an optimized playback
     // file. No-ops if a build is already running for this game.
@@ -2429,7 +2429,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
       // the bounded ffprobe fallback before proxy generation can begin.
       scheduleVideoDurationProbe(game.id, game.videoObjectPath);
     }
-    const hasValidProxy = !!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION;
+    const hasValidProxy = !!game.videoProxyObjectPath && (game.videoProxyVersion === PROXY_VERSION || game.videoProxyVersion === 6);
     const durSec = game.videoDurationMs != null ? game.videoDurationMs / 1000 : null;
     const MAX_PROXY_BUILD_DURATION_SEC = 900;
     const isLongGame = !hasValidProxy && durSec != null && durSec > MAX_PROXY_BUILD_DURATION_SEC;
@@ -2583,7 +2583,7 @@ router.get("/games/:gameId/stream-token/:type", requireAuth, async (req, res) =>
   //   the video is too long to safely transcode on RAM-backed /tmp (the build
   //   gate in ensureGameProxyInBackground uses the same 900 s threshold).
   //   The client should stop polling and tell the user instead of spinning.
-  const proxyReady = type !== "video" || (!!game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION);
+  const proxyReady = type !== "video" || (!!game.videoProxyObjectPath && (game.videoProxyVersion === PROXY_VERSION || game.videoProxyVersion === 6));
   const MAX_PROXY_BUILD_DURATION_SEC = 900; // must match highlightGenerator.ts
   const durSec = (game.videoDurationMs ?? null) !== null ? (game.videoDurationMs! / 1000) : null;
   const proxySkipped = type === "video" && !proxyReady && durSec !== null && durSec > MAX_PROXY_BUILD_DURATION_SEC;

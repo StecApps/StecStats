@@ -230,7 +230,7 @@ router.get("/teams/:teamId/games", requireAuth, async (req, res) => {
       if (!game.videoObjectPath) return false;
       const durSec = (game.videoDurationMs ?? 0) / 1000;
       if (durSec <= 0 || durSec > MAX_PROXY_BUILD_DURATION_SEC) return false;
-      return !(game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION);
+      return !(game.videoProxyObjectPath && (game.videoProxyVersion === PROXY_VERSION || game.videoProxyVersion === 6));
     })(),
     createdAt: game.createdAt,
     stats: (statsByGame.get(game.id) ?? []).map(({ stat, playerName }) => ({
@@ -355,7 +355,7 @@ router.get("/games", requireAuth, async (req, res) => {
         if (!game.videoObjectPath) return false;
         const durSec = (game.videoDurationMs ?? 0) / 1000;
         if (durSec <= 0 || durSec > MAX_PROXY_BUILD_DURATION_SEC) return false;
-        return !(game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION);
+        return !(game.videoProxyObjectPath && (game.videoProxyVersion === PROXY_VERSION || game.videoProxyVersion === 6));
       })(),
       createdAt: game.createdAt,
       stats: (statsByGame.get(game.id) ?? []).map(({ stat, playerName }) => ({

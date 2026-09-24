@@ -344,7 +344,9 @@ export interface HighlightClipManifestEntry {
 // overhead — encoding speed stays at the ultrafast-preset baseline (~5× rt).
 // v5 = orientation-aware scale: portrait sources use 720×1280 instead of being
 //      squashed into 1280×720 with embedded black bars that make the clip tiny.
-export const PROXY_VERSION = 6;
+// v7 = less aggressive compression on the reel source (CRF 30 instead of 33).
+//      v6 playback files remain valid; only newly generated reels/chunks use v7.
+export const PROXY_VERSION = 7;
 
 export const MAX_PROXY_BUILD_DURATION_SEC = 900; // 15 minutes
 const CAPTION_HALF_SECONDS = 2.5;
@@ -921,7 +923,7 @@ async function encodeChunksToGcs(
     ...(outputDurationSec != null ? ["-t", String(Math.ceil(outputDurationSec))] : []),
     "-c:v", "libx264",
     "-preset", "ultrafast",
-    "-crf", "33",
+    "-crf", "30",
     // Fix keyframe interval at 60 frames so the segment muxer's chunk
     // boundaries land within ≤ 60 frames (≤ 2 s at 30 fps, ≤ 1 s at 60 fps)
     // of the nominal PROXY_CHUNK_DURATION_SEC.  Without this, libx264 ultrafast
@@ -1557,7 +1559,7 @@ async function acquireGameProxy(
           const game = await db.query.gamesTable.findFirst({
             where: eq(gamesTable.id, gameId),
           });
-          if (game?.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION) {
+          if (game?.videoProxyObjectPath && (game.videoProxyVersion === PROXY_VERSION || game.videoProxyVersion === 6)) {
             logger.info(
               { gameId, objectPath: game.videoProxyObjectPath },
               "Downloading existing proxy video",
@@ -1689,7 +1691,7 @@ export async function buildGameProxyNow(
       where: eq(gamesTable.id, gameId),
     });
     if (!game?.videoObjectPath) return;
-    if (game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION) return;
+    if (game.videoProxyObjectPath && (game.videoProxyVersion === PROXY_VERSION || game.videoProxyVersion === 6)) return;
     const MAX_PROXY_BUILD_DURATION_SEC = 900;
     const durSec = (game.videoDurationMs ?? 0) / 1000;
     if (durSec <= 0 || durSec > MAX_PROXY_BUILD_DURATION_SEC) {
@@ -1727,7 +1729,7 @@ export function ensureGameProxyInBackground(gameId: number, ownerId: number): vo
       where: eq(gamesTable.id, gameId),
     });
     if (!game?.videoObjectPath) return;
-    if (game.videoProxyObjectPath && game.videoProxyVersion === PROXY_VERSION) return;
+    if (game.videoProxyObjectPath && (game.videoProxyVersion === PROXY_VERSION || game.videoProxyVersion === 6)) return;
     // SIZE GATE: building the playback proxy ends with downloading every
     // chunk and concatenating them locally — on RAM-backed /tmp that peaks
     // at ~2x the full proxy size and OOM-kills the server for long games.
