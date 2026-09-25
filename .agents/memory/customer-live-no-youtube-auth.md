@@ -3,7 +3,7 @@ name: Customer Live without YouTube setup
 description: Product constraint for coach-facing Live and YouTube account ownership.
 ---
 
-Customers must not be required to connect a Google/YouTube account to record or share a live game. StecStats Live uses the per-game Daily room, StecStats watch link, and cloud recording as the default. A connected YouTube channel is optional distribution for the owner's own workflow, not a prerequisite for coaches.
+Customers must not be required to connect a Google/YouTube account to record or share a live game. StecStats Live uses the per-game Daily room, StecStats watch link, and cloud recording as the default. The user confirmed StecStats watch links are enough; customers' games do not need to appear on the owner's YouTube channel. A connected YouTube channel is optional distribution for the owner's own workflow, not a prerequisite for coaches.
 
 **Why:** The user explicitly rejected customer-managed YouTube setup as too much hassle. Requiring it for Live contradicted the intended product experience and would make concurrent customer games impractical.
 

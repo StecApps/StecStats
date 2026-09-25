@@ -81,6 +81,14 @@ router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
     preferredCode = deriveLiveSessionCode(req.appUser!.id, requestId, secret);
   }
 
+  // Only users who deliberately connected a channel should attempt the
+  // optional YouTube relay. Other coaches never make a YouTube request.
+  const youtubeRelayAvailable = process.env.NODE_ENV === "test" ? false : Boolean(
+    (await db.query.usersTable.findFirst({
+      where: eq(usersTable.id, req.appUser!.id),
+      columns: { youtubeRefreshToken: true },
+    }))?.youtubeRefreshToken,
+  );
   const session = await liveStreamRegistry.createSession(
     { opponent, teamName },
     preferredCode,
@@ -126,6 +134,7 @@ router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
       code: session.code,
       roomUrl: daily.url,
       token: meeting.token,
+      youtubeRelayAvailable,
       broadcasterToken: createBroadcasterToken(session.code, req.appUser!.id),
     });
   } catch (error) {

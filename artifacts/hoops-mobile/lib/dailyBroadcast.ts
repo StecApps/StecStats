@@ -17,6 +17,7 @@ export type DailyRoomCredentials = {
   url: string;
   token: string;
   roomName?: string;
+  youtubeRelayAvailable?: boolean;
 };
 
 export type DailyRecordingResult = {

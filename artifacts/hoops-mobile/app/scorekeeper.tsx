@@ -624,10 +624,12 @@ export default function ScorekeeperScreen() {
       // The coach's Daily stream and cloud recording do not require YouTube.
       // A connected channel gets an additional relay for the owner's review
       // workflow; no connection (or a relay failure) never ends the game.
-      const relay = await startOptionalYoutubeRelay(API_BASE, code, getToken);
-      youtubeLiveDistributedRef.current = relay.distributed;
-      if (relay.warning) {
-        Alert.alert('YouTube relay unavailable', `${relay.warning} StecStats Live and cloud recording will continue.`);
+      if (daily.youtubeRelayAvailable) {
+        const relay = await startOptionalYoutubeRelay(API_BASE, code, getToken);
+        youtubeLiveDistributedRef.current = relay.distributed;
+        if (relay.warning) {
+          Alert.alert('YouTube relay unavailable', `${relay.warning} StecStats Live and cloud recording will continue.`);
+        }
       }
       // Keep the StecStats watch link as the only link shared with viewers.
       // videoId/watchUrl are intentionally not exposed here.
@@ -823,9 +825,9 @@ export default function ScorekeeperScreen() {
       broadcasterTokenRef.current = payload.broadcasterToken ?? null;
       const daily: DailyRoomCredentials | undefined =
         payload.daily ?? (payload.roomUrl && payload.token
-          ? { url: payload.roomUrl, token: payload.token, roomName: payload.roomName }
+          ? { url: payload.roomUrl, token: payload.token, roomName: payload.roomName, youtubeRelayAvailable: payload.youtubeRelayAvailable === true }
           : payload.dailyUrl && payload.dailyToken
-          ? { url: payload.dailyUrl, token: payload.dailyToken, roomName: payload.dailyRoomName }
+          ? { url: payload.dailyUrl, token: payload.dailyToken, roomName: payload.dailyRoomName, youtubeRelayAvailable: payload.youtubeRelayAvailable === true }
           : undefined);
       dailyCredentialsRef.current = daily ?? null;
       setLiveCode(code);

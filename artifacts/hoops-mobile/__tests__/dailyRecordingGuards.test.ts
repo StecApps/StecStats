@@ -58,6 +58,8 @@ describe('Daily cloud recording migration guards', () => {
     expect(scorekeeper).toContain('await startDailyBroadcast(daily, setDailyLocalVideoTrack, cameraFacing)');
     expect(scorekeeper).toContain('await stopLiveBroadcast(code)');
     expect(scorekeeper).toContain('startOptionalYoutubeRelay(API_BASE, code, getToken)');
+    expect(scorekeeper).toContain('if (daily.youtubeRelayAvailable)');
+    expect(scorekeeper).toContain('youtubeRelayAvailable: payload.youtubeRelayAvailable === true');
     expect(scorekeeper).toContain('youtubeLiveDistributedRef.current = relay.distributed');
     expect(relay).toContain('YOUTUBE_NOT_CONNECTED');
     expect(relay).toContain('YOUTUBE_RECONNECT_REQUIRED');
