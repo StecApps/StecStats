@@ -29,7 +29,7 @@ import {
   getListAllGamesQueryKey,
 } from '@workspace/api-client-react';
 import {
-  loadPendingMasterUpload,
+  loadPendingMasterUploads,
   syncPendingMasterUploadIfAvailable,
 } from './pendingMasterUpload';
 import { requestUploadUrl } from '@workspace/api-client-react';
@@ -129,27 +129,27 @@ export function useOfflineQueueSync(apiBase: string) {
   const prevOnlineRef = useRef(true);
 
   async function syncPendingMaster() {
-    const pending = await loadPendingMasterUpload().catch((err) => {
+    const pendingUploads = await loadPendingMasterUploads().catch((err) => {
       console.warn('[PendingMaster] Could not read pending master:', (err as Error).message);
-      return null;
+      return [];
     });
-    if (!pending) return;
-    // Scorekeeper may be performing the same durable item in foreground. Never
-    // start a second upload/PATCH while its lease is active.
-    await syncPendingMasterUploadIfAvailable(pending, {
-      apiBase,
-      getToken,
-      // Reuse the generated API request's endpoint contract through the shared
-      // client setup rather than constructing a second presign implementation.
-      requestUploadUrl: async (data) => requestUploadUrl(data),
-    }).then(() => {
-      qc.invalidateQueries({ queryKey: getListAllGamesQueryKey() });
-      qc.invalidateQueries({ queryKey: getListTeamGamesQueryKey(pending.teamId) });
-    }).catch((err) => {
-      // The durable marker (including local URI) remains for the next usable
-      // cellular/Wi-Fi probe or foreground/relaunch.
-      console.warn('[PendingMaster] Upload deferred:', (err as Error).message);
-    });
+    for (const pending of pendingUploads) {
+      // Foreground saves have priority. Never start a second upload/PATCH.
+      try {
+        const result = await syncPendingMasterUploadIfAvailable(pending, {
+          apiBase,
+          getToken,
+          requestUploadUrl: async (data) => requestUploadUrl(data),
+        });
+        if (!result) break; // lease belongs to the scorekeeper
+        qc.invalidateQueries({ queryKey: getListAllGamesQueryKey() });
+        qc.invalidateQueries({ queryKey: getListTeamGamesQueryKey(pending.teamId) });
+      } catch (err) {
+        // Keep this marker and try the next game; one damaged recording must
+        // not prevent every other completed game from being recovered.
+        console.warn('[PendingMaster] Upload deferred:', (err as Error).message);
+      }
+    }
   }
 
   async function syncQueued() {

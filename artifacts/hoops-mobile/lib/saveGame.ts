@@ -31,7 +31,7 @@ export interface SaveGameDeps {
   /** Bound invalidateQueries from useQueryClient(). */
   invalidateQueries: (opts: { queryKey: string[] }) => Promise<void>;
   /** router.replace from expo-router. */
-  routerReplace: (path: string) => void;
+  routerReplace: (path: string) => void | Promise<void>;
   /** Component setSaving state setter. */
   setSaving: (v: boolean) => void;
   /**
@@ -127,7 +127,7 @@ export async function saveGame(
     }
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await invalidateQueries({ queryKey: ['listTeamGames'] });
-    routerReplace(`/game/${game.id}`);
+    await routerReplace(`/game/${game.id}`);
     await deps.onSaveSuccess?.(game.id);
   } catch (err: any) {
     // Network-level failures (no connection, ECONNREFUSED, timeout) produce a

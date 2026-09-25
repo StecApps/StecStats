@@ -11,12 +11,12 @@ import {
 } from '@/lib/offlineQueue';
 import { useAutosaveDraft } from '@/lib/useAutosaveDraft';
 
-export { PENDING_UPLOAD_KEY } from '@/lib/pendingMasterUpload';
 export type { PendingUpload } from '@/lib/pendingMasterUpload';
-import { PENDING_UPLOAD_KEY, type PendingUpload } from '@/lib/pendingMasterUpload';
 import {
   tryAcquirePendingMasterLease,
   releasePendingMasterLease,
+  enqueuePendingMasterUpload,
+  removePendingMasterUpload,
   updatePendingMasterUpload,
 } from '@/lib/pendingMasterUpload';
 import {
@@ -437,6 +437,7 @@ export default function ScorekeeperScreen() {
   } | null>(null);
   // All clip URIs collected so far (one per camera-flip segment + final clip).
   const recordedUrisRef = useRef<string[]>([]);
+  const pendingMasterClientIdRef = useRef<string | null>(null);
   // A lifecycle stop is native-owned. This remains true while the finalized
   // clip is settling, and is cleared only by the matching native resume event.
   const lifecycleInterruptedRef = useRef(false);
@@ -2636,29 +2637,33 @@ export default function ScorekeeperScreen() {
       Alert.alert('No players', 'Add players to your team before saving a game.');
       return;
     }
-    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease();
+    const pendingClientId = pendingMasterClientIdRef.current ?? generateClientId();
+    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease(pendingClientId);
     if (recordVideo && !ownsPendingMasterLease) {
       Alert.alert('Recording is still finishing', 'Please wait a moment, then tap End Game again.');
       return;
     }
+    if (recordVideo) pendingMasterClientIdRef.current = pendingClientId;
     try {
       await saveWithPendingMasterLease();
     } finally {
-      if (ownsPendingMasterLease) releasePendingMasterLease();
+      if (ownsPendingMasterLease) releasePendingMasterLease(pendingClientId);
     }
   }
 
   async function retryFinalizedSave() {
     if (saving) return;
-    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease();
+    const pendingClientId = pendingMasterClientIdRef.current ?? generateClientId();
+    const ownsPendingMasterLease = recordVideo && tryAcquirePendingMasterLease(pendingClientId);
     if (recordVideo && !ownsPendingMasterLease) {
       Alert.alert('Upload is still finishing', 'Please wait a moment, then retry the upload.');
       return;
     }
+    if (recordVideo) pendingMasterClientIdRef.current = pendingClientId;
     try {
       await saveWithPendingMasterLease();
     } finally {
-      if (ownsPendingMasterLease) releasePendingMasterLease();
+      if (ownsPendingMasterLease) releasePendingMasterLease(pendingClientId);
     }
   }
 
@@ -2726,17 +2731,18 @@ export default function ScorekeeperScreen() {
     // stats-only or cancellation.
     if (!isOnlineRef.current) {
       if (recordVideo && recordedUrisRef.current.length > 0) {
-        const clientId = generateClientId();
+        const clientId = pendingMasterClientIdRef.current ?? generateClientId();
         try {
-          await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify({
+          await enqueuePendingMasterUpload({
             uris: recordedUrisRef.current,
             teamId: Number(teamId), teamName: teamName as string,
             opponent: opponent as string, date: date as string,
             teamScore, opponentScore, stats, events, clientId,
             savedAt: new Date().toISOString(),
-          } satisfies PendingUpload));
+          });
+          pendingMasterClientIdRef.current = clientId;
           await clearDraft();
-          Alert.alert('Game saved for upload', 'Your full-game recording is safely queued and will upload automatically on cellular or Wi-Fi.', [
+          Alert.alert('Game saved for upload', 'Your full-game recording is queued on this device. Reopen the app on cellular or Wi-Fi to resume the upload.', [
             { text: 'OK', onPress: () => router.replace('/(tabs)/games' as any) },
           ]);
         } catch {
@@ -2773,9 +2779,9 @@ export default function ScorekeeperScreen() {
           // Persist video URIs + game data now — before any bytes are sent.
           // If the upload is cancelled or the app is killed, the games tab can
           // offer recovery so nothing is permanently lost.
-          const clientId = generateClientId();
+          const clientId = pendingMasterClientIdRef.current ?? generateClientId();
           pendingClientId = clientId;
-          await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify({
+          await enqueuePendingMasterUpload({
             uris,
             teamId: Number(teamId),
             teamName: teamName as string,
@@ -2787,7 +2793,8 @@ export default function ScorekeeperScreen() {
             events,
             clientId,
             savedAt: new Date().toISOString(),
-          } satisfies PendingUpload)).catch(() => {/* non-fatal */});
+          });
+          pendingMasterClientIdRef.current = clientId;
 
           setUploadProgress(0);
           stallAlertActiveRef.current = false;
@@ -2826,7 +2833,7 @@ export default function ScorekeeperScreen() {
             );
             if (attemptToken.cancelled) return;
             uploadedPaths.push(p);
-            await updatePendingMasterUpload({ uploadedPaths });
+            await updatePendingMasterUpload(clientId, { uploadedPaths });
           }
 
           if (attemptToken.cancelled) return;
@@ -2866,7 +2873,7 @@ export default function ScorekeeperScreen() {
             videoObjectPath = concatResult.videoObjectPath;
             setUploadProgress(100);
           }
-          await updatePendingMasterUpload({ uploadedPaths, videoObjectPath: videoObjectPath! });
+          await updatePendingMasterUpload(clientId, { uploadedPaths, videoObjectPath: videoObjectPath! });
 
           setUploadProgress(null);
           // Guard: if cancel was pressed just as the last upload finished, honour
@@ -2926,7 +2933,6 @@ export default function ScorekeeperScreen() {
     await clearDraft();
     // A recorded master has its own durable upload marker. Never delete it
     // while queuing stats after a network failure.
-    if (!recordVideo) await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
   }
 
   async function doSaveGame(videoObjectPath: string | null, existingClientId?: string) {
@@ -2939,13 +2945,7 @@ export default function ScorekeeperScreen() {
     // If a coach elects to save stats while a recorded master is pending, use
     // the marker's same idempotency key. The recovery worker's POST then finds
     // this exact game and PATCH attaches the master rather than making a twin.
-    let markerClientId: string | undefined;
-    if (recordVideo && !videoObjectPath && !existingClientId) {
-      try {
-        markerClientId = (JSON.parse(await AsyncStorage.getItem(PENDING_UPLOAD_KEY) ?? '{}') as PendingUpload).clientId;
-      } catch { /* preserve the normal new-game fallback */ }
-    }
-    const saveClientId = existingClientId ?? markerClientId ?? generateClientId();
+    const saveClientId = existingClientId ?? pendingMasterClientIdRef.current ?? generateClientId();
     const liveSessionCode = dailyRecordingCodeRef.current ?? undefined;
 
     // ── Offline path: queue locally and navigate back ─────────────────────
@@ -2987,8 +2987,12 @@ export default function ScorekeeperScreen() {
       createGameMutateAsync: (args) => createGame.mutateAsync(args as any),
       invalidateQueries: (opts) => qc.invalidateQueries(opts),
       routerReplace: async (path) => {
-        // Clear the pending-upload marker and draft only after the game is confirmed saved.
-        await AsyncStorage.removeItem(PENDING_UPLOAD_KEY).catch(() => {});
+        // Only remove this game's marker after the attached video is confirmed.
+        // A stats-only save leaves its local movie queued for later attachment.
+        if (videoObjectPath && pendingMasterClientIdRef.current) {
+          await removePendingMasterUpload(pendingMasterClientIdRef.current);
+          pendingMasterClientIdRef.current = null;
+        }
         await clearDraft();
         router.replace(path as any);
       },
@@ -3006,7 +3010,9 @@ export default function ScorekeeperScreen() {
         }
         // Durable foreground transition: a crash after server linkage but
         // before navigation leaves the worker with the exact game/path.
-        await updatePendingMasterUpload({ gameId, videoObjectPath });
+        if (pendingMasterClientIdRef.current) {
+          await updatePendingMasterUpload(pendingMasterClientIdRef.current, { gameId, videoObjectPath });
+        }
         const token = await getToken();
         const headers = {
           'Content-Type': 'application/json',

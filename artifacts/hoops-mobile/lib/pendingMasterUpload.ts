@@ -5,18 +5,19 @@ import { type GameEvent, type StatLine } from './saveGame';
 
 /** Durable marker for a recorded full-game master. Never remove before attach. */
 export const PENDING_UPLOAD_KEY = 'stec:pending-mobile-upload';
-// Both the scorekeeper and app-level recovery worker run in this JS runtime.
-// A single process-wide lease serializes them around the one AsyncStorage item.
-let pendingMasterLeaseHeld = false;
+// Foreground saving and recovery of the SAME game must not overlap. Different
+// games can be saved while an earlier master is uploading.
+const pendingMasterLeases = new Set<string>();
+let storageWrite: Promise<void> = Promise.resolve();
 
-export function tryAcquirePendingMasterLease(): boolean {
-  if (pendingMasterLeaseHeld) return false;
-  pendingMasterLeaseHeld = true;
+export function tryAcquirePendingMasterLease(clientId: string): boolean {
+  if (pendingMasterLeases.has(clientId)) return false;
+  pendingMasterLeases.add(clientId);
   return true;
 }
 
-export function releasePendingMasterLease(): void {
-  pendingMasterLeaseHeld = false;
+export function releasePendingMasterLease(clientId: string): void {
+  pendingMasterLeases.delete(clientId);
 }
 
 export interface PendingUpload {
@@ -46,17 +47,60 @@ export interface PendingMasterUploadDeps {
   onProgress?: (percent: number) => void;
 }
 
-async function writePending(pending: PendingUpload) {
-  await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify(pending));
+function validatePending(value: Partial<PendingUpload>): PendingUpload {
+  if (!Array.isArray(value.uris) || !value.clientId || !value.teamId) {
+    throw new Error('Pending master recording is invalid.');
+  }
+  return value as PendingUpload;
 }
 
-/** Persist a foreground transition without allowing it to replace its clientId. */
+export async function loadPendingMasterUploads(): Promise<PendingUpload[]> {
+  const raw = await AsyncStorage.getItem(PENDING_UPLOAD_KEY);
+  if (!raw) return [];
+  const parsed: unknown = JSON.parse(raw);
+  // Existing installations have a single object. Migrate it on the next write.
+  return (Array.isArray(parsed) ? parsed : [parsed]).map((item) =>
+    validatePending(item as Partial<PendingUpload>),
+  );
+}
+
+function mutatePending(
+  change: (items: PendingUpload[]) => PendingUpload[],
+): Promise<void> {
+  const next = storageWrite.then(async () => {
+    const current = await loadPendingMasterUploads();
+    const updated = change(current);
+    if (updated.length) {
+      await AsyncStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify(updated));
+    } else {
+      await AsyncStorage.removeItem(PENDING_UPLOAD_KEY);
+    }
+  });
+  // Do not poison the next mutation if AsyncStorage rejects this one.
+  storageWrite = next.catch(() => {});
+  return next;
+}
+
+export async function enqueuePendingMasterUpload(pending: PendingUpload): Promise<void> {
+  await mutatePending((items) => {
+    const index = items.findIndex((item) => item.clientId === pending.clientId);
+    if (index < 0) return [...items, pending];
+    return items.map((item, i) => i === index ? { ...item, ...pending } : item);
+  });
+}
+
+export async function removePendingMasterUpload(clientId: string): Promise<void> {
+  await mutatePending((items) => items.filter((item) => item.clientId !== clientId));
+}
+
+/** Persist a foreground transition without changing any other game's marker. */
 export async function updatePendingMasterUpload(
+  clientId: string,
   update: Partial<Pick<PendingUpload, 'gameId' | 'uploadedPaths' | 'videoObjectPath'>>,
 ): Promise<void> {
-  const current = await loadPendingMasterUpload();
-  if (!current) return;
-  await writePending({ ...current, ...update });
+  await mutatePending((items) => items.map((item) =>
+    item.clientId === clientId ? { ...item, ...update } : item,
+  ));
 }
 
 function gamePayload(pending: PendingUpload, videoObjectPath?: string) {
@@ -110,7 +154,7 @@ export async function syncPendingMasterUpload(
     const game = await created.json() as { id: number };
     if (!game.id) throw new Error('Game metadata was not acknowledged by the server.');
     pending = { ...pending, gameId: game.id };
-    await writePending(pending);
+    await enqueuePendingMasterUpload(pending);
   }
 
   let uploadedPaths = pending.uploadedPaths ?? [];
@@ -122,7 +166,7 @@ export async function syncPendingMasterUpload(
     );
     uploadedPaths = [...uploadedPaths, path];
     pending = { ...pending, uploadedPaths };
-    await writePending(pending);
+    await enqueuePendingMasterUpload(pending);
   }
 
   let videoObjectPath = pending.videoObjectPath;
@@ -143,7 +187,7 @@ export async function syncPendingMasterUpload(
       videoObjectPath = merged.videoObjectPath;
     }
     pending = { ...pending, videoObjectPath };
-    await writePending(pending);
+    await enqueuePendingMasterUpload(pending);
   }
 
   // This owner-scoped endpoint changes only the master attachment. Do not use
@@ -170,7 +214,7 @@ export async function syncPendingMasterUpload(
   );
   if (retryableGenerationError?.status === 'rejected') throw retryableGenerationError.reason;
 
-  await AsyncStorage.removeItem(PENDING_UPLOAD_KEY);
+  await removePendingMasterUpload(pending.clientId);
   return { gameId: pending.gameId! };
 }
 
@@ -179,20 +223,18 @@ export async function syncPendingMasterUploadIfAvailable(
   pending: PendingUpload,
   deps: PendingMasterUploadDeps,
 ): Promise<{ gameId: number } | null> {
-  if (!tryAcquirePendingMasterLease()) return null;
+  if (!tryAcquirePendingMasterLease(pending.clientId)) return null;
   try {
-    return await syncPendingMasterUpload(pending, deps);
+    // A foreground save may have progressed or removed this game since the
+    // worker took its snapshot. Never replay that stale snapshot.
+    const current = (await loadPendingMasterUploads())
+      .find((item) => item.clientId === pending.clientId);
+    return current ? await syncPendingMasterUpload(current, deps) : null;
   } finally {
-    releasePendingMasterLease();
+    releasePendingMasterLease(pending.clientId);
   }
 }
 
 export async function loadPendingMasterUpload(): Promise<PendingUpload | null> {
-  const raw = await AsyncStorage.getItem(PENDING_UPLOAD_KEY);
-  if (!raw) return null;
-  const parsed = JSON.parse(raw) as Partial<PendingUpload>;
-  if (!Array.isArray(parsed.uris) || !parsed.clientId || !parsed.teamId) {
-    throw new Error('Pending master recording is invalid.');
-  }
-  return parsed as PendingUpload;
+  return (await loadPendingMasterUploads())[0] ?? null;
 }
