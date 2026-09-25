@@ -110,3 +110,4 @@
 - [YouTube Live quota capacity](youtube-live-quota-capacity.md) — one complete Live session costs about 250 shared units; uploads use a separate granular quota bucket.
 - [Mobile product surface](mobile-product-surface.md) — coaches use the installed iPad app for game media; the web version is advertising, not a substitute for mobile controls.
 - [Multi-game recording recovery](multi-game-recording-recovery.md) — unfinished iPad uploads need per-game recovery; the next game must not overwrite or clear earlier footage.
+- [Customer Live without YouTube setup](customer-live-no-youtube-auth.md) — customer games use Daily + StecStats links; YouTube relay is optional, never a coach prerequisite.

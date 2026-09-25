@@ -461,8 +461,8 @@ export default function ProfileScreen() {
         </>
       )}
 
-      {/* YouTube */}
-      <Text style={styles.sectionTitle}>YouTube</Text>
+      {/* Optional channel connection: coaches can go Live without YouTube. */}
+      <Text style={styles.sectionTitle}>YouTube (optional)</Text>
       {ytConnected === null ? (
         <ActivityIndicator color={colors.primary} style={{ alignSelf: 'flex-start', marginBottom: 8 }} />
       ) : ytConnected ? (
@@ -476,8 +476,8 @@ export default function ProfileScreen() {
       ) : (
         <ProfileRow
           icon="logo-youtube"
-          label={ytActionLoading ? 'Connecting…' : 'Connect YouTube'}
-          value="Share highlights to your channel"
+          label={ytActionLoading ? 'Connecting…' : 'Connect your channel'}
+          value="Optional for Live relay and highlight uploads"
           onPress={ytActionLoading ? undefined : handleConnectYoutube}
           colors={colors}
         />

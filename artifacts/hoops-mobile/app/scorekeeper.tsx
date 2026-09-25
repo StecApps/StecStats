@@ -89,6 +89,7 @@ import { concatSegmentsWithTimeout } from '@/lib/concatSegmentsWithTimeout';
 import { fetchIceServers } from '@/lib/fetchIceServers';
 import { drainPendingViewers } from '@/lib/drainPendingViewers';
 import { startLiveSession } from '@/lib/startLiveSession';
+import { startOptionalYoutubeRelay } from '@/lib/startOptionalYoutubeRelay';
 import {
   HoopsCameraView,
   isHoopsCameraAvailable,
@@ -620,36 +621,16 @@ export default function ScorekeeperScreen() {
         showCameraNotice(error instanceof Error ? error.message : 'Could not restore the camera zoom.');
       });
 
-      // Daily must be connected before the server can publish its RTMP
-      // output to YouTube. The server owns the YouTube broadcast and stream
-      // key; the mobile client only receives the resulting video metadata.
-      const youtubeToken = await getToken();
-      const youtubeResponse = await fetch(
-        `${API_BASE}/api/live/${encodeURIComponent(code)}/youtube/start`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(youtubeToken ? { Authorization: `Bearer ${youtubeToken}` } : {}),
-          },
-        },
-      );
-      const youtubePayload = await youtubeResponse.json().catch(() => ({}));
-      if (!youtubeResponse.ok) {
-        const youtubeCode = (youtubePayload as any)?.code;
-        const message =
-          youtubeCode === 'YOUTUBE_NOT_CONNECTED'
-            ? 'Connect your YouTube account in Profile before going Live.'
-            : youtubeCode === 'YOUTUBE_RECONNECT_REQUIRED'
-              ? 'Reconnect your YouTube account in Profile, then try again.'
-              : youtubeCode === 'YOUTUBE_LIVE_NOT_ENABLED'
-                ? 'Enable YouTube Live for your channel and try again. First activation may take up to 24 hours.'
-                : (youtubePayload as any)?.error ?? `YouTube Live could not start (${youtubeResponse.status}).`;
-        throw Object.assign(new Error(message), { youtubeCode });
+      // The coach's Daily stream and cloud recording do not require YouTube.
+      // A connected channel gets an additional relay for the owner's review
+      // workflow; no connection (or a relay failure) never ends the game.
+      const relay = await startOptionalYoutubeRelay(API_BASE, code, getToken);
+      youtubeLiveDistributedRef.current = relay.distributed;
+      if (relay.warning) {
+        Alert.alert('YouTube relay unavailable', `${relay.warning} StecStats Live and cloud recording will continue.`);
       }
-      youtubeLiveDistributedRef.current = true;
-      // Keep the public StecStats watch link as the only link shared with
-      // viewers. videoId/watchUrl are intentionally not exposed here.
+      // Keep the StecStats watch link as the only link shared with viewers.
+      // videoId/watchUrl are intentionally not exposed here.
     } catch (error: any) {
       // Roll back both Daily and the server-side live session. This also keeps
       // the normal /live/:code/stop cleanup path authoritative.
@@ -660,13 +641,7 @@ export default function ScorekeeperScreen() {
       dailyRecordingRef.current = null;
       dailyRecordingCodeRef.current = null;
       setDailyProcessing(false);
-      if (error?.youtubeCode === 'YOUTUBE_NOT_CONNECTED' ||
-          error?.youtubeCode === 'YOUTUBE_RECONNECT_REQUIRED' ||
-          error?.youtubeCode === 'YOUTUBE_LIVE_NOT_ENABLED') {
-        Alert.alert('YouTube Live unavailable', error.message);
-      } else {
-        Alert.alert('Live video unavailable', error?.message ?? 'Could not open the Daily camera.');
-      }
+      Alert.alert('Live video unavailable', error?.message ?? 'Could not open the Daily camera.');
       return;
     }
     setIsLive(true);
@@ -3579,8 +3554,8 @@ export default function ScorekeeperScreen() {
 
           <Text style={[styles.sheetSub, { color: colors.mutedForeground }]}>
             {isLive
-              ? 'The broadcast is shared through an unlisted YouTube stream. Anyone with this StecStats watch link can watch without an account.'
-              : 'Send this watch link first. When you start Live, StecStats shares an unlisted YouTube stream that anyone with the link can watch without an account.'}
+              ? 'Anyone with this StecStats watch link can watch without an account. Your game is being recorded to the cloud.'
+              : 'Send this watch link first. When you start Live, anyone with the link can watch through StecStats without an account.'}
           </Text>
 
           {/* Session code */}
