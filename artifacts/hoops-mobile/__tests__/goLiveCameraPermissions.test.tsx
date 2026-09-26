@@ -146,6 +146,7 @@ jest.mock('@/lib/drainPendingViewers', () => ({ drainPendingViewers: jest.fn() }
 jest.mock('@/lib/dailyBroadcast', () => ({
   startDailyBroadcast: jest.fn(async () => {}),
   stopDailyBroadcast: jest.fn(async () => null),
+  setDailyCameraZoom: jest.fn(async () => null),
   isDailyBroadcastActive: jest.fn(() => false),
   getDailyBroadcastDurationMs: jest.fn(() => 0),
 }));
@@ -256,12 +257,14 @@ jest.mock('react-native', () => {
 // ── Imports (after mocks) ─────────────────────────────────────────────────────
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { useWindowDimensions } from 'react-native';
 import { useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import ScorekeeperScreen from '../app/scorekeeper';
 
 // Typed references to the mocked permission hooks for per-test control.
 const mockUseCameraPermissions = useCameraPermissions as jest.Mock;
 const mockUseMicPermissions    = useMicrophonePermissions as jest.Mock;
+const mockUseWindowDimensions = useWindowDimensions as jest.Mock;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -287,6 +290,7 @@ function treeHasText(node: any, text: string): boolean {
 // ── Setup ─────────────────────────────────────────────────────────────────────
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUseWindowDimensions.mockReturnValue({ width: 390, height: 844 });
   mockWsInstance.onopen = null;
   mockWsInstance.onclose = null;
 });
@@ -358,6 +362,27 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
       expect(goLiveCandidates).toHaveLength(1);
     });
 
+    test('puts a labeled Go Live control first on a landscape iPhone', async () => {
+      mockUseWindowDimensions.mockReturnValue({ width: 844, height: 390 });
+      mockUseCameraPermissions.mockReturnValue([{ granted: true }, jest.fn()]);
+      mockUseMicPermissions.mockReturnValue([{ granted: true }, jest.fn()]);
+
+      let tree!: renderer.ReactTestRenderer;
+      await act(async () => { tree = renderer.create(<ScorekeeperScreen />); });
+
+      const [goLive] = findNodes(
+        tree.toJSON(),
+        (n) => n.type === 'TouchableOpacity' && n.props?.accessibilityLabel === 'Go Live',
+      );
+      expect(goLive).toBeDefined();
+      expect(treeHasText(goLive, 'GO LIVE')).toBe(true);
+      const [controls] = findNodes(
+        tree.toJSON(),
+        (n) => n.type === 'View' && n.children?.some((child: any) => child.props?.accessibilityLabel === 'Go Live'),
+      );
+      expect(controls?.children?.[0]?.props?.accessibilityLabel).toBe('Go Live');
+    });
+
   });
 
   // ── Test 2 ─────────────────────────────────────────────────────────────────
@@ -398,6 +423,14 @@ describe('ScorekeeperScreen — Go Live button + LIVE badge', () => {
       // Daily becomes the sole camera owner once Live starts, so the legacy
       // preview controls intentionally unmount. The persistent LIVE indicator
       // must remain visible after that transition.
+      const [cameraControls] = findNodes(
+        tree.toJSON(),
+        (n) => n.type === 'View' && n.children?.[0]?.props?.accessibilityLabel === 'Live broadcast options',
+      );
+      // Portrait phone controls: Live, flip, mic, orientation, hide.
+      const hidePreviewBtn = cameraControls?.children?.[4];
+      expect(hidePreviewBtn?.type).toBe('TouchableOpacity');
+      await act(async () => { hidePreviewBtn.props.onPress(); });
       return tree;
     }
 

@@ -3781,6 +3781,49 @@ export default function ScorekeeperScreen() {
             {/* Camera controls — top-left */}
             {(cameraReady || dailyLive) && (
               <View style={styles.camControls}>
+                {/* Keep Live first: on short landscape phones the lower controls
+                    can sit behind the scoreboard at the bottom of the camera. */}
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={isLive ? 'Live broadcast options' : 'Go Live'}
+                  onPress={() => {
+                    if (recordingStartedRef.current || isRecording) {
+                      showCameraNotice(
+                        isLive
+                          ? 'Live video is active. Share the link after recording.'
+                          : 'Recording protected — start Live before recording.',
+                      );
+                      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+                      return;
+                    }
+                    if (isLive) {
+                      setShowGoLiveSheet(true);
+                    } else {
+                      startLiveBroadcast();
+                    }
+                  }}
+                  activeOpacity={0.75}
+                  disabled={liveLoading}
+                  style={[
+                    styles.camControlBtn,
+                    isLandscape && !isTablet && styles.phoneLandscapeLiveBtn,
+                    isLive && { backgroundColor: 'rgba(239,68,68,0.85)' },
+                    isRecording && { opacity: 0.48 },
+                  ]}
+                >
+                  {liveLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : isRecording && !isLive ? (
+                    <Ionicons name="lock-closed" size={isTablet ? 23 : 17} color="#fff" />
+                  ) : isLive ? (
+                    <Ionicons name="radio" size={isTablet ? 24 : 18} color="#fff" />
+                  ) : (
+                    <Ionicons name="radio-outline" size={isTablet ? 24 : 18} color="#fff" />
+                  )}
+                  {isLandscape && !isTablet && (
+                    <Text style={styles.phoneLandscapeLiveText}>{isLive ? 'LIVE' : 'GO LIVE'}</Text>
+                  )}
+                </TouchableOpacity>
                 {/* Flip front/back — always enabled; prompts to save clip while recording */}
                 <TouchableOpacity
                   onPress={() => {
@@ -3856,42 +3899,6 @@ export default function ScorekeeperScreen() {
                   <Ionicons name="eye-off" size={isTablet ? 24 : 18} color="#fff" />
                 </TouchableOpacity>
 
-                {/* Go Live / Live indicator */}
-                <TouchableOpacity
-                  onPress={() => {
-                    if (recordingStartedRef.current || isRecording) {
-                      showCameraNotice(
-                        isLive
-                          ? 'Live video is active. Share the link after recording.'
-                          : 'Recording protected — start Live before recording.',
-                      );
-                      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-                      return;
-                    }
-                    if (isLive) {
-                      setShowGoLiveSheet(true);
-                    } else {
-                      startLiveBroadcast();
-                    }
-                  }}
-                  activeOpacity={0.75}
-                  disabled={liveLoading}
-                  style={[
-                    styles.camControlBtn,
-                    isLive && { backgroundColor: 'rgba(239,68,68,0.85)' },
-                    isRecording && { opacity: 0.48 },
-                  ]}
-                >
-                  {liveLoading ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : isRecording && !isLive ? (
-                    <Ionicons name="lock-closed" size={isTablet ? 23 : 17} color="#fff" />
-                  ) : isLive ? (
-                    <Ionicons name="radio" size={isTablet ? 24 : 18} color="#fff" />
-                  ) : (
-                    <Ionicons name="radio-outline" size={isTablet ? 24 : 18} color="#fff" />
-                  )}
-                </TouchableOpacity>
               </View>
             )}
 
@@ -4227,7 +4234,7 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
     camControls: {
       position: 'absolute',
       top: insets.top + (Platform.OS === 'web' ? 64 : 8),
-      left: isTabletLandscape ? 14 : 10,
+      left: isLandscape && !isTablet ? insets.left + 10 : isTabletLandscape ? 14 : 10,
       flexDirection: 'column',
       gap: isTabletLandscape ? 10 : 6,
       zIndex: 10,
@@ -4262,6 +4269,18 @@ function makeStyles(colors: any, insets: any, sw: number, sh: number, isLandscap
       backgroundColor: 'rgba(0,0,0,0.55)',
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    phoneLandscapeLiveBtn: {
+      width: 90,
+      minHeight: 40,
+      flexDirection: 'row',
+      gap: 5,
+      backgroundColor: 'rgba(239,68,68,0.9)',
+    },
+    phoneLandscapeLiveText: {
+      color: '#fff',
+      fontSize: 11,
+      fontFamily: 'Inter_700Bold',
     },
     zoomControls: {
       position: 'absolute',
