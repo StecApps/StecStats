@@ -1,10 +1,10 @@
 ---
 name: Mobile product surface
-description: Which interface coaches actually use for game media actions
+description: Coach media surfaces and the browser PWA's prior use
 ---
 
-Coaches use the installed iPad app for recording, watching game film, and managing reels. Do not direct them to the website to complete these actions; the user describes the web version as advertising, not their working coach interface.
+The installed iPad app is the current coach media workflow, but do not treat the website as permanently advertising-only. The user reports successfully streaming basketball games through the PWA last season and wants to consider restoring that browser-based coach workflow to reach customers without App Store approval. This report is evidence of prior use, not proof that the present web/server combination works.
 
-**Why:** A server-side reel-quality change was published, but the user could not access the suggested Regenerate action on their installed app. A web control is not an adequate substitute for an iPad workflow, and publishing the server does not update the installed mobile client.
+**Why:** An earlier server-side reel change could not be accessed from the installed app, so suggesting a web control was wrong for that moment. The user later corrected the broader inference: the PWA itself had been a working game-day product for them.
 
-**How to apply:** Put media controls and error recovery in the mobile app, and distinguish backend publishing from a mobile OTA/TestFlight release before telling the user where to tap.
+**How to apply:** Distinguish the *currently verified* interface from a proposed revived PWA. Before directing coaches to use the PWA today, check browser media capture, live transport and viewer compatibility against the current backend and run real-device full-game validation. Do not assume an App Store release is necessary for a browser-delivered coach workflow.

@@ -17,6 +17,7 @@ import { getOrderedChunks, deleteSession } from "@/lib/recordingStore";
 import { uploadVideoBlob } from "@/lib/videoUpload";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
+import MarketLab from "@/pages/market-lab";
 import Pricing, { PENDING_CHECKOUT_KEY, FAILED_CHECKOUT_KEY, encodeCheckoutIntent, decodeCheckoutIntent } from "@/pages/pricing";
 import Onboarding from "@/pages/onboarding";
 import Dashboard from "@/pages/dashboard";
@@ -713,6 +714,7 @@ function ClerkProviderWithRoutes() {
             <Route path="/print-cards" component={PrintCards} />
             <Route path="/card-render" component={CardRender} />
             <Route path="/admin" component={AdminFeedback} />
+            {import.meta.env.DEV && <Route path="/market-lab" component={MarketLab} />}
             <Route path="/" component={HomeRedirect} />
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
