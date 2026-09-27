@@ -108,6 +108,6 @@
 - [Daily iPad frame rotation](daily-ipad-frame-rotation.md) — WebRTC defaults unknown/flat iPads to portrait rotation; force landscape rotation at the outgoing frame boundary.
 - [YouTube connection status must probe Google](youtube-connection-probe.md) — a stored refresh token can be revoked; Profile must not equate token presence with a working connection.
 - [YouTube Live quota capacity](youtube-live-quota-capacity.md) — one complete Live session costs about 250 shared units; uploads use a separate granular quota bucket.
-- [Mobile product surface](mobile-product-surface.md) — iPad is the current coach workflow, but the user streamed via the PWA last season and wants it reconsidered as a real product.
+- [Mobile product surface](mobile-product-surface.md) — browser WebRTC/local recording and iPad Daily/cloud recording are distinct coach paths; PWA still needs full-game device validation.
 - [Multi-game recording recovery](multi-game-recording-recovery.md) — unfinished iPad uploads need per-game recovery; the next game must not overwrite or clear earlier footage.
 - [Customer Live without YouTube setup](customer-live-no-youtube-auth.md) — customer games use Daily + StecStats links; YouTube relay is optional, never a coach prerequisite.

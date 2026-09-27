@@ -68,19 +68,31 @@ export type LiveStatus = {
   scoreboardDelayMs?: number;
 };
 
-export async function startLiveSession(opponent: string, teamName: string): Promise<string> {
+export type WebLiveSession = { code: string; broadcasterToken: string };
+
+export async function startLiveSession(opponent: string, teamName: string, authToken: string): Promise<WebLiveSession> {
   const res = await fetch("/api/live/start", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ opponent, teamName }),
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${authToken}` },
+    body: JSON.stringify({ opponent, teamName, videoMode: "webrtc" }),
   });
-  if (!res.ok) throw new Error("Failed to start live session");
-  const data = await res.json();
-  return data.code as string;
+  if (!res.ok) {
+    const details = await res.json().catch(() => ({}));
+    throw new Error(typeof details.error === "string" ? details.error : "Failed to start live session");
+  }
+  const data = await res.json() as Partial<WebLiveSession>;
+  if (typeof data.code !== "string" || typeof data.broadcasterToken !== "string") {
+    throw new Error("Live session credentials are missing");
+  }
+  return { code: data.code, broadcasterToken: data.broadcasterToken };
 }
 
-export async function stopLiveSession(code: string): Promise<void> {
-  await fetch(`/api/live/${code}/stop`, { method: "POST" }).catch(() => {});
+export async function stopLiveSession(code: string, authToken: string): Promise<void> {
+  const res = await fetch(`/api/live/${encodeURIComponent(code)}/stop`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  if (!res.ok) throw new Error("Could not end the live stream");
 }
 
 export async function getLiveStatus(code: string): Promise<LiveStatus | null> {

@@ -57,7 +57,7 @@ router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
     return;
   }
 
-  const { opponent, teamName, requestId } = req.body ?? {};
+  const { opponent, teamName, requestId, videoMode } = req.body ?? {};
   if (typeof opponent !== "string" || !opponent.trim() || typeof teamName !== "string" || !teamName.trim()) {
     res.status(400).json({ error: "Missing or invalid required fields" });
     return;
@@ -68,6 +68,10 @@ router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
     res.status(400).json({
       error: "requestId must be 16-128 characters using only letters, numbers, '_' or '-'",
     });
+    return;
+  }
+  if (videoMode !== undefined && videoMode !== "webrtc" && videoMode !== "daily") {
+    res.status(400).json({ error: "Invalid live video mode" });
     return;
   }
 
@@ -81,6 +85,34 @@ router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
     preferredCode = deriveLiveSessionCode(req.appUser!.id, requestId, secret);
   }
 
+  const session = await liveStreamRegistry.createSession(
+    { opponent, teamName },
+    preferredCode,
+    req.appUser!.id,
+  );
+  // The browser PWA publishes its existing MediaRecorder/canvas camera stream
+  // over the signaling relay. Do not create a Daily room: viewers must use
+  // WebRTC for this session, while native clients continue to default to Daily.
+  if (videoMode === "webrtc") {
+    // Random codes are newly inserted by createSession. Only idempotent starts
+    // can return an existing session whose transport was already chosen.
+    if (preferredCode) {
+      const existing = await db.query.liveSessionsTable.findFirst({
+        where: eq(liveSessionsTable.code, session.code),
+        columns: { dailyRoomName: true },
+      });
+      if (existing?.dailyRoomName) {
+        res.status(409).json({ error: "This live link already uses a different video mode" });
+        return;
+      }
+    }
+    res.json({
+      code: session.code,
+      videoMode: "webrtc",
+      broadcasterToken: createBroadcasterToken(session.code, req.appUser!.id),
+    });
+    return;
+  }
   // Only users who deliberately connected a channel should attempt the
   // optional YouTube relay. Other coaches never make a YouTube request.
   const youtubeRelayAvailable = process.env.NODE_ENV === "test" ? false : Boolean(
@@ -88,11 +120,6 @@ router.post("/live/start", requireAuth, async (req: Request, res: Response) => {
       where: eq(usersTable.id, req.appUser!.id),
       columns: { youtubeRefreshToken: true },
     }))?.youtubeRefreshToken,
-  );
-  const session = await liveStreamRegistry.createSession(
-    { opponent, teamName },
-    preferredCode,
-    req.appUser!.id,
   );
   if (process.env.NODE_ENV !== "test") {
     await db.update(liveSessionsTable).set({ youtubeLifecycleStatus: "pending" })

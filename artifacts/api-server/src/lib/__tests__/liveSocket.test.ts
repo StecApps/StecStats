@@ -138,6 +138,7 @@ describe("liveSocket signaling relay", () => {
     ws.send(JSON.stringify({ type: "join-viewer", code: TEST_CODE }));
 
     const joined = await waitForMessage(ws, (m) => m.type === "joined");
+    expect(joined.broadcasterPresent).toBe(false);
     expect(joined.hasVideo).toBe(false);
     expect(joined.videoMode).toBe("none");
     ws.close();
@@ -363,6 +364,7 @@ describe("liveSocket signaling relay", () => {
     viewer2.send(JSON.stringify({ type: "join-viewer", code: TEST_CODE }));
     const joined = await waitForMessage(viewer2, (m) => m.type === "joined");
 
+    expect(joined.broadcasterPresent).toBe(true);
     expect(joined.hasVideo).toBe(false);
     expect(joined.videoMode).toBe("none");
 

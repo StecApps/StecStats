@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useAuth } from "@clerk/react";
 import { backgroundUpload, PENDING_VIDEO_UPLOADS_KEY } from "@/lib/backgroundUpload";
 import { uploadVideoBlob } from "@/lib/videoUpload";
 import FilmRoom from "@/components/film-room";
@@ -124,6 +125,7 @@ function videoObjectSrc(objectPath: string, downloadFilename?: string): string {
 }
 
 export default function RecordGame() {
+  const { getToken, isLoaded: authLoaded } = useAuth();
   const params = useParams();
   const search = useSearch();
   const gameId = params.id ? parseInt(params.id, 10) : undefined;
@@ -839,6 +841,9 @@ export default function RecordGame() {
   const [liveQuality, setLiveQuality] = useState<AdaptiveLevel | null>(null);
   const adaptiveRef = useRef<AdaptiveQualityController | null>(null);
   const [isStartingLive, setIsStartingLive] = useState(false);
+  const [isStoppingLive, setIsStoppingLive] = useState(false);
+  const [liveStopError, setLiveStopError] = useState(false);
+  const liveStopInFlightRef = useRef(false);
   // null = not yet checked, true = TURN relay active, false = STUN-only
   const [turnAvailable, setTurnAvailable] = useState<boolean | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -905,6 +910,8 @@ export default function RecordGame() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunkSeqRef = useRef(0);
+  const pendingChunkWritesRef = useRef<Map<string, Set<Promise<void>>>>(new Map());
+  const chunkStorageWarnedRef = useRef<Set<string>>(new Set());
   const recordingSessionIdRef = useRef<string | null>(null);
   // Captures the async blob-assembly promise started by stopRecording() so
   // that handleSave() can await it if the user taps Save before onstop has
@@ -920,6 +927,8 @@ export default function RecordGame() {
   const liveWsRef = useRef<WebSocket | null>(null);
   const livePeersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const liveCodeRef = useRef<string | null>(null);
+  const broadcasterTokenRef = useRef<string | null>(null);
+  const liveLinkPromiseRef = useRef<Promise<string> | null>(null);
   // Mirrors the last MAX_RECENT_STAT_EVENTS ticker entries sent to the server
   // so they can be re-sent as resync-events whenever the WS reconnects after
   // an api-server restart (which wipes the in-memory recentEvents list).
@@ -1356,7 +1365,13 @@ export default function RecordGame() {
       viewerIceAttemptsRef.current.clear();
       livePeersRef.current.forEach(pc => pc.close());
       liveWsRef.current?.close();
-      if (liveCodeRef.current) stopLiveSession(liveCodeRef.current);
+      if (liveCodeRef.current) {
+        const code = liveCodeRef.current;
+        void getToken().then(token => {
+          if (token) return stopLiveSession(code, token);
+          return undefined;
+        }).catch(() => {});
+      }
     };
   }, [recordedPreviewUrl]);
 
@@ -1775,6 +1790,72 @@ export default function RecordGame() {
     rafRef.current = requestAnimationFrame(draw);
   };
 
+  const queueRecordingChunk = (sessionId: string, seq: number, blob: Blob) => {
+    const writes = pendingChunkWritesRef.current.get(sessionId) ?? new Set<Promise<void>>();
+    pendingChunkWritesRef.current.set(sessionId, writes);
+    const write = saveChunk(sessionId, seq, blob);
+    writes.add(write);
+    void write.catch(() => {
+      if (!chunkStorageWarnedRef.current.has(sessionId)) {
+        chunkStorageWarnedRef.current.add(sessionId);
+        toast({ title: "Video storage failed", description: "Some footage may not be saved. Stop and save this game as soon as possible.", variant: "destructive" });
+      }
+    }).finally(() => {
+      writes.delete(write);
+      if (!writes.size) pendingChunkWritesRef.current.delete(sessionId);
+    });
+  };
+
+  const readCompletedChunks = async (sessionId: string) => {
+    const writes = pendingChunkWritesRef.current.get(sessionId);
+    if (writes?.size) await Promise.all([...writes]);
+    if (chunkStorageWarnedRef.current.has(sessionId)) throw new Error("Video storage failed");
+    return getOrderedChunks(sessionId);
+  };
+
+  const handleCameraTrackEnded = () => {
+    // A canvas captureStream can keep emitting black frames after the source
+    // camera dies. Stop the recorder so its onstop handler preserves the
+    // captured chunks and tells the coach instead of showing a false LIVE badge.
+    const recorder = mediaRecorderRef.current;
+    if (recorder?.state === "recording") {
+      recorder.stop();
+    } else if (streamRef.current) {
+      // Pause has no active recorder. Preserve earlier segments, but don't
+      // offer Resume on a disconnected camera.
+      setIsRecording(false);
+      setIsRecordingPaused(false);
+      setCameraError("The camera disconnected. Save the footage already captured before recording again.");
+      toast({ title: "Camera disconnected", description: "Save the footage captured so far.", variant: "destructive" });
+      if (liveCodeRef.current) stopGoingLive();
+      stopMediaPipeline();
+    }
+  };
+
+  const installUnexpectedStopHandler = (recorder: MediaRecorder, sessionId: string, mimeType: string) => {
+    recorder.onstop = () => {
+      setIsRecording(false);
+      setIsRecordingPaused(false);
+      setCameraError("The recording stopped unexpectedly. Save the footage captured so far before continuing.");
+      toast({
+        title: "Recording stopped unexpectedly",
+        description: "Save this game's footage before starting another recording.",
+        variant: "destructive",
+      });
+      if (liveCodeRef.current) stopGoingLive();
+      // Save-on-demand awaits this; avoid an eager preview URL for large games.
+      blobAssemblyPromiseRef.current = readCompletedChunks(sessionId)
+        .then(chunks => {
+          if (!chunks.length) return null;
+          const blob = new Blob(chunks, { type: mimeType });
+          setRecordedBlob(blob);
+          return blob;
+        })
+        .catch(() => null)
+        .finally(() => stopMediaPipeline());
+    };
+  };
+
   const cycleLens = async () => {
     if (!usesCanvasRef.current || !sourceVideoRef.current) return;
     const lenses = environmentLensesRef.current;
@@ -1790,6 +1871,7 @@ export default function RecordGame() {
       const prev = src.srcObject as MediaStream | null;
       prev?.getVideoTracks().forEach(t => t.stop());
       src.srcObject = newStream;
+      newStream.getVideoTracks()[0]?.addEventListener("ended", handleCameraTrackEnded);
       await src.play().catch(() => {});
       await new Promise<void>(r => {
         if (src.videoWidth > 0) { r(); return; }
@@ -2057,6 +2139,9 @@ export default function RecordGame() {
         }
       }
       syncLensLabel(currentDeviceIdRef.current);
+      rawStream.getVideoTracks().forEach(track =>
+        track.addEventListener("ended", handleCameraTrackEnded)
+      );
 
       rawStreamRef.current = rawStream;
 
@@ -2146,25 +2231,10 @@ export default function RecordGame() {
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
           const seq = chunkSeqRef.current++;
-          saveChunk(sessionId, seq, e.data).catch(() => {});
+          queueRecordingChunk(sessionId, seq, e.data);
         }
       };
-      recorder.onstop = () => {
-        // Defer blob assembly — don't assemble + create an object URL here.
-        // For a 90-min game the blob can be multiple GB and eagerly allocating
-        // it crashes mobile browser tabs (iOS kills the tab). Instead we set the
-        // promise on blobAssemblyPromiseRef; handleSave awaits it right before
-        // uploading. No in-memory preview URL is created until the user saves.
-        blobAssemblyPromiseRef.current = getOrderedChunks(sessionId)
-          .then((chunks) => {
-            if (!chunks.length) return null;
-            const blob = new Blob(chunks, { type: mimeType });
-            setRecordedBlob(blob);
-            return blob;
-          })
-          .catch(() => null)
-          .finally(() => stopMediaPipeline());
-      };
+      installUnexpectedStopHandler(recorder, sessionId, mimeType);
 
       mediaRecorderRef.current = recorder;
       recordingStartRef.current = Date.now();
@@ -2204,7 +2274,7 @@ export default function RecordGame() {
       // user taps Save before onstop has finished reading from IndexedDB.
       blobAssemblyPromiseRef.current = new Promise<Blob | null>((resolve) => {
         recorder.onstop = () => {
-          getOrderedChunks(sessionId ?? "")
+          readCompletedChunks(sessionId ?? "")
             .then((chunks) => {
               const blob = new Blob(chunks, { type: mimeType });
               setRecordedBlob(blob);
@@ -2239,7 +2309,7 @@ export default function RecordGame() {
       const mimeType = recorder.mimeType;
       const sessionId = recordingSessionIdRef.current;
       recorder.onstop = () => {
-        getOrderedChunks(sessionId ?? "")
+        readCompletedChunks(sessionId ?? "")
           .then((chunks) => {
             if (!chunks.length) { stopMediaPipeline(); resolve(null); return; }
             const blob = new Blob(chunks, { type: mimeType });
@@ -2277,7 +2347,7 @@ export default function RecordGame() {
     // Flush this segment — custom onstop so we skip stopMediaPipeline
     const blob = await new Promise<Blob | null>((resolve) => {
       recorder.onstop = () => {
-        getOrderedChunks(sessionId)
+        readCompletedChunks(sessionId)
           .then(chunks => {
             if (chunks.length === 0) {
               // Keep the IndexedDB session for recovery — do NOT delete it.
@@ -2306,6 +2376,7 @@ export default function RecordGame() {
     }
 
     // Fresh recorder session on the same (still-live) camera stream
+    if (!streamRef.current || !rawStreamRef.current?.getVideoTracks().some(t => t.readyState === "live")) return;
     chunkSeqRef.current = 0;
     const newSessionId = createRecordingSessionId();
     recordingSessionIdRef.current = newSessionId;
@@ -2317,8 +2388,9 @@ export default function RecordGame() {
       audioBitsPerSecond: 128_000,
     });
     newRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) saveChunk(newSessionId, chunkSeqRef.current++, e.data).catch(() => {});
+      if (e.data.size > 0) queueRecordingChunk(newSessionId, chunkSeqRef.current++, e.data);
     };
+    installUnexpectedStopHandler(newRecorder, newSessionId, mimeType);
     mediaRecorderRef.current = newRecorder;
     newRecorder.start(3000);
 
@@ -2345,7 +2417,7 @@ export default function RecordGame() {
 
     const blob = await new Promise<Blob | null>((resolve) => {
       recorder.onstop = () => {
-        getOrderedChunks(sessionId)
+        readCompletedChunks(sessionId)
           .then(chunks => {
             if (chunks.length === 0) {
               // Keep the IndexedDB session for recovery — do NOT delete it.
@@ -2372,6 +2444,7 @@ export default function RecordGame() {
       });
     }
 
+    if (!streamRef.current || !rawStreamRef.current?.getVideoTracks().some(t => t.readyState === "live")) return;
     pauseStartTimeRef.current = Date.now();
     setIsRecordingPaused(true);
     // isRecording stays true — camera stays alive, stats still tracked
@@ -2387,6 +2460,10 @@ export default function RecordGame() {
   const resumeRecording = () => {
     const stream = streamRef.current;
     if (!stream || !isRecordingPaused) return;
+    if (!rawStreamRef.current?.getVideoTracks().some(t => t.readyState === "live")) {
+      handleCameraTrackEnded();
+      return;
+    }
 
     // Reuse the mimeType from the last recorder so all segments match
     const mimeType = mediaRecorderRef.current?.mimeType
@@ -2405,8 +2482,9 @@ export default function RecordGame() {
       audioBitsPerSecond: 128_000,
     });
     newRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) saveChunk(newSessionId, chunkSeqRef.current++, e.data).catch(() => {});
+      if (e.data.size > 0) queueRecordingChunk(newSessionId, chunkSeqRef.current++, e.data);
     };
+    installUnexpectedStopHandler(newRecorder, newSessionId, mimeType);
     mediaRecorderRef.current = newRecorder;
     newRecorder.start(3000);
 
@@ -2620,6 +2698,14 @@ export default function RecordGame() {
   };
 
   const connectBroadcasterSocket = (code: string, isReconnect: boolean) => {
+    const broadcasterToken = broadcasterTokenRef.current;
+    if (!broadcasterToken) {
+      setIsStartingLive(false);
+      setIsReconnectingLive(false);
+      setLiveInterrupted(true);
+      toast({ title: "Live link needs to be refreshed", description: "Create a new link before going live.", variant: "destructive" });
+      return;
+    }
     // A fresh session (not a same-session reconnect) must start with an empty
     // event mirror so previous-game plays are never resynced into the new
     // session's viewer ticker.  stopGoingLive() also clears the ref; this
@@ -2637,27 +2723,33 @@ export default function RecordGame() {
       // resync-events is sent only after we receive the "broadcaster-joined"
       // ack so the server has already registered this socket as the broadcaster
       // before it processes the resync payload.
-      ws.send(JSON.stringify({ type: "join-broadcaster", code, teamScore, opponentScore }));
-      setIsLive(true);
-      setIsStartingLive(false);
-      setIsReconnectingLive(false);
-      setLiveReconnectAttempt(0);
-      setLiveInterrupted(false);
-      if (isReconnect) {
-        liveReconnectAttemptsRef.current = 0;
-        toast({ title: "Live stream reconnected", description: "The broadcast has resumed." });
-      }
-
-      // Start (or restart on reconnect) a 25-minute TURN health-check timer.
-      // Clear any previous interval first so reconnects never accumulate
-      // duplicate timers — only one health-check fires at a time.
-      if (turnCheckIntervalRef.current) clearInterval(turnCheckIntervalRef.current);
-      turnCheckIntervalRef.current = setInterval(runTurnHealthCheck, 25 * 60 * 1000);
+      ws.send(JSON.stringify({ type: "join-broadcaster", code, authToken: broadcasterToken, videoMode: "webrtc", teamScore, opponentScore }));
     };
 
     ws.onmessage = async (event) => {
       const message = JSON.parse(event.data);
+      if (message.type === "error") {
+        liveManualStopRef.current = true;
+        ws.close();
+        setIsLive(false);
+        setIsStartingLive(false);
+        setIsReconnectingLive(false);
+        setLiveInterrupted(true);
+        toast({ title: "Live stream could not start", description: message.message || "Please create a new live link.", variant: "destructive" });
+        return;
+      }
       if (message.type === "broadcaster-joined") {
+        setIsLive(true);
+        setIsStartingLive(false);
+        setIsReconnectingLive(false);
+        setLiveReconnectAttempt(0);
+        setLiveInterrupted(false);
+        if (isReconnect) {
+          liveReconnectAttemptsRef.current = 0;
+          toast({ title: "Live stream reconnected", description: "The broadcast has resumed." });
+        }
+        if (turnCheckIntervalRef.current) clearInterval(turnCheckIntervalRef.current);
+        turnCheckIntervalRef.current = setInterval(runTurnHealthCheck, 25 * 60 * 1000);
         trackEvent("live_stream_started", {
           is_recording: isRecording,
           reconnect: isReconnect,
@@ -2752,7 +2844,27 @@ export default function RecordGame() {
     };
   };
 
+  const createLiveLink = (opponentName: string, teamName: string): Promise<string> => {
+    if (liveCodeRef.current && broadcasterTokenRef.current) return Promise.resolve(liveCodeRef.current);
+    if (liveLinkPromiseRef.current) return liveLinkPromiseRef.current;
+    const pending = (async () => {
+      const token = await getToken();
+      if (!token) throw new Error("Sign in again before creating a live link");
+      const session = await startLiveSession(opponentName, teamName, token);
+      liveCodeRef.current = session.code;
+      broadcasterTokenRef.current = session.broadcasterToken;
+      setLiveCode(session.code);
+      return session.code;
+    })();
+    liveLinkPromiseRef.current = pending;
+    void pending.finally(() => {
+      if (liveLinkPromiseRef.current === pending) liveLinkPromiseRef.current = null;
+    }).catch(() => {});
+    return pending;
+  };
+
   const goLive = async () => {
+    if (liveStopInFlightRef.current || liveStopError) return;
     if (!streamRef.current) {
       toast({ title: "Start recording first", description: "Live streaming shares the active camera feed.", variant: "destructive" });
       return;
@@ -2780,9 +2892,7 @@ export default function RecordGame() {
     }
 
     try {
-      const code = await startLiveSession(opponent || "Opponent", teams?.find(t => t.id.toString() === teamId)?.name || "Team");
-      liveCodeRef.current = code;
-      setLiveCode(code);
+      const code = await createLiveLink(opponent || "Opponent", teams?.find(t => t.id.toString() === teamId)?.name || "Team");
       connectBroadcasterSocket(code, false);
     } catch (err) {
       setIsStartingLive(false);
@@ -2794,17 +2904,39 @@ export default function RecordGame() {
   // Pre-generate the live invite code as soon as game details are known so
   // coaches can copy and share the watch link before tapping "Go Live".
   useEffect(() => {
-    if (!opponent || !teamId || livePregenDoneRef.current) return;
+    if (!authLoaded || !opponent || !teamId || livePregenDoneRef.current) return;
     livePregenDoneRef.current = true;
     const teamName = teams?.find(t => t.id.toString() === teamId)?.name || "Team";
-    startLiveSession(opponent, teamName)
-      .then(code => {
-        liveCodeRef.current = code;
-        setLiveCode(code);
-      })
+    createLiveLink(opponent, teamName)
+      .then(() => {})
       .catch(() => { livePregenDoneRef.current = false; });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opponent, teamId, !!teams]);
+  }, [opponent, teamId, !!teams, authLoaded]);
+
+  const retryEndLive = async () => {
+    const code = liveCodeRef.current;
+    if (!code || liveStopInFlightRef.current) return;
+    liveStopInFlightRef.current = true;
+    setIsStoppingLive(true);
+    setLiveStopError(false);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Sign in again to end the live stream");
+      await stopLiveSession(code, token);
+      if (liveCodeRef.current === code) {
+        liveCodeRef.current = null;
+        broadcasterTokenRef.current = null;
+        liveRecentEventsRef.current = [];
+        setLiveCode(null);
+      }
+    } catch {
+      setLiveStopError(true);
+      toast({ title: "Could not end the live stream", description: "Your link may still be active. Check your connection and tap Retry End Live.", variant: "destructive" });
+    } finally {
+      liveStopInFlightRef.current = false;
+      setIsStoppingLive(false);
+    }
+  };
 
   const stopGoingLive = () => {
     liveManualStopRef.current = true;
@@ -2825,17 +2957,10 @@ export default function RecordGame() {
     viewerIceAttemptsRef.current.clear();
     liveWsRef.current?.close();
     liveWsRef.current = null;
-    if (liveCodeRef.current) {
-      stopLiveSession(liveCodeRef.current);
-    }
-    liveCodeRef.current = null;
-    // Clear the event mirror so a subsequent broadcast doesn't resync
-    // this game's plays into a brand-new session's viewer ticker.
-    liveRecentEventsRef.current = [];
+    if (liveCodeRef.current) void retryEndLive();
     setIsLive(false);
     setIsReconnectingLive(false);
     setLiveInterrupted(false);
-    setLiveCode(null);
     setViewerCount(0);
   };
 
@@ -3631,6 +3756,14 @@ export default function RecordGame() {
               <span>Video captured — save the game below to upload it</span>
             </div>
           )}
+          {!isRecording && liveStopError && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+              <span>The live link may still be active on the server.</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void retryEndLive()} disabled={isStoppingLive}>
+                Retry End Live
+              </Button>
+            </div>
+          )}
 
           {!isRecording && !hasRecording && !recordedPreviewUrl && !existingVideoObjectPath && (
             <div className="space-y-2">
@@ -3686,9 +3819,7 @@ export default function RecordGame() {
                   <Button size="sm" variant="outline" className="h-7 text-xs" onClick={async () => {
                     try {
                       const teamName = teams?.find(t => t.id.toString() === teamId)?.name || "Team";
-                      const code = await startLiveSession(opponent || "Game", teamName);
-                      liveCodeRef.current = code;
-                      setLiveCode(code);
+                       await createLiveLink(opponent || "Game", teamName);
                       livePregenDoneRef.current = true;
                     } catch {
                       toast({ title: "Couldn't generate link", variant: "destructive" });
@@ -4518,12 +4649,17 @@ export default function RecordGame() {
               </Button>
               {!isLive && !isReconnectingLive && (
                 <>
-                  {liveCode && (
+                  {liveCode && !liveStopError && (
                     <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={shareWatchLink}>
                       <Share2 className="w-4 h-4 mr-2" /> Share Link
                     </Button>
                   )}
-                  <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive}>
+                  {liveStopError && (
+                    <Button variant="secondary" onClick={() => void retryEndLive()} disabled={isStoppingLive}>
+                      Retry End Live
+                    </Button>
+                  )}
+                  <Button variant="secondary" className="bg-black/50 text-white hover:bg-black/70 backdrop-blur-sm border-0" onClick={goLive} disabled={isStartingLive || isStoppingLive || liveStopError}>
                     {isStartingLive ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Radio className="w-4 h-4 mr-2 text-red-500" />}
                     Go Live
                   </Button>

@@ -264,7 +264,7 @@ export function attachLiveSocketServer(upgradeEmitter: {
           bindingCode = null;
           // Include hasVideo + videoMode so the viewer knows whether to expect
           // WebRTC, MJPEG snapshots, or score-only mode.
-          safeSend(ws, { type: "joined", viewerId, hasVideo: session.broadcasterHasVideo, videoMode: session.broadcasterVideoMode });
+          safeSend(ws, { type: "joined", viewerId, broadcasterPresent: Boolean(session.broadcaster), hasVideo: session.broadcasterHasVideo, videoMode: session.broadcasterVideoMode });
           safeSend(ws, {
             type: "scoreboard",
             teamScore: session.scoreboard.teamScore,

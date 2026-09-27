@@ -103,4 +103,27 @@ describe("POST /api/live/start idempotency", () => {
       41,
     );
   });
+
+  it("starts a browser WebRTC session without requiring a Daily room", async () => {
+    const response = await request(app).post("/api/live/start").send({
+      opponent: "Rivals",
+      teamName: "Home",
+      videoMode: "webrtc",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ code: "RANDOM1", videoMode: "webrtc" });
+    expect(response.body.broadcasterToken).toMatch(/^RANDOM1\.41\.\d+\.[A-Za-z0-9_-]+$/);
+  });
+
+  it("rejects an unknown browser video mode before creating a session", async () => {
+    const response = await request(app).post("/api/live/start").send({
+      opponent: "Rivals",
+      teamName: "Home",
+      videoMode: "unknown",
+    });
+
+    expect(response.status).toBe(400);
+    expect(createSessionMock).not.toHaveBeenCalled();
+  });
 });

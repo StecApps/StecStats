@@ -721,6 +721,15 @@ export default function WatchStream() {
             setState("connecting");
             return;
           }
+          if (message.broadcasterPresent === false) {
+            setScoreOnly(false);
+            if (offerWatchdogRef.current) {
+              clearTimeout(offerWatchdogRef.current);
+              offerWatchdogRef.current = null;
+            }
+            setState("waiting-for-broadcaster");
+            return;
+          }
           if (message.videoMode === "mjpeg") {
             // Delivery mode is authoritative if an older relay sends an
             // inconsistent hasVideo boolean during a transport transition.
@@ -740,13 +749,9 @@ export default function WatchStream() {
             }
             setState("live");
           } else {
-            // WebRTC broadcaster — send request-offer *immediately* instead of
-            // waiting OFFER_WATCHDOG_MS (default 30 s) for the proactive watchdog
-            // to fire. Reset the watchdog so it still retries if the offer is
-            // delayed (e.g. broadcaster's getUserMedia still in-flight).
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "request-offer", code }));
-            }
+            // join-viewer already notifies the broadcaster to send an offer.
+            // A second immediate request can create two competing peer
+            // connections for one viewer; the watchdog handles a lost offer.
             if (offerWatchdogRef.current) {
               clearTimeout(offerWatchdogRef.current);
               offerWatchdogRef.current = null;
@@ -778,6 +783,17 @@ export default function WatchStream() {
             return;
           }
           if (dailySessionRef.current) return;
+          if (message.videoMode === "webrtc") {
+            setScoreOnly(false);
+            setIsMjpeg(false);
+            setBroadcasterReconnecting(false);
+            setState("connecting");
+            // The broadcaster re-sends offers to every waiting viewer on join.
+            if (offerWatchdogRef.current) clearTimeout(offerWatchdogRef.current);
+            offerWatchdogAttemptsRef.current = 0;
+            offerWatchdogRef.current = setTimeout(fireOfferWatchdog, OFFER_WATCHDOG_MS);
+            return;
+          }
           if (message.videoMode === "mjpeg") {
             setScoreOnly(false);
             setIsMjpeg(true);
